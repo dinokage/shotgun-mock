@@ -1,0 +1,129 @@
+Build a complete, clickable, frontend-only prototype of "Forge" — a Production Operating
+System for VFX, animation, games, and film production tracking. This is a visualization
+prototype: no real backend, no database, no auth. All data is mocked/hardcoded in-app
+(local state, JSON fixtures, or a mock API layer with in-memory data). Every screen and
+flow must be navigable and interactive using fake data — nothing should dead-end.
+
+STACK
+- Next.js (App Router) + TypeScript + Tailwind CSS + shadcn/ui components.
+- Client-side state only (React state / Zustand / Context) — simulate persistence
+  within a session (e.g. optimistic UI updates that "stick" until page reload), but
+  no real API calls, no server, no auth flow beyond a fake "logged in as [user]" state.
+- Recharts or ApexCharts for charts.
+- dnd-kit (or react-beautiful-dnd) for the Kanban board's drag-and-drop.
+
+DESIGN SYSTEM
+- Style: modern enterprise SaaS ("Soft UI Evolution" — subtle depth/shadows, not flat,
+  not skeuomorphic). Support both dark and light themes; default to DARK, since this
+  is a professional tool used in long sessions (matches conventions in Kitsu, ShotGrid,
+  and DCC tools) — but make the light/dark toggle fully functional, not cosmetic.
+- Typography: Inter for all UI text; a monospace face (JetBrains Mono or Fira Code) for
+  technical values — entity IDs, event IDs, timestamps in the audit log.
+- Primary/brand color: deep navy-teal (#1F4E5F), used for nav chrome, headers, primary
+  buttons.
+- Status color system: reuse this exact three-color semantic system everywhere status is
+  shown (task status, health, workflow state, deployment mode):
+    - Green #1E7A34 = complete / healthy / on-track
+    - Orange #B5651D = at-risk / in-progress / partial
+    - Red #A03030 = blocked / failed / off-track
+  Never rely on color alone — always pair with an icon or label (colorblind accessibility).
+- Density: dashboard-dense spacing (tighter than a marketing site) for data tables,
+  boards, and timelines; roomier spacing for empty states and onboarding.
+- Motion: standard (150–300ms) transitions on hover/state changes; drag feedback on the
+  Kanban board and Gantt bars; respect prefers-reduced-motion. No decorative animation.
+- Icons: SVG icon set only (Lucide/Heroicons) — never emoji as icons.
+- Fully responsive down to 1024px (this is a desktop-first pro tool; a graceful "use a
+  larger screen" state below that is acceptable for the densest views, but the shell/
+  nav/dashboard should still work on tablet width).
+
+INFORMATION ARCHITECTURE (persistent left sidebar + top bar)
+Top bar: studio/project switcher, global search, notification bell (with unread badge),
+theme toggle, current-user menu.
+
+Sidebar sections:
+1. Home — personalized "My Work": tasks assigned to me, mentions, items awaiting my
+   approval, recent activity feed.
+2. Projects — project list (cards or table, filterable by status/type) → Project
+   Overview page with tabs:
+   - Dashboard: burndown chart, status breakdown, upcoming deadlines, recent activity.
+   - Shots & Assets: browsable grid/list with thumbnails, filters, and an entity detail
+     panel (fields, relationships, version history, notes) when one is selected.
+   - Tasks: three view modes on the same underlying data — Kanban board (drag cards
+     between status columns), List/table view (sortable, filterable, supports
+     multi-select + bulk status/assignee edit), and Timeline/Gantt view (draggable bars,
+     dependency lines between tasks, critical-path highlighting).
+   - Versions & Publishes: version history per asset/shot with a visible publish lineage
+     chain (this version derived_from that version).
+   - Playlists: create/reorder a playlist of versions for review.
+3. Review — a media review screen: video/image player with a scrubber, frame-accurate
+   annotation/drawing tool overlay, a threaded comment/notes panel tied to timecodes,
+   and an approval action bar (Approve / Request Changes / Reject) with visible approval
+   chain (who approved, who's next). Include a client-facing "read-only reviewer" view
+   variant.
+4. Scheduling — cross-project resource view: a capacity grid (artists × time, showing
+   over/under-allocation), plus an "AI risk & bottleneck" panel where each flagged risk
+   is a card that MUST show a structured explanation (e.g. "flagged because Shot 040
+   blocks 3 downstream tasks and current velocity is 40% below required pace — based on
+   the last 6 weeks of event history") — never show an AI recommendation without a
+   visible reasoning trail. Include a probabilistic completion-date widget (P50/P80/P95
+   style range, not a single date).
+5. Impact Analysis (Knowledge Graph) — a graph-visualization screen: pick an entity
+   (e.g. an asset), see a force-directed or tree-style graph of what depends on it, with
+   a plain-language summary ("Changing this affects 12 shots across 2 sequences,
+   notifying 5 artists") above the visual.
+6. Workflows — a workflow template library (cards: "Review → Approve → Publish", etc.)
+   → a visual node-graph editor (nodes + connecting lines, palette of node types:
+   trigger, approval step, condition, notification) for authoring/editing a workflow.
+   Include a "workflow run" view showing a specific execution's progress through the
+   nodes, including one paused mid-flow awaiting approval.
+7. Plugin Marketplace — browsable grid of fake plugins (icon, name, category, rating,
+   install count, security-scan badge) with an install/enabled toggle (fake — just
+   updates local state) and a detail page per plugin.
+8. Entity Schema Builder (Admin) — a no-code UI for defining a custom entity type: add
+   fields (text/number/date/select/user-ref/entity-ref), pick allowed relationship
+   types, preview the resulting form/table. This is the "no schema migration needed"
+   story made visible.
+9. Audit / Time Travel — an event-log viewer for a given entity: chronological list of
+   every event, with a "view state as of this event" action that shows the entity's
+   full field values at that point in history, and a "rollback to here" action (fake,
+   just shows a confirmation + toast).
+10. AI Assistant — a chat-style panel (can be a slide-over, not necessarily a full page)
+    where responses always show citations back to specific entities/events it drew from
+    (e.g. "Source: Shot_040 status history, Task #182") — never an unsourced answer.
+11. Settings — studio profile, member list with roles/permissions matrix, deployment
+    mode indicator (SaaS / On-Prem / Hybrid / Air-Gapped shown as a badge — purely
+    illustrative, no real toggle needed to function).
+
+MOCK DATA
+Invent one fake studio ("Nebula Animation Co.") with 2–3 in-flight projects of
+different types (e.g. an animated feature, a game cinematic, an ad campaign) to show
+the entity system's flexibility. Populate with realistic sequences/shots/assets/tasks/
+versions/users (with avatars), a spread of statuses across the three status colors,
+enough historical events per entity to make the Time Travel view meaningful (8–15
+events on at least a couple of entities), a handful of AI risk/scheduling
+recommendations with real-looking explanations, 6–10 fake plugins, and a realistic
+notification feed. Data should feel like a real production, not lorem ipsum.
+
+INTERACTION REQUIREMENTS
+- Kanban board: drag-and-drop cards between columns with visual drop feedback; changes
+  persist in local state.
+- Gantt/timeline: draggable bars to reshuffle dates; dependency lines redraw live.
+- Bulk actions: checkbox column + action bar on all table/list views (multi-select,
+  not one-by-one editing).
+- Every async-feeling action (save, approve, install plugin, rollback) shows a brief
+  success confirmation (toast/checkmark) — never a silent success.
+- Every multi-step flow (e.g. schema builder, workflow authoring) shows a step
+  indicator or equivalent progress cue.
+- Keyboard navigation and visible focus states throughout; 4.5:1 text contrast minimum
+  in both themes.
+
+NON-GOALS (explicit)
+- No real authentication, no real API calls, no persistence beyond the browser session.
+- No actual video transcoding/streaming — use placeholder media with working player
+  chrome (scrubber, play/pause, frame-step).
+- No real AI model calls — recommendation/assistant text is pre-written mock content.
+- Don't build the L0–L2 infrastructure layers (event backbone, plugin sandboxing
+  internals, Kubernetes deployment) — those aren't visual/user-facing.
+
+Deliver a navigable app where every sidebar item and every "click into an entity" leads
+somewhere real, not a placeholder page.
