@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTasksStore } from '@/store/tasks';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { PriorityChip } from '@/components/shared/PriorityChip';
@@ -6,12 +6,65 @@ import { UserAvatar } from '@/components/shared/UserAvatar';
 import { USERS } from '@/data/mockData';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
+import { ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react';
+
+type SortKey = 'title' | 'assignee' | 'status' | 'priority' | 'dueDate' | 'estimatedHours';
+
+const COLUMNS: { key: SortKey; label: string }[] = [
+  { key: 'title', label: 'Title' },
+  { key: 'assignee', label: 'Assignee' },
+  { key: 'status', label: 'Status' },
+  { key: 'priority', label: 'Priority' },
+  { key: 'dueDate', label: 'Due Date' },
+  { key: 'estimatedHours', label: 'Est. Hrs' },
+];
 
 export default function TasksListView({ projectId }: { projectId: string }) {
   const tasks = useTasksStore(state => state.tasks).filter(t => t.projectId === projectId);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const { toast } = useToast();
+
+  const sortedTasks = useMemo(() => {
+    if (!sortKey) return tasks;
+    const assigneeName = (t: typeof tasks[number]) => USERS.find(u => u.id === t.assigneeId)?.name ?? '';
+    const valueFor = (t: typeof tasks[number]) => {
+      switch (sortKey) {
+        case 'assignee': return assigneeName(t);
+        case 'estimatedHours': return t.estimatedHours;
+        default: return t[sortKey];
+      }
+    };
+    return [...tasks].sort((a, b) => {
+      const av = valueFor(a);
+      const bv = valueFor(b);
+      if (av < bv) return sortDir === 'asc' ? -1 : 1;
+      if (av > bv) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [tasks, sortKey, sortDir]);
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
+  };
 
   const toggleAll = () => {
     if (selectedIds.size === tasks.length) {
@@ -43,7 +96,23 @@ export default function TasksListView({ projectId }: { projectId: string }) {
           <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={() => handleBulkAction('Change Status')}>Change Status</Button>
             <Button size="sm" variant="outline" onClick={() => handleBulkAction('Reassign')}>Reassign</Button>
-            <Button size="sm" variant="destructive" onClick={() => handleBulkAction('Delete')}>Delete</Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="sm" variant="destructive">Delete</Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete {selectedIds.size} task{selectedIds.size === 1 ? '' : 's'}?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => handleBulkAction('Delete')}>Delete</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </div>
       )}
@@ -55,16 +124,26 @@ export default function TasksListView({ projectId }: { projectId: string }) {
               <th className="p-3 w-10">
                 <Checkbox checked={selectedIds.size === tasks.length && tasks.length > 0} onCheckedChange={toggleAll} />
               </th>
-              <th className="p-3 font-medium cursor-pointer hover:bg-muted">Title</th>
-              <th className="p-3 font-medium cursor-pointer hover:bg-muted">Assignee</th>
-              <th className="p-3 font-medium cursor-pointer hover:bg-muted">Status</th>
-              <th className="p-3 font-medium cursor-pointer hover:bg-muted">Priority</th>
-              <th className="p-3 font-medium cursor-pointer hover:bg-muted">Due Date</th>
-              <th className="p-3 font-medium cursor-pointer hover:bg-muted">Est. Hrs</th>
+              {COLUMNS.map(col => (
+                <th key={col.key} className="p-3 font-medium">
+                  <button
+                    type="button"
+                    className="flex items-center gap-1 hover:text-foreground rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    onClick={() => handleSort(col.key)}
+                  >
+                    {col.label}
+                    {sortKey === col.key ? (
+                      sortDir === 'asc' ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />
+                    ) : (
+                      <ChevronsUpDown className="w-3.5 h-3.5 opacity-40" />
+                    )}
+                  </button>
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
-            {tasks.map(task => {
+            {sortedTasks.map(task => {
               const user = USERS.find(u => u.id === task.assigneeId);
               const isSelected = selectedIds.has(task.id);
               return (

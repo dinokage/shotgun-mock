@@ -7,16 +7,47 @@ import { Play, Pause, SkipBack, SkipForward, Volume2, PenTool, MousePointer2, Ty
 import { useToast } from '@/hooks/use-toast';
 import { Link } from 'wouter';
 
+type AnnotationTool = 'select' | 'pen' | 'arrow' | 'rectangle' | 'text';
+
+const TOOLS: { id: AnnotationTool; icon: typeof MousePointer2; label: string }[] = [
+  { id: 'select', icon: MousePointer2, label: 'Select' },
+  { id: 'pen', icon: PenTool, label: 'Draw freehand' },
+  { id: 'arrow', icon: ArrowUpRight, label: 'Draw arrow' },
+  { id: 'rectangle', icon: Square, label: 'Draw rectangle' },
+  { id: 'text', icon: Type, label: 'Add text annotation' },
+];
+
+interface Comment {
+  id: string;
+  userIndex: number;
+  frame: number;
+  text: string;
+}
+
 export default function Review() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [frame, setFrame] = useState(1);
-  const [drawMode, setDrawMode] = useState(false);
+  const [tool, setTool] = useState<AnnotationTool>('select');
   const [viewerMode, setViewerMode] = useState(false);
+  const [comments, setComments] = useState<Comment[]>([
+    { id: 'c1', userIndex: 1, frame: 45, text: 'The rim light on the left side is blowing out a bit too much.' },
+    { id: 'c2', userIndex: 0, frame: 112, text: 'Agreed. Also, can we add a bit more falloff to the shadow here?' },
+  ]);
+  const [commentDraft, setCommentDraft] = useState('');
   const { toast } = useToast();
   const maxFrames = 240;
+  const drawMode = tool !== 'select';
 
   const handleAction = (action: string) => {
     toast({ title: action, description: 'Action recorded.' });
+  };
+
+  const handleSubmitComment = () => {
+    const text = commentDraft.trim();
+    if (!text) return;
+    setComments(prev => [...prev, { id: `c${prev.length + 1}`, userIndex: 0, frame, text }]);
+    setCommentDraft('');
+    toast({ description: `Comment added at frame ${frame}.` });
   };
 
   return (
@@ -41,11 +72,19 @@ export default function Review() {
         <div className="flex-1 flex flex-col bg-black relative">
           {!viewerMode && (
             <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-card/80 backdrop-blur border border-border rounded-lg p-1.5 flex gap-1 z-10">
-              <Button size="icon" variant={!drawMode ? 'secondary' : 'ghost'} className="h-8 w-8" onClick={() => setDrawMode(false)}><MousePointer2 className="w-4 h-4" /></Button>
-              <Button size="icon" variant={drawMode ? 'secondary' : 'ghost'} className="h-8 w-8 text-primary" onClick={() => setDrawMode(true)}><PenTool className="w-4 h-4" /></Button>
-              <Button size="icon" variant="ghost" className="h-8 w-8"><ArrowUpRight className="w-4 h-4" /></Button>
-              <Button size="icon" variant="ghost" className="h-8 w-8"><Square className="w-4 h-4" /></Button>
-              <Button size="icon" variant="ghost" className="h-8 w-8"><Type className="w-4 h-4" /></Button>
+              {TOOLS.map(({ id, icon: Icon, label }) => (
+                <Button
+                  key={id}
+                  size="icon"
+                  variant={tool === id ? 'secondary' : 'ghost'}
+                  className={`h-8 w-8 ${tool === id && id !== 'select' ? 'text-primary' : ''}`}
+                  aria-label={label}
+                  aria-pressed={tool === id}
+                  onClick={() => setTool(id)}
+                >
+                  <Icon className="w-4 h-4" />
+                </Button>
+              ))}
             </div>
           )}
 
@@ -70,7 +109,7 @@ export default function Review() {
           </div>
 
           <div className="h-16 bg-card border-t border-border flex items-center px-4 gap-4 shrink-0">
-            <Button size="icon" variant="ghost" onClick={() => setIsPlaying(!isPlaying)}>
+            <Button size="icon" variant="ghost" aria-label={isPlaying ? 'Pause' : 'Play'} onClick={() => setIsPlaying(!isPlaying)}>
               {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
             </Button>
             <div className="flex-1 flex items-center gap-4">
@@ -120,40 +159,44 @@ export default function Review() {
           </div>
           
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            <div className="flex gap-3">
-              <Avatar className="w-8 h-8"><AvatarImage src={USERS[1].avatar} /><AvatarFallback>L</AvatarFallback></Avatar>
-              <div className="flex-1">
-                <div className="flex items-baseline gap-2 mb-1">
-                  <span className="font-medium text-sm">{USERS[1].name}</span>
-                  <span className="text-xs font-mono bg-primary/10 text-primary px-1 rounded cursor-pointer hover:bg-primary/20" onClick={() => setFrame(45)}>045</span>
+            {comments.map(comment => {
+              const user = USERS[comment.userIndex];
+              return (
+                <div className="flex gap-3" key={comment.id}>
+                  <Avatar className="w-8 h-8"><AvatarImage src={user.avatar} /><AvatarFallback>{user.name.charAt(0)}</AvatarFallback></Avatar>
+                  <div className="flex-1">
+                    <div className="flex items-baseline gap-2 mb-1">
+                      <span className="font-medium text-sm">{user.name}</span>
+                      <button
+                        type="button"
+                        className="text-xs font-mono bg-primary/10 text-primary px-1 rounded hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        aria-label={`Jump to frame ${comment.frame}`}
+                        onClick={() => setFrame(comment.frame)}
+                      >
+                        {String(comment.frame).padStart(3, '0')}
+                      </button>
+                    </div>
+                    <p className="text-sm text-muted-foreground">{comment.text}</p>
+                  </div>
                 </div>
-                <p className="text-sm text-muted-foreground">The rim light on the left side is blowing out a bit too much.</p>
-              </div>
-            </div>
-            
-            <div className="flex gap-3">
-              <Avatar className="w-8 h-8"><AvatarImage src={USERS[0].avatar} /><AvatarFallback>M</AvatarFallback></Avatar>
-              <div className="flex-1">
-                <div className="flex items-baseline gap-2 mb-1">
-                  <span className="font-medium text-sm">{USERS[0].name}</span>
-                  <span className="text-xs font-mono bg-primary/10 text-primary px-1 rounded cursor-pointer hover:bg-primary/20" onClick={() => setFrame(112)}>112</span>
-                </div>
-                <p className="text-sm text-muted-foreground">Agreed. Also, can we add a bit more falloff to the shadow here?</p>
-              </div>
-            </div>
+              );
+            })}
           </div>
 
           {!viewerMode && (
             <div className="p-4 border-t border-border bg-card">
-              <textarea 
+              <textarea
                 className="w-full h-24 bg-muted/50 border border-border rounded-md p-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-primary mb-2"
                 placeholder="Add a comment..."
+                aria-label="Add a comment"
+                value={commentDraft}
+                onChange={(e) => setCommentDraft(e.target.value)}
               />
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" className="flex-1" onClick={() => toast({ description: `Frame ${frame} stamped.` })}>
                   Stamp F{frame}
                 </Button>
-                <Button size="sm" className="flex-1">Submit</Button>
+                <Button size="sm" className="flex-1" disabled={!commentDraft.trim()} onClick={handleSubmitComment}>Submit</Button>
               </div>
             </div>
           )}

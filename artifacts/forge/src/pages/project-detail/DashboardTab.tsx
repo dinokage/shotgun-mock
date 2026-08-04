@@ -30,12 +30,12 @@ export default function DashboardTab({ project }: { project: any }) {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pb-8">
-      <div className="lg:col-span-2 space-y-6">
+      <div className="lg:col-span-2 space-y-6 min-w-0">
         <Card>
           <CardHeader>
             <CardTitle>Burndown</CardTitle>
           </CardHeader>
-          <CardContent className="h-[300px]">
+          <CardContent className="h-[300px] min-w-0">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={burndownData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
@@ -69,12 +69,12 @@ export default function DashboardTab({ project }: { project: any }) {
         </div>
       </div>
 
-      <div className="space-y-6">
+      <div className="space-y-6 min-w-0">
         <Card>
           <CardHeader>
             <CardTitle>Shot Status</CardTitle>
           </CardHeader>
-          <CardContent className="h-[250px] flex items-center justify-center relative">
+          <CardContent className="h-[250px] min-w-0 flex items-center justify-center relative">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={2} dataKey="value">
