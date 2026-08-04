@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { USERS } from '@/data/mockData';
-import { Play, Pause, SkipBack, SkipForward, Volume2, PenTool, MousePointer2, Type, Square, ArrowUpRight, CheckCircle2, MessageSquare, XCircle, ChevronLeft } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, PenTool, MousePointer2, Type, Square, ArrowUpRight, CheckCircle2, MessageSquare, XCircle, ChevronLeft, Circle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Link } from 'wouter';
 
@@ -24,6 +24,21 @@ interface Comment {
   text: string;
 }
 
+interface Annotation {
+  id: string;
+  frame: number;
+  type: AnnotationTool;
+  color: string;
+  x: number;
+  y: number;
+  w?: number;
+  h?: number;
+  points?: {x: number, y: number}[];
+  text?: string;
+}
+
+const COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#eab308', '#d946ef', '#ffffff'];
+
 export default function Review() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [frame, setFrame] = useState(1);
@@ -34,9 +49,38 @@ export default function Review() {
     { id: 'c2', userIndex: 0, frame: 112, text: 'Agreed. Also, can we add a bit more falloff to the shadow here?' },
   ]);
   const [commentDraft, setCommentDraft] = useState('');
+  const [annotations, setAnnotations] = useState<Annotation[]>([]);
+  const [color, setColor] = useState(COLORS[0]);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [currentDrawStart, setCurrentDrawStart] = useState<{x: number, y: number} | null>(null);
+  const [currentPoints, setCurrentPoints] = useState<{x: number, y: number}[]>([]);
+  const [tempRect, setTempRect] = useState<{x: number, y: number, w: number, h: number} | null>(null);
+  
   const { toast } = useToast();
   const maxFrames = 240;
   const drawMode = tool !== 'select';
+
+  // Global keydown for Spacebar play/pause
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger if user is typing in an input or textarea
+      if (e.code === 'Space' && e.target instanceof Element && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        setIsPlaying(p => !p);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Simple playback loop
+  useEffect(() => {
+    if (!isPlaying) return;
+    const interval = setInterval(() => {
+      setFrame(f => (f >= maxFrames ? 1 : f + 1));
+    }, 1000 / 24); // 24 fps
+    return () => clearInterval(interval);
+  }, [isPlaying]);
 
   const handleAction = (action: string) => {
     toast({ title: action, description: 'Action recorded.' });
@@ -71,20 +115,33 @@ export default function Review() {
         {/* Left: Player */}
         <div className="flex-1 flex flex-col bg-black relative">
           {!viewerMode && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-card/80 backdrop-blur border border-border rounded-lg p-1.5 flex gap-1 z-10">
-              {TOOLS.map(({ id, icon: Icon, label }) => (
-                <Button
-                  key={id}
-                  size="icon"
-                  variant={tool === id ? 'secondary' : 'ghost'}
-                  className={`h-8 w-8 ${tool === id && id !== 'select' ? 'text-primary' : ''}`}
-                  aria-label={label}
-                  aria-pressed={tool === id}
-                  onClick={() => setTool(id)}
-                >
-                  <Icon className="w-4 h-4" />
-                </Button>
-              ))}
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-card/80 backdrop-blur border border-border rounded-lg p-1.5 flex gap-3 z-30">
+              <div className="flex gap-1">
+                {TOOLS.map(({ id, icon: Icon, label }) => (
+                  <Button
+                    key={id}
+                    size="icon"
+                    variant={tool === id ? 'secondary' : 'ghost'}
+                    className={`h-8 w-8 ${tool === id && id !== 'select' ? 'text-primary' : ''}`}
+                    aria-label={label}
+                    aria-pressed={tool === id}
+                    onClick={() => setTool(id)}
+                  >
+                    <Icon className="w-4 h-4" />
+                  </Button>
+                ))}
+              </div>
+              <div className="w-px bg-border my-1" />
+              <div className="flex gap-1 items-center px-1">
+                {COLORS.map(c => (
+                  <button
+                    key={c}
+                    className={`w-5 h-5 rounded-full border-2 transition-transform ${color === c ? 'scale-125 border-primary shadow-sm' : 'border-transparent hover:scale-110'}`}
+                    style={{ backgroundColor: c }}
+                    onClick={() => setColor(c)}
+                  />
+                ))}
+              </div>
             </div>
           )}
 
@@ -93,17 +150,130 @@ export default function Review() {
               <div className="absolute inset-0 flex items-center justify-center text-muted-foreground/30 font-mono text-4xl">
                 [VIDEO CONTENT]
               </div>
+              {/* Render Annotations for this frame */}
+              <svg className="absolute inset-0 z-10 pointer-events-none w-full h-full">
+                <defs>
+                  <marker id="arrowhead-red" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                    <polygon points="0 0, 10 3.5, 0 7" fill="#ef4444" />
+                  </marker>
+                  {COLORS.map(c => (
+                    <marker key={c} id={`arrowhead-${c.replace('#', '')}`} markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                      <polygon points="0 0, 10 3.5, 0 7" fill={c} />
+                    </marker>
+                  ))}
+                </defs>
+                
+                {annotations.filter(a => Math.abs(a.frame - frame) < 3).map(a => {
+                  if (a.type === 'rectangle' && a.w && a.h) {
+                    return (
+                      <rect key={a.id} x={a.x} y={a.y} width={a.w} height={a.h} fill={`${a.color}20`} stroke={a.color} strokeWidth={2} className="pointer-events-auto cursor-pointer" onClick={() => tool === 'select' && setAnnotations(prev => prev.filter(p => p.id !== a.id))} />
+                    );
+                  }
+                  if (a.type === 'pen' && a.points) {
+                    const d = `M ${a.points.map(p => `${p.x},${p.y}`).join(' L ')}`;
+                    return (
+                      <path key={a.id} d={d} fill="none" stroke={a.color} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" className="pointer-events-auto cursor-pointer hover:stroke-opacity-70" onClick={() => tool === 'select' && setAnnotations(prev => prev.filter(p => p.id !== a.id))} />
+                    );
+                  }
+                  if (a.type === 'arrow' && a.points && a.points.length === 2) {
+                    return (
+                      <line key={a.id} x1={a.points[0].x} y1={a.points[0].y} x2={a.points[1].x} y2={a.points[1].y} stroke={a.color} strokeWidth={3} markerEnd={`url(#arrowhead-${a.color.replace('#', '')})`} className="pointer-events-auto cursor-pointer" onClick={() => tool === 'select' && setAnnotations(prev => prev.filter(p => p.id !== a.id))} />
+                    );
+                  }
+                  return null;
+                })}
+
+                {/* Temp Drawing */}
+                {isDrawing && tool === 'pen' && currentPoints.length > 0 && (
+                   <path d={`M ${currentPoints.map(p => `${p.x},${p.y}`).join(' L ')}`} fill="none" stroke={color} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+                )}
+                {isDrawing && tool === 'arrow' && currentDrawStart && currentPoints.length > 0 && (
+                   <line x1={currentDrawStart.x} y1={currentDrawStart.y} x2={currentPoints[currentPoints.length - 1].x} y2={currentPoints[currentPoints.length - 1].y} stroke={color} strokeWidth={3} markerEnd={`url(#arrowhead-${color.replace('#', '')})`} />
+                )}
+                {tempRect && (
+                  <rect x={tempRect.x} y={tempRect.y} width={tempRect.w} height={tempRect.h} fill={`${color}20`} stroke={color} strokeWidth={2} />
+                )}
+              </svg>
+
+              {/* Text Annotations Overlay */}
+              <div className="absolute inset-0 z-10 pointer-events-none">
+                {annotations.filter(a => Math.abs(a.frame - frame) < 3 && a.type === 'text').map(a => (
+                  <div key={a.id} className="absolute pointer-events-auto" style={{ left: a.x, top: a.y }}>
+                    <input
+                      type="text"
+                      className="bg-black/50 text-white font-medium border border-white/20 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-white min-w-[120px]"
+                      style={{ color: a.color }}
+                      autoFocus
+                      defaultValue={a.text}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setAnnotations(prev => prev.map(p => p.id === a.id ? { ...p, text: val } : p));
+                      }}
+                      onBlur={(e) => {
+                         if (!e.target.value.trim()) setAnnotations(prev => prev.filter(p => p.id !== a.id));
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
+
               {drawMode && (
-                <div className="absolute inset-0 cursor-crosshair z-20" onClick={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const x = e.clientX - rect.left;
-                  const y = e.clientY - rect.top;
-                  const dot = document.createElement('div');
-                  dot.className = 'absolute w-3 h-3 bg-red-500 rounded-full shadow-[0_0_10px_rgba(255,0,0,0.8)] -translate-x-1/2 -translate-y-1/2';
-                  dot.style.left = `${x}px`;
-                  dot.style.top = `${y}px`;
-                  e.currentTarget.appendChild(dot);
-                }} />
+                <div 
+                  className="absolute inset-0 cursor-crosshair z-20" 
+                  onMouseDown={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+                    
+                    if (tool === 'rectangle') {
+                      setIsDrawing(true);
+                      setCurrentDrawStart({ x, y });
+                      setTempRect({ x, y, w: 0, h: 0 });
+                    } else if (tool === 'pen' || tool === 'arrow') {
+                      setIsDrawing(true);
+                      setCurrentDrawStart({ x, y });
+                      setCurrentPoints([{ x, y }]);
+                    } else if (tool === 'text') {
+                      setAnnotations(prev => [...prev, { id: Date.now().toString(), frame, type: 'text', color, x, y, text: '' }]);
+                      setTool('select');
+                    }
+                  }}
+                  onMouseMove={(e) => {
+                    if (!isDrawing) return;
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+                    
+                    if (tool === 'rectangle' && currentDrawStart) {
+                      const newX = Math.min(x, currentDrawStart.x);
+                      const newY = Math.min(y, currentDrawStart.y);
+                      const w = Math.abs(x - currentDrawStart.x);
+                      const h = Math.abs(y - currentDrawStart.y);
+                      setTempRect({ x: newX, y: newY, w, h });
+                    } else if (tool === 'pen' || tool === 'arrow') {
+                      setCurrentPoints(prev => [...prev, { x, y }]);
+                    }
+                  }}
+                  onMouseUp={(e) => {
+                    if (tool === 'rectangle' && tempRect && tempRect.w > 5) {
+                      setAnnotations(prev => [...prev, { id: Date.now().toString(), frame, type: 'rectangle', color, ...tempRect }]);
+                    } else if (tool === 'pen' && currentPoints.length > 1) {
+                      setAnnotations(prev => [...prev, { id: Date.now().toString(), frame, type: 'pen', color, x: 0, y: 0, points: currentPoints }]);
+                    } else if (tool === 'arrow' && currentDrawStart && currentPoints.length > 1) {
+                      setAnnotations(prev => [...prev, { id: Date.now().toString(), frame, type: 'arrow', color, x: 0, y: 0, points: [currentDrawStart, currentPoints[currentPoints.length - 1]] }]);
+                    }
+                    setIsDrawing(false);
+                    setCurrentDrawStart(null);
+                    setCurrentPoints([]);
+                    setTempRect(null);
+                  }}
+                  onMouseLeave={() => {
+                    setIsDrawing(false);
+                    setCurrentDrawStart(null);
+                    setCurrentPoints([]);
+                    setTempRect(null);
+                  }}
+                />
               )}
             </div>
           </div>

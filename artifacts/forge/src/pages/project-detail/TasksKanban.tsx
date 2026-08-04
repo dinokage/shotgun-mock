@@ -37,9 +37,9 @@ function SortableTaskCard({ task }: { task: any }) {
   );
 }
 
-export default function KanbanView({ projectId }: { projectId: string }) {
+export default function KanbanView({ projectId }: { projectId?: string }) {
   const { tasks, updateTaskStatus } = useTasksStore();
-  const projectTasks = tasks.filter(t => t.projectId === projectId);
+  const projectTasks = projectId ? tasks.filter(t => t.projectId === projectId) : tasks;
   
   const [activeTask, setActiveTask] = useState<any | null>(null);
 

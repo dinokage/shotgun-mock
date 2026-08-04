@@ -27,7 +27,6 @@ export default function VersionsTab({ project }: { project: any }) {
                 onClick={() => setSelectedVersion(v.id)}
               >
                 <div className="h-32 bg-muted relative rounded-t-lg overflow-hidden">
-                  <img src={v.thumbnailUrl} alt={v.versionNumber} className="w-full h-full object-cover" />
                   <div className="absolute top-2 right-2">
                     <StatusBadge status={v.status} className="bg-background/90" />
                   </div>

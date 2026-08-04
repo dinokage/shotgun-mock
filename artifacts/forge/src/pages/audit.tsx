@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { AUDIT_EVENTS, USERS } from '@/data/mockData';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { AUDIT_EVENTS, USERS, ASSETS, SHOTS } from '@/data/mockData';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import {
@@ -19,7 +19,7 @@ import { ChevronDown, ChevronUp, History, RotateCcw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export default function AuditLog() {
-  const [selectedEntity, setSelectedEntity] = useState('CHAR_Hero_Lyra');
+  const [selectedEntity, setSelectedEntity] = useState('ast_001');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const { toast } = useToast();
 
@@ -36,15 +36,24 @@ export default function AuditLog() {
           <h1 className="text-3xl font-bold tracking-tight">Time Travel</h1>
           <p className="text-muted-foreground mt-1">Audit log and state rollback</p>
         </div>
-        <div className="w-72">
+        <div className="w-80">
           <Select value={selectedEntity} onValueChange={setSelectedEntity}>
             <SelectTrigger>
               <SelectValue placeholder="Select entity..." />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="CHAR_Hero_Lyra">CHAR_Hero_Lyra</SelectItem>
-              <SelectItem value="FX_MagicBlast">FX_MagicBlast</SelectItem>
-              <SelectItem value="ENV_SpaceStation">ENV_SpaceStation</SelectItem>
+              <SelectGroup>
+                <SelectLabel>Assets</SelectLabel>
+                {ASSETS.slice(0, 40).map(a => (
+                  <SelectItem key={a.id} value={a.id}>{a.name} ({a.id})</SelectItem>
+                ))}
+              </SelectGroup>
+              <SelectGroup>
+                <SelectLabel>Shots</SelectLabel>
+                {SHOTS.slice(0, 40).map(s => (
+                  <SelectItem key={s.id} value={s.id}>{s.name} ({s.id})</SelectItem>
+                ))}
+              </SelectGroup>
             </SelectContent>
           </Select>
         </div>

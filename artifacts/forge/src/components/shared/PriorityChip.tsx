@@ -1,37 +1,17 @@
-import { cn } from '@/lib/utils';
-import { ArrowUp, ArrowRight, ArrowDown, AlertTriangle } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 
-export function PriorityChip({ priority, className }: { priority: string, className?: string }) {
-  const p = priority.toLowerCase();
-  
-  if (p === 'critical') {
-    return (
-      <div className={cn("inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold bg-[#A03030] text-white", className)}>
-        <AlertTriangle className="w-3 h-3" />
-        CRIT
-      </div>
-    );
-  }
-  if (p === 'high') {
-    return (
-      <div className={cn("inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-[#B5651D]/20 text-[#B5651D] dark:text-[#E8A565]", className)}>
-        <ArrowUp className="w-3 h-3" />
-        HIGH
-      </div>
-    );
-  }
-  if (p === 'medium') {
-    return (
-      <div className={cn("inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-muted text-muted-foreground", className)}>
-        <ArrowRight className="w-3 h-3" />
-        MED
-      </div>
-    );
-  }
+const PRIORITY_STYLES: Record<string, string> = {
+  critical: 'bg-red-500/10 text-red-500 border-red-500/20',
+  high: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
+  medium: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
+  low: 'bg-green-500/10 text-green-500 border-green-500/20',
+};
+
+export function PriorityChip({ priority, className = '' }: { priority: string, className?: string }) {
+  const style = PRIORITY_STYLES[priority.toLowerCase()] || 'bg-muted text-muted-foreground';
   return (
-    <div className={cn("inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-muted/50 text-muted-foreground/70", className)}>
-      <ArrowDown className="w-3 h-3" />
-      LOW
-    </div>
+    <Badge className={`${style} text-[10px] font-semibold capitalize ${className}`}>
+      {priority}
+    </Badge>
   );
 }

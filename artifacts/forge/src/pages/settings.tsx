@@ -6,9 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
 import { USERS } from '@/data/mockData';
 import { UserAvatar } from '@/components/shared/UserAvatar';
-import { Building2, Cloud, UploadCloud } from 'lucide-react';
+import { Building2, Cloud, UploadCloud, Key } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export default function Settings() {
@@ -28,6 +29,7 @@ export default function Settings() {
         <TabsList className="mb-6">
           <TabsTrigger value="profile">Studio Profile</TabsTrigger>
           <TabsTrigger value="members">Members</TabsTrigger>
+          <TabsTrigger value="licenses">Licenses</TabsTrigger>
           <TabsTrigger value="deployment">Deployment</TabsTrigger>
         </TabsList>
 
@@ -125,6 +127,57 @@ export default function Settings() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="licenses" className="animate-in fade-in">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between border-b border-border pb-4">
+              <div>
+                <CardTitle>License Management</CardTitle>
+                <CardDescription>Manage your studio's software licenses and seat allocation.</CardDescription>
+              </div>
+              <Button size="sm" className="gap-2"><Key className="w-4 h-4" /> Add License Server</Button>
+            </CardHeader>
+            <CardContent className="p-0">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/30 border-b border-border">
+                  <tr>
+                    <th className="p-4 text-left font-medium text-muted-foreground">Software</th>
+                    <th className="p-4 text-left font-medium text-muted-foreground">Type</th>
+                    <th className="p-4 text-center font-medium text-muted-foreground">Seats Used</th>
+                    <th className="p-4 text-center font-medium text-muted-foreground">Seats Owned</th>
+                    <th className="p-4 text-center font-medium text-muted-foreground">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    { name: 'Autodesk Maya', type: 'Floating', used: 22, owned: 30 },
+                    { name: 'The Foundry Nuke', type: 'Node-locked', used: 15, owned: 15 },
+                    { name: 'SideFX Houdini', type: 'Floating', used: 28, owned: 40 },
+                    { name: 'Arnold Render', type: 'Render Node', used: 28, owned: 50 },
+                    { name: 'Unreal Engine', type: 'Enterprise', used: 27, owned: 30 },
+                    { name: 'Substance Painter', type: 'Floating', used: 30, owned: 30 },
+                  ].map((lic, i) => {
+                    const ratio = lic.used / lic.owned;
+                    const status = ratio >= 1 ? 'critical' : ratio > 0.8 ? 'warning' : 'healthy';
+                    return (
+                      <tr key={lic.name} className="border-b border-border last:border-0 hover:bg-muted/10">
+                        <td className="p-4 font-medium">{lic.name}</td>
+                        <td className="p-4 text-muted-foreground">{lic.type}</td>
+                        <td className="p-4 text-center">{lic.used}</td>
+                        <td className="p-4 text-center">{lic.owned}</td>
+                        <td className="p-4 text-center">
+                          <Badge variant="outline" className={`text-[10px] ${status === 'critical' ? 'text-red-500 border-red-500' : status === 'warning' ? 'text-yellow-500 border-yellow-500' : 'text-green-500 border-green-500'}`}>
+                            {status === 'critical' ? 'Maxed Out' : status === 'warning' ? 'Near Limit' : 'Available'}
+                          </Badge>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="deployment" className="space-y-6 animate-in fade-in">
           <Card className="border-primary ring-1 ring-primary/20">
             <CardHeader>
@@ -135,7 +188,7 @@ export default function Settings() {
               <CardDescription>Your instance is fully managed by Forge.</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="bg-primary/10 border border-primary/20 p-4 rounded-lg text-sm text-primary-foreground/90 space-y-2">
+              <div className="bg-primary/10 border border-primary/20 p-4 rounded-lg text-sm text-foreground/90 space-y-2">
                 <p><strong>Current Region:</strong> AWS us-west-2 (Oregon)</p>
                 <p><strong>Database:</strong> Multi-AZ High Availability</p>
                 <p><strong>Storage:</strong> S3 with Transfer Acceleration</p>
