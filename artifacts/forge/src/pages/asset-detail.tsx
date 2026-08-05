@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useRoute, Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -5,11 +6,17 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
+import { Slider } from '@/components/ui/slider';
 import { ASSETS, PROJECTS, USERS, TASKS, SHOTS, VERSIONS, AUDIT_EVENTS, AI_SUGGESTIONS } from '@/data/mockData';
 import { ChevronLeft, Package, Film, ListTodo, GitBranch, Clock, Upload, Sparkles, ArrowRight, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 
 export default function AssetDetail() {
   const [, params] = useRoute('/assets/:id');
+  const [compareMode, setCompareMode] = useState(false);
+  const [wipePos, setWipePos] = useState(50);
+  const [v1, setV1] = useState<string | null>(null);
+  const [v2, setV2] = useState<string | null>(null);
+
   const asset = ASSETS.find(a => a.id === params?.id);
 
   if (!asset) return <div className="p-6 text-center text-muted-foreground">Asset not found.</div>;
@@ -157,24 +164,89 @@ export default function AssetDetail() {
         </TabsContent>
 
         <TabsContent value="versions" className="mt-4">
-          <div className="space-y-3">
-            {versions.map(v => (
-              <Card key={v.id} className="hover:bg-muted/20 transition-colors">
-                <CardContent className="p-4 flex items-center gap-4">
-                  <div className="w-20 h-12 rounded bg-muted flex items-center justify-center font-mono text-sm font-bold">{v.versionNumber}</div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-medium text-sm">{v.notes}</span>
-                      <Badge className={`text-[10px] ${v.status === 'approved' ? 'bg-green-500/10 text-green-500' : v.status === 'rejected' ? 'bg-red-500/10 text-red-500' : 'bg-yellow-500/10 text-yellow-500'}`}>{v.status}</Badge>
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      by {USERS.find(u => u.id === v.createdById)?.name} · {new Date(v.createdAt).toLocaleDateString()} · {v.fileSize}
-                    </div>
+          {!compareMode ? (
+            <div className="space-y-4">
+              <div className="flex justify-end">
+                <Button variant="outline" size="sm" onClick={() => setCompareMode(true)} disabled={versions.length < 2}>
+                  <GitBranch className="w-4 h-4 mr-2" /> Compare Versions
+                </Button>
+              </div>
+              <div className="space-y-3">
+                {versions.map(v => (
+                  <Card key={v.id} className="hover:bg-muted/20 transition-colors">
+                    <CardContent className="p-4 flex items-center gap-4">
+                      <div className="w-20 h-12 rounded bg-muted flex items-center justify-center font-mono text-sm font-bold">{v.versionNumber}</div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-medium text-sm">{v.notes}</span>
+                          <Badge className={`text-[10px] ${v.status === 'approved' ? 'bg-green-500/10 text-green-500' : v.status === 'rejected' ? 'bg-red-500/10 text-red-500' : 'bg-yellow-500/10 text-yellow-500'}`}>{v.status}</Badge>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          by {USERS.find(u => u.id === v.createdById)?.name} · {new Date(v.createdAt).toLocaleDateString()} · {v.fileSize}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <select 
+                    className="h-9 px-3 rounded-md border border-border bg-background text-sm"
+                    value={v1 || versions[0]?.id}
+                    onChange={(e) => setV1(e.target.value)}
+                  >
+                    {versions.map(v => <option key={v.id} value={v.id}>{v.versionNumber} - {v.notes}</option>)}
+                  </select>
+                  <span className="text-muted-foreground text-sm font-medium">vs</span>
+                  <select 
+                    className="h-9 px-3 rounded-md border border-border bg-background text-sm"
+                    value={v2 || versions[1]?.id}
+                    onChange={(e) => setV2(e.target.value)}
+                  >
+                    {versions.map(v => <option key={v.id} value={v.id}>{v.versionNumber} - {v.notes}</option>)}
+                  </select>
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => setCompareMode(false)}>Exit Compare</Button>
+              </div>
+              
+              <div className="aspect-video relative rounded-lg border border-border overflow-hidden bg-muted">
+                {/* Image A */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="text-center">
+                    <Package className="w-16 h-16 text-muted-foreground/30 mx-auto mb-2" />
+                    <p className="text-muted-foreground font-mono">{versions.find(v => v.id === (v1 || versions[0]?.id))?.versionNumber}</p>
                   </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                </div>
+                
+                {/* Image B (Wiped) */}
+                <div 
+                  className="absolute inset-0 flex items-center justify-center bg-card border-r-2 border-primary"
+                  style={{ clipPath: `inset(0 ${100 - wipePos}% 0 0)` }}
+                >
+                  <div className="text-center absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+                    <Package className="w-16 h-16 text-primary/30 mx-auto mb-2" />
+                    <p className="text-primary font-mono">{versions.find(v => v.id === (v2 || versions[1]?.id))?.versionNumber}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-4 px-4">
+                <span className="text-xs font-mono font-medium w-8">A</span>
+                <Slider 
+                  value={[wipePos]} 
+                  onValueChange={([v]) => setWipePos(v)} 
+                  max={100} 
+                  step={1} 
+                  className="flex-1"
+                />
+                <span className="text-xs font-mono font-medium w-8 text-right">B</span>
+              </div>
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="tasks" className="mt-4">

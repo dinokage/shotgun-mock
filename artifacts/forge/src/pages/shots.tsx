@@ -86,12 +86,18 @@ export default function Shots() {
               const assignee = USERS.find(u => u.id === shot.assigneeId);
               return (
                 <Link key={shot.id} href={`/shots/${shot.id}`}>
-                  <Card className="overflow-hidden hover:shadow-md transition-all cursor-pointer group border-border hover:border-primary/40">
-                    <div className="aspect-video bg-gradient-to-br from-muted to-muted/50 flex items-center justify-center relative">
-                      <Film className="w-6 h-6 text-muted-foreground/30" />
+                    <Card className="overflow-hidden hover:shadow-md transition-all cursor-pointer group border-border hover:border-primary/40">
+                    <div className="aspect-video relative overflow-hidden">
+                      <div className="absolute inset-0" style={{ background: `linear-gradient(135deg, hsl(${(shot.id.charCodeAt(2) * 37) % 360}, 60%, 25%), hsl(${(shot.id.charCodeAt(2) * 37 + 60) % 360}, 50%, 15%))` }} />
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="font-mono text-white/20 text-2xl font-black tracking-tighter select-none">{shot.name.split('_').pop()}</span>
+                      </div>
                       <Badge className={`absolute top-1.5 right-1.5 ${STATUS_COLORS[shot.status]} text-[8px] border-0`}>
                         {shot.status.replace('-', ' ')}
                       </Badge>
+                      <div className="absolute bottom-0 inset-x-0 h-6 bg-gradient-to-t from-black/60 to-transparent flex items-end px-2 pb-1">
+                        <span className="text-[9px] text-white/70 font-mono">{shot.duration}f · {shot.currentVersion}</span>
+                      </div>
                     </div>
                     <CardContent className="p-2.5">
                       <div className="font-medium text-xs truncate group-hover:text-primary transition-colors">{shot.name}</div>

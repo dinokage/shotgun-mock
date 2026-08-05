@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react';
 import { useUIStore } from '@/store/ui';
 import { PROJECTS, ASSETS, SHOTS, TASKS, USERS, WORKFLOWS } from '@/data/mockData';
-import { Search, FolderOpen, Package, Film, ListTodo, Users, Workflow, X, ArrowRight } from 'lucide-react';
+import { Search, FolderOpen, Package, Film, ListTodo, Users, Workflow, X, ArrowRight, Building2 } from 'lucide-react';
 import { Link } from 'wouter';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type SearchResult = {
   type: 'project' | 'asset' | 'shot' | 'task' | 'artist' | 'workflow';
@@ -33,6 +34,7 @@ const TYPE_COLORS = {
 export function GlobalSearch() {
   const { searchOpen, setSearchOpen } = useUIStore();
   const [query, setQuery] = useState('');
+  const [studio, setStudio] = useState('current');
 
   const results = useMemo(() => {
     if (!query.trim()) return [];
@@ -77,13 +79,26 @@ export function GlobalSearch() {
       <div className="fixed top-[15vh] left-1/2 -translate-x-1/2 w-full max-w-2xl z-50 animate-in slide-in-from-top-4 fade-in duration-200">
         <div className="bg-card border border-border rounded-xl shadow-2xl overflow-hidden">
           {/* Search Input */}
-          <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
+          <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-muted/20">
+            <div className="flex-shrink-0 w-32 border-r border-border pr-3">
+              <Select value={studio} onValueChange={setStudio}>
+                <SelectTrigger className="h-8 text-xs border-0 bg-transparent focus:ring-0 shadow-none px-2 gap-1.5 hover:bg-muted/50 transition-colors rounded-md">
+                  <Building2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="current">LA Studio</SelectItem>
+                  <SelectItem value="london">London Studio</SelectItem>
+                  <SelectItem value="global">All Studios</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <Search className="w-5 h-5 text-muted-foreground shrink-0" />
             <input
               autoFocus
               value={query}
               onChange={e => setQuery(e.target.value)}
-              placeholder="Search everything..."
+              placeholder={`Search in ${studio === 'global' ? 'all studios' : studio === 'london' ? 'London' : 'LA'}...`}
               className="flex-1 bg-transparent text-lg outline-none placeholder:text-muted-foreground/50"
             />
             <button onClick={() => { setSearchOpen(false); setQuery(''); }}>

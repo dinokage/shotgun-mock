@@ -28,22 +28,41 @@ interface Message {
 export default function AIWorkspace() {
   const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES);
   const [input, setInput] = useState('');
+  const [isStreaming, setIsStreaming] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim()) return;
-    setMessages([...messages, { role: 'user', content: input }]);
+    if (!input.trim() || isStreaming) return;
+    const userMsg: Message = { role: 'user', content: input };
+    setMessages(prev => [...prev, userMsg]);
     const q = input;
     setInput('');
+    setIsStreaming(true);
 
-    setTimeout(() => {
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: `I've analyzed your query regarding "${q}". Based on the current pipeline data and knowledge graph, here's what I found:\n\n• The relevant entities are connected through 3 dependency chains\n• Current velocity suggests completion within the planned timeline\n• No critical blockers detected for this specific query\n\nWould you like me to create a workflow automation for this, or should I drill deeper into any specific area?`,
-        sources: ['Pipeline analytics', 'Knowledge graph'],
-        refs: [{ type: 'project', id: 'p1', name: 'Starfall' }],
-      }]);
-    }, 800);
+    const fullResponse = `I've analyzed your query regarding "${q}". Based on the current pipeline data and knowledge graph, here's what I found:\n\n• The relevant entities are connected through 3 dependency chains\n• Current velocity suggests completion within the planned timeline\n• No critical blockers detected for this specific query\n\nWould you like me to create a workflow automation for this, or should I drill deeper into any specific area?`;
+    const sources = ['Pipeline analytics', 'Knowledge graph'];
+    const refs = [{ type: 'project', id: 'p1', name: 'Starfall' }];
+
+    // Add empty assistant message
+    const assistantMsg: Message = { role: 'assistant', content: '', sources, refs };
+    setMessages(prev => [...prev, assistantMsg]);
+
+    // Stream characters
+    let i = 0;
+    const interval = setInterval(() => {
+      i++;
+      setMessages(prev => {
+        const updated = [...prev];
+        const last = { ...updated[updated.length - 1] };
+        last.content = fullResponse.slice(0, i);
+        updated[updated.length - 1] = last;
+        return updated;
+      });
+      if (i >= fullResponse.length) {
+        clearInterval(interval);
+        setIsStreaming(false);
+      }
+    }, 18);
   };
 
   const contextProject = PROJECTS[0];
@@ -133,9 +152,15 @@ export default function AIWorkspace() {
 
         {/* Input */}
         <div className="border-t border-border bg-card px-6 py-4">
+          {isStreaming && (
+            <div className="max-w-3xl mx-auto mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+              <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+              Analyzing pipeline data...
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="max-w-3xl mx-auto flex gap-2">
-            <Input value={input} onChange={e => setInput(e.target.value)} placeholder="Ask about your production pipeline..." className="flex-1" />
-            <Button type="submit" size="icon" disabled={!input.trim()}><Send className="w-4 h-4" /></Button>
+            <Input value={input} onChange={e => setInput(e.target.value)} placeholder={isStreaming ? 'Waiting for response...' : 'Ask about your production pipeline...'} className="flex-1" disabled={isStreaming} />
+            <Button type="submit" size="icon" disabled={!input.trim() || isStreaming}><Send className="w-4 h-4" /></Button>
           </form>
         </div>
       </div>

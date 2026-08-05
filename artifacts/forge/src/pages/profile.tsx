@@ -58,6 +58,45 @@ export default function Profile() {
         ))}
       </div>
 
+      {/* Availability Heatmap */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">Availability (Next 30 Days)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-1 overflow-hidden rounded-md border border-border">
+            {Array.from({ length: 30 }).map((_, i) => {
+              // Procedurally generate some availability data
+              // Random pattern with some weekends (greyed)
+              const d = new Date();
+              d.setDate(d.getDate() + i);
+              const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+              const load = isWeekend ? 0 : (user.capacity + (Math.sin(i) * 30));
+              let color = 'bg-green-500'; // available
+              if (load > 110) color = 'bg-red-500'; // overloaded
+              else if (load > 85) color = 'bg-yellow-500'; // near capacity
+              if (isWeekend) color = 'bg-muted';
+              
+              return (
+                <div 
+                  key={i} 
+                  className={`flex-1 h-12 ${color} opacity-80 hover:opacity-100 transition-opacity flex flex-col items-center justify-end pb-1 border-r border-background/20 last:border-0 cursor-help`}
+                  title={`${d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}: ${isWeekend ? 'Off' : Math.round(load) + '% loaded'}`}
+                >
+                  <span className="text-[9px] font-mono mix-blend-overlay text-white font-bold">{d.getDate()}</span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex items-center gap-4 mt-2 text-[10px] text-muted-foreground justify-end">
+            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded bg-green-500" /> Available</div>
+            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded bg-yellow-500" /> Near Capacity</div>
+            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded bg-red-500" /> Overloaded</div>
+            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded bg-muted" /> OOO / Weekend</div>
+          </div>
+        </CardContent>
+      </Card>
+
       <Tabs defaultValue="tasks">
         <TabsList>
           <TabsTrigger value="tasks">My Tasks ({myTasks.length})</TabsTrigger>

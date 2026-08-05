@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PROJECTS, TASKS, REVIEWS, PUBLISH_LOGS, DEPARTMENTS, USERS } from '@/data/mockData';
-import { BarChart3, TrendingUp, Clock, CheckCircle2, AlertTriangle, Users, Download, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { BarChart3, TrendingUp, Clock, CheckCircle2, AlertTriangle, Users, Download, ArrowUpRight, ArrowDownRight, Flame } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export default function Analytics() {
@@ -48,7 +48,7 @@ export default function Analytics() {
               <SelectItem value="90d">Last 90 Days</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" className="gap-2" onClick={() => toast({ title: 'Export Complete', description: 'Dashboard data exported to CSV.' })}><Download className="w-4 h-4" /> Export</Button>
+          <Button variant="outline" className="gap-2" onClick={() => window.print()}><Download className="w-4 h-4" /> Export</Button>
         </div>
       </div>
 
@@ -75,6 +75,45 @@ export default function Analytics() {
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <div className="xl:col-span-2 space-y-6">
+          {/* Bidding vs Actuals (Burn Rate) */}
+          <Card className="border-orange-500/30 shadow-[0_0_15px_rgba(249,115,22,0.1)]">
+            <CardHeader className="pb-3 bg-orange-500/5">
+              <CardTitle className="text-lg flex items-center gap-2 text-orange-500"><Flame className="w-5 h-5" /> Bidding vs Actuals (Burn Rate)</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-4 space-y-5">
+              {PROJECTS.slice(0, 3).map((proj, i) => {
+                const bids = [400, 1200, 850][i];
+                const actuals = [450, 1100, 920][i];
+                const burnRate = Math.round((actuals / bids) * 100);
+                const isOverBudget = actuals > bids;
+                return (
+                  <div key={proj.id} className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="font-medium">{proj.name}</span>
+                      <div className="flex gap-4">
+                        <span className="text-muted-foreground">Bid: {bids}h</span>
+                        <span className={isOverBudget ? 'text-red-500 font-bold' : 'text-green-500 font-bold'}>Actual: {actuals}h</span>
+                      </div>
+                    </div>
+                    <div className="relative h-4 bg-muted rounded-full overflow-hidden">
+                      <div className="absolute top-0 bottom-0 left-0 bg-blue-500/40 rounded-full" style={{ width: `100%` }} />
+                      <div className={`absolute top-0 bottom-0 left-0 rounded-full transition-all duration-700 ${isOverBudget ? 'bg-red-500' : 'bg-green-500'}`} style={{ width: `${Math.min(burnRate, 100)}%` }} />
+                      {isOverBudget && <div className="absolute top-0 bottom-0 right-0 bg-red-600 animate-pulse" style={{ width: `${Math.min(burnRate - 100, 100)}%` }} />}
+                    </div>
+                    <div className="flex justify-between text-[10px]">
+                      <span className="text-muted-foreground">Burn Rate: <span className={isOverBudget ? 'text-red-500' : 'text-foreground'}>{burnRate}%</span></span>
+                      {isOverBudget ? (
+                        <span className="text-red-500 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Over budget by {actuals - bids}h</span>
+                      ) : (
+                        <span className="text-green-500 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Under budget by {bids - actuals}h</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+
           {/* Delivery Trends - CSS Chart */}
           <Card>
             <CardHeader className="pb-3">
@@ -99,35 +138,63 @@ export default function Analytics() {
             </CardContent>
           </Card>
 
-          {/* Department Breakdown */}
+          {/* Department Capacity Heatmap */}
           <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Department Performance</CardTitle>
+            <CardHeader className="pb-3 flex flex-row items-center justify-between">
+              <CardTitle className="text-lg">Department Capacity</CardTitle>
+              <div className="flex items-center gap-4 text-[10px] text-muted-foreground">
+                <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded bg-green-500/20 border border-green-500/50" /> Available</div>
+                <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded bg-yellow-500/20 border border-yellow-500/50" /> Heavy</div>
+                <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded bg-red-500/20 border border-red-500/50" /> Overloaded</div>
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {DEPARTMENTS.slice(0, 6).map((dept, i) => {
-                  const tasksDone = [85, 72, 91, 65, 78, 88][i];
-                  const reviewCycles = [1.2, 2.1, 1.0, 2.8, 1.5, 1.3][i];
-                  const onTime = [92, 78, 96, 60, 85, 90][i];
-                  return (
-                    <div key={dept.id} className="grid grid-cols-[160px_1fr_80px_80px_80px] items-center gap-4 text-sm">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: dept.color }} />
-                        <span className="font-medium">{dept.name}</span>
-                      </div>
-                      <div className="h-4 bg-muted rounded-full overflow-hidden">
-                        <div className="h-full rounded-full transition-all duration-700" style={{ width: `${tasksDone}%`, backgroundColor: dept.color }} />
-                      </div>
-                      <span className="text-right font-mono">{tasksDone}%</span>
-                      <span className="text-right text-muted-foreground">{reviewCycles}x</span>
-                      <span className={`text-right font-medium ${onTime > 85 ? 'text-green-500' : onTime > 70 ? 'text-yellow-500' : 'text-red-500'}`}>{onTime}%</span>
-                    </div>
-                  );
-                })}
-                <div className="grid grid-cols-[160px_1fr_80px_80px_80px] text-[10px] text-muted-foreground border-t border-border pt-2">
-                  <span></span><span></span><span className="text-right">Completed</span><span className="text-right">Rev. Cycles</span><span className="text-right">On-Time</span>
-                </div>
+              <div className="overflow-x-auto custom-scrollbar pb-2">
+                <table className="w-full min-w-[600px] text-xs">
+                  <thead>
+                    <tr>
+                      <th className="text-left font-medium text-muted-foreground pb-2 w-32">Department</th>
+                      {['W1', 'W2', 'W3', 'W4', 'W5', 'W6', 'W7', 'W8'].map(w => (
+                        <th key={w} className="text-center font-medium text-muted-foreground pb-2 w-16">{w}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {DEPARTMENTS.slice(0, 6).map((dept, i) => {
+                      // Generate some fake capacity data per week (0-150%)
+                      const baseLoad = [80, 95, 60, 110, 40, 85][i];
+                      const weekLoads = Array.from({ length: 8 }).map((_, w) => {
+                        return Math.max(0, baseLoad + Math.sin(w) * 30 + Math.random() * 20);
+                      });
+
+                      return (
+                        <tr key={dept.id} className="border-t border-border group">
+                          <td className="py-2">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: dept.color }} />
+                              <span className="font-medium group-hover:text-primary transition-colors">{dept.name}</span>
+                            </div>
+                          </td>
+                          {weekLoads.map((load, w) => {
+                            let color = 'bg-green-500/10 text-green-600 border-green-500/30';
+                            if (load > 110) color = 'bg-red-500/10 text-red-600 border-red-500/30';
+                            else if (load > 85) color = 'bg-yellow-500/10 text-yellow-600 border-yellow-500/30';
+                            return (
+                              <td key={w} className="p-1">
+                                <div 
+                                  className={`h-8 rounded flex items-center justify-center font-mono text-[10px] border transition-colors hover:border-primary/50 cursor-help ${color}`}
+                                  title={`${dept.name} Week ${w+1}: ${Math.round(load)}% Capacity`}
+                                >
+                                  {Math.round(load)}%
+                                </div>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </CardContent>
           </Card>

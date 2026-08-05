@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { PlayCircle, Plus, GripVertical, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { Link } from 'wouter';
+import { Link, useLocation } from 'wouter';
 
 const mockPlaylists = [
   { id: 'pl1', name: 'Director Daily Review - Oct 1', items: 12, author: 'Maya Chen' },
@@ -13,9 +13,11 @@ const mockPlaylists = [
 export default function PlaylistsTab({ project }: { project: any }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
 
   const handlePlay = (e: React.MouseEvent) => {
     e.stopPropagation();
+    setLocation('/review');
   };
 
   return (

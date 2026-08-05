@@ -184,17 +184,17 @@ export default function Scheduling() {
                     if (isComplete) bg = 'bg-green-500/80';
 
                     return (
-                      <div
+                      <DraggableBar
                         key={task.id}
-                        className={`absolute rounded-md shadow-sm border border-black/10 overflow-hidden cursor-pointer transition-transform hover:-translate-y-0.5 hover:shadow-md ${bg} ${isComplete ? 'opacity-60' : ''}`}
-                        style={{ left: `${left}px`, width: `${Math.max(width - 4, 10)}px`, top: `${top}px`, height: '28px' }}
+                        task={task}
+                        left={left}
+                        width={width}
+                        top={top}
+                        bg={bg}
+                        isComplete={isComplete}
+                        project={project}
                         onClick={() => setActiveTaskDrawer(task.id)}
-                      >
-                        <div className="px-2 py-1 text-[10px] text-white font-medium truncate flex items-center justify-between h-full">
-                          <span className="truncate">{task.title}</span>
-                          {width > 120 && <span className="opacity-80 shrink-0 ml-2">{project?.name}</span>}
-                        </div>
-                      </div>
+                      />
                     );
                   })}
                 </div>
@@ -202,6 +202,55 @@ export default function Scheduling() {
             })}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function DraggableBar({ task, left, width, top, bg, isComplete, project, onClick }: any) {
+  const [dragOffset, setDragOffset] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsDragging(true);
+    const startX = e.clientX;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      setDragOffset(deltaX);
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+      // In a real app, we would snap to grid and update the task dates in the store here
+      // For now, just visually drop it
+      setDragOffset(0);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
+
+  return (
+    <div
+      className={`absolute rounded-md shadow-sm border border-black/10 overflow-hidden cursor-move transition-transform ${isDragging ? 'shadow-lg z-50 ring-2 ring-primary' : 'hover:-translate-y-0.5 hover:shadow-md'} ${bg} ${isComplete ? 'opacity-60' : ''}`}
+      style={{ 
+        left: `${left}px`, 
+        width: `${Math.max(width - 4, 10)}px`, 
+        top: `${top}px`, 
+        height: '28px',
+        transform: dragOffset !== 0 ? `translateX(${dragOffset}px)` : undefined,
+        cursor: isDragging ? 'grabbing' : 'grab'
+      }}
+      onClick={dragOffset === 0 ? onClick : undefined}
+      onMouseDown={handleMouseDown}
+    >
+      <div className="px-2 py-1 text-[10px] text-white font-medium truncate flex items-center justify-between h-full pointer-events-none">
+        <span className="truncate">{task.title}</span>
+        {width > 120 && <span className="opacity-80 shrink-0 ml-2">{project?.name}</span>}
       </div>
     </div>
   );

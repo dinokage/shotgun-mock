@@ -29,6 +29,7 @@ import Profile from '@/pages/profile';
 import SchemaBuilder from '@/pages/schema';
 import Audit from '@/pages/audit';
 import NotFound from '@/pages/not-found';
+import Delivery from '@/pages/delivery';
 
 const queryClient = new QueryClient();
 
@@ -56,6 +57,7 @@ function Router() {
         <Route path="/schema" component={SchemaBuilder} />
         <Route path="/audit" component={Audit} />
         <Route path="/settings" component={Settings} />
+        <Route path="/delivery" component={Delivery} />
         <Route component={NotFound} />
       </Switch>
     </AppShell>
