@@ -5,6 +5,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { PROJECTS, TASKS, REVIEWS, PUBLISH_LOGS, DEPARTMENTS, USERS } from '@/data/mockData';
 import { BarChart3, TrendingUp, Clock, CheckCircle2, AlertTriangle, Users, Download, ArrowUpRight, ArrowDownRight, Flame } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { Link } from 'wouter';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export default function Analytics() {
   const { toast } = useToast();
@@ -73,7 +75,14 @@ export default function Analytics() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      <Tabs defaultValue="production" className="w-full">
+        <TabsList className="mb-4">
+          <TabsTrigger value="production">Production Metrics</TabsTrigger>
+          <TabsTrigger value="financials">Financials & Bidding</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="production" className="space-y-6 mt-0">
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <div className="xl:col-span-2 space-y-6">
           {/* Bidding vs Actuals (Burn Rate) */}
           <Card className="border-orange-500/30 shadow-[0_0_15px_rgba(249,115,22,0.1)]">
@@ -170,10 +179,14 @@ export default function Analytics() {
                       return (
                         <tr key={dept.id} className="border-t border-border group">
                           <td className="py-2">
-                            <div className="flex items-center gap-2">
-                              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: dept.color }} />
-                              <span className="font-medium group-hover:text-primary transition-colors">{dept.name}</span>
-                            </div>
+                            <Link href={`/departments/${dept.id}`}>
+                              <div className="flex items-center gap-2 cursor-pointer hover:bg-muted/50 p-1 rounded-md -ml-1 transition-colors">
+                                <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: dept.color }} />
+                                <span className="font-medium text-foreground group-hover:text-primary transition-colors flex items-center gap-1">
+                                  {dept.name} <ArrowUpRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                </span>
+                              </div>
+                            </Link>
                           </td>
                           {weekLoads.map((load, w) => {
                             let color = 'bg-green-500/10 text-green-600 border-green-500/30';
@@ -299,7 +312,64 @@ export default function Analytics() {
             </CardContent>
           </Card>
         </div>
-      </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="financials" className="space-y-6 mt-0">
+          <div className="grid grid-cols-1 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-xl flex items-center gap-2"><Flame className="text-orange-500" /> Studio Burn Rate & Margins</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-border/50 text-muted-foreground">
+                        <th className="pb-3 font-medium">Project</th>
+                        <th className="pb-3 font-medium text-right">Estimated Bid (hrs)</th>
+                        <th className="pb-3 font-medium text-right">Actual Burn (hrs)</th>
+                        <th className="pb-3 font-medium text-right">Avg Rate ($)</th>
+                        <th className="pb-3 font-medium text-right">Bid Value ($)</th>
+                        <th className="pb-3 font-medium text-right">Actual Cost ($)</th>
+                        <th className="pb-3 font-medium text-right">Profit Margin</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/50">
+                      {PROJECTS.map((proj, i) => {
+                        const bids = [400, 1200, 850, 200, 150][i] || 300;
+                        const actuals = [450, 1100, 920, 180, 50][i] || 250;
+                        const rate = 85; // Avg hourly rate
+                        const bidValue = bids * rate;
+                        const actualCost = actuals * rate;
+                        const profit = bidValue - actualCost;
+                        const margin = Math.round((profit / bidValue) * 100);
+                        const isLoss = margin < 0;
+
+                        return (
+                          <tr key={proj.id} className="hover:bg-muted/30 transition-colors">
+                            <td className="py-4 font-medium">{proj.name}</td>
+                            <td className="py-4 text-right tabular-nums">{bids}h</td>
+                            <td className="py-4 text-right tabular-nums text-muted-foreground">{actuals}h</td>
+                            <td className="py-4 text-right tabular-nums">${rate}/h</td>
+                            <td className="py-4 text-right tabular-nums">${bidValue.toLocaleString()}</td>
+                            <td className="py-4 text-right tabular-nums">${actualCost.toLocaleString()}</td>
+                            <td className="py-4 text-right">
+                              <Badge variant="outline" className={isLoss ? 'bg-red-500/10 text-red-500 border-red-500/20' : 'bg-green-500/10 text-green-500 border-green-500/20'}>
+                                {isLoss ? '' : '+'}{margin}%
+                              </Badge>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

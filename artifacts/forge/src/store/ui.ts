@@ -14,6 +14,9 @@ interface UIState {
   notificationPanelOpen: boolean;
   setNotificationPanelOpen: (open: boolean) => void;
 
+  createTaskModalOpen: boolean;
+  setCreateTaskModalOpen: (open: boolean) => void;
+
   sidebarCollapsed: boolean;
   setSidebarCollapsed: (collapsed: boolean) => void;
   toggleSidebar: () => void;
@@ -35,6 +38,9 @@ export const useUIStore = create<UIState>((set) => ({
 
   commandPaletteOpen: false,
   setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
+
+  createTaskModalOpen: false,
+  setCreateTaskModalOpen: (open) => set({ createTaskModalOpen: open }),
 
   notificationPanelOpen: false,
   setNotificationPanelOpen: (open) => set({ notificationPanelOpen: open }),

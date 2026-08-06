@@ -1,4 +1,5 @@
-import { useTasksStore, TaskStatus } from '@/store/tasks';
+import { useTasksStore } from '@/store/tasks';
+import { Task, TaskStatus } from '@/data/mockData';
 import { DndContext, DragOverlay, closestCorners, KeyboardSensor, PointerSensor, useSensor, useSensors, DragStartEvent, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';

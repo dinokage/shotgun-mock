@@ -1,30 +1,20 @@
 import { create } from 'zustand';
-import { TASKS } from '@/data/mockData';
-
-export type TaskStatus = 'todo' | 'in-progress' | 'review' | 'complete' | 'blocked';
-
-interface Task {
-  id: string;
-  title: string;
-  status: TaskStatus;
-  projectId: string;
-  assigneeId: string;
-  priority: string;
-  dueDate: string;
-  estimatedHours: number;
-  actualHours: number;
-  tags: string[];
-  dependencies: string[];
-}
+import { Task, TaskStatus, TASKS } from '@/data/mockData';
 
 interface TasksState {
   tasks: Task[];
+  addTask: (task: Task) => void;
   updateTaskStatus: (id: string, status: TaskStatus) => void;
   updateTaskDates: (id: string, newDate: string) => void;
+  updateTaskAssignee: (id: string, newAssigneeId: string) => void;
 }
 
 export const useTasksStore = create<TasksState>((set) => ({
-  tasks: TASKS as Task[],
+  tasks: TASKS, // initialized with mockData TASKS
+  addTask: (task) =>
+    set((state) => ({
+      tasks: [task, ...state.tasks]
+    })),
   updateTaskStatus: (id, status) => 
     set((state) => ({
       tasks: state.tasks.map((t) => (t.id === id ? { ...t, status } : t))
@@ -32,5 +22,9 @@ export const useTasksStore = create<TasksState>((set) => ({
   updateTaskDates: (id, newDate) =>
     set((state) => ({
       tasks: state.tasks.map((t) => (t.id === id ? { ...t, dueDate: newDate } : t))
-    }))
+    })),
+  updateTaskAssignee: (id, newAssigneeId) =>
+    set((state) => ({
+      tasks: state.tasks.map((t) => (t.id === id ? { ...t, assigneeId: newAssigneeId } : t))
+    })),
 }));

@@ -1,12 +1,21 @@
 import { useUIStore } from '@/store/ui';
-import { TASKS, USERS, PROJECTS, ASSETS, SHOTS, AI_SUGGESTIONS } from '@/data/mockData';
-import { X, CheckCircle2, Circle, Clock, Tag, Paperclip, MessageSquare, GitBranch, Sparkles, ChevronRight, AlertTriangle, CalendarDays } from 'lucide-react';
+import { TASKS, USERS, PROJECTS, ASSETS, SHOTS, AI_SUGGESTIONS, DEPARTMENTS, PIPELINE_ORDER, getNextDepartment } from '@/data/mockData';
+import { X, CheckCircle2, Circle, Clock, Tag, Paperclip, MessageSquare, GitBranch, Sparkles, AlertTriangle, CalendarDays, ArrowRight, Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Progress } from '@/components/ui/progress';
+import { useAuthStore } from '@/store/auth';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { useToast } from '@/hooks/use-toast';
 
 const PRIORITY_COLORS = {
   critical: 'bg-red-500/10 text-red-500 border-red-500/20',
@@ -26,8 +35,10 @@ const STATUS_COLORS = {
 
 export function TaskDrawer() {
   const { activeTaskDrawer, setActiveTaskDrawer } = useUIStore();
+  const { currentUser } = useAuthStore();
+  const { toast } = useToast();
 
-  if (!activeTaskDrawer) return null;
+  if (!activeTaskDrawer || !currentUser) return null;
 
   const task = TASKS.find(t => t.id === activeTaskDrawer);
   if (!task) return null;
@@ -40,6 +51,11 @@ export function TaskDrawer() {
   const checklistDone = task.checklist.filter(c => c.done).length;
   const checklistTotal = task.checklist.length;
   const relatedSuggestions = AI_SUGGESTIONS.filter(s => s.page === 'tasks').slice(0, 2);
+  
+  const isLeadership = ['supervisor', 'lead', 'vfx_producer', 'production_manager'].includes(currentUser.role);
+  const isAssignee = currentUser.id === task.assigneeId;
+  const currentDept = DEPARTMENTS.find(d => d.name === task.department);
+  const nextDept = currentDept ? getNextDepartment(currentDept.id) : null;
 
   return (
     <>
@@ -57,6 +73,11 @@ export function TaskDrawer() {
             <Badge className={`${STATUS_COLORS[task.status]} text-xs`}>
               {task.status.replace('-', ' ').toUpperCase()}
             </Badge>
+            {task.status === 'complete' && nextDept && isLeadership && (
+              <Button size="sm" variant="outline" className="h-6 text-[10px] bg-primary/10 text-primary border-primary/20 hover:bg-primary/20">
+                Handoff to {nextDept.abbreviation} <ArrowRight className="w-3 h-3 ml-1" />
+              </Button>
+            )}
           </div>
           <Button variant="ghost" size="icon" onClick={() => setActiveTaskDrawer(null)}>
             <X className="w-4 h-4" />
@@ -74,13 +95,39 @@ export function TaskDrawer() {
             {/* Meta */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <div className="text-xs font-medium text-muted-foreground mb-1.5">Assignee</div>
+                <div className="text-xs font-medium text-muted-foreground mb-1.5 flex justify-between items-center">
+                  Assignee
+                  {isLeadership && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <span className="text-primary text-[10px] cursor-pointer hover:underline bg-primary/10 px-1.5 py-0.5 rounded">Reassign</span>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-48">
+                        <div className="text-xs font-semibold px-2 py-1.5 text-muted-foreground">Department Roster</div>
+                        {USERS.filter(u => u.departmentId === currentDept?.id && u.id !== task.assigneeId).slice(0, 4).map(u => (
+                          <DropdownMenuItem key={u.id} className="text-xs gap-2 cursor-pointer" onClick={() => {
+                            toast({ title: "Task Reassigned", description: `Task assigned to ${u.name}` });
+                          }}>
+                            <Avatar className="w-4 h-4"><AvatarImage src={u.avatar} /></Avatar>
+                            {u.name}
+                          </DropdownMenuItem>
+                        ))}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem className="text-xs text-red-500 cursor-pointer" onClick={() => {
+                          toast({ title: "Task Revoked", description: "Task is now unassigned", variant: "destructive" });
+                        }}>
+                          Revoke Assignment
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                </div>
                 <div className="flex items-center gap-2">
-                  <Avatar className="w-6 h-6">
+                  <Avatar className="w-6 h-6 border">
                     <AvatarImage src={assignee?.avatar} />
-                    <AvatarFallback>{assignee?.name.charAt(0)}</AvatarFallback>
+                    <AvatarFallback>{assignee?.name?.charAt(0) || '?'}</AvatarFallback>
                   </Avatar>
-                  <span className="text-sm font-medium">{assignee?.name}</span>
+                  <span className="text-sm font-medium">{assignee?.name || 'Unassigned'}</span>
                 </div>
               </div>
               <div>
@@ -116,18 +163,70 @@ export function TaskDrawer() {
                 </div>
               )}
             </div>
+            
+            {/* Action Bar */}
+            <div className="flex gap-2">
+              {task.status === 'review' && isLeadership ? (
+                (() => {
+                  const isMyDeptTask = currentUser?.departmentId === currentDept?.id;
+                  const isTopLeadership = currentUser ? ['vfx_producer', 'production_manager', 'coordinator'].includes(currentUser.role) : false;
+                  const canApprove = isMyDeptTask || isTopLeadership;
 
-            {/* Tags */}
-            <div>
-              <div className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1">
-                <Tag className="w-3 h-3" /> Tags
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {task.tags.map(tag => (
-                  <Badge key={tag} variant="outline" className="text-xs">{tag}</Badge>
-                ))}
-              </div>
+                  if (canApprove) {
+                    return (
+                      <div className="flex w-full gap-2">
+                        <Button className="flex-1 bg-purple-600 hover:bg-purple-700" onClick={() => {
+                          toast({ title: "Review Approved", description: `Notification sent to ${assignee?.name || 'artist'}` });
+                        }}>
+                          <CheckCircle2 className="w-4 h-4 mr-2" /> Approve
+                        </Button>
+                        <Button variant="outline" className="flex-1 text-red-500 hover:bg-red-500/10" onClick={() => {
+                          toast({ title: "Review Rejected", description: `Notes sent back to ${assignee?.name || 'artist'}` });
+                        }}>
+                          <X className="w-4 h-4 mr-2" /> Reject
+                        </Button>
+                      </div>
+                    );
+                  } else {
+                    return (
+                      <Button className="w-full bg-amber-500/10 text-amber-600 border-amber-500/20 hover:bg-amber-500/20" variant="outline" onClick={() => {
+                        toast({ title: "Feedback Sent", description: `Your feedback has been forwarded to the ${task.department} manager.` });
+                      }}>
+                        <MessageSquare className="w-4 h-4 mr-2" /> Suggest Changes to {task.department} Manager
+                      </Button>
+                    );
+                  }
+                })()
+              ) : task.status !== 'complete' ? (
+                <Button className="flex-1" variant={task.status === 'in-progress' ? 'default' : 'outline'}>
+                  <Play className="w-4 h-4 mr-2" />
+                  {task.status === 'in-progress' ? 'Submit for Review' : 'Start Task'}
+                </Button>
+              ) : null}
+              {isAssignee && task.status === 'in-progress' && (
+                <Button variant="outline" className="flex-1 bg-blue-500/10 text-blue-500 border-blue-500/20 hover:bg-blue-500/20">
+                  <Clock className="w-4 h-4 mr-2" /> Log Daily Time
+                </Button>
+              )}
             </div>
+
+            {/* Daily Logs (if any) */}
+            {task.dailyLogs.length > 0 && (
+              <div>
+                <div className="text-sm font-semibold mb-3">Recent Logs</div>
+                <div className="space-y-2">
+                  {task.dailyLogs.map((log, i) => (
+                    <div key={i} className="text-xs bg-muted/30 p-2 rounded-md border border-border">
+                      <div className="flex justify-between font-medium mb-1">
+                        <span>{log.date}</span>
+                        <span className="text-primary">{log.hours}h</span>
+                      </div>
+                      <div className="text-muted-foreground italic">"{log.note}"</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <Separator />
 
@@ -144,7 +243,7 @@ export function TaskDrawer() {
                     {item.done ? (
                       <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
                     ) : (
-                      <Circle className="w-4 h-4 text-muted-foreground shrink-0" />
+                      <Circle className="w-4 h-4 text-muted-foreground shrink-0 cursor-pointer hover:text-foreground" />
                     )}
                     <span className={item.done ? 'text-muted-foreground line-through' : ''}>{item.text}</span>
                   </div>
@@ -230,28 +329,31 @@ export function TaskDrawer() {
                 <Button size="sm" className="mt-2">Post Comment</Button>
               </div>
             </div>
-
-            <Separator />
-
+            
             {/* AI Suggestions */}
-            <div>
-              <div className="text-sm font-semibold mb-3 flex items-center gap-1.5">
-                <Sparkles className="w-4 h-4 text-purple-400" /> AI Suggestions
-              </div>
-              <div className="space-y-2">
-                {relatedSuggestions.map(s => (
-                  <div key={s.id} className="p-3 rounded-md border border-purple-500/20 bg-purple-500/5 text-sm">
-                    <div className="flex items-start gap-2">
-                      <AlertTriangle className="w-3.5 h-3.5 text-purple-400 shrink-0 mt-0.5" />
-                      <div>
-                        <div className="font-medium text-purple-300">{s.title}</div>
-                        <p className="text-xs text-muted-foreground mt-1">{s.suggestedAction}</p>
-                      </div>
-                    </div>
+            {relatedSuggestions.length > 0 && (
+              <>
+                <Separator />
+                <div>
+                  <div className="text-sm font-semibold mb-3 flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-purple-400" /> AI Suggestions
                   </div>
-                ))}
-              </div>
-            </div>
+                  <div className="space-y-2">
+                    {relatedSuggestions.map(s => (
+                      <div key={s.id} className="p-3 rounded-md border border-purple-500/20 bg-purple-500/5 text-sm">
+                        <div className="flex items-start gap-2">
+                          <AlertTriangle className="w-3.5 h-3.5 text-purple-400 shrink-0 mt-0.5" />
+                          <div>
+                            <div className="font-medium text-purple-300">{s.title}</div>
+                            <p className="text-xs text-muted-foreground mt-1">{s.suggestedAction}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </ScrollArea>
       </div>

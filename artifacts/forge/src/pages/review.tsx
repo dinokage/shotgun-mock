@@ -113,6 +113,34 @@ export default function Review() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
   const timelineRef = useRef<HTMLDivElement>(null);
+  
+  // Mock Remote Cursors
+  const [remoteCursors, setRemoteCursors] = useState<{ id: string; name: string; color: string; x: number; y: number; active: boolean }[]>([
+    { id: 'rc1', name: 'Akira S.', color: '#10b981', x: 0, y: 0, active: false },
+    { id: 'rc2', name: 'Jada W.', color: '#8b5cf6', x: 0, y: 0, active: false }
+  ]);
+
+  useEffect(() => {
+    // Simulate real-time remote cursor movement
+    const interval = setInterval(() => {
+      setRemoteCursors(prev => prev.map(c => {
+        if (Math.random() > 0.8) {
+          return { ...c, active: Math.random() > 0.3 };
+        }
+        if (!c.active) return c;
+        
+        // Randomly move towards center or around
+        const targetX = c.x + (Math.random() - 0.5) * 100;
+        const targetY = c.y + (Math.random() - 0.5) * 100;
+        return { 
+          ...c, 
+          x: Math.max(10, Math.min(800, targetX)), 
+          y: Math.max(10, Math.min(500, targetY)) 
+        };
+      }));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Keyboard shortcuts
   useHotkeys({
@@ -678,6 +706,20 @@ export default function Review() {
                   <rect x={tempRect.x} y={tempRect.y} width={tempRect.w} height={tempRect.h} fill={`${color}20`} stroke={color} strokeWidth={2} />
                 )}
               </svg>
+
+              {/* Mock Remote Cursors Overlay */}
+              {remoteCursors.filter(c => c.active).map(cursor => (
+                <div 
+                  key={cursor.id}
+                  className="absolute pointer-events-none z-[60] transition-all duration-300 ease-out"
+                  style={{ left: cursor.x, top: cursor.y }}
+                >
+                  <MousePointer2 className="w-5 h-5 drop-shadow-md" style={{ fill: cursor.color, stroke: 'white', strokeWidth: 1.5 }} />
+                  <div className="absolute top-5 left-3 px-1.5 py-0.5 rounded text-[10px] text-white font-semibold whitespace-nowrap shadow-sm" style={{ backgroundColor: cursor.color }}>
+                    {cursor.name}
+                  </div>
+                </div>
+              ))}
 
               {drawMode && (
                 <div 

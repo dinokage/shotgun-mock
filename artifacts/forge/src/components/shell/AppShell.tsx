@@ -3,6 +3,7 @@ import { TopBar } from './TopBar';
 import { AiAssistant } from './AiAssistant';
 import { GlobalSearch } from '@/components/shared/GlobalSearch';
 import { CommandPalette } from '@/components/shared/CommandPalette';
+import { CreateTaskModal } from '@/components/shared/CreateTaskModal';
 import { TaskDrawer } from '@/components/shared/TaskDrawer';
 import { useUIStore } from '@/store/ui';
 import { useEffect } from 'react';
@@ -41,6 +42,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <GlobalSearch />
       <CommandPalette />
       <TaskDrawer />
+      <CreateTaskModal />
     </div>
   );
 }

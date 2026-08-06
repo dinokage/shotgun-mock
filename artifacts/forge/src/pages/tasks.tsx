@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useAuthStore } from '@/store/auth';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -30,27 +31,40 @@ export default function Tasks() {
   const [departmentFilter, setDepartmentFilter] = useState('all');
   const [view, setView] = useState<ViewMode>('list');
   const [myTasksOnly, setMyTasksOnly] = useState(false);
-  const { setActiveTaskDrawer } = useUIStore();
+  const { setActiveTaskDrawer, setCreateTaskModalOpen } = useUIStore();
 
-  const currentUserId = USERS[0].id;
+  const { currentUser } = useAuthStore();
+  
+  // RBAC Setup
+  const isArtist = currentUser ? ['senior_artist', 'artist', 'junior_artist'].includes(currentUser.role) : true;
+  // If artist, strictly force myTasksOnly to true
+  const forceMyTasksOnly = isArtist;
+  const effectiveMyTasksOnly = forceMyTasksOnly || myTasksOnly;
+
+  const currentUserId = currentUser?.id || USERS[0].id;
 
   const filtered = useMemo(() => {
     return TASKS.filter(t => {
+      // 1. RBAC Enforcements
+      if (forceMyTasksOnly && t.assigneeId !== currentUserId) return false;
+      
+      // 2. UI Filters
       if (search && !t.title.toLowerCase().includes(search.toLowerCase())) return false;
       if (statusFilter !== 'all' && t.status !== statusFilter) return false;
       if (priorityFilter !== 'all' && t.priority !== priorityFilter) return false;
       if (projectFilter !== 'all' && t.projectId !== projectFilter) return false;
       if (departmentFilter !== 'all' && t.department !== departmentFilter) return false;
-      if (myTasksOnly && t.assigneeId !== currentUserId) return false;
+      if (!forceMyTasksOnly && myTasksOnly && t.assigneeId !== currentUserId) return false;
+      
       return true;
     });
-  }, [search, statusFilter, priorityFilter, projectFilter, departmentFilter, myTasksOnly, currentUserId]);
+  }, [search, statusFilter, priorityFilter, projectFilter, departmentFilter, myTasksOnly, forceMyTasksOnly, currentUserId, TASKS.length]); // Adding TASKS.length so it re-renders when a task is pushed
 
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = { all: TASKS.length };
     TASKS.forEach(t => { counts[t.status] = (counts[t.status] || 0) + 1; });
     return counts;
-  }, []);
+  }, [TASKS.length]);
 
   return (
     <div className="p-6 max-w-[1600px] mx-auto space-y-4 h-[calc(100vh-3.5rem)] flex flex-col">
@@ -61,14 +75,39 @@ export default function Tasks() {
           <p className="text-muted-foreground mt-1">{filtered.length} tasks{myTasksOnly ? ' (My Tasks)' : ''}</p>
         </div>
         <div className="flex gap-2">
-          <Button 
-            variant={myTasksOnly ? 'default' : 'outline'} 
-            size="sm" 
-            onClick={() => setMyTasksOnly(!myTasksOnly)}
-            className="gap-1.5"
-          >
-            <ListTodo className="w-4 h-4" /> {myTasksOnly ? 'My Tasks' : 'All Tasks'}
-          </Button>
+          {!isArtist && (
+            <>
+              <Button 
+                variant={myTasksOnly ? 'default' : 'outline'} 
+                size="sm" 
+                onClick={() => setMyTasksOnly(!myTasksOnly)}
+                className="gap-1.5"
+              >
+                <ListTodo className="w-4 h-4" /> {myTasksOnly ? 'My Tasks' : 'All Tasks'}
+              </Button>
+              <div className="flex bg-muted/50 p-0.5 rounded-lg border border-border">
+                <Button 
+                  variant={view === 'list' ? 'secondary' : 'ghost'} 
+                  size="sm" 
+                  onClick={() => setView('list')}
+                  className="h-7 px-2.5 shadow-none"
+                >
+                  <List className="w-4 h-4" />
+                </Button>
+                <Button 
+                  variant={view === 'kanban' ? 'secondary' : 'ghost'} 
+                  size="sm" 
+                  onClick={() => setView('kanban')}
+                  className="h-7 px-2.5 shadow-none"
+                >
+                  <LayoutGrid className="w-4 h-4" />
+                </Button>
+              </div>
+              <Button onClick={() => setCreateTaskModalOpen(true)} size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-md">
+                Assign Task
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -105,26 +144,25 @@ export default function Tasks() {
           </SelectContent>
         </Select>
         <Select value={projectFilter} onValueChange={setProjectFilter}>
-          <SelectTrigger className="w-40 h-9"><SelectValue placeholder="Project" /></SelectTrigger>
+          <SelectTrigger className="w-48 h-9"><SelectValue placeholder="Project" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Projects</SelectItem>
-            {PROJECTS.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+            {PROJECTS.map(p => (
+              <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
-          <SelectTrigger className="w-36 h-9"><SelectValue placeholder="Department" /></SelectTrigger>
+          <SelectTrigger className="w-40 h-9"><SelectValue placeholder="Department" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Depts</SelectItem>
-            {DEPARTMENTS.map(d => <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>)}
+            {DEPARTMENTS.map(d => (
+              <SelectItem key={d.name} value={d.name}>{d.name}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
-        <div className="ml-auto flex gap-1">
-          <Button variant={view === 'list' ? 'secondary' : 'ghost'} size="icon" className="h-9 w-9" onClick={() => setView('list')}><List className="w-4 h-4" /></Button>
-          <Button variant={view === 'kanban' ? 'secondary' : 'ghost'} size="icon" className="h-9 w-9" onClick={() => setView('kanban')}><LayoutGrid className="w-4 h-4" /></Button>
-        </div>
       </div>
 
-      {/* Content */}
       <div className="flex-1 overflow-hidden">
         {view === 'kanban' ? (
           <KanbanView />

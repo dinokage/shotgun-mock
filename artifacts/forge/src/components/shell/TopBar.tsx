@@ -1,4 +1,4 @@
-import { Bell, Search, Sun, Moon, User, Shield, Eye, ChevronDown } from 'lucide-react';
+import { Bell, Search, Sun, Moon, User, Shield, Eye, ChevronDown, Building2, LogOut } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -7,25 +7,26 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { USERS, NOTIFICATIONS } from '@/data/mockData';
+import { NOTIFICATIONS, DEPARTMENTS, ROLE_LABELS } from '@/data/mockData';
 import { useUIStore } from '@/store/ui';
-import { useWorkspaceStore } from '@/store/workspace';
-import type { Role } from '@/data/mockData';
-import { Link } from 'wouter';
-
-const ROLE_CONFIG: Record<Role, { label: string; icon: typeof Shield; color: string }> = {
-  manager: { label: 'Manager', icon: Shield, color: 'text-blue-500' },
-  animator: { label: 'Animator', icon: User, color: 'text-green-500' },
-  reviewer: { label: 'Reviewer', icon: Eye, color: 'text-purple-500' },
-};
+import { useAuthStore } from '@/store/auth';
+import { Link, useLocation } from 'wouter';
 
 export function TopBar() {
   const { setTheme, theme } = useTheme();
-  const { setSearchOpen, setCommandPaletteOpen, notificationPanelOpen, setNotificationPanelOpen } = useUIStore();
-  const { currentRole, setRole } = useWorkspaceStore();
-  const currentUser = USERS[0];
+  const { setSearchOpen, setCommandPaletteOpen, notificationPanelOpen, setNotificationPanelOpen, setCreateTaskModalOpen } = useUIStore();
+  const { currentUser, logout } = useAuthStore();
+  const [, setLocation] = useLocation();
   const unreadNotifs = NOTIFICATIONS.filter(n => !n.read).length;
-  const roleConfig = ROLE_CONFIG[currentRole];
+
+  if (!currentUser) return null;
+
+  const dept = DEPARTMENTS.find(d => d.id === currentUser.departmentId);
+
+  const handleLogout = () => {
+    logout();
+    setLocation('/login');
+  };
 
   return (
     <div className="h-14 border-b border-border bg-card/80 backdrop-blur-md flex items-center justify-between px-4 sticky top-0 z-30">
@@ -40,29 +41,21 @@ export function TopBar() {
 
         <div className="h-5 w-px bg-border hidden md:block" />
 
-        {/* Role Switcher */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="gap-2 hidden md:flex">
-              <roleConfig.icon className={`w-3.5 h-3.5 ${roleConfig.color}`} />
-              <span className="text-sm">{roleConfig.label}</span>
-              <ChevronDown className="w-3 h-3 text-muted-foreground" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuLabel className="text-xs text-muted-foreground">Switch Role</DropdownMenuLabel>
-            {(Object.keys(ROLE_CONFIG) as Role[]).map(role => {
-              const config = ROLE_CONFIG[role];
-              return (
-                <DropdownMenuItem key={role} onClick={() => setRole(role)} className="gap-2">
-                  <config.icon className={`w-4 h-4 ${config.color}`} />
-                  <span>{config.label}</span>
-                  {role === currentRole && <Badge variant="secondary" className="ml-auto text-[10px] h-4 px-1">Active</Badge>}
-                </DropdownMenuItem>
-              );
-            })}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {/* Current User Role/Dept Badge */}
+        <div className={`hidden md:flex items-center gap-2 px-2.5 py-1 rounded-md border text-xs shadow-sm transition-all ${
+          ['vfx_producer', 'production_manager', 'coordinator', 'supervisor', 'lead'].includes(currentUser.role)
+            ? 'bg-gradient-to-r from-amber-500/10 to-orange-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400'
+            : 'bg-muted/50 border-border/50 text-foreground'
+        }`}>
+          <Shield className={`w-3.5 h-3.5 ${['vfx_producer', 'production_manager', 'coordinator', 'supervisor', 'lead'].includes(currentUser.role) ? 'text-amber-500' : 'text-primary'}`} />
+          <span className="font-semibold">{ROLE_LABELS[currentUser.role] || currentUser.title}</span>
+          {dept && (
+            <>
+              <span className="opacity-50">•</span>
+              <span className="font-medium opacity-80">{dept.abbreviation}</span>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Center: Search */}
@@ -81,9 +74,14 @@ export function TopBar() {
 
       {/* Right: Actions */}
       <div className="flex items-center gap-2 w-1/3 justify-end">
-        <Button className="hidden md:flex bg-emerald-500 hover:bg-emerald-600 text-white font-medium rounded-full px-5 text-xs h-8 mr-2 transition-all shadow-[0_0_15px_rgba(16,185,129,0.3)]">
-          Try FORGE for free
-        </Button>
+        {['vfx_producer', 'production_manager', 'coordinator', 'supervisor', 'lead'].includes(currentUser.role) && (
+          <Button
+            onClick={() => setCreateTaskModalOpen(true)}
+            className="hidden md:flex bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-full px-5 text-xs h-8 mr-2 transition-all shadow-[0_0_15px_rgba(var(--primary),0.3)]"
+          >
+            Assign Task
+          </Button>
+        )}
         {/* Theme Toggle */}
         <Button
           variant="ghost"
@@ -135,7 +133,7 @@ export function TopBar() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="relative h-8 w-8 rounded-full ml-1">
-              <Avatar className="h-8 w-8">
+              <Avatar className="h-8 w-8 border border-border">
                 <AvatarImage src={currentUser.avatar} alt={currentUser.name} />
                 <AvatarFallback>{currentUser.name.charAt(0)}</AvatarFallback>
               </Avatar>
@@ -145,14 +143,18 @@ export function TopBar() {
             <DropdownMenuLabel className="font-normal">
               <div className="flex flex-col space-y-1">
                 <p className="text-sm font-medium leading-none">{currentUser.name}</p>
-                <p className="text-xs leading-none text-muted-foreground">{currentUser.role}</p>
+                <p className="text-[10px] leading-none text-muted-foreground">{ROLE_LABELS[currentUser.role] || currentUser.title}</p>
+                {dept && <p className="text-[10px] leading-none text-muted-foreground mt-1">{dept.name}</p>}
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild><Link href="/profile">Profile</Link></DropdownMenuItem>
             <DropdownMenuItem asChild><Link href="/settings">Settings</Link></DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>Log out</DropdownMenuItem>
+            <DropdownMenuItem onClick={handleLogout} className="text-red-500 cursor-pointer flex items-center gap-2">
+              <LogOut className="w-4 h-4" />
+              Log out
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

@@ -1,11 +1,46 @@
 // ============================================================================
-// FORGE — Mock Data
-// 3 Studios · 10 Projects · 50+ Artists · 150 Assets · 100 Shots · 300 Tasks
+// FORGE — Mock Data v2.0
+// 14 Departments · 65+ Artists · 10 Projects · 150 Assets · 100 Shots · 300 Tasks
+// Real VFX Studio Hierarchy: Producer → PM → Supervisor → Lead → Artist
 // ============================================================================
 
 // --- Types -------------------------------------------------------------------
 
-export type Role = 'manager' | 'animator' | 'reviewer';
+export type Role =
+  | 'vfx_producer'
+  | 'production_manager'
+  | 'coordinator'
+  | 'supervisor'
+  | 'lead'
+  | 'senior_artist'
+  | 'artist'
+  | 'junior_artist';
+
+export const ROLE_HIERARCHY: Record<Role, number> = {
+  vfx_producer: 8,
+  production_manager: 7,
+  coordinator: 6,
+  supervisor: 5,
+  lead: 4,
+  senior_artist: 3,
+  artist: 2,
+  junior_artist: 1,
+};
+
+export const ROLE_LABELS: Record<Role, string> = {
+  vfx_producer: 'VFX Producer',
+  production_manager: 'Production Manager',
+  coordinator: 'Production Coordinator',
+  supervisor: 'Supervisor',
+  lead: 'Lead',
+  senior_artist: 'Senior Artist',
+  artist: 'Artist',
+  junior_artist: 'Junior Artist',
+};
+
+export function canAssignTo(assignerRole: Role, assigneeRole: Role): boolean {
+  return ROLE_HIERARCHY[assignerRole] > ROLE_HIERARCHY[assigneeRole];
+}
 
 export interface Studio {
   id: string;
@@ -18,22 +53,34 @@ export interface Studio {
 
 export interface User {
   id: string;
+  empId: string;
   name: string;
-  role: string;
-  department: string;
+  role: Role;
+  title: string;
+  departmentId: string;
   avatar: string;
   email: string;
   studioId: string;
-  capacity: number; // percentage
+  capacity: number;
   licenses: string[];
+  supervisorId?: string;
+  startDate: string;
+  status: 'active' | 'away' | 'on-leave';
+  skills: string[];
+  password: string; // For login simulation
 }
 
 export interface Department {
   id: string;
   name: string;
+  abbreviation: string;
   color: string;
-  headId: string;
+  supervisorId: string;
+  leadId: string;
   studioId: string;
+  description: string;
+  icon: string;
+  pipelineOrder: number; // 1-13, determines flow order
 }
 
 export interface Project {
@@ -74,7 +121,7 @@ export interface Shot {
   assigneeId: string;
   updatedAt: string;
   frameRange: string;
-  duration: number; // frames
+  duration: number;
   complexity: 'low' | 'medium' | 'high';
   currentVersion: string;
   reviewStatus: 'pending' | 'approved' | 'rejected' | 'changes-requested' | 'not-submitted';
@@ -100,6 +147,15 @@ export interface Asset {
   description: string;
 }
 
+export interface DailyLog {
+  date: string;
+  hours: number;
+  note: string;
+  userId: string;
+}
+
+export type TaskStatus = 'todo' | 'in-progress' | 'blocked' | 'review' | 'complete' | 'cancelled';
+
 export interface Task {
   id: string;
   title: string;
@@ -108,7 +164,8 @@ export interface Task {
   assetId?: string;
   shotId?: string;
   assigneeId: string;
-  status: 'todo' | 'in-progress' | 'blocked' | 'review' | 'complete' | 'cancelled';
+  assignedById: string;
+  status: TaskStatus;
   priority: 'critical' | 'high' | 'medium' | 'low';
   dueDate: string;
   estimatedHours: number;
@@ -120,6 +177,10 @@ export interface Task {
   attachments: string[];
   department: string;
   createdAt: string;
+  lastStatusUpdate: string;
+  dailyLogs: DailyLog[];
+  weeklyRating?: 'on-track' | 'at-risk' | 'behind';
+  pipelinePhase: string;
 }
 
 export interface Version {
@@ -181,7 +242,7 @@ export interface Notification {
   description: string;
   timestamp: string;
   read: boolean;
-  category: 'review' | 'publishing' | 'assignment' | 'approval' | 'workflow' | 'mention' | 'system';
+  category: 'review' | 'publishing' | 'assignment' | 'approval' | 'workflow' | 'mention' | 'system' | 'handoff';
   priority: 'high' | 'medium' | 'low';
   entityId?: string;
   entityType?: string;
@@ -198,7 +259,7 @@ export interface AISuggestion {
   assignee: string;
   suggestedAction: string;
   impact: string;
-  page: string; // which page should show this
+  page: string;
 }
 
 export interface Milestone {
@@ -248,74 +309,215 @@ export interface Workflow {
   status: 'active' | 'draft' | 'paused';
 }
 
-// --- Data Generation Helpers -----------------------------------------------
-
-const names = [
-  'Maya Chen', 'Luca Moretti', 'Priya Nair', 'Tomasz Kowalski', 'Aisha Diallo',
-  'Rafi Solomonov', 'Yuki Tanaka', 'Diego Vargas', 'Zara Ahmed', 'Ethan Brooks',
-  'Mia Rodriguez', 'Kai Nakamura', 'Lena Petrov', 'Dante Costa', 'Isla MacLeod',
-  'Akira Suzuki', 'Nia Okafor', 'Felix Braun', 'Sofia Reyes', 'Jin Park',
-  'Amara Kone', 'Leo Fischer', 'Fatima Al-Rashid', 'Hugo Laurent', 'Chiara Rossi',
-  'Ryo Watanabe', 'Elena Volkov', 'Marcus Singh', 'Hana Kim', 'Rafael Almeida',
-  'Freya Johansson', 'Arjun Mehta', 'Clara Werner', 'Omar Hassan', 'Suki Yamamoto',
-  'Mikhail Petrov', 'Zoe Chapman', 'Tariq Patel', 'Ingrid Olsen', 'Kofi Mensah',
-  'Ava Sterling', 'Mateo Rivero', 'Nadia Ivanova', 'Soren Lindqvist', 'Ada Okonkwo',
-  'Lucas Mendes', 'Sakura Ito', 'Bastian Müller', 'Leila Karimi', 'Theo Beaumont',
-];
-
-const roles = [
-  'Art Director', 'Lead Animator', 'FX Artist', 'Compositor', 'Producer',
-  'Pipeline TD', 'Environment Artist', 'Character Animator', 'Lighting TD',
-  'Texture Artist', 'Rigger', 'Layout Artist', 'Modeler', 'Render Wrangler',
-  'Concept Artist', 'Matte Painter', 'Motion Capture TD', 'Surfacing Artist',
-  'Look Dev Artist', 'Crowd TD',
-];
-
-const departments = [
-  'Modeling', 'Animation', 'Lighting', 'FX', 'Compositing',
-  'Rigging', 'Layout', 'Look Development', 'Pipeline', 'Production',
-];
+export interface ChatMessage {
+  id: string;
+  departmentId: string;
+  userId: string;
+  text: string;
+  attachments: { type: 'image' | 'video', url: string, name: string }[];
+  timestamp: string;
+}
 
 // --- Studios ---------------------------------------------------------------
 
 export const STUDIOS: Studio[] = [
-  { id: 'studio1', name: 'Nebula Animation Co.', logo: '🌌', region: 'US West (Portland)', artistCount: 28, projectCount: 5 },
+  { id: 'studio1', name: 'Nebula Animation Co.', logo: '🌌', region: 'US West (Portland)', artistCount: 45, projectCount: 5 },
   { id: 'studio2', name: 'Ironforge VFX', logo: '⚒️', region: 'EU West (London)', artistCount: 15, projectCount: 3 },
   { id: 'studio3', name: 'Aurora Digital', logo: '🌅', region: 'APAC (Tokyo)', artistCount: 12, projectCount: 2 },
 ];
 
-// --- Departments -----------------------------------------------------------
+// --- Departments (14: 13 VFX + Production Management) ----------------------
 
-export const DEPARTMENTS: Department[] = departments.map((d, i) => ({
-  id: `dept${i + 1}`,
-  name: d,
-  color: [
-    '#4facfe', '#ff6b6b', '#feca57', '#48dbfb', '#ff9ff3',
-    '#54a0ff', '#5f27cd', '#01a3a4', '#f368e0', '#10ac84',
-  ][i],
-  headId: `u${i + 1}`,
-  studioId: i < 5 ? 'studio1' : i < 8 ? 'studio2' : 'studio3',
-}));
+const DEPT_DEFINITIONS = [
+  { name: 'Production Management', abbr: 'PROD', color: '#636e72', icon: 'Briefcase', desc: 'Handles scheduling, budgets, and client communication.', order: 0 },
+  { name: 'Concept & Previs', abbr: 'PREVIS', color: '#00b894', icon: 'Lightbulb', desc: 'Early design and rough layout planning.', order: 1 },
+  { name: 'Tracking', abbr: 'TRK', color: '#00cec9', icon: 'Crosshair', desc: 'Camera and object tracking for VFX integration.', order: 2 },
+  { name: 'Layout', abbr: 'LAY', color: '#fdcb6e', icon: 'Layout', desc: 'Scene composition and camera placement.', order: 3 },
+  { name: 'Modelling', abbr: 'MDL', color: '#4facfe', icon: 'Box', desc: 'Building 3D digital shapes and models.', order: 4 },
+  { name: 'Texture / Surfacing', abbr: 'TEX', color: '#a55eea', icon: 'Paintbrush', desc: 'Painting surfaces and creating materials for 3D models.', order: 5 },
+  { name: 'Rigging', abbr: 'RIG', color: '#4ecdc4', icon: 'Bone', desc: 'Building digital skeletons for 3D models.', order: 6 },
+  { name: 'Animation', abbr: 'ANIM', color: '#fd79a8', icon: 'Clapperboard', desc: 'Moving characters and objects to tell the story.', order: 7 },
+  { name: 'Creature FX / Tech Anim', abbr: 'CFX', color: '#ff6b6b', icon: 'Bug', desc: 'Hair, cloth, muscle simulations on characters.', order: 8 },
+  { name: 'FX (Effects)', abbr: 'FX', color: '#ff9f43', icon: 'Flame', desc: 'Fire, water, smoke, explosions, and particle effects.', order: 9 },
+  { name: 'Lighting', abbr: 'LIT', color: '#0984e3', icon: 'Sun', desc: 'Setting virtual lights and generating final 3D frames.', order: 10 },
+  { name: 'Compositing', abbr: 'COMP', color: '#6c5ce7', icon: 'Layers', desc: 'Blending all layers into the final shot.', order: 11 },
+  { name: 'Rotopaint', abbr: 'ROTO', color: '#e17055', icon: 'PenTool', desc: 'Rotoscoping and paint fixes for clean plates.', order: 12 },
+  { name: 'DMP (Digital Matte Painting)', abbr: 'DMP', color: '#00cec9', icon: 'Mountain', desc: 'Creating photorealistic backgrounds and environments.', order: 13 },
+];
 
-// --- Users (50 Artists + 20 Reviewers overlap) ----------------------------
+// --- Users (65 with realistic VFX titles) ----------------------------------
 
-export const USERS: User[] = names.map((name, i) => {
-  const possibleLicenses = ['Autodesk Maya', 'The Foundry Nuke', 'SideFX Houdini', 'Arnold Render', 'Substance Painter', 'ZBrush', 'Unreal Engine'];
-  const userLicenses = possibleLicenses.filter(() => Math.random() > 0.5);
-  if (userLicenses.length === 0) userLicenses.push(possibleLicenses[i % possibleLicenses.length]); // Ensure at least one
+const USER_DEFS: { name: string; role: Role; deptIdx: number; title: string; skills: string[] }[] = [
+  // === Production Management (dept 0) ===
+  { name: 'Maya Chen', role: 'vfx_producer', deptIdx: 0, title: 'VFX Producer', skills: ['Budgeting', 'Client Relations', 'Scheduling'] },
+  { name: 'Ethan Brooks', role: 'production_manager', deptIdx: 0, title: 'VFX Production Manager', skills: ['Show Management', 'Resource Planning', 'Shotgun'] },
+  { name: 'Sofia Reyes', role: 'production_manager', deptIdx: 0, title: 'VFX Production Manager', skills: ['Bidding', 'Scheduling', 'ftrack'] },
+  { name: 'Kofi Mensah', role: 'coordinator', deptIdx: 0, title: 'Production Coordinator', skills: ['Dailies', 'Tracking', 'Communication'] },
+  { name: 'Ava Sterling', role: 'coordinator', deptIdx: 0, title: 'Production Coordinator', skills: ['Vendor Management', 'Data Wrangling'] },
+
+  // === Concept & Previs (dept 1) ===
+  { name: 'Luca Moretti', role: 'supervisor', deptIdx: 1, title: 'Concept/Previs Supervisor', skills: ['Storyboarding', 'Maya', 'Unreal Engine'] },
+  { name: 'Isla MacLeod', role: 'lead', deptIdx: 1, title: 'Previs Lead', skills: ['Previs', 'Layout', 'Cinematography'] },
+  { name: 'Jin Park', role: 'artist', deptIdx: 1, title: 'Concept Artist', skills: ['Photoshop', 'ZBrush', 'Illustration'] },
+  { name: 'Clara Werner', role: 'junior_artist', deptIdx: 1, title: 'Jr. Previs Artist', skills: ['Maya', 'Storyboarding'] },
+
+  // === Tracking (dept 2) ===
+  { name: 'Rafi Solomonov', role: 'supervisor', deptIdx: 2, title: 'Tracking Supervisor', skills: ['3DEqualizer', 'PFTrack', 'SynthEyes'] },
+  { name: 'Nadia Ivanova', role: 'lead', deptIdx: 2, title: 'Tracking Lead', skills: ['Camera Tracking', 'Object Tracking', 'Lidar'] },
+  { name: 'Soren Lindqvist', role: 'artist', deptIdx: 2, title: 'Match Move Artist', skills: ['3DEqualizer', 'Nuke'] },
+  { name: 'Leila Karimi', role: 'junior_artist', deptIdx: 2, title: 'Jr. Tracking Artist', skills: ['PFTrack', 'Maya'] },
+
+  // === Layout (dept 3) ===
+  { name: 'Yuki Tanaka', role: 'supervisor', deptIdx: 3, title: 'Layout Supervisor', skills: ['Maya', 'Cinematography', 'Previz'] },
+  { name: 'Hugo Laurent', role: 'lead', deptIdx: 3, title: 'Layout Lead', skills: ['Virtual Camera', 'Maya', 'Shotgun'] },
+  { name: 'Ada Okonkwo', role: 'artist', deptIdx: 3, title: 'Layout Artist', skills: ['Maya', 'Camera Work'] },
+  { name: 'Theo Beaumont', role: 'junior_artist', deptIdx: 3, title: 'Jr. Layout Artist', skills: ['Maya', 'Previs'] },
+
+  // === Modelling (dept 4) ===
+  { name: 'Priya Nair', role: 'supervisor', deptIdx: 4, title: 'Modelling Supervisor', skills: ['ZBrush', 'Maya', 'Hard Surface'] },
+  { name: 'Tomasz Kowalski', role: 'lead', deptIdx: 4, title: 'Modelling Lead', skills: ['Maya', 'ZBrush', 'Retopology'] },
+  { name: 'Mia Rodriguez', role: 'senior_artist', deptIdx: 4, title: 'Senior Modeller', skills: ['ZBrush', 'Maya', 'Substance'] },
+  { name: 'Kai Nakamura', role: 'artist', deptIdx: 4, title: 'Modeller', skills: ['Maya', 'ZBrush'] },
+  { name: 'Dante Costa', role: 'junior_artist', deptIdx: 4, title: 'Jr. Modeller', skills: ['Maya', 'Blender'] },
+
+  // === Texture / Surfacing (dept 5) ===
+  { name: 'Aisha Diallo', role: 'supervisor', deptIdx: 5, title: 'Surfacing Supervisor', skills: ['Substance Painter', 'Mari', 'Look Dev'] },
+  { name: 'Lena Petrov', role: 'lead', deptIdx: 5, title: 'Surfacing Lead', skills: ['Mari', 'Substance Painter', 'Arnold'] },
+  { name: 'Zara Ahmed', role: 'senior_artist', deptIdx: 5, title: 'Senior Surfacing Artist', skills: ['Mari', 'Substance', 'Katana'] },
+  { name: 'Freya Johansson', role: 'artist', deptIdx: 5, title: 'Texture Artist', skills: ['Substance Painter', 'Photoshop'] },
+  { name: 'Lucas Mendes', role: 'junior_artist', deptIdx: 5, title: 'Jr. Texture Artist', skills: ['Substance Painter'] },
+
+  // === Rigging (dept 6) ===
+  { name: 'Diego Vargas', role: 'supervisor', deptIdx: 6, title: 'Rigging Supervisor', skills: ['Maya', 'Python', 'mGear'] },
+  { name: 'Arjun Mehta', role: 'lead', deptIdx: 6, title: 'Rigging Lead', skills: ['Maya', 'Python', 'Facial Rigs'] },
+  { name: 'Hana Kim', role: 'senior_artist', deptIdx: 6, title: 'Senior Rigger', skills: ['Maya', 'Python', 'Muscle Systems'] },
+  { name: 'Omar Hassan', role: 'artist', deptIdx: 6, title: 'Rigger', skills: ['Maya', 'Python'] },
+
+  // === Animation (dept 7) ===
+  { name: 'Akira Suzuki', role: 'supervisor', deptIdx: 7, title: 'Animation Supervisor', skills: ['Maya', 'Acting', 'Motion Capture'] },
+  { name: 'Nia Okafor', role: 'lead', deptIdx: 7, title: 'Animation Lead', skills: ['Maya', 'Character Animation', 'Blocking'] },
+  { name: 'Felix Braun', role: 'senior_artist', deptIdx: 7, title: 'Senior Animator', skills: ['Maya', 'Body Mechanics', 'Facial Anim'] },
+  { name: 'Chiara Rossi', role: 'artist', deptIdx: 7, title: 'Character Animator', skills: ['Maya', 'Animation'] },
+  { name: 'Rafael Almeida', role: 'artist', deptIdx: 7, title: 'Character Animator', skills: ['Maya', 'Creature Animation'] },
+  { name: 'Sakura Ito', role: 'junior_artist', deptIdx: 7, title: 'Jr. Animator', skills: ['Maya'] },
+
+  // === Creature FX / Tech Anim (dept 8) ===
+  { name: 'Ryo Watanabe', role: 'supervisor', deptIdx: 8, title: 'Creature FX Supervisor', skills: ['Houdini', 'Maya', 'Cloth Sim'] },
+  { name: 'Elena Volkov', role: 'lead', deptIdx: 8, title: 'CFX Lead', skills: ['Houdini', 'Maya', 'Hair Groom'] },
+  { name: 'Marcus Singh', role: 'senior_artist', deptIdx: 8, title: 'Senior CFX Artist', skills: ['Houdini', 'Maya', 'Muscle Sim'] },
+  { name: 'Mateo Rivero', role: 'artist', deptIdx: 8, title: 'CFX Artist', skills: ['Houdini', 'XGen'] },
+
+  // === FX (Effects) (dept 9) ===
+  { name: 'Amara Kone', role: 'supervisor', deptIdx: 9, title: 'FX Supervisor', skills: ['Houdini', 'Maya', 'Pyro'] },
+  { name: 'Leo Fischer', role: 'lead', deptIdx: 9, title: 'FX Lead TD', skills: ['Houdini', 'FLIP', 'Pyro'] },
+  { name: 'Fatima Al-Rashid', role: 'senior_artist', deptIdx: 9, title: 'Senior FX Artist', skills: ['Houdini', 'Destruction', 'RBD'] },
+  { name: 'Bastian Müller', role: 'artist', deptIdx: 9, title: 'FX Artist', skills: ['Houdini', 'Particles'] },
+  { name: 'Tariq Patel', role: 'junior_artist', deptIdx: 9, title: 'Jr. FX Artist', skills: ['Houdini'] },
+
+  // === Lighting (dept 10) ===
+  { name: 'Mikhail Petrov', role: 'supervisor', deptIdx: 10, title: 'Lighting/CG Supervisor', skills: ['Katana', 'Arnold', 'RenderMan'] },
+  { name: 'Zoe Chapman', role: 'lead', deptIdx: 10, title: 'Lighting Lead', skills: ['Katana', 'Arnold', 'Color Theory'] },
+  { name: 'Ingrid Olsen', role: 'senior_artist', deptIdx: 10, title: 'Senior Lighting TD', skills: ['Katana', 'Arnold', 'V-Ray'] },
+  { name: 'Suki Yamamoto', role: 'artist', deptIdx: 10, title: 'Lighting TD', skills: ['Arnold', 'Maya'] },
+
+  // === Compositing (dept 11) ===
+  { name: 'Dante Rivera', role: 'supervisor', deptIdx: 11, title: 'Compositing Supervisor', skills: ['Nuke', 'Flame', 'Color Science'] },
+  { name: 'Lila Johannsen', role: 'lead', deptIdx: 11, title: 'Compositing Lead', skills: ['Nuke', 'Deep Compositing', 'Stereo'] },
+  { name: 'Chen Wei', role: 'senior_artist', deptIdx: 11, title: 'Senior Compositor', skills: ['Nuke', 'Flame', 'CG Integration'] },
+  { name: 'Ananya Sharma', role: 'artist', deptIdx: 11, title: 'Compositor', skills: ['Nuke', 'Roto'] },
+  { name: 'Tomoko Hayashi', role: 'artist', deptIdx: 11, title: 'Compositor', skills: ['Nuke', 'Keying'] },
+  { name: 'Dylan O\'Brien', role: 'junior_artist', deptIdx: 11, title: 'Jr. Compositor', skills: ['Nuke'] },
+
+  // === Rotopaint (dept 12) ===
+  { name: 'Priscilla Mendes', role: 'supervisor', deptIdx: 12, title: 'Rotopaint Supervisor', skills: ['Nuke', 'Silhouette', 'Mocha'] },
+  { name: 'Kwame Asante', role: 'lead', deptIdx: 12, title: 'Rotopaint Lead', skills: ['Nuke', 'Silhouette', 'Paint Fixes'] },
+  { name: 'Mei Lin', role: 'artist', deptIdx: 12, title: 'Roto Artist', skills: ['Nuke', 'Silhouette'] },
+  { name: 'Viktor Novak', role: 'junior_artist', deptIdx: 12, title: 'Jr. Roto Artist', skills: ['Nuke'] },
+
+  // === DMP (dept 13) ===
+  { name: 'Gabriela Santos', role: 'supervisor', deptIdx: 13, title: 'DMP Supervisor', skills: ['Photoshop', 'Nuke', 'Maya'] },
+  { name: 'Olaf Eriksen', role: 'lead', deptIdx: 13, title: 'DMP Lead', skills: ['Photoshop', 'Nuke 3D', 'Projections'] },
+  { name: 'Rina Tanaka', role: 'artist', deptIdx: 13, title: 'Matte Painter', skills: ['Photoshop', 'Nuke'] },
+  { name: 'Jamal Williams', role: 'junior_artist', deptIdx: 13, title: 'Jr. Matte Painter', skills: ['Photoshop'] },
+];
+
+const possibleLicenses = ['Autodesk Maya', 'The Foundry Nuke', 'SideFX Houdini', 'Arnold Render', 'Substance Painter', 'ZBrush', 'Unreal Engine', 'Katana', 'Flame', 'Silhouette', 'PFTrack', '3DEqualizer'];
+
+export const USERS: User[] = USER_DEFS.map((def, i) => {
+  const deptId = `dept${def.deptIdx + 1}`;
+  const userLicenses = possibleLicenses.filter(() => Math.random() > 0.6);
+  if (userLicenses.length === 0) userLicenses.push(possibleLicenses[i % possibleLicenses.length]);
+
+  // Determine supervisor ID: artists report to lead, leads report to supervisor, supervisors report to producer
+  let supervisorId: string | undefined;
+  if (def.role === 'junior_artist' || def.role === 'artist' || def.role === 'senior_artist') {
+    // Report to lead of same dept
+    const lead = USER_DEFS.findIndex(u => u.deptIdx === def.deptIdx && u.role === 'lead');
+    supervisorId = lead >= 0 ? `u${lead + 1}` : undefined;
+  } else if (def.role === 'lead') {
+    const sup = USER_DEFS.findIndex(u => u.deptIdx === def.deptIdx && u.role === 'supervisor');
+    supervisorId = sup >= 0 ? `u${sup + 1}` : undefined;
+  } else if (def.role === 'supervisor') {
+    supervisorId = 'u1'; // Reports to VFX Producer
+  } else if (def.role === 'coordinator') {
+    const pm = USER_DEFS.findIndex(u => u.role === 'production_manager');
+    supervisorId = pm >= 0 ? `u${pm + 1}` : 'u1';
+  } else if (def.role === 'production_manager') {
+    supervisorId = 'u1'; // Reports to VFX Producer
+  }
 
   return {
     id: `u${i + 1}`,
-    name,
-    role: roles[i % roles.length],
-    department: departments[i % departments.length],
+    empId: `EMP${String(1000 + i).padStart(4, '0')}`,
+    name: def.name,
+    role: def.role,
+    title: def.title,
+    departmentId: deptId,
     avatar: `https://i.pravatar.cc/150?u=u${i + 1}`,
-    email: `${name.split(' ')[0].toLowerCase()}@${i < 28 ? 'nebula' : i < 43 ? 'ironforge' : 'aurora'}.co`,
-    studioId: i < 28 ? 'studio1' : i < 43 ? 'studio2' : 'studio3',
-    capacity: 60 + Math.floor((i * 7 + 13) % 60),
+    email: `${def.name.split(' ')[0].toLowerCase()}@nebula.co`,
+    studioId: 'studio1',
+    capacity: 60 + Math.floor((i * 7 + 13) % 40),
     licenses: userLicenses,
+    supervisorId,
+    startDate: `20${20 + (i % 5)}-${String((i % 12) + 1).padStart(2, '0')}-01`,
+    status: i % 15 === 0 ? 'away' : i % 20 === 0 ? 'on-leave' : 'active',
+    skills: def.skills,
+    password: 'forge123', // All users share a demo password
   };
 });
+
+// --- Departments -----------------------------------------------------------
+
+export const DEPARTMENTS: Department[] = DEPT_DEFINITIONS.map((d, i) => {
+  const deptId = `dept${i + 1}`;
+  const supervisor = USERS.find(u => u.departmentId === deptId && u.role === 'supervisor');
+  const lead = USERS.find(u => u.departmentId === deptId && u.role === 'lead');
+
+  return {
+    id: deptId,
+    name: d.name,
+    abbreviation: d.abbr,
+    color: d.color,
+    supervisorId: supervisor?.id || USERS[0].id,
+    leadId: lead?.id || supervisor?.id || USERS[0].id,
+    studioId: 'studio1',
+    description: d.desc,
+    icon: d.icon,
+    pipelineOrder: d.order,
+  };
+});
+
+// Pipeline order for department handoff
+export const PIPELINE_ORDER = DEPARTMENTS
+  .filter(d => d.pipelineOrder > 0)
+  .sort((a, b) => a.pipelineOrder - b.pipelineOrder);
+
+export function getNextDepartment(currentDeptId: string): Department | null {
+  const current = DEPARTMENTS.find(d => d.id === currentDeptId);
+  if (!current) return null;
+  const next = DEPARTMENTS.find(d => d.pipelineOrder === current.pipelineOrder + 1);
+  return next || null;
+}
 
 // --- Projects (10) --------------------------------------------------------
 
@@ -404,7 +606,7 @@ for (let i = 0; i < 100; i++) {
     sequenceId: seq?.id || `seq1`,
     sequence: seq?.name.split(' ')[0] || 'SEQ_010',
     status: shotStatuses[i % shotStatuses.length],
-    assigneeId: `u${(i % 50) + 1}`,
+    assigneeId: `u${(i % USERS.length) + 1}`,
     updatedAt: `2024-${String(9 + (i % 3)).padStart(2, '0')}-${String((i % 28) + 1).padStart(2, '0')}`,
     frameRange: `${1001 + i * 48}-${1001 + i * 48 + 47 + (i % 80)}`,
     duration: 48 + (i % 80),
@@ -448,7 +650,7 @@ for (let i = 0; i < 150; i++) {
     projectId: `p${projIdx + 1}`,
     type,
     status: assetStatuses[i % assetStatuses.length],
-    assigneeId: `u${(i % 50) + 1}`,
+    assigneeId: `u${(i % USERS.length) + 1}`,
     updatedAt: `2024-${String(8 + (i % 4)).padStart(2, '0')}-${String((i % 28) + 1).padStart(2, '0')}`,
     version: `v${String((i % 12) + 1).padStart(3, '0')}`,
     tags: [
@@ -478,6 +680,15 @@ const taskTitles = [
 const taskStatuses: Task['status'][] = ['todo', 'in-progress', 'blocked', 'review', 'complete', 'cancelled'];
 const taskPriorities: Task['priority'][] = ['critical', 'high', 'medium', 'low'];
 
+// Map task titles to departments for realistic pipeline assignment
+const taskDeptMap: Record<string, number> = {
+  'Model': 4, 'Rig': 6, 'Animate': 7, 'Light': 10, 'Composite': 11,
+  'Texture': 5, 'FX sim': 9, 'Layout pass': 3, 'Look dev': 5,
+  'Final polish': 11, 'Review': 0, 'Fix feedback': 7, 'Optimize': 10,
+  'QC check': 0, 'Color grade': 11, 'Render': 10, 'Prep delivery': 0,
+  'Retopology': 4, 'UV unwrap': 4, 'Hair groom': 8,
+};
+
 export const TASKS: Task[] = [];
 for (let i = 0; i < 300; i++) {
   const projIdx = i < 80 ? 0 : i < 120 ? 1 : i < 140 ? 2 : i < 190 ? 3 : i < 210 ? 4 : i < 250 ? 5 : i < 260 ? 6 : i < 275 ? 7 : i < 288 ? 8 : 9;
@@ -487,6 +698,31 @@ for (let i = 0; i < 300; i++) {
   const shotIdx = i % SHOTS.length;
   const entity = hasAsset ? ASSETS[assetIdx].name : SHOTS[shotIdx].name;
   const titleTemplate = taskTitles[i % taskTitles.length];
+  const titleKey = Object.keys(taskDeptMap).find(k => titleTemplate.startsWith(k)) || 'Model';
+  const deptIdx = taskDeptMap[titleKey] || (i % 14);
+  const dept = DEPARTMENTS[deptIdx];
+  
+  // Find artists in this department for assignment
+  const deptArtists = USERS.filter(u => u.departmentId === dept.id && ['artist', 'senior_artist', 'junior_artist'].includes(u.role));
+  const assignee = deptArtists.length > 0 ? deptArtists[i % deptArtists.length] : USERS[i % USERS.length];
+  
+  // Supervisor or lead assigns the task
+  const deptSupervisor = USERS.find(u => u.departmentId === dept.id && u.role === 'supervisor');
+  const deptLead = USERS.find(u => u.departmentId === dept.id && u.role === 'lead');
+  const assigner = i % 2 === 0 ? (deptSupervisor || USERS[0]) : (deptLead || deptSupervisor || USERS[0]);
+
+  // Generate daily logs
+  const dailyLogs: DailyLog[] = [];
+  if (i % 3 !== 2) { // Not all tasks have logs
+    for (let d = 0; d < Math.min(i % 5 + 1, 5); d++) {
+      dailyLogs.push({
+        date: `2024-09-${String((d + 20) % 28 + 1).padStart(2, '0')}`,
+        hours: [2, 4, 6, 8, 3][d % 5],
+        note: ['Blocked on upstream dependency.', 'Good progress, 60% done.', 'Waiting for review notes.', 'Reworking per feedback.', 'Final polish pass.'][d % 5],
+        userId: assignee.id,
+      });
+    }
+  }
 
   TASKS.push({
     id: `t${i + 1}`,
@@ -495,14 +731,15 @@ for (let i = 0; i < 300; i++) {
     projectId: `p${projIdx + 1}`,
     assetId: hasAsset ? ASSETS[assetIdx].id : undefined,
     shotId: hasShot ? SHOTS[shotIdx].id : undefined,
-    assigneeId: `u${(i % 50) + 1}`,
+    assigneeId: assignee.id,
+    assignedById: assigner.id,
     status: taskStatuses[i % taskStatuses.length],
     priority: taskPriorities[i % taskPriorities.length],
     dueDate: `2025-${String((i % 12) + 1).padStart(2, '0')}-${String((i % 28) + 1).padStart(2, '0')}`,
     estimatedHours: [4, 8, 16, 24, 40, 80][i % 6],
     actualHours: Math.floor([4, 8, 16, 24, 40, 80][i % 6] * (i % 5) / 5),
     tags: [
-      departments[i % departments.length].toLowerCase(),
+      dept.abbreviation.toLowerCase(),
       i % 4 === 0 ? 'urgent' : i % 4 === 1 ? 'blocked' : i % 4 === 2 ? 'ready' : 'waiting',
     ],
     dependencies: i > 5 && i % 3 === 0 ? [`t${i - 1}`] : [],
@@ -513,12 +750,16 @@ for (let i = 0; i < 300; i++) {
       { text: 'Final polish', done: i % 6 === 0 },
     ],
     comments: i % 2 === 0 ? [
-      { userId: `u${(i % 10) + 1}`, text: 'Looking good, keep it up!', timestamp: '2024-09-20T10:30:00Z' },
-      { userId: `u${(i % 8) + 1}`, text: 'Can we adjust the timing slightly?', timestamp: '2024-09-21T14:15:00Z' },
+      { userId: assigner.id, text: 'Looking good, keep it up!', timestamp: '2024-09-20T10:30:00Z' },
+      { userId: assignee.id, text: 'Working on the feedback.', timestamp: '2024-09-21T14:15:00Z' },
     ] : [],
     attachments: i % 5 === 0 ? ['reference_v1.jpg', 'notes.pdf'] : [],
-    department: departments[i % departments.length],
+    department: dept.name,
     createdAt: `2024-${String(6 + (i % 6)).padStart(2, '0')}-${String((i % 28) + 1).padStart(2, '0')}`,
+    lastStatusUpdate: `2024-09-${String((i % 28) + 1).padStart(2, '0')}T${String(8 + (i % 14)).padStart(2, '0')}:00:00Z`,
+    dailyLogs,
+    weeklyRating: (['on-track', 'at-risk', 'behind', 'on-track', 'on-track'] as const)[i % 5],
+    pipelinePhase: dept.abbreviation,
   });
 }
 
@@ -535,7 +776,7 @@ for (let i = 0; i < 200; i++) {
     entityType: isShot ? 'shot' : 'asset',
     versionNumber: `v${String((i % 12) + 1).padStart(3, '0')}`,
     status: (['pending', 'approved', 'rejected', 'changes-requested'] as const)[i % 4],
-    createdById: `u${(i % 50) + 1}`,
+    createdById: `u${(i % USERS.length) + 1}`,
     createdAt: `2024-${String(7 + (i % 5)).padStart(2, '0')}-${String((i % 28) + 1).padStart(2, '0')}T${String(8 + (i % 12)).padStart(2, '0')}:00:00Z`,
     thumbnailSeed: 3000 + i,
     notes: i % 3 === 0 ? 'Updated per review notes.' : i % 3 === 1 ? 'Initial submission.' : 'Reworked based on feedback.',
@@ -601,7 +842,7 @@ for (let i = 0; i < 40; i++) {
   });
 }
 
-// --- Workflow Runs (25) ----------------------------------------------------
+// --- Workflows & Runs -------------------------------------------------------
 
 export const WORKFLOWS: Workflow[] = [
   { id: 'wf1', name: 'Review → Approve → Publish', description: 'Standard review loop with auto-publish on approval', nodes: 4, lastEdited: '2 days ago', trigger: 'New Version', runs: 342, successRate: 94, status: 'active' },
@@ -611,7 +852,7 @@ export const WORKFLOWS: Workflow[] = [
   { id: 'wf5', name: 'Emergency Hotfix', description: 'Bypass standard gates for critical fixes', nodes: 2, lastEdited: '2 months ago', trigger: 'Manual', runs: 12, successRate: 83, status: 'draft' },
   { id: 'wf6', name: 'New Project Onboarding', description: 'Create folders, set permissions, invite team', nodes: 8, lastEdited: '3 months ago', trigger: 'New Project', runs: 10, successRate: 100, status: 'active' },
   { id: 'wf7', name: 'Nightly Render Farm Submit', description: 'Batch submit all pending renders at midnight', nodes: 5, lastEdited: '5 days ago', trigger: 'Schedule', runs: 89, successRate: 91, status: 'active' },
-  { id: 'wf8', name: 'Cross-Department Handoff', description: 'Notify next department when work completes', nodes: 4, lastEdited: '2 weeks ago', trigger: 'Status Change', runs: 234, successRate: 96, status: 'active' },
+  { id: 'wf8', name: 'Dept Handoff Pipeline', description: 'Auto-notify next department when work completes', nodes: 4, lastEdited: '2 weeks ago', trigger: 'Status Change', runs: 234, successRate: 96, status: 'active' },
 ];
 
 export const WORKFLOW_RUNS: WorkflowRun[] = [];
@@ -650,7 +891,7 @@ for (let i = 0; i < 100; i++) {
     entityId,
     entityType: isAsset ? 'asset' : 'shot',
     timestamp: `2024-${String(7 + (i % 5)).padStart(2, '0')}-${String((i % 28) + 1).padStart(2, '0')} ${String(8 + (i % 14)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}:00`,
-    userId: `u${(i % 50) + 1}`,
+    userId: `u${(i % USERS.length) + 1}`,
     eventType: eventTypes[i % eventTypes.length],
     description: [
       `Created ${i % 2 === 0 ? 'asset' : 'shot'} entity`,
@@ -682,7 +923,7 @@ const notifTemplates: { title: string; desc: string; cat: Notification['category
   { title: 'Mentioned in Comment', desc: '{user} mentioned you in {entity}', cat: 'mention', pri: 'medium' },
   { title: 'Workflow Failed', desc: 'Workflow "{workflow}" failed at step 3', cat: 'workflow', pri: 'high' },
   { title: 'Deadline Approaching', desc: '{task} is due in 2 days', cat: 'system', pri: 'medium' },
-  { title: 'Changes Requested', desc: '{user} requested changes on {version}', cat: 'review', pri: 'high' },
+  { title: 'Dept Handoff', desc: '{dept} has completed their phase — work transferred to you', cat: 'handoff', pri: 'high' },
   { title: 'New Team Member', desc: '{user} joined the project', cat: 'system', pri: 'low' },
 ];
 
@@ -701,7 +942,8 @@ for (let i = 0; i < 50; i++) {
       .replace('{asset}', asset.name)
       .replace('{entity}', asset.name)
       .replace('{version}', `v${String((i % 12) + 1).padStart(3, '0')}`)
-      .replace('{workflow}', WORKFLOWS[i % WORKFLOWS.length].name),
+      .replace('{workflow}', WORKFLOWS[i % WORKFLOWS.length].name)
+      .replace('{dept}', DEPARTMENTS[(i % DEPARTMENTS.length)].name),
     timestamp: [
       '2 mins ago', '10 mins ago', '30 mins ago', '1 hour ago', '2 hours ago',
       '3 hours ago', '5 hours ago', '1 day ago', '2 days ago', '3 days ago',
@@ -729,7 +971,6 @@ export const AI_SUGGESTIONS: AISuggestion[] = [
   { id: 'ai10', severity: 'CRITICAL', title: 'Render Farm Queue Overflow', description: '340 render jobs queued, average wait time 6.2 hours (normal: 1.5h). 3 nodes offline.', entity: 'Render Farm', entityType: 'system', assignee: 'Rafi Solomonov', suggestedAction: 'Restart offline nodes, prioritize critical path renders', impact: 'All departments affected', page: 'dashboard' },
 ];
 
-// Add more AI suggestions for specific pages
 for (let i = 0; i < 20; i++) {
   AI_SUGGESTIONS.push({
     id: `ai${11 + i}`,
@@ -750,8 +991,6 @@ for (let i = 0; i < 20; i++) {
     page: ['dashboard', 'scheduling', 'assets', 'tasks', 'publishing'][i % 5],
   });
 }
-
-// --- AI Recommendations (legacy compat) ------------------------------------
 
 export const AI_RECOMMENDATIONS = AI_SUGGESTIONS.filter(s => s.page === 'dashboard' || s.page === 'scheduling').slice(0, 5).map(s => ({
   id: s.id,
@@ -809,4 +1048,33 @@ export const PLUGINS: Plugin[] = [
   { id: 'pl10', name: 'Client Portal', category: 'Integration', rating: 4.4, installs: '3.1k', verified: true, icon: 'Globe', description: 'White-label client review portal with watermarking and approval workflows.', author: 'ClientView', version: '3.2.0', compatibility: 'Forge 2.5+', lastUpdated: '3 weeks ago' },
   { id: 'pl11', name: 'Nuke Connector', category: 'Integration', rating: 4.7, installs: '7.8k', verified: true, icon: 'Plug', description: 'Direct integration with Foundry Nuke for comp workflows.', author: 'NukeTools', version: '6.0.1', compatibility: 'Forge 2.0+', lastUpdated: '2 weeks ago' },
   { id: 'pl12', name: 'Budget Tracker', category: 'Production', rating: 4.3, installs: '1.8k', verified: true, icon: 'DollarSign', description: 'Track project budgets, burn rates, and financial forecasts.', author: 'ProdFinance', version: '2.4.0', compatibility: 'Forge 3.0+', lastUpdated: '1 month ago' },
+];
+
+// --- Chat Messages -----------------------------------------------------------
+
+export const MESSAGES: ChatMessage[] = [
+  {
+    id: 'm1',
+    departmentId: 'dept2', // Animation
+    userId: 'u2', // Akira Suzuki (Animation Supervisor)
+    text: 'Hey team, let\'s make sure we review the pacing on the chase sequence before the client review tomorrow.',
+    attachments: [],
+    timestamp: new Date(Date.now() - 3600000 * 24).toISOString()
+  },
+  {
+    id: 'm2',
+    departmentId: 'dept2',
+    userId: 'u8', // Jada Williams (Lead Animator)
+    text: 'I\'ll upload the latest playblast here in a few minutes. I think the weight on the landing still feels a bit floaty.',
+    attachments: [],
+    timestamp: new Date(Date.now() - 3600000 * 23).toISOString()
+  },
+  {
+    id: 'm3',
+    departmentId: 'dept2',
+    userId: 'u8',
+    text: 'Here is the current pass:',
+    attachments: [{ type: 'video', url: 'https://test-videos.co.uk/vids/jellyfish/mp4/h264/1080/Jellyfish_1080_10s_5MB.mp4', name: 'chase_seq_v12_playblast.mp4' }],
+    timestamp: new Date(Date.now() - 3600000 * 22).toISOString()
+  }
 ];
