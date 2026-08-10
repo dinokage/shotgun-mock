@@ -1,0 +1,11 @@
+server/
+integrations/
+forgedb.sqlite
+docker-compose.yml
+export_seed.ts
+src/scripts/updateMockData.js
+src/scripts/updateMockData.ts
+node_modules/
+dist/
+.DS_Store
+*.swp

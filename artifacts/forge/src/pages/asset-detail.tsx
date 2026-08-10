@@ -7,10 +7,13 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { Slider } from '@/components/ui/slider';
-import { ASSETS, PROJECTS, USERS, TASKS, SHOTS, VERSIONS, AUDIT_EVENTS, AI_SUGGESTIONS } from '@/data/mockData';
-import { ChevronLeft, Package, Film, ListTodo, GitBranch, Clock, Upload, Sparkles, ArrowRight, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
+import { ASSETS, PROJECTS, USERS, TASKS, SHOTS, VERSIONS, AUDIT_EVENTS } from '@/data/mockData';
+import { ChevronLeft, Package, Film, ListTodo, GitBranch, Clock, Upload, Sparkles, ArrowRight, CheckCircle2, XCircle, AlertTriangle, RotateCcw } from 'lucide-react';
+import { PipelineVisualizer } from '@/components/shared/PipelineVisualizer';
+import { useToast } from '@/hooks/use-toast';
 
 export default function AssetDetail() {
+  const { toast } = useToast();
   const [, params] = useRoute('/assets/:id');
   const [compareMode, setCompareMode] = useState(false);
   const [wipePos, setWipePos] = useState(50);
@@ -27,7 +30,7 @@ export default function AssetDetail() {
   const relatedShots = SHOTS.filter(s => TASKS.some(t => t.shotId === s.id && t.assetId === asset.id)).slice(0, 5);
   const versions = VERSIONS.filter(v => v.entityId === asset.id).slice(0, 8);
   const events = AUDIT_EVENTS.filter(e => e.entityId === asset.id).slice(0, 10);
-  const suggestions = AI_SUGGESTIONS.filter(s => s.entityType === 'asset').slice(0, 2);
+  
   const deps = asset.dependencies.map(d => ASSETS.find(a => a.id === d)).filter(Boolean);
 
   return (
@@ -78,6 +81,15 @@ export default function AssetDetail() {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6 mt-4">
+          <Card className="border-primary/20 shadow-[0_0_15px_rgba(var(--primary),0.05)]">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">Pipeline Status</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <PipelineVisualizer tasks={relatedTasks} entityType="asset" />
+            </CardContent>
+          </Card>
+          
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-6">
               {/* Dependencies */}
@@ -127,24 +139,8 @@ export default function AssetDetail() {
               </Card>
             </div>
 
-            {/* Right: AI Suggestions */}
+            {/* Right: Publish Status */}
             <div className="space-y-6">
-              <Card className="border-purple-500/20">
-                <CardHeader className="pb-3 bg-purple-500/5 border-b border-border">
-                  <CardTitle className="text-base flex items-center gap-2"><Sparkles className="w-4 h-4 text-purple-400" /> AI Suggestions</CardTitle>
-                </CardHeader>
-                <CardContent className="p-0 divide-y divide-border">
-                  {suggestions.map(s => (
-                    <div key={s.id} className="p-4">
-                      <Badge className={`text-[10px] mb-1.5 ${s.severity === 'HIGH' ? 'bg-orange-500 text-white' : 'bg-yellow-500 text-white'}`}>{s.severity}</Badge>
-                      <p className="text-sm">{s.title}</p>
-                      <Button size="sm" variant="ghost" className="h-6 text-xs mt-2 text-purple-400">{s.suggestedAction} <ArrowRight className="w-3 h-3 ml-1" /></Button>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-
-              {/* Publish Status */}
               <Card>
                 <CardHeader className="pb-3"><CardTitle className="text-base">Publish Status</CardTitle></CardHeader>
                 <CardContent>
@@ -180,10 +176,17 @@ export default function AssetDetail() {
                         <div className="flex items-center gap-2 mb-1">
                           <span className="font-medium text-sm">{v.notes}</span>
                           <Badge className={`text-[10px] ${v.status === 'approved' ? 'bg-green-500/10 text-green-500' : v.status === 'rejected' ? 'bg-red-500/10 text-red-500' : 'bg-yellow-500/10 text-yellow-500'}`}>{v.status}</Badge>
+                          <Badge variant="outline" className="text-[9px] uppercase border-indigo-500/30 text-indigo-400">USD Format</Badge>
                         </div>
                         <div className="text-xs text-muted-foreground">
                           by {USERS.find(u => u.id === v.createdById)?.name} · {new Date(v.createdAt).toLocaleDateString()} · {v.fileSize}
                         </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="sm" onClick={() => toast({ title: "Rolling Back", description: `Rolling back to version ${v.versionNumber}...`, duration: 2000 })}>
+                          <RotateCcw className="w-4 h-4 mr-2" /> Rollback
+                        </Button>
+                        <Button variant="secondary" size="sm">Download USD</Button>
                       </div>
                     </CardContent>
                   </Card>

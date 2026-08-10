@@ -4,8 +4,8 @@ import {
   LayoutDashboard, FolderOpen, PlayCircle, Calendar,
   GitFork, Workflow, Store, Database,
   History, Bot, Settings2, Package, Film, ListTodo,
-  Upload, BarChart3, Brain, ChevronLeft, ChevronRight,
-  Sparkles, Building2, ChevronDown, Users, MonitorPlay, MessageSquare, Grid3X3
+  Upload, BarChart3, ChevronLeft, ChevronRight,
+  Building2, ChevronDown, Users, MonitorPlay, MessageSquare, Grid3X3, Puzzle
 } from 'lucide-react';
 import { useUIStore } from '@/store/ui';
 import { useWorkspaceStore } from '@/store/workspace';
@@ -31,13 +31,13 @@ const BASE_NAV: NavItem[] = [
   { label: 'Dashboard', icon: LayoutDashboard, href: '/' },
   { label: 'My Tasks', icon: ListTodo, href: '/tasks' },
   { label: 'Team Chat', icon: MessageSquare, href: '/chat', badge: 3 },
+  { label: 'Daily Standup', icon: MonitorPlay, href: '/daily-standup' },
 ];
 
 // Production & Leadership get scheduling, analytics, projects, etc.
 const PROD_NAV: NavItem[] = [
   { label: 'Projects', icon: FolderOpen, href: '/projects' },
   { label: 'Tracking Grid', icon: Grid3X3, href: '/tracking' },
-  { label: 'Daily Standup', icon: MonitorPlay, href: '/daily-standup' },
   { label: 'Scheduling', icon: Calendar, href: '/scheduling' },
   { label: 'Analytics', icon: BarChart3, href: '/analytics' },
   { label: 'Reviews', icon: PlayCircle, href: '/review', badge: 5 },
@@ -59,7 +59,8 @@ const DIRECTORY_NAV: NavItem[] = [
 
 // System nav
 const SYSTEM_NAV: NavItem[] = [
-  { label: 'Knowledge Graph', icon: GitFork, href: '/impact' },
+  { label: 'Integrations Hub', icon: Puzzle, href: '/integrations' },
+  { label: 'Dependency Graph', icon: GitFork, href: '/impact' },
   { label: 'Workflows', icon: Workflow, href: '/workflows' },
   { label: 'Marketplace', icon: Store, href: '/marketplace' },
   { label: 'Schema Builder', icon: Database, href: '/schema' },
@@ -166,28 +167,6 @@ export function Sidebar() {
 
       {/* Bottom Actions */}
       <div className={cn("p-2 border-t border-sidebar-border space-y-0.5", sidebarCollapsed && "px-1")}>
-        <button
-          onClick={toggleAiAssistant}
-          className={cn(
-            "w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors",
-            sidebarCollapsed && "justify-center px-2"
-          )}
-        >
-          <Sparkles className="w-4 h-4 text-purple-400 shrink-0" />
-          {!sidebarCollapsed && <span>AI Assistant</span>}
-        </button>
-        <Link href="/ai-workspace" className="block">
-          <div className={cn(
-            "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",
-            sidebarCollapsed && "justify-center px-2",
-            location.startsWith('/ai-workspace')
-              ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-              : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-          )}>
-            <Brain className="w-4 h-4 shrink-0" />
-            {!sidebarCollapsed && <span>AI Workspace</span>}
-          </div>
-        </Link>
         <Link href="/settings" className="block">
           <div className={cn(
             "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",

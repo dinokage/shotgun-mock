@@ -11,7 +11,7 @@ import { Link } from 'wouter';
 const STATUS_COLORS: Record<string, string> = {
   complete: 'bg-green-500/10 text-green-500',
   'in-progress': 'bg-blue-500/10 text-blue-500',
-  blocked: 'bg-red-500/10 text-red-500',
+  bottleneck: 'bg-red-500/10 text-red-500',
   review: 'bg-purple-500/10 text-purple-500',
   'not-started': 'bg-muted text-muted-foreground',
   'at-risk': 'bg-orange-500/10 text-orange-500',
@@ -60,7 +60,7 @@ export default function Shots() {
           <SelectTrigger className="w-36 h-9"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Status</SelectItem>
-            {['complete', 'in-progress', 'blocked', 'review', 'at-risk', 'not-started'].map(s => (
+            {['complete', 'in-progress', 'bottleneck', 'review', 'at-risk', 'not-started'].map(s => (
               <SelectItem key={s} value={s}>{s.replace('-', ' ')}</SelectItem>
             ))}
           </SelectContent>

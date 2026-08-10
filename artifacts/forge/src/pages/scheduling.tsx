@@ -5,9 +5,11 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { TASKS, USERS, PROJECTS } from '@/data/mockData';
-import { Calendar, ChevronLeft, ChevronRight, Filter, Search, Settings, ZoomIn, ZoomOut } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Filter, Search, Settings, ZoomIn, ZoomOut, Download, Cpu } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { useUIStore } from '@/store/ui';
+import { useToast } from '@/hooks/use-toast';
+import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 
 // Helper to add days to a date string (YYYY-MM-DD)
 const addDays = (dateStr: string, days: number) => {
@@ -22,6 +24,7 @@ const getDaysDiff = (start: string, end: string) => {
 };
 
 export default function Scheduling() {
+  const { toast } = useToast();
   const [projectFilter, setProjectFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
   const [zoom, setZoom] = useState(1);
@@ -86,6 +89,85 @@ export default function Scheduling() {
           <h1 className="text-2xl font-bold tracking-tight">Scheduling & Timeline</h1>
         </div>
         <div className="flex items-center gap-3">
+          <Button variant="outline" size="sm" onClick={() => toast({ title: "AI Reassignment Triggered", description: "Rebalancing tasks from lagging teams to available artists..." })} className="border-emerald-500/50 text-emerald-500 hover:bg-emerald-500/10">
+            <Cpu className="w-4 h-4 mr-2" /> Auto-Resolve Bottlenecks
+          </Button>
+
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Download className="w-4 h-4 mr-2" /> Import Schedule
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[700px]">
+              <div className="space-y-6 py-2">
+                <div>
+                  <h2 className="text-lg font-semibold">Import Excel / CSV Schedule</h2>
+                  <p className="text-sm text-muted-foreground mt-1">Map your spreadsheet columns to Forge fields to bulk import Shots and Tasks.</p>
+                </div>
+                
+                <div className="border-2 border-dashed border-border rounded-lg p-6 flex flex-col items-center justify-center text-center hover:bg-muted/30 transition-colors cursor-pointer group mb-4">
+                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                    <Download className="w-6 h-6 text-primary" />
+                  </div>
+                  <div className="font-semibold mb-1 text-sm">Upload Spreadsheet</div>
+                  <div className="text-xs text-muted-foreground">Select a .csv or .xlsx file</div>
+                </div>
+
+                <div className="space-y-4 border border-border rounded-lg p-4 bg-muted/20">
+                  <h3 className="text-sm font-medium border-b border-border/50 pb-2">Column Mapping</h3>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">Shot Name</label>
+                      <Select defaultValue="col_a">
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="col_a">Column A (Shot)</SelectItem>
+                          <SelectItem value="col_b">Column B (Sequence)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">Department</label>
+                      <Select defaultValue="col_c">
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="col_c">Column C (Dept)</SelectItem>
+                          <SelectItem value="col_d">Column D (Assignee)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">Start Date</label>
+                      <Select defaultValue="col_e">
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="col_e">Column E (Start)</SelectItem>
+                          <SelectItem value="col_f">Column F (End)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">Deadline</label>
+                      <Select defaultValue="col_f">
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="col_e">Column E (Start)</SelectItem>
+                          <SelectItem value="col_f">Column F (End)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="flex justify-end gap-3 pt-4 border-t border-border/50">
+                  <Button variant="outline">Cancel</Button>
+                  <Button onClick={() => toast({ title: 'Import Started', description: 'Background job queued to import 124 shots.' })}>Start Import</Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input placeholder="Search tasks..." className="pl-9 h-9 w-64" value={search} onChange={e => setSearch(e.target.value)} />
@@ -101,7 +183,6 @@ export default function Scheduling() {
             <Button variant="ghost" size="icon" className="h-9 w-9 rounded-none border-r border-border" onClick={() => setZoom(Math.max(0.5, zoom - 0.25))}><ZoomOut className="w-4 h-4" /></Button>
             <Button variant="ghost" size="icon" className="h-9 w-9 rounded-none" onClick={() => setZoom(Math.min(2, zoom + 0.25))}><ZoomIn className="w-4 h-4" /></Button>
           </div>
-          <Button className="gap-2"><Settings className="w-4 h-4" /> Auto-Schedule</Button>
         </div>
       </div>
 
@@ -176,10 +257,10 @@ export default function Scheduling() {
                     const left = task.startOffset * cellWidth;
                     const width = task.visibleDuration * cellWidth;
                     const top = 8 + (i * 40);
-                    const isComplete = task.status === 'complete';
+                    const isComplete = task.status === 'approved';
                     
                     let bg = 'bg-blue-500/80';
-                    if (task.status === 'blocked') bg = 'bg-red-500/80';
+                    if (task.status === 'bottleneck') bg = 'bg-red-500/80';
                     if (task.priority === 'critical') bg = 'bg-orange-500/80';
                     if (isComplete) bg = 'bg-green-500/80';
 

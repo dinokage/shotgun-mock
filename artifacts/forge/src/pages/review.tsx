@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { USERS } from '@/data/mockData';
-import { Play, Pause, SkipBack, SkipForward, Volume2, PenTool, MousePointer2, Type, Square, ArrowUpRight, CheckCircle2, MessageSquare, XCircle, ChevronLeft, Circle, Upload, Camera, Film, Loader2, SplitSquareHorizontal, Layers, Mic, Square as SquareIcon } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, PenTool, MousePointer2, Type, Square, ArrowUpRight, CheckCircle2, MessageSquare, XCircle, ChevronLeft, Circle, Upload, Camera, Film, Loader2, SplitSquareHorizontal, Layers, Mic, Square as SquareIcon, Package } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useHotkeys } from '@/hooks/use-hotkeys';
 import { Link } from 'wouter';
@@ -106,6 +106,8 @@ export default function Review() {
   const [abWipePosition, setAbWipePosition] = useState(50);
   const [isDraggingWipe, setIsDraggingWipe] = useState(false);
   const [onionSkin, setOnionSkin] = useState(false);
+  
+  const [reviewWorkflowStatus, setReviewWorkflowStatus] = useState<'wip' | 'lead-review' | 'manager-review' | 'approved'>('wip');
 
   const { toast } = useToast();
   const maxFrames = 240;
@@ -488,6 +490,28 @@ export default function Review() {
           <Button variant="outline" size="sm" onClick={() => setViewerMode(!viewerMode)}>
             {viewerMode ? 'Exit Viewer Mode' : 'Read-only Reviewer'}
           </Button>
+          {!viewerMode && (
+            <Button 
+              size="sm" 
+              className="bg-primary text-primary-foreground"
+              onClick={() => {
+                if (reviewWorkflowStatus === 'wip') {
+                  setReviewWorkflowStatus('lead-review');
+                  toast({ title: 'Submitted', description: 'Submitted for Lead Review' });
+                } else if (reviewWorkflowStatus === 'lead-review') {
+                  setReviewWorkflowStatus('manager-review');
+                  toast({ title: 'Submitted', description: 'Submitted for Manager Review' });
+                } else if (reviewWorkflowStatus === 'manager-review') {
+                  setReviewWorkflowStatus('approved');
+                  toast({ title: 'Approved', description: 'Review completed and approved' });
+                }
+              }}
+            >
+              {reviewWorkflowStatus === 'wip' ? 'Submit for Lead Review' : 
+               reviewWorkflowStatus === 'lead-review' ? 'Submit for Manager Review' : 
+               reviewWorkflowStatus === 'manager-review' ? 'Approve Review' : 'Approved'}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -586,6 +610,26 @@ export default function Review() {
             </div>
           )}
 
+          {/* Contextual Cut Management Overlay */}
+          {!viewerMode && (
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-6 z-30 pointer-events-none opacity-50 hover:opacity-100 transition-opacity">
+              <div className="bg-card/90 backdrop-blur border border-border rounded-lg p-2 flex flex-col items-center gap-1 shadow-lg pointer-events-auto cursor-pointer hover:border-primary/50 transition-colors">
+                <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Previous Shot</span>
+                <div className="w-32 h-18 bg-muted rounded overflow-hidden relative">
+                  <img src="https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=400&q=80" className="w-full h-full object-cover" alt="prev-shot" />
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center font-mono text-xs font-bold text-white">S01_030</div>
+                </div>
+              </div>
+              <div className="bg-card/90 backdrop-blur border border-border rounded-lg p-2 flex flex-col items-center gap-1 shadow-lg pointer-events-auto cursor-pointer hover:border-primary/50 transition-colors">
+                <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Next Shot</span>
+                <div className="w-32 h-18 bg-muted rounded overflow-hidden relative">
+                  <img src="https://images.unsplash.com/photo-1542204165-65bf26472b9b?w=400&q=80" className="w-full h-full object-cover" alt="next-shot" />
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center font-mono text-xs font-bold text-white">S01_050</div>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="flex-1 relative flex items-center justify-center">
             <div className="w-full aspect-video bg-muted/10 border border-border/20 shadow-2xl relative overflow-hidden">
               {videoClips.map(clip => {
@@ -593,31 +637,86 @@ export default function Review() {
                 return (
                   <ContextMenu key={clip.id}>
                     <ContextMenuTrigger asChild>
-                      <video 
-                        ref={(el) => {
-                          if (el) videoRefs.current.set(clip.id, el);
-                          else videoRefs.current.delete(clip.id);
-                        }}
-                        src={clip.src}
-                        className={`absolute inset-0 w-full h-full object-contain ${isActive ? 'opacity-100' : 'opacity-0 hidden'} ${tool === 'select' ? 'cursor-move' : ''}`}
-                        style={{ 
-                          opacity: clip.opacity / 100, 
-                          mixBlendMode: clip.blendMode,
-                          pointerEvents: tool === 'select' ? 'auto' : 'none',
-                          transform: `translate(${clip.x || 0}px, ${clip.y || 0}px) scale(${clip.scale || 1})`,
-                          zIndex: selectedAnnotationId === clip.id ? 5 : 1,
-                          clipPath: (abWipe && clip.id !== 'base-v1') ? `polygon(0 0, ${abWipePosition}% 0, ${abWipePosition}% 100%, 0 100%)` : undefined
-                        }}
-                        onMouseDown={(e) => {
-                          if (tool === 'select' && e.button !== 2) {
-                            e.stopPropagation();
-                            setSelectedAnnotationId(clip.id);
-                            setDraggingElement({ id: clip.id, type: 'video', startX: e.clientX, startY: e.clientY, initialX: clip.x || 0, initialY: clip.y || 0 });
-                          }
-                        }}
-                        muted
-                        playsInline
-                      />
+                      {(() => {
+                        const ext = clip.src.split('.').pop()?.toLowerCase();
+                        const isVideo = ['mp4', 'webm', 'mov'].includes(ext || '');
+                        const isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext || '');
+                        const isDCC = !isVideo && !isImage;
+
+                        if (isDCC) {
+                          return (
+                            <div className={`absolute inset-0 w-full h-full flex flex-col items-center justify-center bg-card text-muted-foreground ${isActive ? 'opacity-100' : 'opacity-0 hidden'} ${tool === 'select' ? 'cursor-move' : ''}`}
+                              style={{ 
+                                opacity: clip.opacity / 100,
+                                zIndex: selectedAnnotationId === clip.id ? 5 : 1,
+                              }}
+                              onMouseDown={(e) => {
+                                if (tool === 'select' && e.button !== 2) {
+                                  e.stopPropagation();
+                                  setSelectedAnnotationId(clip.id);
+                                  setDraggingElement({ id: clip.id, type: 'video', startX: e.clientX, startY: e.clientY, initialX: clip.x || 0, initialY: clip.y || 0 });
+                                }
+                              }}
+                            >
+                              <Package className="w-16 h-16 mb-4 opacity-50" />
+                              <div className="text-xl font-bold">{clip.src.split('/').pop()}</div>
+                              <div className="text-sm mt-2">DCC Asset File (No Web Preview Available)</div>
+                            </div>
+                          );
+                        }
+                        
+                        if (isImage) {
+                           return (
+                             <img 
+                              src={clip.src}
+                              className={`absolute inset-0 w-full h-full object-contain ${isActive ? 'opacity-100' : 'opacity-0 hidden'} ${tool === 'select' ? 'cursor-move' : ''}`}
+                              style={{ 
+                                opacity: clip.opacity / 100, 
+                                mixBlendMode: clip.blendMode,
+                                pointerEvents: tool === 'select' ? 'auto' : 'none',
+                                transform: `translate(${clip.x || 0}px, ${clip.y || 0}px) scale(${clip.scale || 1})`,
+                                zIndex: selectedAnnotationId === clip.id ? 5 : 1,
+                                clipPath: (abWipe && clip.id !== 'base-v1') ? `polygon(0 0, ${abWipePosition}% 0, ${abWipePosition}% 100%, 0 100%)` : undefined
+                              }}
+                              onMouseDown={(e) => {
+                                if (tool === 'select' && e.button !== 2) {
+                                  e.stopPropagation();
+                                  setSelectedAnnotationId(clip.id);
+                                  setDraggingElement({ id: clip.id, type: 'video', startX: e.clientX, startY: e.clientY, initialX: clip.x || 0, initialY: clip.y || 0 });
+                                }
+                              }}
+                             />
+                           );
+                        }
+
+                        return (
+                          <video 
+                            ref={(el) => {
+                              if (el) videoRefs.current.set(clip.id, el);
+                              else videoRefs.current.delete(clip.id);
+                            }}
+                            src={clip.src}
+                            className={`absolute inset-0 w-full h-full object-contain ${isActive ? 'opacity-100' : 'opacity-0 hidden'} ${tool === 'select' ? 'cursor-move' : ''}`}
+                            style={{ 
+                              opacity: clip.opacity / 100, 
+                              mixBlendMode: clip.blendMode,
+                              pointerEvents: tool === 'select' ? 'auto' : 'none',
+                              transform: `translate(${clip.x || 0}px, ${clip.y || 0}px) scale(${clip.scale || 1})`,
+                              zIndex: selectedAnnotationId === clip.id ? 5 : 1,
+                              clipPath: (abWipe && clip.id !== 'base-v1') ? `polygon(0 0, ${abWipePosition}% 0, ${abWipePosition}% 100%, 0 100%)` : undefined
+                            }}
+                            onMouseDown={(e) => {
+                              if (tool === 'select' && e.button !== 2) {
+                                e.stopPropagation();
+                                setSelectedAnnotationId(clip.id);
+                                setDraggingElement({ id: clip.id, type: 'video', startX: e.clientX, startY: e.clientY, initialX: clip.x || 0, initialY: clip.y || 0 });
+                              }
+                            }}
+                            muted
+                            playsInline
+                          />
+                        );
+                      })()}
                     </ContextMenuTrigger>
                     <ContextMenuContent className="w-48 z-50">
                       <ContextMenuItem 
@@ -973,15 +1072,37 @@ export default function Review() {
             
             <TabsContent value="comments" className="flex-1 flex flex-col m-0 h-full overflow-hidden data-[state=inactive]:hidden">
               <div className="p-4 border-b border-border bg-muted/20 shrink-0">
-                <div className="text-xs font-semibold text-muted-foreground mb-2">APPROVAL CHAIN</div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-xs font-semibold text-muted-foreground">APPROVAL CHAIN</div>
+                </div>
                 <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-sm">
-                    <CheckCircle2 className="w-4 h-4 text-[#1E7A34]" /> Maya Chen <span className="text-xs text-muted-foreground ml-auto">Oct 1</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/50 border-t-primary animate-spin" /> 
-                    Aisha Diallo <span className="text-xs text-muted-foreground ml-auto">Pending</span>
-                  </div>
+                  {reviewWorkflowStatus === 'wip' ? (
+                    <div className="text-sm text-muted-foreground italic">No review requested yet.</div>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-2 text-sm">
+                        <CheckCircle2 className="w-4 h-4 text-[#1E7A34]" /> Artist <span className="text-xs text-muted-foreground ml-auto">Submitted</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm">
+                        {reviewWorkflowStatus === 'lead-review' ? (
+                          <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/50 border-t-primary animate-spin" /> 
+                        ) : (
+                          <CheckCircle2 className="w-4 h-4 text-[#1E7A34]" />
+                        )}
+                        Lead <span className="text-xs text-muted-foreground ml-auto">{reviewWorkflowStatus === 'lead-review' ? 'Pending' : 'Approved'}</span>
+                      </div>
+                      {(reviewWorkflowStatus === 'manager-review' || reviewWorkflowStatus === 'approved') && (
+                        <div className="flex items-center gap-2 text-sm">
+                          {reviewWorkflowStatus === 'manager-review' ? (
+                            <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/50 border-t-primary animate-spin" /> 
+                          ) : (
+                            <CheckCircle2 className="w-4 h-4 text-[#1E7A34]" />
+                          )}
+                          Manager <span className="text-xs text-muted-foreground ml-auto">{reviewWorkflowStatus === 'manager-review' ? 'Pending' : 'Approved'}</span>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
               

@@ -1,66 +1,68 @@
 import { useState, useMemo } from 'react';
-import { TASKS, SHOTS, USERS, PROJECTS, DEPARTMENTS } from '@/data/mockData';
-import { useAuthStore } from '@/store/auth';
-import { Input } from '@/components/ui/input';
+import { Search, Filter, Download, Save, TableProperties } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, Filter, Download, Save, CheckSquare, Square, Grid3X3, TableProperties } from 'lucide-react';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { useAuthStore } from '@/store/auth';
 import { useToast } from '@/hooks/use-toast';
+import { PROJECTS, EPISODES, SEQUENCES, SHOTS, USERS, Shot } from '@/data/mockData';
 
 export default function TrackingGrid() {
   const { currentUser } = useAuthStore();
   const { toast } = useToast();
+  
   const [search, setSearch] = useState('');
   const [projectFilter, setProjectFilter] = useState('all');
-  const [deptFilter, setDeptFilter] = useState('all');
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  // Join tasks with their associated shots for a unified view
   const trackingData = useMemo(() => {
-    return TASKS.map(task => {
-      const shot = SHOTS.find(s => s.id === task.shotId);
-      const assignee = USERS.find(u => u.id === task.assigneeId);
-      const project = PROJECTS.find(p => p.id === task.projectId);
-      return {
-        ...task,
-        shotName: shot?.name || '-',
-        sequence: shot?.sequence || '-',
-        assigneeName: assignee?.name || 'Unassigned',
-        projectName: project?.name || 'Unknown',
-      };
-    }).filter(t => {
-      const matchesSearch = t.title.toLowerCase().includes(search.toLowerCase()) || t.shotName.toLowerCase().includes(search.toLowerCase());
-      const matchesProj = projectFilter === 'all' || t.projectId === projectFilter;
-      const matchesDept = deptFilter === 'all' || t.department === deptFilter;
-      return matchesSearch && matchesProj && matchesDept;
-    });
-  }, [search, projectFilter, deptFilter]);
-
-  const handleSelectAll = () => {
-    if (selectedIds.size === trackingData.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(trackingData.map(t => t.id)));
+    let rowIndex = 1;
+    
+    // Filter shots based on project
+    let filteredShots = SHOTS;
+    if (projectFilter !== 'all') {
+      filteredShots = filteredShots.filter(s => s.projectId === projectFilter);
     }
-  };
-
-  const toggleSelect = (id: string) => {
-    const newSet = new Set(selectedIds);
-    if (newSet.has(id)) newSet.delete(id);
-    else newSet.add(id);
-    setSelectedIds(newSet);
-  };
-
-  const handleBulkUpdate = () => {
-    if (selectedIds.size === 0) return;
-    toast({
-      title: "Bulk Update Successful",
-      description: `Applied changes to ${selectedIds.size} rows simultaneously.`,
+    
+    // Sort logically by Project -> Episode -> Sequence -> Shot
+    filteredShots = [...filteredShots].sort((a, b) => {
+      if (a.projectId !== b.projectId) return String(a.projectId || '').localeCompare(String(b.projectId || ''));
+      if (a.episodeId !== b.episodeId) return String(a.episodeId || '').localeCompare(String(b.episodeId || ''));
+      if (a.sequenceId !== b.sequenceId) return String(a.sequenceId || '').localeCompare(String(b.sequenceId || ''));
+      return String(a.name || '').localeCompare(String(b.name || ''));
     });
-    setSelectedIds(new Set());
-  };
+
+    return filteredShots.filter(s => {
+      if (!search) return true;
+      const term = search.toLowerCase();
+      const projName = PROJECTS.find(p => p.id === s.projectId)?.name || '';
+      const epName = EPISODES.find(e => e.id === s.episodeId)?.name || '';
+      return String(s.name || '').toLowerCase().includes(term) || 
+             String(s.sequence || '').toLowerCase().includes(term) || 
+             projName.toLowerCase().includes(term) ||
+             epName.toLowerCase().includes(term);
+    }).map(shot => {
+      const proj = PROJECTS.find(p => p.id === shot.projectId);
+      const ep = EPISODES.find(e => e.id === shot.episodeId);
+      const seq = SEQUENCES.find(sq => sq.id === shot.sequenceId);
+      const assignee = USERS.find(u => u.id === shot.assigneeId);
+
+      return {
+        id: shot.id,
+        no: rowIndex++,
+        project: proj?.name || 'Unknown',
+        episode: ep?.name || 'EP_01',
+        sequence: seq?.name || shot.sequence,
+        shot: shot.name,
+        assignee: assignee?.name || 'Unassigned',
+        status: shot.status,
+        internalReview: shot.internalReviewStatus,
+        clientReview: shot.clientReviewStatus,
+        usdVersion: shot.usdVersion || 'v001.usd',
+        updatedAt: shot.updatedAt,
+        notes: shot.notes || 'No notes.',
+      };
+    });
+  }, [search, projectFilter]);
 
   if (!currentUser || !['vfx_producer', 'production_manager', 'coordinator', 'supervisor'].includes(currentUser.role)) {
     return (
@@ -72,126 +74,128 @@ export default function TrackingGrid() {
     );
   }
 
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'complete': return 'text-emerald-500';
+      case 'in-progress': return 'text-amber-500';
+      case 'bottleneck': return 'text-red-500';
+      case 'review': return 'text-purple-500';
+      default: return 'text-muted-foreground';
+    }
+  };
+
+  const getReviewColor = (status: string) => {
+    switch (status) {
+      case 'approved': return 'text-emerald-500 bg-emerald-500/10';
+      case 'rejected': return 'text-red-500 bg-red-500/10';
+      case 'changes-requested': return 'text-orange-500 bg-orange-500/10';
+      case 'pending': return 'text-blue-500 bg-blue-500/10';
+      default: return 'text-muted-foreground bg-muted/20';
+    }
+  };
+
   return (
-    <div className="flex flex-col h-full bg-background p-6 space-y-4">
+    <div className="flex flex-col h-[calc(100vh-3.5rem)] p-4 bg-[#0a0a0a] text-foreground">
       {/* Header */}
-      <div className="flex justify-between items-end">
+      <div className="flex items-center justify-between shrink-0 mb-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight mb-1 flex items-center gap-2">
-            <Grid3X3 className="w-6 h-6 text-primary" /> Global Tracking Grid
-          </h1>
-          <p className="text-muted-foreground text-sm">Spreadsheet bulk-edit view for Production.</p>
+          <h1 className="text-2xl font-bold tracking-tight text-white">Global Tracking Grid</h1>
+          <p className="text-[#888] text-sm mt-1">Hierarchical sequence & shot tracking with Review pipelines.</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => toast({ title: "Exporting CSV..." })}>
-            <Download className="w-4 h-4 mr-2" /> Export
+          <Button variant="outline" size="sm" onClick={() => toast({ title: "Exporting to Excel..." })} className="border-[#333] text-[#ccc]">
+            <Download className="w-4 h-4 mr-2" /> Export CSV
           </Button>
-          <Button size="sm" onClick={handleBulkUpdate} disabled={selectedIds.size === 0} className="bg-emerald-600 hover:bg-emerald-700 text-white">
-            <Save className="w-4 h-4 mr-2" /> Bulk Update ({selectedIds.size})
+          <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white border-0">
+            <Save className="w-4 h-4 mr-2" /> Save Changes
           </Button>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-3 p-3 bg-card border border-border rounded-lg shadow-sm shrink-0">
+      <div className="flex items-center gap-3 p-3 bg-[#111] border border-[#333] rounded-sm mb-4 shrink-0">
         <div className="relative flex-1 max-w-sm">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#666]" />
           <Input 
-            placeholder="Search tasks, shots, sequences..." 
-            className="pl-9 h-9" 
+            placeholder="Search shot, sequence, or episode..." 
+            className="pl-9 h-9 bg-[#1a1a1a] border-[#333] text-white" 
             value={search} 
             onChange={(e) => setSearch(e.target.value)} 
           />
         </div>
         <Select value={projectFilter} onValueChange={setProjectFilter}>
-          <SelectTrigger className="w-48 h-9"><SelectValue placeholder="Project" /></SelectTrigger>
-          <SelectContent>
+          <SelectTrigger className="w-48 h-9 bg-[#1a1a1a] border-[#333] text-white"><SelectValue placeholder="Project" /></SelectTrigger>
+          <SelectContent className="bg-[#1a1a1a] border-[#333] text-white">
             <SelectItem value="all">All Projects</SelectItem>
             {PROJECTS.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Select value={deptFilter} onValueChange={setDeptFilter}>
-          <SelectTrigger className="w-40 h-9"><SelectValue placeholder="Department" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Depts</SelectItem>
-            {DEPARTMENTS.map(d => <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground"><Filter className="w-4 h-4" /></Button>
+        <Button variant="ghost" size="icon" className="h-9 w-9 text-[#888] hover:text-white"><Filter className="w-4 h-4" /></Button>
       </div>
 
       {/* Grid */}
-      <div className="flex-1 bg-card border border-border rounded-lg overflow-hidden shadow-sm flex flex-col">
+      <div className="flex-1 border border-[#333] rounded-sm overflow-hidden flex flex-col bg-[#0f0f0f]">
         <div className="overflow-auto flex-1">
-          <table className="w-full text-left text-[13px] whitespace-nowrap">
-            <thead className="sticky top-0 bg-muted/80 backdrop-blur-md z-10 shadow-[0_1px_0_var(--border)]">
-              <tr className="text-muted-foreground">
-                <th className="h-10 px-3 w-10 text-center cursor-pointer" onClick={handleSelectAll}>
-                  {selectedIds.size === trackingData.length && trackingData.length > 0 ? (
-                    <CheckSquare className="w-4 h-4 mx-auto text-primary" />
-                  ) : (
-                    <Square className="w-4 h-4 mx-auto" />
-                  )}
-                </th>
-                <th className="h-10 px-3 font-medium">Shot / Asset</th>
-                <th className="h-10 px-3 font-medium">Task</th>
-                <th className="h-10 px-3 font-medium">Dept</th>
-                <th className="h-10 px-3 font-medium">Assignee</th>
-                <th className="h-10 px-3 font-medium">Status</th>
-                <th className="h-10 px-3 font-medium">Est. (hrs)</th>
-                <th className="h-10 px-3 font-medium">Due Date</th>
-                <th className="h-10 px-3 font-medium">Project</th>
+          <table className="w-full text-left text-[12px] border-collapse" style={{ minWidth: '1400px' }}>
+            <thead className="sticky top-0 z-10 bg-[#1e237e] text-white shadow-sm">
+              <tr>
+                <th className="border border-[#333] p-2 font-medium w-12 text-center bg-[#1e237e]">No</th>
+                <th className="border border-[#333] p-2 font-medium w-32 bg-[#1e237e]">Project</th>
+                <th className="border border-[#333] p-2 font-medium w-32 bg-[#1e237e]">Episode</th>
+                <th className="border border-[#333] p-2 font-medium w-32 bg-[#1e237e]">Sequence</th>
+                <th className="border border-[#333] p-2 font-medium w-32 bg-[#1e237e]">Shot</th>
+                <th className="border border-[#333] p-2 font-medium w-32 bg-[#1e237e]">Assignee</th>
+                <th className="border border-[#333] p-2 font-medium w-24 text-center bg-[#1e237e]">Status</th>
+                <th className="border border-[#333] p-2 font-medium w-32 text-center bg-[#1e237e]">USD Version</th>
+                <th className="border border-[#333] p-2 font-medium w-32 text-center bg-[#1e237e]">Internal Review</th>
+                <th className="border border-[#333] p-2 font-medium w-32 text-center bg-[#1e237e]">Client Review</th>
+                <th className="border border-[#333] p-2 font-medium text-center bg-[#1e237e]">Production Notes</th>
               </tr>
             </thead>
-            <tbody>
-              {trackingData.map(row => (
-                <tr 
-                  key={row.id} 
-                  className={`border-b border-border/50 hover:bg-muted/30 transition-colors cursor-pointer ${selectedIds.has(row.id) ? 'bg-primary/5' : ''}`}
-                  onClick={() => toggleSelect(row.id)}
-                >
-                  <td className="h-10 px-3 text-center" onClick={(e) => e.stopPropagation()}>
-                    <button onClick={() => toggleSelect(row.id)} className="focus:outline-none">
-                      {selectedIds.has(row.id) ? (
-                        <CheckSquare className="w-4 h-4 text-primary" />
-                      ) : (
-                        <Square className="w-4 h-4 text-muted-foreground opacity-30 hover:opacity-100 transition-opacity" />
-                      )}
-                    </button>
+            <tbody className="bg-[#1a1a1a]">
+              {trackingData.map((row, i) => (
+                <tr key={row.id} className="hover:bg-[#252525] transition-colors">
+                  <td className="border border-[#333] p-2 text-center text-[#888]">{row.no}</td>
+                  <td className="border border-[#333] p-2 text-white font-medium">{row.project}</td>
+                  <td className="border border-[#333] p-2 text-[#ccc]">{row.episode}</td>
+                  <td className="border border-[#333] p-2 text-[#ccc]">{row.sequence}</td>
+                  <td className="border border-[#333] p-2 text-[#4facfe] font-medium">{row.shot}</td>
+                  <td className="border border-[#333] p-2 text-[#aaa]">{row.assignee}</td>
+                  <td className={`border border-[#333] p-2 text-center font-semibold capitalize ${getStatusColor(row.status)}`}>
+                    {row.status}
                   </td>
-                  <td className="h-10 px-3 font-medium text-foreground">{row.shotName} <span className="text-[10px] text-muted-foreground font-normal ml-1">{row.sequence}</span></td>
-                  <td className="h-10 px-3 truncate max-w-[200px]">{row.title}</td>
-                  <td className="h-10 px-3"><Badge variant="outline" className="text-[10px] font-normal px-1.5">{row.department}</Badge></td>
-                  <td className="h-10 px-3 text-muted-foreground">{row.assigneeName}</td>
-                  <td className="h-10 px-3">
-                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${
-                      row.status === 'complete' ? 'bg-green-500/10 text-green-600 border-green-500/20' :
-                      row.status === 'review' ? 'bg-purple-500/10 text-purple-600 border-purple-500/20' :
-                      row.status === 'blocked' ? 'bg-red-500/10 text-red-600 border-red-500/20' :
-                      row.status === 'in-progress' ? 'bg-blue-500/10 text-blue-600 border-blue-500/20' :
-                      'bg-muted text-muted-foreground border-transparent'
-                    }`}>
-                      {row.status.replace('-', ' ').toUpperCase()}
+                  <td className="border border-[#333] p-2 text-center text-xs text-[#00cec9] font-mono">{row.usdVersion}</td>
+                  <td className="border border-[#333] p-2 text-center">
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${getReviewColor(row.internalReview)}`}>
+                      {row.internalReview}
                     </span>
                   </td>
-                  <td className="h-10 px-3 text-right tabular-nums">{row.estimatedHours}</td>
-                  <td className="h-10 px-3 text-muted-foreground tabular-nums">{row.dueDate}</td>
-                  <td className="h-10 px-3 text-muted-foreground truncate max-w-[150px]">{row.projectName}</td>
+                  <td className="border border-[#333] p-2 text-center">
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${getReviewColor(row.clientReview)}`}>
+                      {row.clientReview}
+                    </span>
+                  </td>
+                  <td className="border border-[#333] p-2 text-[11px] text-[#ccc] truncate max-w-[200px]">{row.notes}</td>
                 </tr>
               ))}
               {trackingData.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="h-32 text-center text-muted-foreground">
-                    No results found matching your filters.
+                  <td colSpan={11} className="text-center p-8 text-muted-foreground">
+                    No tracking data found matching the filters.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
-        <div className="h-10 bg-muted/30 border-t border-border flex items-center justify-between px-4 text-xs text-muted-foreground shrink-0">
-          <span>{trackingData.length} total rows</span>
-          {selectedIds.size > 0 && <span className="text-primary font-medium">{selectedIds.size} selected</span>}
+        
+        {/* Footer Stats */}
+        <div className="bg-[#111] border-t border-[#333] p-2 flex justify-between items-center text-xs text-[#888]">
+          <div>Showing {trackingData.length} entries</div>
+          <div className="flex gap-4">
+            <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> Approved: {trackingData.filter(d => d.clientReview === 'approved').length}</span>
+            <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-orange-500"></div> Pending: {trackingData.filter(d => d.clientReview === 'pending').length}</span>
+          </div>
         </div>
       </div>
     </div>

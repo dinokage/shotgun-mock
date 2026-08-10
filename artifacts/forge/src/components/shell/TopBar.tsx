@@ -11,6 +11,7 @@ import { NOTIFICATIONS, DEPARTMENTS, ROLE_LABELS } from '@/data/mockData';
 import { useUIStore } from '@/store/ui';
 import { useAuthStore } from '@/store/auth';
 import { Link, useLocation } from 'wouter';
+import { TimeClockWidget } from '@/components/shared/TimeClockWidget';
 
 export function TopBar() {
   const { setTheme, theme } = useTheme();
@@ -29,9 +30,10 @@ export function TopBar() {
   };
 
   return (
-    <div className="h-14 border-b border-border bg-card/80 backdrop-blur-md flex items-center justify-between px-4 sticky top-0 z-30">
+    <header className="h-14 border-b border-border bg-card/80 backdrop-blur-md sticky top-0 z-50 flex items-center justify-between px-4 w-full">
+      
       {/* Left: Brand + Role */}
-      <div className="flex items-center gap-3 w-1/3">
+      <div className="flex items-center gap-3 shrink-0">
         <Link href="/" className="flex items-center gap-2 group">
           <div className="w-7 h-7 bg-primary rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform">
             <div className="w-3.5 h-3.5 bg-card rounded-sm" />
@@ -42,38 +44,38 @@ export function TopBar() {
         <div className="h-5 w-px bg-border hidden md:block" />
 
         {/* Current User Role/Dept Badge */}
-        <div className={`hidden md:flex items-center gap-2 px-2.5 py-1 rounded-md border text-xs shadow-sm transition-all ${
+        <div className={`hidden md:flex items-center gap-2 px-2.5 py-1 rounded-md border text-xs shadow-sm transition-all shrink-0 ${
           ['vfx_producer', 'production_manager', 'coordinator', 'supervisor', 'lead'].includes(currentUser.role)
             ? 'bg-gradient-to-r from-amber-500/10 to-orange-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400'
             : 'bg-muted/50 border-border/50 text-foreground'
         }`}>
-          <Shield className={`w-3.5 h-3.5 ${['vfx_producer', 'production_manager', 'coordinator', 'supervisor', 'lead'].includes(currentUser.role) ? 'text-amber-500' : 'text-primary'}`} />
-          <span className="font-semibold">{ROLE_LABELS[currentUser.role] || currentUser.title}</span>
+          <Shield className={`w-3.5 h-3.5 shrink-0 ${['vfx_producer', 'production_manager', 'coordinator', 'supervisor', 'lead'].includes(currentUser.role) ? 'text-amber-500' : 'text-primary'}`} />
+          <span className="font-semibold truncate">{ROLE_LABELS[currentUser.role] || currentUser.title}</span>
           {dept && (
             <>
-              <span className="opacity-50">•</span>
-              <span className="font-medium opacity-80">{dept.abbreviation}</span>
+              <span className="opacity-50 shrink-0">•</span>
+              <span className="font-medium opacity-80 shrink-0">{dept.abbreviation}</span>
             </>
           )}
         </div>
       </div>
 
       {/* Center: Search */}
-      <div className="flex-1 max-w-md relative">
+      <div className="flex-1 max-w-md relative mx-4 min-w-0 overflow-hidden hidden md:block">
         <button
           onClick={() => setSearchOpen(true)}
-          className="w-full flex items-center gap-2 px-3 py-1.5 bg-muted/50 border border-transparent rounded-lg text-sm text-muted-foreground hover:bg-muted hover:border-border transition-all"
+          className="w-full flex items-center gap-2 px-3 py-1.5 bg-muted/50 border border-transparent rounded-lg text-sm text-muted-foreground hover:bg-muted hover:border-border transition-all min-w-0 overflow-hidden"
         >
-          <Search className="w-4 h-4" />
-          <span className="flex-1 text-left">Search projects, assets, tasks...</span>
-          <kbd className="hidden md:inline-flex h-5 items-center gap-0.5 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+          <Search className="w-4 h-4 shrink-0" />
+          <span className="text-left flex-1 truncate min-w-0">Search projects, assets, tasks...</span>
+          <kbd className="hidden lg:inline-flex shrink-0 h-5 items-center gap-0.5 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
             ⌘K
           </kbd>
         </button>
       </div>
 
       {/* Right: Actions */}
-      <div className="flex items-center gap-2 w-1/3 justify-end">
+      <div className="flex items-center gap-2 shrink-0 ml-auto justify-end">
         {['vfx_producer', 'production_manager', 'coordinator', 'supervisor', 'lead'].includes(currentUser.role) && (
           <Button
             onClick={() => setCreateTaskModalOpen(true)}
@@ -82,6 +84,9 @@ export function TopBar() {
             Assign Task
           </Button>
         )}
+        
+        <TimeClockWidget />
+
         {/* Theme Toggle */}
         <Button
           variant="ghost"
@@ -158,6 +163,6 @@ export function TopBar() {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-    </div>
+    </header>
   );
 }

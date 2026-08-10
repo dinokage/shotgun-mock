@@ -66,7 +66,12 @@ export default function Profile() {
           </div>
         </div>
         
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          {currentUser && !isMe && (
+            <Link href={`/chat?user=${user.id}`}>
+              <Button variant="outline" className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"><Mail className="w-4 h-4 mr-2" /> Message</Button>
+            </Link>
+          )}
           {currentUser && !isMe && (
             (['vfx_producer', 'production_manager', 'coordinator'].includes(currentUser.role) || 
             (['supervisor', 'lead'].includes(currentUser.role) && currentUser.departmentId === user.departmentId))
@@ -153,7 +158,7 @@ export default function Profile() {
               <Card className="border-border/50">
                 <CardContent className="p-0">
                   <div className="divide-y divide-border">
-                    {myTasks.filter(t => t.status !== 'complete').slice(0, 10).map(task => (
+                    {myTasks.filter(t => t.status !== 'approved').slice(0, 10).map(task => (
                       <div key={task.id} className="p-4 hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => setActiveTaskDrawer(task.id)}>
                         <div className="flex items-start justify-between mb-2">
                           <div className="flex items-center gap-3">
@@ -169,7 +174,7 @@ export default function Profile() {
                         </div>
                       </div>
                     ))}
-                    {myTasks.filter(t => t.status !== 'complete').length === 0 && (
+                    {myTasks.filter(t => t.status !== 'approved').length === 0 && (
                       <div className="p-8 text-center text-muted-foreground">
                         No active tasks.
                       </div>

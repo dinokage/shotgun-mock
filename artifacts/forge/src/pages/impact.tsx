@@ -4,12 +4,13 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PROJECTS, ASSETS, SHOTS, TASKS, USERS } from '@/data/mockData';
-import { Maximize2, ZoomIn, ZoomOut, Filter, Activity, GitFork, Crosshair, Users as UsersIcon, ListTodo, Film, Package, FolderOpen, AlertTriangle } from 'lucide-react';
+import { Maximize2, ZoomIn, ZoomOut, Filter, Activity, GitFork, Crosshair, Users as UsersIcon, ListTodo, Film, Package, FolderOpen, AlertTriangle, Sparkles } from 'lucide-react';
 import * as d3 from 'd3-force';
 import * as d3Zoom from 'd3-zoom';
 import { select } from 'd3-selection';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useToast } from '@/hooks/use-toast';
 
 type NodeType = 'project' | 'asset' | 'shot' | 'task' | 'user';
 
@@ -38,13 +39,14 @@ const TYPE_COLORS: Record<NodeType, string> = {
 
 const getGlow = (status?: string) => {
   const s = status?.toLowerCase();
-  if (s === 'blocked' || s === 'failed') return 'drop-shadow(0 0 10px rgba(239, 68, 68, 0.9))';
+  if (s === 'bottleneck' || s === 'failed') return 'drop-shadow(0 0 10px rgba(239, 68, 68, 0.9))';
   if (s === 'in-progress' || s === 'review' || s === 'wip') return 'drop-shadow(0 0 8px rgba(249, 115, 22, 0.7))';
   if (s === 'approved' || s === 'completed') return 'drop-shadow(0 0 6px rgba(34, 197, 94, 0.5))';
   return 'drop-shadow(0 4px 6px rgba(0,0,0,0.5))';
 };
 
 export default function ImpactAnalysis() {
+  const { toast } = useToast();
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [activeProject, setActiveProject] = useState<string>(PROJECTS[0].id);
@@ -197,6 +199,15 @@ export default function ImpactAnalysis() {
             </SelectContent>
           </Select>
           <Button variant="outline" className="gap-2"><Filter className="w-4 h-4" /> Filters</Button>
+          <Button 
+            className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white mr-2"
+            onClick={() => {
+              toast({ title: "Scanning Pipeline...", description: "AI analyzing dependency trees for hidden bottlenecks...", duration: 2000 });
+              setTimeout(() => toast({ title: "Scan Complete", description: "Found 3 hidden bottlenecks in LookDev.", variant: "destructive" }), 2000);
+            }}
+          >
+            <Activity className="w-4 h-4 animate-pulse" /> Automated Pipeline Scanner
+          </Button>
           <Dialog>
             <DialogTrigger asChild>
               <Button className="gap-2"><Activity className="w-4 h-4" /> Analyze Risk</Button>
@@ -212,34 +223,36 @@ export default function ImpactAnalysis() {
                   <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
                     <h4 className="font-semibold text-red-500 flex items-center gap-2 mb-2"><AlertTriangle className="w-4 h-4" /> High Risk Chain Detected</h4>
                     <p className="text-sm text-foreground/80 leading-relaxed">
-                      Rigging task "Hero Character Rig v14" is currently <span className="font-semibold text-red-400">Blocked</span>. This creates a critical bottleneck for 12 downstream animation tasks and 4 lighting sequences. Estimated schedule impact: +3 days.
+                      Rigging task "Hero Character Rig v14" is currently <span className="font-semibold text-red-400">Bottleneck</span>. This creates a critical bottleneck for 12 downstream animation tasks and 4 lighting sequences. Estimated schedule impact: +3 days.
                     </p>
                   </div>
                   
                   <div>
                     <h4 className="font-semibold mb-3">Suggested Mitigations</h4>
-                    <ul className="space-y-3">
-                      <li className="flex gap-3 text-sm">
-                        <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center shrink-0 mt-0.5">1</div>
-                        <div>
-                          <p className="font-medium">Reassign Rigging Task</p>
-                          <p className="text-muted-foreground mt-0.5">Assign "Hero Character Rig v14" to Senior TD (Yuki Tanaka) who has 30% available capacity this week.</p>
-                        </div>
-                      </li>
-                      <li className="flex gap-3 text-sm">
-                        <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center shrink-0 mt-0.5">2</div>
-                        <div>
-                          <p className="font-medium">Parallelize Animation</p>
-                          <p className="text-muted-foreground mt-0.5">Allow animators to begin blocking using proxy rig v13 while v14 skin weights are finalized.</p>
-                        </div>
-                      </li>
-                    </ul>
+                    <div className="space-y-3">
+                      <div className="p-3 bg-card border border-border rounded-lg text-sm">
+                        <div className="font-medium text-blue-400 mb-1">Option A: Reassign & Expedite (Recommended)</div>
+                        <div className="text-muted-foreground">Temporarily reassign 2 riggers from Project B to assist. Clears bottleneck in 24h. Impact to Project B: Negligible.</div>
+                      </div>
+                      <div className="p-3 bg-card border border-border rounded-lg text-sm">
+                        <div className="font-medium text-orange-400 mb-1">Option B: Parallelize Downstream</div>
+                        <div className="text-muted-foreground">Approve partial rig release. Allows Animators to start blocking while skin weights are finalized. Risk of rework: Medium.</div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </ScrollArea>
-              <DialogFooter className="mt-6">
+              <DialogFooter className="mt-6 border-t border-border pt-4">
                 <Button variant="outline">Dismiss</Button>
-                <Button>Apply Mitigations</Button>
+                <Button 
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2"
+                  onClick={() => {
+                    toast({ title: 'Applying Mitigations', description: 'Reassigning 2 riggers to clear bottleneck...', duration: 2000 });
+                    setTimeout(() => toast({ title: 'Mitigation Applied', description: 'Bottleneck cleared. Schedule optimized.', variant: 'default' }), 2000);
+                  }}
+                >
+                  <Sparkles className="w-4 h-4" /> Apply AI Mitigations
+                </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
@@ -383,7 +396,7 @@ export default function ImpactAnalysis() {
                     return (
                       <div key={i} className="flex items-center gap-2 text-xs p-2 rounded bg-muted/40 border border-border">
                         <ArrowRight className="w-3 h-3 text-orange-400 rotate-180" />
-                        <span className="font-medium text-orange-400">Blocked By:</span> {src.name}
+                        <span className="font-medium text-orange-400">Bottleneck By:</span> {src.name}
                       </div>
                     );
                   })}

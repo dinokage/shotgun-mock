@@ -1,16 +1,19 @@
 import { useState } from 'react';
 import { useAuthStore } from '@/store/auth';
 import { useUIStore } from '@/store/ui';
+import { useTasksStore } from '@/store/tasks';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { TASKS, USERS, PROJECTS, DEPARTMENTS, Task, TaskStatus } from '@/data/mockData';
+import { USERS, PROJECTS, DEPARTMENTS, TASKS, Task, TaskStatus } from '@/data/mockData';
+import { UploadCloud } from 'lucide-react';
 
 export function CreateTaskModal() {
   const { createTaskModalOpen, setCreateTaskModalOpen } = useUIStore();
+  const { addTask } = useTasksStore();
   const { currentUser } = useAuthStore();
   const { toast } = useToast();
 
@@ -67,8 +70,8 @@ export function CreateTaskModal() {
       pipelinePhase: 'MAIN',
     };
 
-    // Add to mock data
-    TASKS.unshift(newTask);
+    // Add to Zustand store
+    addTask(newTask);
 
     toast({
       title: 'Task Assigned',
@@ -146,6 +149,15 @@ export function CreateTaskModal() {
                 <SelectItem value="critical">Critical</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="space-y-2 pt-2">
+            <Label>Attachments (Reference Art, Scripts, DCC Files)</Label>
+            <div className="border-2 border-dashed border-border rounded-lg p-6 text-center hover:bg-muted/50 transition-colors cursor-pointer">
+              <UploadCloud className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
+              <p className="text-sm font-medium">Drag & drop files here, or click to browse</p>
+              <p className="text-xs text-muted-foreground mt-1">Supports any format (.ma, .blend, .pdf, .mp4, .png)</p>
+            </div>
           </div>
 
           <DialogFooter className="mt-6">

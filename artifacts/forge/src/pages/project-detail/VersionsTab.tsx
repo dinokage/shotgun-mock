@@ -3,7 +3,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { UserAvatar } from '@/components/shared/UserAvatar';
 import { useState } from 'react';
-import { GitCommit, ArrowRight } from 'lucide-react';
+import { GitCommit, ArrowRight, UploadCloud } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 export default function VersionsTab({ project }: { project: any }) {
@@ -12,9 +13,12 @@ export default function VersionsTab({ project }: { project: any }) {
   return (
     <div className="flex h-full gap-6">
       <div className="w-2/3 flex flex-col h-full border border-border rounded-lg bg-card overflow-hidden">
-        <div className="p-4 border-b border-border font-semibold flex items-center justify-between">
-          Versions & Publishes
-          <div className="text-sm font-normal text-muted-foreground">Showing latest</div>
+        <div className="p-4 border-b border-border flex items-center justify-between bg-muted/20">
+          <div className="font-semibold">Versions & Publishes</div>
+          <Button size="sm" variant="outline" className="h-8 gap-2">
+            <UploadCloud className="w-4 h-4" />
+            Upload New Version (Any Format)
+          </Button>
         </div>
         <div className="flex-1 overflow-y-auto p-4 grid grid-cols-2 gap-4 content-start">
           {VERSIONS.map(v => {

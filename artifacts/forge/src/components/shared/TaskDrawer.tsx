@@ -1,5 +1,5 @@
 import { useUIStore } from '@/store/ui';
-import { TASKS, USERS, PROJECTS, ASSETS, SHOTS, AI_SUGGESTIONS, DEPARTMENTS, PIPELINE_ORDER, getNextDepartment } from '@/data/mockData';
+import { TASKS, USERS, PROJECTS, ASSETS, SHOTS, DEPARTMENTS, PIPELINE_ORDER, getNextDepartment } from '@/data/mockData';
 import { X, CheckCircle2, Circle, Clock, Tag, Paperclip, MessageSquare, GitBranch, Sparkles, AlertTriangle, CalendarDays, ArrowRight, Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -24,11 +24,15 @@ const PRIORITY_COLORS = {
   low: 'bg-green-500/10 text-green-500 border-green-500/20',
 };
 
-const STATUS_COLORS = {
-  'todo': 'bg-muted text-muted-foreground',
+const STATUS_COLORS: Record<string, string> = {
+  'todo': 'bg-slate-500/10 text-slate-500',
+  'not-started': 'bg-slate-500/10 text-slate-500',
   'in-progress': 'bg-blue-500/10 text-blue-500',
-  'blocked': 'bg-red-500/10 text-red-500',
+  'bottleneck': 'bg-red-500/10 text-red-500',
   'review': 'bg-purple-500/10 text-purple-500',
+  'lead-review': 'bg-purple-500/10 text-purple-500',
+  'manager-review': 'bg-purple-600/10 text-purple-600',
+  'approved': 'bg-green-500/10 text-green-500',
   'complete': 'bg-green-500/10 text-green-500',
   'cancelled': 'bg-muted text-muted-foreground line-through',
 };
@@ -50,7 +54,7 @@ export function TaskDrawer() {
   const depTasks = task.dependencies.map(d => TASKS.find(t => t.id === d)).filter(Boolean);
   const checklistDone = task.checklist.filter(c => c.done).length;
   const checklistTotal = task.checklist.length;
-  const relatedSuggestions = AI_SUGGESTIONS.filter(s => s.page === 'tasks').slice(0, 2);
+  
   
   const isLeadership = ['supervisor', 'lead', 'vfx_producer', 'production_manager'].includes(currentUser.role);
   const isAssignee = currentUser.id === task.assigneeId;
@@ -73,7 +77,7 @@ export function TaskDrawer() {
             <Badge className={`${STATUS_COLORS[task.status]} text-xs`}>
               {task.status.replace('-', ' ').toUpperCase()}
             </Badge>
-            {task.status === 'complete' && nextDept && isLeadership && (
+            {task.status === 'approved' && nextDept && isLeadership && (
               <Button size="sm" variant="outline" className="h-6 text-[10px] bg-primary/10 text-primary border-primary/20 hover:bg-primary/20">
                 Handoff to {nextDept.abbreviation} <ArrowRight className="w-3 h-3 ml-1" />
               </Button>
@@ -166,7 +170,7 @@ export function TaskDrawer() {
             
             {/* Action Bar */}
             <div className="flex gap-2">
-              {task.status === 'review' && isLeadership ? (
+              {(task.status === 'lead-review' || task.status === 'manager-review') && isLeadership ? (
                 (() => {
                   const isMyDeptTask = currentUser?.departmentId === currentDept?.id;
                   const isTopLeadership = currentUser ? ['vfx_producer', 'production_manager', 'coordinator'].includes(currentUser.role) : false;
@@ -197,14 +201,18 @@ export function TaskDrawer() {
                     );
                   }
                 })()
-              ) : task.status !== 'complete' ? (
-                <Button className="flex-1" variant={task.status === 'in-progress' ? 'default' : 'outline'}>
+              ) : task.status !== 'approved' ? (
+                <Button className="flex-1" variant={task.status === 'in-progress' ? 'default' : 'outline'} onClick={() => {
+                  toast({ title: task.status === 'in-progress' ? 'Submitted for Review' : 'Task Started', description: `Task status updated successfully.` });
+                }}>
                   <Play className="w-4 h-4 mr-2" />
-                  {task.status === 'in-progress' ? 'Submit for Review' : 'Start Task'}
+                  {task.status === 'in-progress' ? 'Submit for Lead Review' : 'Start Task'}
                 </Button>
               ) : null}
               {isAssignee && task.status === 'in-progress' && (
-                <Button variant="outline" className="flex-1 bg-blue-500/10 text-blue-500 border-blue-500/20 hover:bg-blue-500/20">
+                <Button variant="outline" className="flex-1 bg-blue-500/10 text-blue-500 border-blue-500/20 hover:bg-blue-500/20" onClick={() => {
+                  toast({ title: 'Log Daily Time', description: 'Redirecting to time logging...' });
+                }}>
                   <Clock className="w-4 h-4 mr-2" /> Log Daily Time
                 </Button>
               )}
@@ -329,31 +337,7 @@ export function TaskDrawer() {
                 <Button size="sm" className="mt-2">Post Comment</Button>
               </div>
             </div>
-            
-            {/* AI Suggestions */}
-            {relatedSuggestions.length > 0 && (
-              <>
-                <Separator />
-                <div>
-                  <div className="text-sm font-semibold mb-3 flex items-center gap-1.5">
-                    <Sparkles className="w-4 h-4 text-purple-400" /> AI Suggestions
-                  </div>
-                  <div className="space-y-2">
-                    {relatedSuggestions.map(s => (
-                      <div key={s.id} className="p-3 rounded-md border border-purple-500/20 bg-purple-500/5 text-sm">
-                        <div className="flex items-start gap-2">
-                          <AlertTriangle className="w-3.5 h-3.5 text-purple-400 shrink-0 mt-0.5" />
-                          <div>
-                            <div className="font-medium text-purple-300">{s.title}</div>
-                            <p className="text-xs text-muted-foreground mt-1">{s.suggestedAction}</p>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </>
-            )}
+
           </div>
         </ScrollArea>
       </div>

@@ -26,7 +26,7 @@ const TYPE_COLORS: Record<string, string> = {
 const STATUS_COLORS: Record<string, string> = {
   complete: 'bg-green-500/10 text-green-500',
   'in-progress': 'bg-blue-500/10 text-blue-500',
-  blocked: 'bg-red-500/10 text-red-500',
+  bottleneck: 'bg-red-500/10 text-red-500',
   'at-risk': 'bg-orange-500/10 text-orange-500',
   'not-started': 'bg-muted text-muted-foreground',
   review: 'bg-purple-500/10 text-purple-500',
@@ -117,7 +117,7 @@ export default function Assets() {
           <SelectTrigger className="w-36 h-9"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Status</SelectItem>
-            {['complete', 'in-progress', 'blocked', 'at-risk', 'review', 'not-started'].map(s => (
+            {['complete', 'in-progress', 'bottleneck', 'at-risk', 'review', 'not-started'].map(s => (
               <SelectItem key={s} value={s}>{s.replace('-', ' ')}</SelectItem>
             ))}
           </SelectContent>

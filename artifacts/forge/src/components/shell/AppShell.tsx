@@ -1,6 +1,6 @@
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
-import { AiAssistant } from './AiAssistant';
+
 import { GlobalSearch } from '@/components/shared/GlobalSearch';
 import { CommandPalette } from '@/components/shared/CommandPalette';
 import { CreateTaskModal } from '@/components/shared/CreateTaskModal';
@@ -38,7 +38,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </main>
       </div>
-      <AiAssistant />
+
       <GlobalSearch />
       <CommandPalette />
       <TaskDrawer />

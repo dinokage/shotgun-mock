@@ -36,8 +36,8 @@ export default function DepartmentDetail() {
   const lead = team.find(u => u.id === dept.leadId);
   
   const deptTasks = TASKS.filter(t => t.department === dept.name);
-  const activeTasks = deptTasks.filter(t => t.status === 'in-progress' || t.status === 'review');
-  const completedTasks = deptTasks.filter(t => t.status === 'complete');
+  const activeTasks = deptTasks.filter(t => t.status === 'in-progress' || t.status === 'lead-review' || t.status === 'manager-review');
+  const completedTasks = deptTasks.filter(t => t.status === 'approved');
   
   const isSupervisorOrLead = currentUser?.role === 'supervisor' || currentUser?.role === 'lead' || currentUser?.role === 'production_manager' || currentUser?.role === 'vfx_producer';
 

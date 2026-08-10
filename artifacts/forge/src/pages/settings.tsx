@@ -9,7 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { USERS } from '@/data/mockData';
 import { UserAvatar } from '@/components/shared/UserAvatar';
-import { Building2, Cloud, UploadCloud, Key } from 'lucide-react';
+import { Building2, Cloud, UploadCloud, Key, Plus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export default function Settings() {
@@ -28,6 +28,7 @@ export default function Settings() {
       <Tabs defaultValue="profile" className="w-full">
         <TabsList className="mb-6">
           <TabsTrigger value="profile">Studio Profile</TabsTrigger>
+          <TabsTrigger value="pipelines">Pipelines</TabsTrigger>
           <TabsTrigger value="members">Members</TabsTrigger>
           <TabsTrigger value="licenses">Licenses</TabsTrigger>
           <TabsTrigger value="deployment">Deployment</TabsTrigger>
@@ -84,6 +85,30 @@ export default function Settings() {
               <div className="pt-4 flex justify-end">
                 <Button onClick={handleSave}>Save Changes</Button>
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="pipelines" className="animate-in fade-in">
+          <Card>
+            <CardHeader>
+              <CardTitle>Pipeline Customization</CardTitle>
+              <CardDescription>Modify pipeline stages for various departments.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {['VFX', '3D', '2D'].map((dept) => (
+                <div key={dept} className="space-y-3">
+                  <h3 className="font-semibold text-lg">{dept} Pipeline Stages</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {dept === 'VFX' && ['Tracking', 'Roto', 'Paint', 'Compositing', 'Client Review', 'Final'].map(s => <Badge key={s} variant="secondary">{s}</Badge>)}
+                    {dept === '3D' && ['Modeling', 'Rigging', 'Layout', 'Animation', 'Lighting', 'Rendering', 'Client Review'].map(s => <Badge key={s} variant="secondary">{s}</Badge>)}
+                    {dept === '2D' && ['Storyboarding', 'Layout', 'Rough Anim', 'Clean Up', 'Color', 'Comp', 'Client Review'].map(s => <Badge key={s} variant="secondary">{s}</Badge>)}
+                    <Button variant="outline" size="sm" className="h-6 text-xs px-2 rounded-full border-dashed">
+                      <Plus className="w-3 h-3 mr-1" /> Add Stage
+                    </Button>
+                  </div>
+                </div>
+              ))}
             </CardContent>
           </Card>
         </TabsContent>

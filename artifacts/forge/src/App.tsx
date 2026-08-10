@@ -27,7 +27,6 @@ import Shots from '@/pages/shots';
 import ShotDetail from '@/pages/shot-detail';
 import Analytics from '@/pages/analytics';
 import Publishing from '@/pages/publishing';
-import AIWorkspace from '@/pages/ai-workspace';
 import Profile from '@/pages/profile';
 import SchemaBuilder from '@/pages/schema';
 import Audit from '@/pages/audit';
@@ -39,6 +38,7 @@ import People from '@/pages/people';
 import DailyStandup from '@/pages/daily-standup';
 import Chat from '@/pages/chat';
 import TrackingGrid from '@/pages/tracking';
+import IntegrationsHub from '@/pages/integrations';
 
 const queryClient = new QueryClient();
 
@@ -103,12 +103,16 @@ function Router() {
               </Route>
               <Route path="/people" component={People} />
               <Route path="/people/:id" component={Profile} />
-              <Route path="/daily-standup">
-                <LeadershipGuard><DailyStandup /></LeadershipGuard>
-              </Route>
+              <Route path="/daily-standup" component={DailyStandup} />
               <Route path="/review" component={Review} />
               <Route path="/scheduling">
                 <LeadershipGuard><Scheduling /></LeadershipGuard>
+              </Route>
+              <Route path="/marketplace">
+                <LeadershipGuard><Marketplace /></LeadershipGuard>
+              </Route>
+              <Route path="/integrations">
+                <LeadershipGuard><IntegrationsHub /></LeadershipGuard>
               </Route>
               <Route path="/impact">
                 <LeadershipGuard><ImpactAnalysis /></LeadershipGuard>
@@ -120,7 +124,6 @@ function Router() {
               <Route path="/analytics">
                 <LeadershipGuard><Analytics /></LeadershipGuard>
               </Route>
-              <Route path="/ai-workspace" component={AIWorkspace} />
               <Route path="/marketplace" component={Marketplace} />
               <Route path="/profile" component={Profile} />
               <Route path="/schema">

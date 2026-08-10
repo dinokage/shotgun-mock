@@ -12,13 +12,16 @@ import { StatusBadge } from '@/components/shared/StatusBadge';
 import { PriorityChip } from '@/components/shared/PriorityChip';
 import { useUIStore } from '@/store/ui';
 import KanbanView from './project-detail/TasksKanban';
+import { apiClient } from '@/lib/apiClient';
+import { useEffect } from 'react';
+import { useToast } from '@/hooks/use-toast';
 
 const STATUS_ICONS: Record<string, typeof Circle> = {
   'not-started': Circle,
   'in-progress': Clock,
   'review': AlertTriangle,
   'complete': CheckCircle2,
-  'blocked': AlertTriangle,
+  'bottleneck': AlertTriangle,
 };
 
 type ViewMode = 'list' | 'kanban';
@@ -31,9 +34,58 @@ export default function Tasks() {
   const [departmentFilter, setDepartmentFilter] = useState('all');
   const [view, setView] = useState<ViewMode>('list');
   const [myTasksOnly, setMyTasksOnly] = useState(false);
+  const [liveTasks, setLiveTasks] = useState<any[]>(TASKS);
+  const [liveUsers, setLiveUsers] = useState<any[]>(USERS);
+  const [liveProjects, setLiveProjects] = useState<any[]>(PROJECTS);
+  const [liveDepartments, setLiveDepartments] = useState<any[]>(DEPARTMENTS);
   const { setActiveTaskDrawer, setCreateTaskModalOpen } = useUIStore();
+  const { toast } = useToast();
 
   const { currentUser } = useAuthStore();
+  
+  // --- Live Polling via API ---
+  const fetchTasks = async () => {
+    try {
+      const [tasksData, usersData, projectsData, deptsData] = await Promise.all([
+        apiClient.get('/tasks'),
+        apiClient.get('/users'),
+        apiClient.get('/projects'),
+        apiClient.get('/departments')
+      ]);
+      
+      // Merge live data with mock fields (like tags/comments) missing from basic backend schemas
+      const mergedTasks = TASKS.map(mockTask => {
+        const liveMatch = tasksData.find((t: any) => t.id === mockTask.id);
+        return liveMatch ? { ...mockTask, ...liveMatch } : mockTask;
+      });
+      setLiveTasks(mergedTasks);
+      setLiveUsers(usersData.length ? usersData : USERS);
+      setLiveProjects(projectsData.length ? projectsData : PROJECTS);
+      setLiveDepartments(deptsData.length ? deptsData : DEPARTMENTS);
+    } catch (e) {
+      console.error("API Fetch Error:", e);
+    }
+  };
+
+  useEffect(() => {
+    fetchTasks();
+    const interval = setInterval(fetchTasks, 10000); // 10s polling
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleCompleteTask = async (taskId: string) => {
+    try {
+      const result = await apiClient.post(`/tasks/${taskId}/complete`);
+      toast({
+        title: "Task Completed",
+        description: `Backend triggered ${result.auto_assignments?.length || 0} auto-assignments.`,
+      });
+      fetchTasks(); // Instantly refetch
+    } catch (e) {
+      toast({ title: "Error", description: "Failed to complete task via API.", variant: "destructive" });
+    }
+  };
+  // ----------------------------
   
   // RBAC Setup
   const isArtist = currentUser ? ['senior_artist', 'artist', 'junior_artist'].includes(currentUser.role) : true;
@@ -41,10 +93,10 @@ export default function Tasks() {
   const forceMyTasksOnly = isArtist;
   const effectiveMyTasksOnly = forceMyTasksOnly || myTasksOnly;
 
-  const currentUserId = currentUser?.id || USERS[0].id;
+  const currentUserId = currentUser?.id || liveUsers[0]?.id || 'u1';
 
   const filtered = useMemo(() => {
-    return TASKS.filter(t => {
+    return liveTasks.filter(t => {
       // 1. RBAC Enforcements
       if (forceMyTasksOnly && t.assigneeId !== currentUserId) return false;
       
@@ -58,13 +110,13 @@ export default function Tasks() {
       
       return true;
     });
-  }, [search, statusFilter, priorityFilter, projectFilter, departmentFilter, myTasksOnly, forceMyTasksOnly, currentUserId, TASKS.length]); // Adding TASKS.length so it re-renders when a task is pushed
+  }, [search, statusFilter, priorityFilter, projectFilter, departmentFilter, myTasksOnly, forceMyTasksOnly, currentUserId, liveTasks]);
 
   const statusCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: TASKS.length };
-    TASKS.forEach(t => { counts[t.status] = (counts[t.status] || 0) + 1; });
+    const counts: Record<string, number> = { all: liveTasks.length };
+    liveTasks.forEach(t => { counts[t.status] = (counts[t.status] || 0) + 1; });
     return counts;
-  }, [TASKS.length]);
+  }, [liveTasks]);
 
   return (
     <div className="p-6 max-w-[1600px] mx-auto space-y-4 h-[calc(100vh-3.5rem)] flex flex-col">
@@ -113,7 +165,7 @@ export default function Tasks() {
 
       {/* Status Pills */}
       <div className="flex gap-2 overflow-x-auto shrink-0 pb-1">
-        {['all', 'not-started', 'in-progress', 'review', 'blocked', 'complete'].map(s => (
+        {['all', 'not-started', 'in-progress', 'review', 'bottleneck', 'complete'].map(s => (
           <button
             key={s}
             onClick={() => setStatusFilter(s)}
@@ -147,7 +199,7 @@ export default function Tasks() {
           <SelectTrigger className="w-48 h-9"><SelectValue placeholder="Project" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Projects</SelectItem>
-            {PROJECTS.map(p => (
+            {liveProjects.map(p => (
               <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
             ))}
           </SelectContent>
@@ -156,7 +208,7 @@ export default function Tasks() {
           <SelectTrigger className="w-40 h-9"><SelectValue placeholder="Department" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Depts</SelectItem>
-            {DEPARTMENTS.map(d => (
+            {liveDepartments.map(d => (
               <SelectItem key={d.name} value={d.name}>{d.name}</SelectItem>
             ))}
           </SelectContent>
@@ -165,24 +217,25 @@ export default function Tasks() {
 
       <div className="flex-1 overflow-hidden">
         {view === 'kanban' ? (
-          <KanbanView />
+          <KanbanView tasks={filtered} />
         ) : (
           <div className="rounded-md border border-border overflow-auto h-full">
             <table className="w-full text-sm">
               <thead className="sticky top-0 z-10">
                 <tr className="border-b bg-muted/80 backdrop-blur-sm text-muted-foreground">
-                  <th className="h-10 px-4 text-left font-medium w-[40%]">Task</th>
+                  <th className="h-10 px-4 text-left font-medium w-[40%]">Task / Context</th>
                   <th className="h-10 px-4 text-left font-medium">Status</th>
                   <th className="h-10 px-4 text-left font-medium">Priority</th>
                   <th className="h-10 px-4 text-left font-medium">Assignee</th>
                   <th className="h-10 px-4 text-left font-medium">Project</th>
-                  <th className="h-10 px-4 text-left font-medium">Due</th>
+                  <th className="h-10 px-4 text-left font-medium">Due Date</th>
+                  <th className="h-10 px-4 text-right font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.slice(0, 100).map(task => {
-                  const assignee = USERS.find(u => u.id === task.assigneeId);
-                  const project = PROJECTS.find(p => p.id === task.projectId);
+                  const assignee = liveUsers.find(u => u.id === task.assigneeId);
+                  const project = liveProjects.find(p => p.id === task.projectId);
                   return (
                     <tr 
                       key={task.id} 
@@ -190,8 +243,12 @@ export default function Tasks() {
                       onClick={() => setActiveTaskDrawer(task.id)}
                     >
                       <td className="p-4">
-                        <div className="font-medium">{task.title}</div>
-                        <div className="text-xs text-muted-foreground mt-0.5">{task.department}</div>
+                        <div className="font-medium text-[15px]">{task.title}</div>
+                        <div className="text-xs text-muted-foreground mt-1 flex items-center gap-2">
+                          <Badge variant="outline" className="text-[9px] uppercase">{task.department}</Badge>
+                          {task.shotId && <span className="text-indigo-400">Shot: {task.shotId}</span>}
+                          {task.assetId && <span className="text-emerald-400">Asset: {task.assetId}</span>}
+                        </div>
                       </td>
                       <td className="p-4"><StatusBadge status={task.status} /></td>
                       <td className="p-4"><PriorityChip priority={task.priority} /></td>

@@ -4,12 +4,14 @@ import { DEPARTMENTS, USERS, MESSAGES as MOCK_MESSAGES, ChatMessage } from '@/da
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Hash, Send, Paperclip, Image as ImageIcon, Video, Shield, User as UserIcon } from 'lucide-react';
+import { Hash, Send, Paperclip, Image as ImageIcon, Video, Shield, User as UserIcon, Plus } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { format } from 'date-fns';
+import { useToast } from '@/hooks/use-toast';
 
 export default function Chat() {
   const { currentUser } = useAuthStore();
+  const { toast } = useToast();
   const [messages, setMessages] = useState<ChatMessage[]>(MOCK_MESSAGES);
   const [inputText, setInputText] = useState('');
   
@@ -17,8 +19,9 @@ export default function Chat() {
   const isTopLeadership = currentUser && ['vfx_producer', 'production_manager', 'coordinator'].includes(currentUser.role);
   
   const visibleDepartments = useMemo(() => {
-    if (isTopLeadership) return DEPARTMENTS;
-    return DEPARTMENTS.filter(d => d.id === currentUser?.departmentId);
+    const everyoneDept = { id: 'everyone', name: 'Everyone', headId: '' };
+    if (isTopLeadership) return [everyoneDept, ...DEPARTMENTS];
+    return [everyoneDept, ...DEPARTMENTS.filter(d => d.id === currentUser?.departmentId)];
   }, [currentUser, isTopLeadership]);
 
   const [activeDeptId, setActiveDeptId] = useState<string>(visibleDepartments[0]?.id || '');
@@ -54,17 +57,25 @@ export default function Chat() {
     setInputText('');
   };
 
-  const handleSimulateAttachment = (type: 'image' | 'video') => {
+  const handleSimulateAttachment = (type: 'image' | 'video' | 'file') => {
     if (!currentUser) return;
+    
+    // Simulate AI scanning the file for production review
+    toast({
+      title: "File Uploaded & Scanned",
+      description: "AI has successfully analyzed the attachment and logged it for Main Production review.",
+    });
+
     const newMsg: ChatMessage = {
       id: `m_${Date.now()}`,
       departmentId: activeDeptId,
       userId: currentUser.id,
-      text: 'Shared a file:',
-      attachments: [{ 
-        type, 
-        url: type === 'image' ? 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564&auto=format&fit=crop' : 'https://test-videos.co.uk/vids/jellyfish/mp4/h264/1080/Jellyfish_1080_10s_5MB.mp4',
-        name: type === 'image' ? 'reference_still.png' : 'playblast_v04.mp4'
+      text: '',
+      attachments: [{
+        id: `att_${Date.now()}`,
+        name: type === 'image' ? 'concept_v4.png' : type === 'video' ? 'anim_playblast.mp4' : 'scene_v01.usd',
+        type: type,
+        url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564&auto=format&fit=crop'
       }],
       timestamp: new Date().toISOString()
     };
@@ -78,8 +89,11 @@ export default function Chat() {
       
       {/* Channels Sidebar */}
       <div className="w-64 bg-sidebar/50 border-r border-border flex flex-col">
-        <div className="p-4 border-b border-border">
+        <div className="p-4 border-b border-border flex items-center justify-between">
           <h2 className="font-semibold">Team Chat</h2>
+          <Button variant="ghost" size="icon" className="w-6 h-6 hover:bg-muted" title="Create Group" onClick={() => toast({title: "Create Group", description: "Opening group creation dialog..."})}>
+            <Plus className="w-4 h-4" />
+          </Button>
         </div>
         <ScrollArea className="flex-1 p-3">
           <div className="space-y-1">

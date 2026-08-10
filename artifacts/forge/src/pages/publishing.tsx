@@ -29,10 +29,54 @@ export default function Publishing() {
   const recent = PUBLISH_LOGS.filter(p => p.status === 'success' || p.status === 'failed');
   const successRate = Math.round((PUBLISH_LOGS.filter(p => p.status === 'success').length / PUBLISH_LOGS.length) * 100);
 
-  const handlePublish = (e: React.FormEvent) => {
+  const [isValidating, setIsValidating] = useState(false);
+  const [validationResults, setValidationResults] = useState<{name: string, status: 'pending'|'passed'|'failed'|'running', detail: string}[]>([]);
+  const [isPublished, setIsPublished] = useState(false);
+
+  const startValidation = (e: React.FormEvent) => {
     e.preventDefault();
+    setIsValidating(true);
+    const checks = [
+      { name: 'Naming Convention', status: 'running' as const, detail: 'Checking against regex ^[a-z]{3}_[a-z0-9]+$' },
+      { name: 'Frame Rate', status: 'pending' as const, detail: 'Validating 24fps standard' },
+      { name: 'Resolution', status: 'pending' as const, detail: 'Checking for 1920x1080 bounding box' }
+    ];
+    setValidationResults(checks);
+
+    // Simulate async validation steps
+    setTimeout(() => {
+      setValidationResults(prev => [
+        { ...prev[0], status: 'passed' },
+        { ...prev[1], status: 'running' },
+        prev[2]
+      ]);
+    }, 1000);
+
+    setTimeout(() => {
+      setValidationResults(prev => [
+        prev[0],
+        { ...prev[1], status: 'passed' },
+        { ...prev[2], status: 'running' }
+      ]);
+    }, 2000);
+
+    setTimeout(() => {
+      setValidationResults(prev => [
+        prev[0],
+        prev[1],
+        { ...prev[2], status: 'passed' }
+      ]);
+    }, 3000);
+  };
+
+  const handlePublish = () => {
     setPublishDialogOpen(false);
-    toast({ title: 'Publish Queued', description: 'Your asset has been queued for validation.' });
+    toast({ title: 'Publish Successful', description: 'Asset passed all validations and was published to the pipeline.' });
+    // reset state
+    setTimeout(() => {
+      setIsValidating(false);
+      setValidationResults([]);
+    }, 500);
   };
 
   return (
@@ -45,27 +89,60 @@ export default function Publishing() {
         
         <Dialog open={publishDialogOpen} onOpenChange={setPublishDialogOpen}>
           <DialogTrigger asChild>
-            <Button className="gap-2"><Upload className="w-4 h-4" /> Publish New</Button>
+            <Button className="gap-2 bg-purple-600 hover:bg-purple-700 text-white"><Upload className="w-4 h-4" /> Publish New (Ayon Validator)</Button>
           </DialogTrigger>
-          <DialogContent>
-            <form onSubmit={handlePublish}>
-              <DialogHeader>
-                <DialogTitle>Publish Asset</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label>Asset ID</Label>
-                  <Input required placeholder="e.g. ast_001" />
+          <DialogContent className="sm:max-w-[500px]">
+            {!isValidating ? (
+              <form onSubmit={startValidation}>
+                <DialogHeader>
+                  <DialogTitle>Publish Asset</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label>Asset ID / Shot Name</Label>
+                    <Input required placeholder="e.g. S01_030_anim" defaultValue="S01_030_anim" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Version Note</Label>
+                    <Input required placeholder="What changed?" defaultValue="Addressed supervisor notes on jump timing." />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Version Note</Label>
-                  <Input required placeholder="What changed?" />
+                <DialogFooter>
+                  <Button type="submit" className="w-full">Run Pre-Publish Validators</Button>
+                </DialogFooter>
+              </form>
+            ) : (
+              <div className="space-y-6 py-4">
+                <DialogHeader>
+                  <DialogTitle>Pipeline Validation</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-3">
+                  {validationResults.map((result, idx) => (
+                    <div key={idx} className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg border border-border/50">
+                      <div className="mt-0.5">
+                        {result.status === 'pending' && <div className="w-5 h-5 rounded-full border-2 border-muted-foreground/30" />}
+                        {result.status === 'running' && <Loader2 className="w-5 h-5 text-purple-500 animate-spin" />}
+                        {result.status === 'passed' && <CheckCircle2 className="w-5 h-5 text-green-500" />}
+                        {result.status === 'failed' && <XCircle className="w-5 h-5 text-red-500" />}
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-sm font-medium">{result.name}</div>
+                        <div className="text-xs text-muted-foreground">{result.detail}</div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
+                <DialogFooter>
+                  <Button 
+                    className="w-full bg-green-600 hover:bg-green-700 text-white" 
+                    disabled={!validationResults.every(r => r.status === 'passed')}
+                    onClick={handlePublish}
+                  >
+                    Confirm Publish
+                  </Button>
+                </DialogFooter>
               </div>
-              <DialogFooter>
-                <Button type="submit">Submit to Queue</Button>
-              </DialogFooter>
-            </form>
+            )}
           </DialogContent>
         </Dialog>
       </div>

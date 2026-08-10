@@ -108,8 +108,13 @@ export default function WorkflowEditor() {
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" asChild className="h-8 w-8 -ml-2"><Link href="/settings"><ArrowLeft className="w-4 h-4" /></Link></Button>
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="font-semibold text-sm">Asset Approval Pipeline</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="font-semibold text-sm">Department Pipeline Builder</h1>
+              <select className="bg-muted text-xs px-2 py-1 rounded border border-border outline-none">
+                <option>VFX Pipeline</option>
+                <option>3D Pipeline</option>
+                <option>2D Pipeline</option>
+              </select>
               <Badge variant="outline" className="text-[9px] h-4 bg-green-500/10 text-green-500 border-0">ACTIVE</Badge>
             </div>
           </div>
@@ -139,11 +144,13 @@ export default function WorkflowEditor() {
             <Background color="#555" gap={16} />
             
             <Panel position="top-left" className="bg-card/80 backdrop-blur-sm p-2 rounded-lg border border-border shadow-sm">
-              <div className="text-xs font-medium mb-2 px-1">Toolbox</div>
+              <div className="text-xs font-medium mb-2 px-1">Pipeline Nodes</div>
               <div className="flex flex-col gap-1">
-                <Button variant="ghost" size="sm" className="justify-start gap-2 h-8 text-xs font-normal"><Play className="w-3.5 h-3.5 text-green-500" /> Trigger</Button>
-                <Button variant="ghost" size="sm" className="justify-start gap-2 h-8 text-xs font-normal"><Cog className="w-3.5 h-3.5 text-blue-500" /> Action</Button>
-                <Button variant="ghost" size="sm" className="justify-start gap-2 h-8 text-xs font-normal"><Workflow className="w-3.5 h-3.5 text-purple-500" /> Condition</Button>
+                <Button variant="ghost" size="sm" className="justify-start gap-2 h-8 text-xs font-normal"><Play className="w-3.5 h-3.5 text-green-500" /> Start / Trigger</Button>
+                <Button variant="ghost" size="sm" className="justify-start gap-2 h-8 text-xs font-normal"><Box className="w-3.5 h-3.5 text-blue-500" /> Dept Stage (2D/3D/VFX)</Button>
+                <Button variant="ghost" size="sm" className="justify-start gap-2 h-8 text-xs font-normal"><CheckSquare className="w-3.5 h-3.5 text-purple-500" /> Internal Review</Button>
+                <Button variant="ghost" size="sm" className="justify-start gap-2 h-8 text-xs font-normal"><UserPlus className="w-3.5 h-3.5 text-orange-500" /> Client Feedback</Button>
+                <Button variant="ghost" size="sm" className="justify-start gap-2 h-8 text-xs font-normal"><Workflow className="w-3.5 h-3.5 text-cyan-500" /> Branch / Condition</Button>
               </div>
             </Panel>
           </ReactFlow>

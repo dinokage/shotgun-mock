@@ -80,7 +80,8 @@ export interface Department {
   studioId: string;
   description: string;
   icon: string;
-  pipelineOrder: number; // 1-13, determines flow order
+  pipelineOrder: number;
+  pipeline?: 'PROD' | '3D' | 'VFX' | '2D';
 }
 
 export interface Project {
@@ -88,7 +89,7 @@ export interface Project {
   name: string;
   type: string;
   progress: number;
-  status: 'ON_TRACK' | 'AT_RISK' | 'BLOCKED' | 'COMPLETE';
+  status: 'ON_TRACK' | 'AT_RISK' | 'BOTTLENECK' | 'COMPLETE';
   shotsCount: number;
   assetsCount: number;
   dueDate: string;
@@ -102,12 +103,22 @@ export interface Project {
   riskScore: number;
 }
 
+export interface Episode {
+  id: string;
+  name: string;
+  projectId: string;
+  status: 'complete' | 'in-progress' | 'bottleneck' | 'not-started';
+  progress: number;
+  dueDate: string;
+}
+
 export interface Sequence {
   id: string;
   name: string;
   projectId: string;
+  episodeId?: string;
   shotCount: number;
-  status: 'complete' | 'in-progress' | 'blocked' | 'not-started';
+  status: 'complete' | 'in-progress' | 'bottleneck' | 'not-started';
   progress: number;
 }
 
@@ -115,16 +126,20 @@ export interface Shot {
   id: string;
   name: string;
   projectId: string;
+  episodeId: string;
   sequenceId: string;
   sequence: string;
-  status: 'complete' | 'in-progress' | 'blocked' | 'review' | 'not-started' | 'at-risk';
+  status: 'complete' | 'in-progress' | 'bottleneck' | 'review' | 'not-started' | 'at-risk';
   assigneeId: string;
   updatedAt: string;
   frameRange: string;
   duration: number;
   complexity: 'low' | 'medium' | 'high';
   currentVersion: string;
-  reviewStatus: 'pending' | 'approved' | 'rejected' | 'changes-requested' | 'not-submitted';
+  usdVersion?: string; // Universal Scene Description tracking
+  internalReviewStatus: 'pending' | 'approved' | 'rejected' | 'changes-requested' | 'not-submitted';
+  reviewStatus?: string;
+  clientReviewStatus: 'pending' | 'approved' | 'rejected' | 'changes-requested' | 'not-submitted';
   thumbnailSeed: number;
   notes: string;
 }
@@ -133,11 +148,14 @@ export interface Asset {
   id: string;
   name: string;
   projectId: string;
+  episodeId?: string;
+  sequenceId?: string;
   type: 'Character' | 'Environment' | 'Prop' | 'Rig' | 'Effects' | 'Vehicle' | 'Texture' | 'Material' | 'Audio';
-  status: 'complete' | 'in-progress' | 'blocked' | 'at-risk' | 'not-started' | 'review';
+  status: 'complete' | 'in-progress' | 'bottleneck' | 'at-risk' | 'not-started' | 'review';
   assigneeId: string;
   updatedAt: string;
   version: string;
+  usdVersion?: string; // Universal Scene Description tracking
   tags: string[];
   thumbnailSeed: number;
   fileSize: string;
@@ -154,7 +172,7 @@ export interface DailyLog {
   userId: string;
 }
 
-export type TaskStatus = 'todo' | 'in-progress' | 'blocked' | 'review' | 'complete' | 'cancelled';
+export type TaskStatus = 'todo' | 'not-started' | 'in-progress' | 'bottleneck' | 'review' | 'lead-review' | 'manager-review' | 'approved' | 'complete' | 'cancelled';
 
 export interface Task {
   id: string;
@@ -289,7 +307,7 @@ export interface Plugin {
   rating: number;
   installs: string;
   verified: boolean;
-  icon: string;
+  icon: string; pipeline?: string;
   description: string;
   author: string;
   version: string;
@@ -314,7 +332,7 @@ export interface ChatMessage {
   departmentId: string;
   userId: string;
   text: string;
-  attachments: { type: 'image' | 'video', url: string, name: string }[];
+  attachments: { id: string, type: 'image' | 'video' | 'file', url: string, name: string }[];
   timestamp: string;
 }
 
@@ -329,21 +347,39 @@ export const STUDIOS: Studio[] = [
 // --- Departments (14: 13 VFX + Production Management) ----------------------
 
 const DEPT_DEFINITIONS = [
-  { name: 'Production Management', abbr: 'PROD', color: '#636e72', icon: 'Briefcase', desc: 'Handles scheduling, budgets, and client communication.', order: 0 },
-  { name: 'Concept & Previs', abbr: 'PREVIS', color: '#00b894', icon: 'Lightbulb', desc: 'Early design and rough layout planning.', order: 1 },
-  { name: 'Tracking', abbr: 'TRK', color: '#00cec9', icon: 'Crosshair', desc: 'Camera and object tracking for VFX integration.', order: 2 },
-  { name: 'Layout', abbr: 'LAY', color: '#fdcb6e', icon: 'Layout', desc: 'Scene composition and camera placement.', order: 3 },
-  { name: 'Modelling', abbr: 'MDL', color: '#4facfe', icon: 'Box', desc: 'Building 3D digital shapes and models.', order: 4 },
-  { name: 'Texture / Surfacing', abbr: 'TEX', color: '#a55eea', icon: 'Paintbrush', desc: 'Painting surfaces and creating materials for 3D models.', order: 5 },
-  { name: 'Rigging', abbr: 'RIG', color: '#4ecdc4', icon: 'Bone', desc: 'Building digital skeletons for 3D models.', order: 6 },
-  { name: 'Animation', abbr: 'ANIM', color: '#fd79a8', icon: 'Clapperboard', desc: 'Moving characters and objects to tell the story.', order: 7 },
-  { name: 'Creature FX / Tech Anim', abbr: 'CFX', color: '#ff6b6b', icon: 'Bug', desc: 'Hair, cloth, muscle simulations on characters.', order: 8 },
-  { name: 'FX (Effects)', abbr: 'FX', color: '#ff9f43', icon: 'Flame', desc: 'Fire, water, smoke, explosions, and particle effects.', order: 9 },
-  { name: 'Lighting', abbr: 'LIT', color: '#0984e3', icon: 'Sun', desc: 'Setting virtual lights and generating final 3D frames.', order: 10 },
-  { name: 'Compositing', abbr: 'COMP', color: '#6c5ce7', icon: 'Layers', desc: 'Blending all layers into the final shot.', order: 11 },
-  { name: 'Rotopaint', abbr: 'ROTO', color: '#e17055', icon: 'PenTool', desc: 'Rotoscoping and paint fixes for clean plates.', order: 12 },
-  { name: 'DMP (Digital Matte Painting)', abbr: 'DMP', color: '#00cec9', icon: 'Mountain', desc: 'Creating photorealistic backgrounds and environments.', order: 13 },
+  { name: 'Production Management', abbr: 'PROD', color: '#636e72', icon: 'Briefcase', desc: 'Handles scheduling, budgets, and client communication.', order: 0, pipeline: 'PROD' },
+  // 3D Pipeline
+  { name: 'Modeling', abbr: 'MDL', color: '#4facfe', icon: 'Box', desc: 'Building 3D digital shapes and models.', order: 1, pipeline: '3D' },
+  { name: 'Texturing / LookDev', abbr: 'TEX', color: '#a55eea', icon: 'Paintbrush', desc: 'Painting surfaces and creating materials.', order: 2, pipeline: '3D' },
+  { name: 'Rigging', abbr: 'RIG', color: '#4ecdc4', icon: 'Bone', desc: 'Building digital skeletons for 3D models.', order: 3, pipeline: '3D' },
+  { name: 'Layout', abbr: 'LAY', color: '#fdcb6e', icon: 'Layout', desc: 'Scene composition and camera placement.', order: 4, pipeline: '3D' },
+  { name: 'Animation', abbr: 'ANIM', color: '#fd79a8', icon: 'Clapperboard', desc: 'Moving characters and objects.', order: 5, pipeline: '3D' },
+  { name: 'Lighting', abbr: 'LIT', color: '#0984e3', icon: 'Sun', desc: 'Setting virtual lights.', order: 6, pipeline: '3D' },
+  { name: 'Rendering', abbr: 'RND', color: '#dfe6e9', icon: 'MonitorPlay', desc: 'Generating final 3D frames.', order: 7, pipeline: '3D' },
+  // VFX Pipeline
+  { name: 'Matchmove / Camera Tracking', abbr: 'TRK', color: '#00cec9', icon: 'Crosshair', desc: 'Camera and object tracking.', order: 8, pipeline: 'VFX' },
+  { name: 'Rotomation', abbr: 'RTM', color: '#81ecec', icon: 'Activity', desc: 'Animating digital doubles to match live action.', order: 9, pipeline: 'VFX' },
+  { name: 'Creature Effects (CFX)', abbr: 'CFX', color: '#ff6b6b', icon: 'Bug', desc: 'Hair, cloth, muscle simulations.', order: 10, pipeline: 'VFX' },
+  { name: 'FX Simulations', abbr: 'FX', color: '#ff9f43', icon: 'Flame', desc: 'Particles, Destruction, Fluid, Fire/Smoke.', order: 11, pipeline: 'VFX' },
+  { name: 'Grooming', abbr: 'GRM', color: '#fab1a0', icon: 'Scissors', desc: 'Hair and Fur generation.', order: 12, pipeline: 'VFX' },
+  // 2D Pipeline
+  { name: 'Rotoscoping (Roto)', abbr: 'ROTO', color: '#e17055', icon: 'PenTool', desc: 'Rotoscoping for clean plates.', order: 13, pipeline: '2D' },
+  { name: 'Paint / Prep', abbr: 'PNT', color: '#ffeaa7', icon: 'Brush', desc: 'Wire Removal & Clean-up.', order: 14, pipeline: '2D' },
+  { name: 'Digital Matte Painting (DMP)', abbr: 'DMP', color: '#00b894', icon: 'Mountain', desc: 'Creating photorealistic backgrounds.', order: 15, pipeline: '2D' },
+  { name: '2D Animation / Motion Graphics', abbr: 'MGFX', color: '#55efc4', icon: 'Film', desc: 'Motion graphics and 2D elements.', order: 16, pipeline: '2D' },
+  { name: 'Compositing', abbr: 'COMP', color: '#6c5ce7', icon: 'Layers', desc: 'Blending all layers into the final shot.', order: 17, pipeline: '2D' }
 ];
+
+// Dynamically generate users for each department
+
+
+const firstNames = ['Luca', 'Isla', 'Jin', 'Clara', 'Rafi', 'Nadia', 'Soren', 'Leila', 'Yuki', 'Hugo', 'Ada', 'Theo', 'Priya', 'Tomasz', 'Mia', 'Kai', 'Dante', 'Aisha', 'Lena', 'Zara', 'Freya', 'Lucas', 'Diego', 'Arjun', 'Hana', 'Omar', 'Akira', 'Nia', 'Felix', 'Chiara', 'Rafael', 'Sakura', 'Ryo', 'Elena', 'Marcus', 'Mateo', 'Amara', 'Leo', 'Fatima', 'Bastian', 'Tariq', 'Mikhail', 'Zoe', 'Ingrid', 'Wei', 'Chloe', 'Arthur', 'Saanvi', 'Rina', 'Jamal'];
+const lastNames = ['Moretti', 'MacLeod', 'Park', 'Werner', 'Solomonov', 'Ivanova', 'Lindqvist', 'Karimi', 'Tanaka', 'Laurent', 'Okonkwo', 'Beaumont', 'Nair', 'Kowalski', 'Rodriguez', 'Nakamura', 'Costa', 'Diallo', 'Petrov', 'Ahmed', 'Johansson', 'Mendes', 'Vargas', 'Mehta', 'Kim', 'Hassan', 'Suzuki', 'Okafor', 'Braun', 'Rossi', 'Almeida', 'Ito', 'Watanabe', 'Volkov', 'Singh', 'Rivero', 'Kone', 'Fischer', 'Al-Rashid', 'Müller', 'Patel', 'Chapman', 'Olsen', 'Zhang', 'Dubois', 'Silva', 'Gomez'];
+
+let nameCounter = 0;
+const getName = () => `${firstNames[nameCounter++ % firstNames.length]} ${lastNames[nameCounter % lastNames.length]}`;
+
+
 
 // --- Users (65 with realistic VFX titles) ----------------------------------
 
@@ -443,6 +479,14 @@ const USER_DEFS: { name: string; role: Role; deptIdx: number; title: string; ski
 
 const possibleLicenses = ['Autodesk Maya', 'The Foundry Nuke', 'SideFX Houdini', 'Arnold Render', 'Substance Painter', 'ZBrush', 'Unreal Engine', 'Katana', 'Flame', 'Silhouette', 'PFTrack', '3DEqualizer'];
 
+for (let i = 1; i < DEPT_DEFINITIONS.length; i++) {
+  const deptName = DEPT_DEFINITIONS[i].name;
+  USER_DEFS.push({ name: getName(), role: 'supervisor', deptIdx: i, title: `${deptName} Manager`, skills: [deptName] });
+  USER_DEFS.push({ name: getName(), role: 'lead', deptIdx: i, title: `${deptName} Lead`, skills: [deptName] });
+  USER_DEFS.push({ name: getName(), role: 'artist', deptIdx: i, title: `${deptName} Artist`, skills: [deptName] });
+  USER_DEFS.push({ name: getName(), role: 'junior_artist', deptIdx: i, title: `Jr. ${deptName} Artist`, skills: [deptName] });
+}
+
 export const USERS: User[] = USER_DEFS.map((def, i) => {
   const deptId = `dept${def.deptIdx + 1}`;
   const userLicenses = possibleLicenses.filter(() => Math.random() > 0.6);
@@ -503,6 +547,7 @@ export const DEPARTMENTS: Department[] = DEPT_DEFINITIONS.map((d, i) => {
     studioId: 'studio1',
     description: d.desc,
     icon: d.icon,
+    pipeline: (d as any).pipeline || 'PROD',
     pipelineOrder: d.order,
   };
 });
@@ -539,7 +584,7 @@ export const PROJECTS: Project[] = projectData.map((p, i) => ({
   name: p.name,
   type: p.type,
   progress: [68, 41, 89, 55, 23, 76, 94, 33, 61, 12][i],
-  status: (['ON_TRACK', 'AT_RISK', 'BLOCKED', 'ON_TRACK', 'ON_TRACK', 'AT_RISK', 'COMPLETE', 'ON_TRACK', 'AT_RISK', 'ON_TRACK'] as const)[i],
+  status: (['ON_TRACK', 'AT_RISK', 'BOTTLENECK', 'ON_TRACK', 'ON_TRACK', 'AT_RISK', 'COMPLETE', 'ON_TRACK', 'AT_RISK', 'ON_TRACK'] as const)[i],
   shotsCount: [247, 62, 18, 130, 45, 189, 8, 55, 78, 310][i],
   assetsCount: [84, 31, 12, 56, 22, 67, 6, 28, 34, 92][i],
   dueDate: ['2025-03-30', '2025-02-15', '2025-01-03', '2025-06-20', '2025-08-01', '2025-04-15', '2025-01-10', '2025-05-30', '2025-07-15', '2025-12-01'][i],
@@ -564,6 +609,24 @@ export const PROJECTS: Project[] = projectData.map((p, i) => ({
   riskScore: [32, 67, 45, 28, 15, 58, 5, 41, 52, 18][i],
 }));
 
+// --- Episodes ----------------------------------------------------------------
+export const EPISODES: Episode[] = [];
+let epCounter = 0;
+PROJECTS.forEach(proj => {
+  const count = Math.max(1, Math.floor(Math.random() * 3)); // 1-2 episodes per project
+  for (let e = 0; e < count; e++) {
+    epCounter++;
+    EPISODES.push({
+      id: `ep${epCounter}`,
+      name: `EP_${String(e + 1).padStart(2, '0')}`,
+      projectId: proj.id,
+      status: (['complete', 'in-progress', 'bottleneck', 'not-started'] as const)[e % 4],
+      progress: Math.floor(Math.random() * 100),
+      dueDate: proj.dueDate
+    });
+  }
+});
+
 // --- Sequences ---------------------------------------------------------------
 
 const seqNames = ['Opening', 'Inciting', 'Build Up', 'Confrontation', 'Climax', 'Resolution', 'Epilogue', 'Action Set Piece', 'Montage', 'Chase'];
@@ -572,14 +635,17 @@ export const SEQUENCES: Sequence[] = [];
 let seqCounter = 0;
 PROJECTS.forEach(proj => {
   const count = Math.min(Math.ceil(proj.shotsCount / 15), 7);
+  const projEpisodes = EPISODES.filter(ep => ep.projectId === proj.id);
+  
   for (let s = 0; s < count; s++) {
     seqCounter++;
     SEQUENCES.push({
       id: `seq${seqCounter}`,
       name: `SEQ_${String((s + 1) * 10).padStart(3, '0')} ${seqNames[s % seqNames.length]}`,
       projectId: proj.id,
+      episodeId: projEpisodes.length > 0 ? projEpisodes[s % projEpisodes.length].id : undefined,
       shotCount: Math.ceil(proj.shotsCount / count),
-      status: (['complete', 'in-progress', 'blocked', 'not-started'] as const)[s % 4],
+      status: (['complete', 'in-progress', 'bottleneck', 'not-started'] as const)[s % 4],
       progress: Math.max(0, proj.progress - s * 10 + (s % 3) * 15),
     });
   }
@@ -587,9 +653,9 @@ PROJECTS.forEach(proj => {
 
 // --- Shots (100) -----------------------------------------------------------
 
-const shotStatuses: Shot['status'][] = ['complete', 'in-progress', 'blocked', 'review', 'not-started', 'at-risk'];
+const shotStatuses: Shot['status'][] = ['complete', 'in-progress', 'bottleneck', 'review', 'not-started', 'at-risk'];
 const shotComplexities: Shot['complexity'][] = ['low', 'medium', 'high'];
-const reviewStatuses: Shot['reviewStatus'][] = ['pending', 'approved', 'rejected', 'changes-requested', 'not-submitted'];
+const reviewStatuses: Shot['internalReviewStatus'][] = ['pending', 'approved', 'rejected', 'changes-requested', 'not-submitted'];
 
 export const SHOTS: Shot[] = [];
 for (let i = 0; i < 100; i++) {
@@ -603,6 +669,7 @@ for (let i = 0; i < 100; i++) {
     id: `sh${i + 1}`,
     name: `${seq?.name.split(' ')[0] || 'SEQ_010'}_SH_${String(shotNum).padStart(3, '0')}`,
     projectId: proj.id,
+    episodeId: seq?.episodeId || `ep1`,
     sequenceId: seq?.id || `seq1`,
     sequence: seq?.name.split(' ')[0] || 'SEQ_010',
     status: shotStatuses[i % shotStatuses.length],
@@ -612,7 +679,9 @@ for (let i = 0; i < 100; i++) {
     duration: 48 + (i % 80),
     complexity: shotComplexities[i % 3],
     currentVersion: `v${String((i % 5) + 1).padStart(3, '0')}`,
-    reviewStatus: reviewStatuses[i % 5],
+    usdVersion: `v${String((i % 5) + 1).padStart(3, '0')}.usd`,
+    internalReviewStatus: reviewStatuses[i % 5],
+    clientReviewStatus: reviewStatuses[(i + 1) % 5],
     thumbnailSeed: 1000 + i,
     notes: i % 3 === 0 ? 'Waiting on upstream asset updates.' : i % 3 === 1 ? 'Looking good, minor tweaks needed.' : '',
   });
@@ -621,7 +690,7 @@ for (let i = 0; i < 100; i++) {
 // --- Assets (150) ----------------------------------------------------------
 
 const assetTypes: Asset['type'][] = ['Character', 'Environment', 'Prop', 'Rig', 'Effects', 'Vehicle', 'Texture', 'Material', 'Audio'];
-const assetStatuses: Asset['status'][] = ['complete', 'in-progress', 'blocked', 'at-risk', 'not-started', 'review'];
+const assetStatuses: Asset['status'][] = ['complete', 'in-progress', 'bottleneck', 'at-risk', 'not-started', 'review'];
 const publishStatuses: Asset['publishStatus'][] = ['published', 'draft', 'queued', 'validating', 'failed'];
 
 const assetNames = [
@@ -644,15 +713,22 @@ for (let i = 0; i < 150; i++) {
   const prefix = type === 'Character' ? 'CHAR' : type === 'Environment' ? 'ENV' : type === 'Prop' ? 'PROP' : type === 'Rig' ? 'RIG' : type === 'Effects' ? 'FX' : type === 'Vehicle' ? 'VEH' : type === 'Texture' ? 'TEX' : type === 'Material' ? 'MAT' : 'AUD';
   const baseName = assetNames[i % assetNames.length];
 
+  const proj = PROJECTS[projIdx];
+  const projSeqs = SEQUENCES.filter(s => s.projectId === proj.id);
+  const seq = projSeqs[i % projSeqs.length];
+
   ASSETS.push({
     id: `asset${i + 1}`,
     name: baseName,
     projectId: `p${projIdx + 1}`,
+    episodeId: seq?.episodeId || undefined,
+    sequenceId: seq?.id || undefined,
     type,
     status: assetStatuses[i % assetStatuses.length],
     assigneeId: `u${(i % USERS.length) + 1}`,
     updatedAt: `2024-${String(8 + (i % 4)).padStart(2, '0')}-${String((i % 28) + 1).padStart(2, '0')}`,
     version: `v${String((i % 12) + 1).padStart(3, '0')}`,
+    usdVersion: `v${String((i % 12) + 1).padStart(3, '0')}.usd`,
     tags: [
       ['hero', 'character'][i % 2],
       ['modeling', 'rigging', 'texturing', 'animation', 'fx'][i % 5],
@@ -677,7 +753,7 @@ const taskTitles = [
   'Retopology {entity}', 'UV unwrap {entity}', 'Hair groom {entity}',
 ];
 
-const taskStatuses: Task['status'][] = ['todo', 'in-progress', 'blocked', 'review', 'complete', 'cancelled'];
+const taskStatuses: Task['status'][] = ['todo', 'not-started', 'in-progress', 'bottleneck', 'review', 'lead-review', 'manager-review', 'approved', 'complete'];
 const taskPriorities: Task['priority'][] = ['critical', 'high', 'medium', 'low'];
 
 // Map task titles to departments for realistic pipeline assignment
@@ -718,7 +794,7 @@ for (let i = 0; i < 300; i++) {
       dailyLogs.push({
         date: `2024-09-${String((d + 20) % 28 + 1).padStart(2, '0')}`,
         hours: [2, 4, 6, 8, 3][d % 5],
-        note: ['Blocked on upstream dependency.', 'Good progress, 60% done.', 'Waiting for review notes.', 'Reworking per feedback.', 'Final polish pass.'][d % 5],
+        note: ['Bottleneck on upstream dependency.', 'Good progress, 60% done.', 'Waiting for review notes.', 'Reworking per feedback.', 'Final polish pass.'][d % 5],
         userId: assignee.id,
       });
     }
@@ -740,7 +816,7 @@ for (let i = 0; i < 300; i++) {
     actualHours: Math.floor([4, 8, 16, 24, 40, 80][i % 6] * (i % 5) / 5),
     tags: [
       dept.abbreviation.toLowerCase(),
-      i % 4 === 0 ? 'urgent' : i % 4 === 1 ? 'blocked' : i % 4 === 2 ? 'ready' : 'waiting',
+      i % 4 === 0 ? 'urgent' : i % 4 === 1 ? 'bottleneck' : i % 4 === 2 ? 'ready' : 'waiting',
     ],
     dependencies: i > 5 && i % 3 === 0 ? [`t${i - 1}`] : [],
     checklist: [
@@ -895,7 +971,7 @@ for (let i = 0; i < 100; i++) {
     eventType: eventTypes[i % eventTypes.length],
     description: [
       `Created ${i % 2 === 0 ? 'asset' : 'shot'} entity`,
-      `Status changed to ${['in-progress', 'review', 'complete', 'blocked'][i % 4]}`,
+      `Status changed to ${['in-progress', 'review', 'complete', 'bottleneck'][i % 4]}`,
       `Assigned to ${USERS[(i + 3) % USERS.length].name}`,
       `Submitted version v${String((i % 12) + 1).padStart(3, '0')}`,
       `Approved version v${String((i % 12) + 1).padStart(3, '0')}`,
@@ -917,7 +993,7 @@ export const NOTIFICATIONS: Notification[] = [];
 const notifTemplates: { title: string; desc: string; cat: Notification['category']; pri: Notification['priority'] }[] = [
   { title: 'Task Assigned', desc: 'You were assigned to "{task}"', cat: 'assignment', pri: 'medium' },
   { title: 'Version Approved', desc: '{user} approved {version}', cat: 'approval', pri: 'low' },
-  { title: 'Dependency Blocked', desc: '{asset} is blocked, affecting your task', cat: 'workflow', pri: 'high' },
+  { title: 'Dependency Bottleneck', desc: '{asset} is bottleneck, affecting your task', cat: 'workflow', pri: 'high' },
   { title: 'Review Requested', desc: '{user} requested your review on {entity}', cat: 'review', pri: 'high' },
   { title: 'Publish Complete', desc: '{asset} published to production', cat: 'publishing', pri: 'low' },
   { title: 'Mentioned in Comment', desc: '{user} mentioned you in {entity}', cat: 'mention', pri: 'medium' },
@@ -962,11 +1038,11 @@ export const AI_SUGGESTIONS: AISuggestion[] = [
   { id: 'ai1', severity: 'CRITICAL', title: 'Capacity Overload: Yuki Tanaka at 119%', description: 'ENV_SpaceStation is a dependency for 7 shots in SEQ_030. If this slips 3+ days, critical path extends by 11 days.', entity: 'ENV_SpaceStation', entityType: 'asset', assignee: 'Yuki Tanaka', suggestedAction: 'Reassign 2 tasks to available environment artists', impact: '7 shots, 3 sequences affected', page: 'dashboard' },
   { id: 'ai2', severity: 'CRITICAL', title: 'Review Bottleneck: 12 reviews pending > 48h', description: 'Review queue has 12 items pending more than 48 hours. Average review time has increased 3x this sprint.', entity: 'Review Queue', entityType: 'review', assignee: 'Maya Chen', suggestedAction: 'Schedule dedicated review sessions', impact: 'Pipeline throughput reduced by 40%', page: 'dashboard' },
   { id: 'ai3', severity: 'HIGH', title: 'Velocity Drop: Iron Veil camera animation', description: 'Review cycle averaging 2.8 rounds/shot vs studio avg 1.4. P50=Nov 3, P80=Nov 9, P95=Nov 14.', entity: 'Iron Veil', entityType: 'project', assignee: 'Diego Vargas', suggestedAction: 'Add reviewer checkpoint at 50% completion', impact: 'Project delivery may slip 2 weeks', page: 'scheduling' },
-  { id: 'ai4', severity: 'HIGH', title: 'Missing Dependencies: FX_MagicBlast', description: '3 downstream tasks blocked. Current velocity 40% below required pace.', entity: 'FX_MagicBlast', entityType: 'asset', assignee: 'Priya Nair', suggestedAction: 'Escalate to department lead', impact: '3 tasks, 5 shots affected', page: 'dashboard' },
+  { id: 'ai4', severity: 'HIGH', title: 'Missing Dependencies: FX_MagicBlast', description: '3 downstream tasks bottleneck. Current velocity 40% below required pace.', entity: 'FX_MagicBlast', entityType: 'asset', assignee: 'Priya Nair', suggestedAction: 'Escalate to department lead', impact: '3 tasks, 5 shots affected', page: 'dashboard' },
   { id: 'ai5', severity: 'MEDIUM', title: 'Storage Warning: 85% capacity', description: 'Studio storage at 85%. At current rate, will reach 95% in 12 days.', entity: 'Storage', entityType: 'system', assignee: 'Rafi Solomonov', suggestedAction: 'Archive completed project renders', impact: 'Pipeline may halt if storage full', page: 'dashboard' },
   { id: 'ai6', severity: 'MEDIUM', title: 'Publish Conflict: Lyra Rig versions', description: 'Two versions of Lyra Rig submitted for publishing within 1 hour. Potential overwrite risk.', entity: 'Lyra Rig v3', entityType: 'asset', assignee: 'Luca Moretti', suggestedAction: 'Review and resolve version conflict', impact: '4 dependent animations may use wrong rig', page: 'publishing' },
   { id: 'ai7', severity: 'LOW', title: 'Optimization: Unused assets detected', description: '8 assets in Starfall have no shot references and no active tasks.', entity: 'Starfall', entityType: 'project', assignee: 'Aisha Diallo', suggestedAction: 'Review and archive unused assets', impact: 'Storage savings ~2.3 GB', page: 'assets' },
-  { id: 'ai8', severity: 'HIGH', title: 'Critical Path Risk: SEQ_030 Climax', description: 'Sequence has 5 blocked shots with cascading dependencies. Estimated delay: 8 business days.', entity: 'SEQ_030', entityType: 'sequence', assignee: 'Production Team', suggestedAction: 'Reassign blocked tasks and add overtime budget', impact: 'Project milestone at risk', page: 'scheduling' },
+  { id: 'ai8', severity: 'HIGH', title: 'Critical Path Risk: SEQ_030 Climax', description: 'Sequence has 5 bottleneck shots with cascading dependencies. Estimated delay: 8 business days.', entity: 'SEQ_030', entityType: 'sequence', assignee: 'Production Team', suggestedAction: 'Reassign bottleneck tasks and add overtime budget', impact: 'Project milestone at risk', page: 'scheduling' },
   { id: 'ai9', severity: 'MEDIUM', title: 'Review Overdue: Moros walk cycle', description: 'Task has been in review status for 5 days without action.', entity: 'Moros Walk Cycle', entityType: 'task', assignee: 'Maya Chen', suggestedAction: 'Send review reminder', impact: 'Blocks 2 downstream animation tasks', page: 'tasks' },
   { id: 'ai10', severity: 'CRITICAL', title: 'Render Farm Queue Overflow', description: '340 render jobs queued, average wait time 6.2 hours (normal: 1.5h). 3 nodes offline.', entity: 'Render Farm', entityType: 'system', assignee: 'Rafi Solomonov', suggestedAction: 'Restart offline nodes, prioritize critical path renders', impact: 'All departments affected', page: 'dashboard' },
 ];
@@ -1074,7 +1150,25 @@ export const MESSAGES: ChatMessage[] = [
     departmentId: 'dept2',
     userId: 'u8',
     text: 'Here is the current pass:',
-    attachments: [{ type: 'video', url: 'https://test-videos.co.uk/vids/jellyfish/mp4/h264/1080/Jellyfish_1080_10s_5MB.mp4', name: 'chase_seq_v12_playblast.mp4' }],
+    attachments: [{ id: 'a1', type: 'video', url: 'https://test-videos.co.uk/vids/jellyfish/mp4/h264/1080/Jellyfish_1080_10s_5MB.mp4', name: 'chase_seq_v12_playblast.mp4' }],
     timestamp: new Date(Date.now() - 3600000 * 22).toISOString()
   }
+];
+
+export const USER_STATUS = USERS.reduce((acc, u) => {
+  acc[u.id] = { isPunchedIn: Math.random() > 0.3, lastActive: new Date().toISOString() };
+  return acc;
+}, {} as Record<string, { isPunchedIn: boolean, lastActive: string }>);
+
+export interface TimeLog {
+  id: string;
+  userId: string;
+  taskId: string;
+  date: string;
+  hours: number;
+  note: string;
+}
+
+export const TIME_LOGS: TimeLog[] = [
+  { id: 'l1', userId: USERS[0].id, taskId: 't1', date: '2026-08-07', hours: 8, note: 'Worked on rigging' }
 ];

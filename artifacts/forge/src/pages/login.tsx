@@ -23,13 +23,21 @@ export default function Login() {
   const [showQuickPick, setShowQuickPick] = useState(false);
   const [, setLocation] = useLocation();
 
+  const matchedUser = useMemo(() => {
+    if (empId.length < 3) return null;
+    const searchId = empId.toUpperCase().startsWith('EMP') ? empId : `EMP${empId}`;
+    return USERS.find(u => u.empId.toLowerCase() === searchId.toLowerCase());
+  }, [empId]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!matchedUser) return;
+    
     setIsLoading(true);
     clearError();
 
     setTimeout(() => {
-      const success = login(empId, password);
+      const success = login(matchedUser.empId, password);
       setIsLoading(false);
       if (success) {
         setLocation('/');
@@ -100,42 +108,74 @@ export default function Login() {
         {/* Login Card */}
         <Card className="border-border/50 shadow-2xl backdrop-blur-sm bg-card/95">
           <CardContent className="p-8">
+            <div className="mb-6">
+              <h2 className="text-xl font-bold">Studio Access</h2>
+              <p className="text-sm text-muted-foreground mt-1">Enter your Employee ID to continue.</p>
+            </div>
+
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="space-y-2">
-                <Label htmlFor="empId" className="text-sm font-medium">Employee ID</Label>
+                <Label htmlFor="empId" className="text-sm font-medium text-muted-foreground">Employee ID</Label>
                 <Input
                   id="empId"
-                  placeholder="e.g. EMP1000"
+                  placeholder="e.g. EMP-014"
                   value={empId}
-                  onChange={(e) => { setEmpId(e.target.value); clearError(); }}
-                  className="h-11 bg-muted/30 border-border/50 focus:border-primary"
+                  onChange={(e) => { 
+                    setEmpId(e.target.value); 
+                    clearError(); 
+                  }}
+                  className="h-11 bg-background border-border focus:border-primary uppercase"
                   autoFocus
                   autoComplete="username"
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="password" className="text-sm font-medium">Password</Label>
-                <div className="relative">
-                  <Input
-                    id="password"
-                    type={showPassword ? 'text' : 'password'}
-                    placeholder="Enter password"
-                    value={password}
-                    onChange={(e) => { setPassword(e.target.value); clearError(); }}
-                    className="h-11 bg-muted/30 border-border/50 focus:border-primary pr-10"
-                    autoComplete="current-password"
-                  />
-                  <button
-                    type="button"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                    onClick={() => setShowPassword(!showPassword)}
-                    aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
+              {/* Dynamic User Profile Reveal */}
+              {matchedUser ? (
+                <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                  <div className="flex items-center gap-4 p-4 rounded-xl border border-primary/20 bg-primary/5 mb-4">
+                    <img 
+                      src={matchedUser.avatar} 
+                      alt={matchedUser.name} 
+                      className="w-12 h-12 rounded-full object-cover border-2 border-primary/20 shadow-sm"
+                    />
+                    <div>
+                      <div className="font-bold text-foreground">{matchedUser.name}</div>
+                      <div className="text-xs font-medium text-primary flex flex-col mt-0.5">
+                        <span>{DEPARTMENTS.find(d => d.id === matchedUser.departmentId)?.name || 'Studio'} Dept.</span>
+                        <span className="text-muted-foreground">{ROLE_LABELS[matchedUser.role]}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="password" className="text-sm font-medium text-muted-foreground">Secure Password</Label>
+                    <div className="relative">
+                      <Input
+                        id="password"
+                        type={showPassword ? 'text' : 'password'}
+                        placeholder="Enter password"
+                        value={password}
+                        onChange={(e) => { setPassword(e.target.value); clearError(); }}
+                        className="h-11 bg-background border-border focus:border-primary pr-10"
+                        autoComplete="current-password"
+                      />
+                      <button
+                        type="button"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                        onClick={() => setShowPassword(!showPassword)}
+                        aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="text-xs text-muted-foreground text-center py-2 animate-in fade-in">
+                  {empId.length > 2 ? 'Locating employee record...' : 'Awaiting ID...'}
+                </div>
+              )}
 
               {loginError && (
                 <div className="flex items-center gap-2 text-sm text-red-500 bg-red-500/10 border border-red-500/20 rounded-lg p-3 animate-in slide-in-from-top-2 fade-in duration-200">
@@ -146,8 +186,8 @@ export default function Login() {
 
               <Button
                 type="submit"
-                className="w-full h-11 font-semibold text-sm"
-                disabled={isLoading || !empId || !password}
+                className="w-full h-11 font-semibold text-sm transition-all"
+                disabled={isLoading || !matchedUser || !password}
               >
                 {isLoading ? (
                   <div className="flex items-center gap-2">
@@ -155,7 +195,7 @@ export default function Login() {
                     Authenticating...
                   </div>
                 ) : (
-                  'Sign In'
+                  'Authorize Access'
                 )}
               </Button>
             </form>

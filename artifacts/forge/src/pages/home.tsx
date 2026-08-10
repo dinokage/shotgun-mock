@@ -5,7 +5,8 @@ import { Progress } from '@/components/ui/progress';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuthStore } from '@/store/auth';
 import { useUIStore } from '@/store/ui';
-import { USERS, PROJECTS, TASKS, SHOTS, ASSETS, REVIEWS, PUBLISH_LOGS, AI_SUGGESTIONS, DEPARTMENTS } from '@/data/mockData';
+import { USERS, PROJECTS, TASKS, SHOTS, ASSETS, REVIEWS, PUBLISH_LOGS, DEPARTMENTS } from '@/data/mockData';
+import { useToast } from '@/hooks/use-toast';
 import {
   FolderOpen, Users, ListTodo, PlayCircle, Upload, TrendingUp, AlertTriangle,
   BarChart3, Workflow, ArrowRight, CheckCircle2, Clock, Plus,
@@ -18,8 +19,7 @@ import { PriorityChip } from '@/components/shared/PriorityChip';
 // --- Producer Dashboard (Studio-Wide Overview) ---
 function ProducerDashboard() {
   const activeProjects = PROJECTS.filter(p => p.status !== 'COMPLETE');
-  const activeTasks = TASKS.filter(t => t.status === 'in-progress' || t.status === 'review').length;
-  const criticalSuggestions = AI_SUGGESTIONS.filter(s => s.severity === 'CRITICAL');
+  const activeTasks = TASKS.filter(t => t.status === 'in-progress' || t.status === 'lead-review' || t.status === 'manager-review').length;
   
   return (
     <div className="p-6 max-w-[1600px] mx-auto space-y-6">
@@ -38,9 +38,9 @@ function ProducerDashboard() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: 'Active Projects', value: activeProjects.length, icon: FolderOpen, color: 'text-blue-500', bg: 'bg-blue-500/10' },
+          { label: 'Active Shots / Sequences', value: '420 / 45', icon: ListTodo, color: 'text-orange-500', bg: 'bg-orange-500/10' },
+          { label: 'Pending Client Reviews', value: 12, icon: Activity, color: 'text-pink-500', bg: 'bg-pink-500/10' },
           { label: 'Total Artists', value: USERS.length, icon: Users, color: 'text-green-500', bg: 'bg-green-500/10' },
-          { label: 'Active Tasks', value: activeTasks, icon: ListTodo, color: 'text-orange-500', bg: 'bg-orange-500/10' },
-          { label: 'Pipeline Health', value: '94%', icon: Activity, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
         ].map((s, i) => (
           <Card key={i} className="border-border/50 bg-card hover:bg-muted/20 transition-colors">
             <CardContent className="p-5 flex items-center gap-4">
@@ -101,30 +101,94 @@ function ProducerDashboard() {
             </CardContent>
           </Card>
         </div>
-
+        
+        {/* Right Column */}
         <div className="space-y-6">
-          {/* AI Suggestions (Studio Level) */}
-          <Card className="border-purple-500/20 bg-purple-500/5 shadow-[0_0_15px_rgba(168,85,247,0.05)]">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-purple-500" />
-                AI Insights
-              </CardTitle>
+          {/* AI Insights Module */}
+          <Card className="border-indigo-500/50 bg-indigo-500/5 overflow-hidden">
+            <div className="bg-indigo-500/20 p-3 flex items-center gap-2 border-b border-indigo-500/30">
+              <Sparkles className="w-5 h-5 text-indigo-400" />
+              <h3 className="font-semibold text-indigo-400">Forge AI Insights</h3>
+            </div>
+            <CardContent className="p-4 space-y-4">
+              <div className="flex gap-3 items-start">
+                <AlertTriangle className="w-5 h-5 text-orange-400 mt-0.5 shrink-0" />
+                <div>
+                  <div className="font-medium text-sm">Bottleneck Warning: Animation Dept</div>
+                  <div className="text-xs text-muted-foreground mt-1">Velocity dropped by 24% this week. Project "Leo&Loona" is forecasted to miss Milestone 03 by 4 days based on current capacity.</div>
+                  <Button variant="outline" size="sm" className="mt-2 h-7 text-xs border-orange-500/50 text-orange-500">Auto-Rebalance Load</Button>
+                </div>
+              </div>
+              <div className="border-t border-border/50 pt-4 flex gap-3 items-start">
+                <CheckCircle2 className="w-5 h-5 text-emerald-400 mt-0.5 shrink-0" />
+                <div>
+                  <div className="font-medium text-sm">Optimization Found: Render Nodes</div>
+                  <div className="text-xs text-muted-foreground mt-1">Found 12 idle GPU nodes in Region B. Automatically routing low-priority LookDev renders to save time.</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Planner vs Actual (Deadlines vs Status) */}
+          <Card className="border-border/50">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">Planner vs Actual</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
-              {criticalSuggestions.slice(0, 3).map(suggestion => (
-                <div key={suggestion.id} className="p-3 bg-card border border-border/50 rounded-lg text-sm">
-                  <div className="flex items-center gap-2 font-medium mb-1.5">
-                    <AlertTriangle className="w-4 h-4 text-red-500" />
-                    {suggestion.title}
+            <CardContent className="space-y-4">
+              {[
+                { task: 'Shot 032 Anim', planned: 'Oct 12', actual: 'Oct 14', status: 'Delayed', color: 'text-red-500' },
+                { task: 'VFX Sim Rig', planned: 'Oct 10', actual: 'Oct 09', status: 'Ahead', color: 'text-green-500' },
+                { task: 'Env Lighting', planned: 'Oct 15', actual: 'Oct 15', status: 'On Track', color: 'text-blue-500' },
+                { task: 'Main Char Roto', planned: 'Oct 11', actual: 'Oct 13', status: 'Delayed', color: 'text-red-500' }
+              ].map((item, i) => (
+                <div key={i} className="flex justify-between items-center border-b border-border/50 pb-3 last:border-0 last:pb-0">
+                  <div>
+                    <div className="font-medium text-sm">{item.task}</div>
+                    <div className="text-xs text-muted-foreground">Deadline: {item.planned}</div>
                   </div>
-                  <p className="text-muted-foreground text-xs leading-relaxed mb-2">{suggestion.description}</p>
-                  <Button variant="secondary" size="sm" className="w-full text-xs h-7">Take Action</Button>
+                  <div className="text-right">
+                    <div className={`font-semibold text-sm ${item.color}`}>{item.status}</div>
+                    <div className="text-xs text-muted-foreground">Est: {item.actual}</div>
+                  </div>
                 </div>
               ))}
             </CardContent>
           </Card>
+          {/* Quick Review Panel */}
+          <Card className="border-border/50 bg-gradient-to-b from-card to-muted/20">
+            <CardHeader className="pb-3 border-b border-border/50">
+              <CardTitle className="text-lg flex items-center justify-between">
+                <span>Quick Review Queue</span>
+                <Badge variant="secondary" className="bg-purple-500/10 text-purple-500 border-purple-500/20 hover:bg-purple-500/20">12 Pending</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-4 space-y-4">
+              {[
+                { shot: 'S01_040', project: 'Starfall', dept: 'Animation', status: 'Internal Review', submitter: 'Nadia S.' },
+                { shot: 'EP03_010', project: 'NeonFlix', dept: 'Compositing', status: 'Client Review', submitter: 'Zoe P.' },
+                { shot: 'S02_090', project: 'Starfall', dept: 'FX', status: 'Internal Review', submitter: 'Rafi K.' },
+              ].map((item, i) => (
+                <div key={i} className="flex justify-between items-center group cursor-pointer">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-7 rounded bg-muted flex items-center justify-center shrink-0 border border-border group-hover:border-primary/50 transition-colors">
+                      <PlayCircle className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-sm group-hover:text-primary transition-colors">{item.shot} <span className="text-muted-foreground font-normal ml-1">({item.project})</span></div>
+                      <div className="text-xs text-muted-foreground">{item.dept} • {item.submitter}</div>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className={item.status === 'Client Review' ? 'text-pink-500 border-pink-500/30 bg-pink-500/10' : 'text-purple-500 border-purple-500/30 bg-purple-500/10'}>
+                    {item.status}
+                  </Badge>
+                </div>
+              ))}
+              <Button variant="outline" className="w-full text-xs h-8 mt-2">View All Pending Reviews</Button>
+            </CardContent>
+          </Card>
+
         </div>
+
       </div>
     </div>
   );
@@ -136,7 +200,7 @@ function SupervisorDashboard({ currentUser }: { currentUser: any }) {
   const deptTeam = USERS.filter(u => u.departmentId === dept?.id);
   const deptTasks = TASKS.filter(t => t.department === dept?.name);
   const activeTasks = deptTasks.filter(t => t.status === 'in-progress');
-  const reviewTasks = deptTasks.filter(t => t.status === 'review');
+  const reviewTasks = deptTasks.filter(t => t.status === 'lead-review' || t.status === 'manager-review');
   const { setActiveTaskDrawer } = useUIStore();
 
   if (!dept) return null;
@@ -235,6 +299,7 @@ function ArtistDashboard({ currentUser }: { currentUser: any }) {
   const activeTasks = myTasks.filter(t => t.status === 'in-progress' || t.status === 'todo');
   const myReviews = REVIEWS.filter(r => r.reviewerId === currentUser.id && r.status === 'pending');
   const { setActiveTaskDrawer } = useUIStore();
+  const { toast } = useToast();
 
   return (
     <div className="p-6 max-w-[1400px] mx-auto space-y-6">
@@ -249,7 +314,7 @@ function ArtistDashboard({ currentUser }: { currentUser: any }) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: 'My Active Tasks', value: activeTasks.length, icon: ListTodo, color: 'text-orange-500', bg: 'bg-orange-500/10' },
-          { label: 'Completed (This Week)', value: myTasks.filter(t => t.status === 'complete').length, icon: CheckCircle2, color: 'text-green-500', bg: 'bg-green-500/10' },
+          { label: 'Completed (This Week)', value: myTasks.filter(t => t.status === 'approved').length, icon: CheckCircle2, color: 'text-green-500', bg: 'bg-green-500/10' },
           { label: 'Reviews Requested', value: myReviews.length, icon: PlayCircle, color: 'text-purple-500', bg: 'bg-purple-500/10' },
           { label: 'Total Hours Logged', value: '32h', icon: Clock, color: 'text-blue-500', bg: 'bg-blue-500/10' },
         ].map((s, i) => (
@@ -297,17 +362,39 @@ function ArtistDashboard({ currentUser }: { currentUser: any }) {
 
         <div className="space-y-6">
           <Card className="border-border/50 bg-muted/20">
-            <CardHeader>
-              <CardTitle className="text-lg">Daily Log</CardTitle>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg flex items-center gap-2"><Upload className="w-5 h-5 text-primary" /> Quick Publish</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4 text-sm text-muted-foreground">
-                <p>Log your hours and blockers for today's standup.</p>
-                <textarea 
-                  className="w-full h-24 bg-card border border-border rounded-md p-3 text-foreground resize-none focus:outline-none focus:ring-1 focus:ring-primary"
-                  placeholder="What did you work on today?"
-                />
-                <Button className="w-full">Submit Log</Button>
+              <div className="space-y-4 text-sm">
+                <p className="text-muted-foreground">Drag and drop files to instantly publish to your active task.</p>
+                <div className="border-2 border-dashed border-border rounded-lg p-8 flex flex-col items-center justify-center text-center hover:bg-muted/30 transition-colors cursor-pointer group">
+                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                    <Upload className="w-6 h-6 text-primary" />
+                  </div>
+                  <div className="font-semibold mb-1">Click or drag file to this area</div>
+                  <div className="text-xs text-muted-foreground">Supports .mov, .mp4, .usd, .png (Max 2GB)</div>
+                </div>
+                <Button className="w-full" onClick={() => {
+                  toast({ title: 'Upload Started', description: 'Your file is being published to the pipeline.' });
+                }}>Browse Files</Button>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card className="border-border/50 bg-muted/20">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg flex items-center gap-2"><Sparkles className="w-5 h-5 text-purple-500" /> Recent Feedback</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {myReviews.slice(0, 3).map(r => (
+                  <div key={r.id} className="p-3 bg-card border border-border rounded-md text-sm">
+                    <div className="font-medium text-foreground mb-1">Version {r.id.split('_')[1] || 'v001'}</div>
+                    <div className="text-muted-foreground line-clamp-2">"Please adjust the rim light intensity. It's blowing out the character's shoulder on frame 102." - Supervisor</div>
+                  </div>
+                ))}
+                {myReviews.length === 0 && <div className="text-sm text-muted-foreground">No recent feedback.</div>}
               </div>
             </CardContent>
           </Card>

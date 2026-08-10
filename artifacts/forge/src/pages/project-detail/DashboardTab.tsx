@@ -16,7 +16,7 @@ const burndownData = [
 const COLORS = {
   complete: 'hsl(134 60% 30%)',
   'in-progress': 'hsl(28 72% 41%)',
-  blocked: 'hsl(0 54% 41%)',
+  bottleneck: 'hsl(0 54% 41%)',
   todo: 'hsl(204 20% 45%)'
 };
 
@@ -24,7 +24,7 @@ export default function DashboardTab({ project }: { project: any }) {
   const pieData = [
     { name: 'Complete', value: 98, fill: COLORS.complete },
     { name: 'In Progress', value: 74, fill: COLORS['in-progress'] },
-    { name: 'Blocked', value: 25, fill: COLORS.blocked },
+    { name: 'Bottleneck', value: 25, fill: COLORS.bottleneck },
     { name: 'To Do', value: 50, fill: COLORS.todo },
   ];
 

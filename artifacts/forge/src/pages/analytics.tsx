@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PROJECTS, TASKS, REVIEWS, PUBLISH_LOGS, DEPARTMENTS, USERS } from '@/data/mockData';
+import { PROJECTS, TASKS, REVIEWS, PUBLISH_LOGS, DEPARTMENTS, USERS, TIME_LOGS } from '@/data/mockData';
 import { BarChart3, TrendingUp, Clock, CheckCircle2, AlertTriangle, Users, Download, ArrowUpRight, ArrowDownRight, Flame } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Link } from 'wouter';
@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 export default function Analytics() {
   const { toast } = useToast();
   const totalTasks = TASKS.length;
-  const completedTasks = TASKS.filter(t => t.status === 'complete').length;
+  const completedTasks = TASKS.filter(t => t.status === 'approved').length;
   const avgReviewTime = 2.4; // hours mock
   const approvalRate = Math.round((REVIEWS.filter(r => r.status === 'approved').length / REVIEWS.length) * 100);
   const publishSuccess = Math.round((PUBLISH_LOGS.filter(p => p.status === 'success').length / PUBLISH_LOGS.length) * 100);
@@ -79,6 +79,7 @@ export default function Analytics() {
         <TabsList className="mb-4">
           <TabsTrigger value="production">Production Metrics</TabsTrigger>
           <TabsTrigger value="financials">Financials & Bidding</TabsTrigger>
+          <TabsTrigger value="timecards">Timecards & Tracking</TabsTrigger>
         </TabsList>
 
         <TabsContent value="production" className="space-y-6 mt-0">
@@ -368,6 +369,77 @@ export default function Analytics() {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="timecards" className="space-y-6 mt-0">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-xl flex items-center gap-2"><Clock className="text-blue-500 w-5 h-5" /> Artist Timecards</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-border/50 text-muted-foreground">
+                      <th className="pb-3 font-medium">Artist</th>
+                      <th className="pb-3 font-medium">Department</th>
+                      <th className="pb-3 font-medium text-center">Status</th>
+                      <th className="pb-3 font-medium text-right">Today (hrs)</th>
+                      <th className="pb-3 font-medium text-right">This Week (hrs)</th>
+                      <th className="pb-3 font-medium text-right">Utilization</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/50">
+                    {USERS.map((user, i) => {
+                      // Filter all logs for the user to compute actual hours, or mock it if missing
+                      const userLogs = TIME_LOGS.filter(l => l.userId === user.id);
+                      const actualHours = userLogs.reduce((acc, l) => acc + l.hours, 0);
+                      
+                      // Mock additional status since our TimeLog interface is very simple
+                      const mockStatus = i % 3 === 0 ? 'punched-in' : 'offline';
+                      const punchedInAt = mockStatus === 'punched-in' ? new Date().toISOString() : undefined;
+                      const totalHoursToday = actualHours > 0 ? actualHours : (i % 2 === 0 ? 6.5 : 0);
+                      const totalHoursWeek = actualHours > 0 ? actualHours * 5 : (i % 2 === 0 ? 32.5 : 0);
+                      
+                      const todayHrs = totalHoursToday.toFixed(1);
+                      const weekHrs = totalHoursWeek.toFixed(1);
+                      const util = Math.round((Number(weekHrs) / 40) * 100);
+                      const isOver = util > 100;
+                      
+                      return (
+                        <tr key={user.id} className="hover:bg-muted/30 transition-colors">
+                          <td className="py-4 font-medium flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full overflow-hidden shrink-0">
+                              <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
+                            </div>
+                            <div>
+                              <div>{user.name}</div>
+                              <div className="text-[10px] text-muted-foreground">{user.role}</div>
+                            </div>
+                          </td>
+                          <td className="py-4">
+                            <Badge variant="secondary" className="text-[10px]">{user.departmentId}</Badge>
+                          </td>
+                          <td className="py-4 text-center">
+                            <Badge variant="outline" className={mockStatus === 'punched-in' ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-muted text-muted-foreground'}>
+                              {mockStatus === 'punched-in' ? `PUNCHED IN${punchedInAt ? ` (${new Date(punchedInAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})` : ''}` : 'OFFLINE'}
+                            </Badge>
+                          </td>
+                          <td className="py-4 text-right tabular-nums font-medium">{todayHrs}h</td>
+                          <td className="py-4 text-right tabular-nums">{weekHrs}h</td>
+                          <td className="py-4 text-right">
+                            <Badge variant="outline" className={isOver ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' : 'bg-blue-500/10 text-blue-500 border-blue-500/20'}>
+                              {util}%
+                            </Badge>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

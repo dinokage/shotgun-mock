@@ -11,9 +11,10 @@ import { UserAvatar } from '@/components/shared/UserAvatar';
 const COLUMNS: { id: TaskStatus; title: string }[] = [
   { id: 'todo', title: 'To Do' },
   { id: 'in-progress', title: 'In Progress' },
-  { id: 'review', title: 'Review' },
-  { id: 'complete', title: 'Done' },
-  { id: 'blocked', title: 'Blocked' }
+  { id: 'lead-review', title: 'Lead Review' },
+  { id: 'manager-review', title: 'Manager Review' },
+  { id: 'approved', title: 'Approved' },
+  { id: 'bottleneck', title: 'Bottleneck' }
 ];
 
 function SortableTaskCard({ task }: { task: any }) {
@@ -38,9 +39,11 @@ function SortableTaskCard({ task }: { task: any }) {
   );
 }
 
-export default function KanbanView({ projectId }: { projectId?: string }) {
-  const { tasks, updateTaskStatus } = useTasksStore();
-  const projectTasks = projectId ? tasks.filter(t => t.projectId === projectId) : tasks;
+export default function KanbanView({ projectId, tasks }: { projectId?: string, tasks?: any[] }) {
+  const storeTasks = useTasksStore(state => state.tasks);
+  const { updateTaskStatus } = useTasksStore();
+  const sourceTasks = tasks || storeTasks;
+  const projectTasks = projectId ? sourceTasks.filter(t => t.projectId === projectId) : sourceTasks;
   
   const [activeTask, setActiveTask] = useState<any | null>(null);
 
