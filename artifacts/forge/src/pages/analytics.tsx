@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PROJECTS, TASKS, REVIEWS, PUBLISH_LOGS, DEPARTMENTS, USERS, TIME_LOGS } from '@/data/mockData';
+import { PROJECTS, TASKS, REVIEWS, PUBLISH_LOGS, DEPARTMENTS, USERS, TIME_LOGS, SHOTS } from '@/data/mockData';
 import { BarChart3, TrendingUp, Clock, CheckCircle2, AlertTriangle, Users, Download, ArrowUpRight, ArrowDownRight, Flame } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Link } from 'wouter';
@@ -91,16 +91,23 @@ export default function Analytics() {
               <CardTitle className="text-lg flex items-center gap-2 text-orange-500"><Flame className="w-5 h-5" /> Bidding vs Actuals (Burn Rate)</CardTitle>
             </CardHeader>
             <CardContent className="pt-4 space-y-5">
-              {PROJECTS.slice(0, 3).map((proj, i) => {
-                const bids = [400, 1200, 850][i];
-                const actuals = [450, 1100, 920][i];
+              {TASKS.slice(0, 5).map(task => {
+                const bids = task.estimatedHours || 40;
+                const actuals = task.actualHours || (Math.floor(Math.random() * 50) + 10); // Mock actuals if undefined
                 const burnRate = Math.round((actuals / bids) * 100);
                 const isOverBudget = actuals > bids;
+                
+                const shot = SHOTS.find(s => s.id === task.shotId);
+                const project = PROJECTS.find(p => p.id === shot?.projectId);
+
                 return (
-                  <div key={proj.id} className="space-y-2">
+                  <div key={task.id} className="space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span className="font-medium">{proj.name}</span>
-                      <div className="flex gap-4">
+                      <div>
+                        <span className="font-medium">{task.department} Task</span>
+                        <div className="text-[10px] text-muted-foreground">{project?.name} - {shot?.name}</div>
+                      </div>
+                      <div className="flex gap-4 items-center">
                         <span className="text-muted-foreground">Bid: {bids}h</span>
                         <span className={isOverBudget ? 'text-red-500 font-bold' : 'text-green-500 font-bold'}>Actual: {actuals}h</span>
                       </div>

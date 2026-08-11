@@ -43,7 +43,6 @@ const PROD_NAV: NavItem[] = [
   { label: 'Timesheets', icon: Clock, href: '/timesheets' },
   { label: 'Analytics', icon: BarChart3, href: '/analytics' },
   { label: 'Reviews', icon: PlayCircle, href: '/review', badge: 5 },
-  { label: 'Client Portal', icon: MonitorPlay, href: '/client-review' },
 ];
 
 // Artists get specific focus areas
@@ -63,7 +62,6 @@ const DIRECTORY_NAV: NavItem[] = [
 // System nav
 const SYSTEM_NAV: NavItem[] = [
   { label: 'Integrations Hub', icon: Puzzle, href: '/integrations' },
-  { label: 'Dependency Graph', icon: GitFork, href: '/impact' },
   { label: 'Workflows', icon: Workflow, href: '/workflows' },
   { label: 'Marketplace', icon: Store, href: '/marketplace' },
 

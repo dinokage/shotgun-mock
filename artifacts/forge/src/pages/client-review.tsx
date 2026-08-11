@@ -7,6 +7,9 @@ import { SHOTS, PROJECTS } from '@/data/mockData';
 import { useLocation } from 'wouter';
 import { useAuthStore } from '@/store/auth';
 import { Badge } from '@/components/ui/badge';
+import { Lock, Key } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 
 type AnnotationTool = 'select' | 'pen' | 'arrow' | 'rectangle' | 'text';
 
@@ -39,13 +42,26 @@ interface Annotation {
 }
 
 export default function ClientReview() {
+  const { currentUser, logout } = useAuthStore();
+  const [, setLocation] = useLocation();
+
+  const searchParams = new URLSearchParams(window.location.search);
+  const hasToken = searchParams.get('token') === 'demo';
+  
+  const [accessCode, setAccessCode] = useState('');
+  const [clientAuthenticated, setClientAuthenticated] = useState(hasToken);
+
+  // If a user has the explicit 'client' role, they automatically bypass the access code.
+  // Otherwise, everyone (even managers testing the portal) must enter the access code.
+  const isExplicitClient = currentUser?.role === 'client';
+
+
+
   const [activeReviewId, setActiveReviewId] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [frame, setFrame] = useState(1);
   const [feedback, setFeedback] = useState('');
   const { toast } = useToast();
-  const [, setLocation] = useLocation();
-  const { logout } = useAuthStore();
   
   const [tool, setTool] = useState<AnnotationTool>('select');
   const [color, setColor] = useState('#10b981');
@@ -101,8 +117,30 @@ export default function ClientReview() {
     
     return () => {
       if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    }
+  }, [isPlaying, activeReviewId, maxFrames]);
+
+  // Global keydown for Spacebar play/pause and Arrow keys for scrubbing
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger if user is typing in an input or textarea
+      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        setIsPlaying(p => !p);
+      } else if (e.code === 'ArrowLeft') {
+        e.preventDefault();
+        setIsPlaying(false);
+        setFrame(f => Math.max(1, f - 1));
+      } else if (e.code === 'ArrowRight') {
+        e.preventDefault();
+        setIsPlaying(false);
+        setFrame(f => Math.min(maxFrames, f + 1));
+      }
     };
-  }, [isPlaying, activeReviewId]);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [maxFrames]);
 
   // Handle global mouse move for canvas dragging
   useEffect(() => {
@@ -143,6 +181,54 @@ export default function ClientReview() {
     logout();
     setLocation('/login');
   };
+
+  // Separate Client Login (Access Code)
+  if (!clientAuthenticated && !isExplicitClient) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-zinc-950 p-4">
+        <Card className="w-full max-w-md border-border/50 shadow-2xl">
+          <CardHeader className="space-y-2 text-center pb-6">
+            <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-2">
+              <Key className="w-6 h-6 text-primary" />
+            </div>
+            <CardTitle className="text-2xl font-bold">Client Review Portal</CardTitle>
+            <CardDescription>Enter your secure access code to view pending deliverables.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Input 
+                type="password"
+                placeholder="Access Code (try: demo)" 
+                value={accessCode} 
+                onChange={e => setAccessCode(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && accessCode.toLowerCase() === 'demo') {
+                    setClientAuthenticated(true);
+                  }
+                }}
+                className="text-center text-lg tracking-widest h-12"
+              />
+            </div>
+            <Button 
+              className="w-full h-12 text-md font-semibold" 
+              onClick={() => {
+                if (accessCode.toLowerCase() === 'demo') {
+                  setClientAuthenticated(true);
+                } else {
+                  toast({ title: "Invalid Code", description: "Please check your email for the correct access code.", variant: "destructive" });
+                }
+              }}
+            >
+              Access Review Session
+            </Button>
+            <p className="text-xs text-center text-muted-foreground mt-4">
+              Protected by Forge Secure Share
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   // DASHBOARD VIEW
   if (!activeReviewId) {

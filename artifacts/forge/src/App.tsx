@@ -17,7 +17,6 @@ import Tasks from '@/pages/tasks';
 import ProjectDetail from '@/pages/project-detail/index';
 import Review from '@/pages/review';
 import Scheduling from '@/pages/scheduling';
-import ImpactAnalysis from '@/pages/impact';
 import WorkflowEditor from '@/pages/workflow-editor';
 import Marketplace from '@/pages/marketplace';
 import Settings from '@/pages/settings';
@@ -119,9 +118,6 @@ function Router() {
               <Route path="/integrations">
                 <LeadershipGuard><IntegrationsHub /></LeadershipGuard>
               </Route>
-              <Route path="/impact">
-                <LeadershipGuard><ImpactAnalysis /></LeadershipGuard>
-              </Route>
               <Route path="/workflows">
                 <LeadershipGuard><WorkflowEditor /></LeadershipGuard>
               </Route>
@@ -129,7 +125,6 @@ function Router() {
               <Route path="/analytics">
                 <LeadershipGuard><Analytics /></LeadershipGuard>
               </Route>
-              <Route path="/marketplace" component={Marketplace} />
               <Route path="/profile" component={Profile} />
               
               <Route path="/production">
