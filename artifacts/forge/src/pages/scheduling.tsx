@@ -23,6 +23,12 @@ const getDaysDiff = (start: string, end: string) => {
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1;
 };
 
+const VACATIONS = [
+  { userId: 'u2', start: '2025-06-05', end: '2025-06-08' },
+  { userId: 'u4', start: '2025-06-12', end: '2025-06-15' },
+  { userId: 'u6', start: '2025-06-02', end: '2025-06-04' }
+];
+
 export default function Scheduling() {
   const { toast } = useToast();
   const [projectFilter, setProjectFilter] = useState<string>('all');
@@ -208,6 +214,45 @@ export default function Scheduling() {
         </div>
       </div>
 
+      {/* Resource Utilization Panel */}
+      <div className="border-b border-border bg-card/50 px-6 py-3 shrink-0">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Team Utilization Overview</h3>
+          <div className="flex items-center gap-4 text-[10px] text-muted-foreground">
+            <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-emerald-500" /> Available (&lt;75%)</div>
+            <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-yellow-500" /> Near Capacity (75-90%)</div>
+            <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-red-500" /> Over-allocated (&gt;90%)</div>
+          </div>
+        </div>
+        <div className="grid grid-cols-4 lg:grid-cols-8 gap-3">
+          {USERS.filter(u => u.role !== 'client').slice(0, 8).map(user => {
+            const cap = user.capacity ?? 50;
+            const barColor = cap > 90 ? 'bg-red-500' : cap > 75 ? 'bg-yellow-500' : 'bg-emerald-500';
+            const ringColor = cap > 90 ? 'ring-red-500/30' : cap > 75 ? 'ring-yellow-500/30' : 'ring-emerald-500/30';
+            const totalHours = Math.round(cap * 0.4);
+            return (
+              <div key={user.id} className={`bg-card border border-border rounded-lg p-3 ring-1 ${ringColor} hover:ring-2 transition-all cursor-pointer`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <Avatar className="w-5 h-5"><AvatarImage src={user.avatar} /><AvatarFallback>{user.name.charAt(0)}</AvatarFallback></Avatar>
+                  <span className="text-xs font-medium truncate">{user.name.split(' ')[0]}</span>
+                </div>
+                <div className="w-full h-2 bg-muted rounded-full overflow-hidden mb-1">
+                  <div className={`h-full ${barColor} rounded-full transition-all duration-700`} style={{ width: `${Math.min(cap, 100)}%` }} />
+                </div>
+                <div className="flex justify-between text-[10px] text-muted-foreground">
+                  <span className="font-mono font-bold">{cap}%</span>
+                  <span>{totalHours}h / 40h</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+          <span>Team Average: <strong className="text-foreground">{Math.round(USERS.filter(u => u.role !== 'client').slice(0, 8).reduce((s, u) => s + (u.capacity ?? 50), 0) / 8)}%</strong></span>
+          <span className="text-[10px]">{USERS.filter(u => (u.capacity ?? 50) > 90).length} over-allocated · {USERS.filter(u => (u.capacity ?? 50) < 50).length} available for rebalancing</span>
+        </div>
+      </div>
+
       {/* Gantt Chart Area */}
       <div className="flex-1 flex overflow-hidden bg-background">
         {/* Left pane: Resources (Users) */}
@@ -327,6 +372,37 @@ export default function Scheduling() {
               const rowHeight = Math.max(48, tasks.length * 40 + 8);
               return (
                 <div key={userId} className="relative border-b border-border hover:bg-muted/5 group transition-colors" style={{ height: `${rowHeight}px` }}>
+                  
+                  {/* Vacation Blocks */}
+                  {VACATIONS.filter(v => v.userId === userId).map((vacation, vIdx) => {
+                    const startOffset = Math.max(0, getDaysDiff(timelineStartStr, vacation.start));
+                    const isBeforeStart = new Date(vacation.start) < new Date(timelineStartStr);
+                    const actualStartOffset = isBeforeStart ? 0 : startOffset;
+                    
+                    const duration = getDaysDiff(vacation.start, vacation.end) + 1;
+                    const width = duration * cellWidth;
+                    const left = actualStartOffset * cellWidth;
+                    
+                    return (
+                      <div 
+                        key={`vacation-${userId}-${vIdx}`}
+                        className="absolute z-20 flex items-center justify-center opacity-80 overflow-hidden pointer-events-none"
+                        style={{
+                          left: `${left}px`,
+                          width: `${width}px`,
+                          top: '4px',
+                          bottom: '4px',
+                          background: 'repeating-linear-gradient(45deg, rgba(239, 68, 68, 0.05), rgba(239, 68, 68, 0.05) 10px, rgba(239, 68, 68, 0.15) 10px, rgba(239, 68, 68, 0.15) 20px)',
+                          borderLeft: '2px solid rgba(239, 68, 68, 0.4)',
+                          borderRight: '2px solid rgba(239, 68, 68, 0.4)',
+                          borderRadius: '4px'
+                        }}
+                      >
+                        <span className="text-[10px] font-bold text-red-500/70 uppercase tracking-widest bg-background/50 px-1 py-0.5 rounded backdrop-blur-sm">PTO</span>
+                      </div>
+                    )
+                  })}
+
                   {tasks.map((task, i) => {
                     const project = PROJECTS.find(p => p.id === task.projectId);
                     const left = task.startOffset * cellWidth;

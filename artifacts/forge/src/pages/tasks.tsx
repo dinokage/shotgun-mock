@@ -78,7 +78,7 @@ export default function Tasks() {
       const result = await apiClient.post(`/tasks/${taskId}/complete`);
       toast({
         title: "Task Completed",
-        description: `Backend triggered ${result.auto_assignments?.length || 0} auto-assignments.`,
+        description: `Backend triggered ${(result as any).auto_assignments?.length || 0} auto-assignments.`,
       });
       fetchTasks(); // Instantly refetch
     } catch (e) {

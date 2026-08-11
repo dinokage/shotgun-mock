@@ -118,7 +118,7 @@ export default function KanbanView({ projectId, tasks }: { projectId?: string, t
       return;
     }
 
-    const overTask = tasks.find(t => t.id === overId);
+    const overTask = sourceTasks.find(t => t.id === overId);
     if (overTask && overTask.status) {
       updateTaskStatus(activeId, overTask.status);
     }

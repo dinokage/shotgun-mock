@@ -14,7 +14,8 @@ export type Role =
   | 'lead'
   | 'senior_artist'
   | 'artist'
-  | 'junior_artist';
+  | 'junior_artist'
+  | 'client';
 
 export const ROLE_HIERARCHY: Record<Role, number> = {
   vfx_producer: 8,
@@ -25,6 +26,7 @@ export const ROLE_HIERARCHY: Record<Role, number> = {
   senior_artist: 3,
   artist: 2,
   junior_artist: 1,
+  client: 0
 };
 
 export const ROLE_LABELS: Record<Role, string> = {
@@ -36,6 +38,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   senior_artist: 'Senior Artist',
   artist: 'Artist',
   junior_artist: 'Junior Artist',
+  client: 'Client'
 };
 
 export function canAssignTo(assignerRole: Role, assigneeRole: Role): boolean {
@@ -129,7 +132,7 @@ export interface Shot {
   episodeId: string;
   sequenceId: string;
   sequence: string;
-  status: 'complete' | 'in-progress' | 'bottleneck' | 'review' | 'not-started' | 'at-risk';
+  status: 'complete' | 'in-progress' | 'bottleneck' | 'review' | 'not-started' | 'at-risk' | 'client-review';
   assigneeId: string;
   updatedAt: string;
   frameRange: string;
@@ -141,6 +144,7 @@ export interface Shot {
   reviewStatus?: string;
   clientReviewStatus: 'pending' | 'approved' | 'rejected' | 'changes-requested' | 'not-submitted';
   thumbnailSeed: number;
+  thumbnail?: string;
   notes: string;
 }
 

@@ -1,6 +1,6 @@
 import { useUIStore } from '@/store/ui';
 import { TASKS, USERS, PROJECTS, ASSETS, SHOTS, DEPARTMENTS, PIPELINE_ORDER, getNextDepartment } from '@/data/mockData';
-import { X, CheckCircle2, Circle, Clock, Tag, Paperclip, MessageSquare, GitBranch, Sparkles, AlertTriangle, CalendarDays, ArrowRight, Play } from 'lucide-react';
+import { X, CheckCircle2, Circle, Clock, Tag, Paperclip, MessageSquare, GitBranch, Sparkles, AlertTriangle, CalendarDays, ArrowRight, Play, UserCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -8,6 +8,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Progress } from '@/components/ui/progress';
 import { useAuthStore } from '@/store/auth';
+import { useState } from 'react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -48,6 +49,30 @@ export function TaskDrawer() {
   if (!task) return null;
 
   const assignee = USERS.find(u => u.id === task.assigneeId);
+  
+  const [commentText, setCommentText] = useState('');
+  const [showMentions, setShowMentions] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState('');
+
+  const handleCommentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setCommentText(val);
+
+    const lastAt = val.lastIndexOf('@');
+    if (lastAt !== -1 && !val.substring(lastAt).includes(' ')) {
+      setShowMentions(true);
+      setMentionQuery(val.substring(lastAt + 1).toLowerCase());
+    } else {
+      setShowMentions(false);
+    }
+  };
+
+  const insertMention = (name: string) => {
+    const lastAt = commentText.lastIndexOf('@');
+    const newText = commentText.substring(0, lastAt) + '@' + name.replace(' ', '') + ' ';
+    setCommentText(newText);
+    setShowMentions(false);
+  };
   const project = PROJECTS.find(p => p.id === task.projectId);
   const asset = task.assetId ? ASSETS.find(a => a.id === task.assetId) : null;
   const shot = task.shotId ? SHOTS.find(s => s.id === task.shotId) : null;
@@ -346,12 +371,48 @@ export function TaskDrawer() {
               </div>
 
               {/* Add Comment */}
-              <div className="mt-4">
+              <div className="mt-4 relative">
                 <textarea
                   className="w-full h-20 bg-muted/50 border border-border rounded-md p-2.5 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-primary"
-                  placeholder="Add a comment..."
+                  placeholder="Add a comment... (Type @ to mention)"
+                  value={commentText}
+                  onChange={handleCommentChange}
                 />
-                <Button size="sm" className="mt-2">Post Comment</Button>
+                
+                {/* Mentions Dropdown */}
+                {showMentions && (
+                  <div className="absolute left-2 top-[85px] w-64 max-h-48 overflow-y-auto bg-card border border-border rounded-md shadow-lg z-50 p-1 animate-in fade-in slide-in-from-top-2">
+                    {USERS.filter(u => u.name.toLowerCase().includes(mentionQuery)).length === 0 ? (
+                      <div className="p-2 text-xs text-muted-foreground text-center">No users found.</div>
+                    ) : (
+                      USERS.filter(u => u.name.toLowerCase().includes(mentionQuery)).map(u => (
+                        <div 
+                          key={u.id} 
+                          className="flex items-center gap-2 p-2 hover:bg-muted rounded cursor-pointer transition-colors"
+                          onClick={() => insertMention(u.name)}
+                        >
+                          <Avatar className="w-5 h-5"><AvatarImage src={u.avatar} /><AvatarFallback>{u.name.charAt(0)}</AvatarFallback></Avatar>
+                          <span className="text-sm font-medium">{u.name}</span>
+                          <span className="text-xs text-muted-foreground ml-auto">{u.role}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+                
+                <Button 
+                  size="sm" 
+                  className="mt-2"
+                  onClick={() => {
+                    if (commentText.trim()) {
+                      toast({ title: 'Comment Posted', description: 'Your comment has been added.' });
+                      setCommentText('');
+                      setShowMentions(false);
+                    }
+                  }}
+                >
+                  Post Comment
+                </Button>
               </div>
             </div>
 

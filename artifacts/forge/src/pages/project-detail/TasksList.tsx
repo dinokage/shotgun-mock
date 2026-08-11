@@ -17,10 +17,12 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react';
+import { ChevronDown, ChevronUp, ChevronsUpDown, ChevronRight, Layers } from 'lucide-react';
 
 type SortKey = 'title' | 'assignee' | 'status' | 'priority' | 'dueDate' | 'estimatedHours';
+type GroupKey = 'none' | 'assignee' | 'status' | 'priority' | 'department';
 
 const COLUMNS: { key: SortKey; label: string }[] = [
   { key: 'title', label: 'Title' },
@@ -31,11 +33,28 @@ const COLUMNS: { key: SortKey; label: string }[] = [
   { key: 'estimatedHours', label: 'Est. Hrs' },
 ];
 
+const DEPARTMENT_MAP: Record<string, string> = {
+  'u1': 'VFX Supervision',
+  'u2': 'Lighting',
+  'u3': 'Compositing',
+  'u4': 'Animation',
+  'u5': 'Modeling',
+  'u6': 'FX',
+  'u7': 'Production',
+  'u8': 'Rigging',
+};
+
 export default function TasksListView({ projectId }: { projectId: string }) {
-  const tasks = useTasksStore(state => state.tasks).filter(t => t.projectId === projectId);
+  const { tasks: allTasks, updateTask } = useTasksStore();
+  const tasks = allTasks.filter(t => t.projectId === projectId);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [groupBy, setGroupBy] = useState<GroupKey>('status');
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  
+  // Inline editing state
+  const [editingCell, setEditingCell] = useState<{ taskId: string; field: 'status' | 'priority' | 'assignee' } | null>(null);
   const { toast } = useToast();
 
   const sortedTasks = useMemo(() => {
@@ -56,6 +75,33 @@ export default function TasksListView({ projectId }: { projectId: string }) {
       return 0;
     });
   }, [tasks, sortKey, sortDir]);
+
+  const groupedTasks = useMemo(() => {
+    if (groupBy === 'none') return [{ key: '__all__', label: '', tasks: sortedTasks }];
+    
+    const groups = new Map<string, typeof sortedTasks>();
+    sortedTasks.forEach(t => {
+      let groupKey = '';
+      switch (groupBy) {
+        case 'assignee':
+          groupKey = USERS.find(u => u.id === t.assigneeId)?.name ?? 'Unassigned';
+          break;
+        case 'status':
+          groupKey = t.status;
+          break;
+        case 'priority':
+          groupKey = t.priority;
+          break;
+        case 'department':
+          groupKey = DEPARTMENT_MAP[t.assigneeId] ?? 'General';
+          break;
+      }
+      if (!groups.has(groupKey)) groups.set(groupKey, []);
+      groups.get(groupKey)!.push(t);
+    });
+
+    return Array.from(groups.entries()).map(([key, tasks]) => ({ key, label: key, tasks }));
+  }, [sortedTasks, groupBy]);
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -81,6 +127,13 @@ export default function TasksListView({ projectId }: { projectId: string }) {
     setSelectedIds(next);
   };
 
+  const toggleGroup = (key: string) => {
+    const next = new Set(collapsedGroups);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    setCollapsedGroups(next);
+  };
+
   const handleBulkAction = (action: string) => {
     toast({ title: 'Bulk action applied', description: `${action} applied to ${selectedIds.size} tasks.` });
     setSelectedIds(new Set());
@@ -88,8 +141,27 @@ export default function TasksListView({ projectId }: { projectId: string }) {
 
   return (
     <div className="h-full flex flex-col relative">
+      {/* Group By Controls */}
+      <div className="flex items-center gap-3 px-4 py-2 border-b border-border bg-muted/20 shrink-0">
+        <Layers className="w-4 h-4 text-muted-foreground" />
+        <span className="text-xs font-medium text-muted-foreground">Group by:</span>
+        <Select value={groupBy} onValueChange={(v) => { setGroupBy(v as GroupKey); setCollapsedGroups(new Set()); }}>
+          <SelectTrigger className="w-40 h-7 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none" className="text-xs">None</SelectItem>
+            <SelectItem value="assignee" className="text-xs">Assignee</SelectItem>
+            <SelectItem value="status" className="text-xs">Status</SelectItem>
+            <SelectItem value="priority" className="text-xs">Priority</SelectItem>
+            <SelectItem value="department" className="text-xs">Department</SelectItem>
+          </SelectContent>
+        </Select>
+        <span className="text-xs text-muted-foreground ml-auto">{tasks.length} tasks</span>
+      </div>
+
       {selectedIds.size > 0 && (
-        <div className="absolute top-0 left-0 right-0 h-14 bg-primary/10 border-b border-primary/20 z-10 flex items-center px-4 justify-between animate-in slide-in-from-top-2">
+        <div className="absolute top-10 left-0 right-0 h-14 bg-primary/10 border-b border-primary/20 z-10 flex items-center px-4 justify-between animate-in slide-in-from-top-2">
           <div className="text-sm font-medium text-primary">
             {selectedIds.size} tasks selected
           </div>
@@ -143,26 +215,131 @@ export default function TasksListView({ projectId }: { projectId: string }) {
             </tr>
           </thead>
           <tbody>
-            {sortedTasks.map(task => {
-              const user = USERS.find(u => u.id === task.assigneeId);
-              const isSelected = selectedIds.has(task.id);
+            {groupedTasks.map(group => {
+              const isCollapsed = collapsedGroups.has(group.key);
+              const completedCount = group.tasks.filter(t => t.status === 'complete' || t.status === 'approved').length;
+              const progressPct = group.tasks.length > 0 ? Math.round((completedCount / group.tasks.length) * 100) : 0;
+              
               return (
-                <tr key={task.id} className={`border-b border-border hover:bg-muted/30 transition-colors ${isSelected ? 'bg-primary/5' : ''}`}>
-                  <td className="p-3">
-                    <Checkbox checked={isSelected} onCheckedChange={() => toggleOne(task.id)} />
-                  </td>
-                  <td className="p-3 font-medium">{task.title}</td>
-                  <td className="p-3">
-                    <div className="flex items-center gap-2">
-                      <UserAvatar userId={task.assigneeId} />
-                      <span>{user?.name}</span>
-                    </div>
-                  </td>
-                  <td className="p-3"><StatusBadge status={task.status} /></td>
-                  <td className="p-3"><PriorityChip priority={task.priority} /></td>
-                  <td className="p-3 text-muted-foreground">{task.dueDate}</td>
-                  <td className="p-3 text-muted-foreground">{task.estimatedHours}h</td>
-                </tr>
+                <>{/* Fragment for group */}
+                  {/* Group Header Row */}
+                  {groupBy !== 'none' && (
+                    <tr 
+                      className="bg-muted/40 border-b border-border cursor-pointer hover:bg-muted/60 transition-colors"
+                      onClick={() => toggleGroup(group.key)}
+                    >
+                      <td colSpan={7} className="p-3">
+                        <div className="flex items-center gap-3">
+                          <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${isCollapsed ? '' : 'rotate-90'}`} />
+                          <span className="font-semibold text-sm">{group.label}</span>
+                          <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">{group.tasks.length}</span>
+                          {/* Mini progress bar */}
+                          <div className="flex items-center gap-2 ml-auto">
+                            <div className="w-24 h-1.5 bg-muted rounded-full overflow-hidden">
+                              <div 
+                                className="h-full bg-primary rounded-full transition-all duration-500" 
+                                style={{ width: `${progressPct}%` }} 
+                              />
+                            </div>
+                            <span className="text-xs text-muted-foreground font-mono">{progressPct}%</span>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  {/* Tasks in this group */}
+                  {!isCollapsed && group.tasks.map(task => {
+                    const user = USERS.find(u => u.id === task.assigneeId);
+                    const isSelected = selectedIds.has(task.id);
+                    return (
+                      <tr key={task.id} className={`border-b border-border hover:bg-muted/30 transition-colors ${isSelected ? 'bg-primary/5' : ''}`}>
+                        <td className="p-3">
+                          <Checkbox checked={isSelected} onCheckedChange={() => toggleOne(task.id)} />
+                        </td>
+                        <td className="p-3 font-medium">{task.title}</td>
+                        <td 
+                          className="p-3 cursor-pointer hover:bg-muted/50 rounded transition-colors group relative"
+                          onClick={() => setEditingCell({ taskId: task.id, field: 'assignee' })}
+                        >
+                          {editingCell?.taskId === task.id && editingCell?.field === 'assignee' ? (
+                            <Select 
+                              defaultOpen 
+                              onOpenChange={(open) => { if (!open) setEditingCell(null); }}
+                              onValueChange={(val) => { updateTask(task.id, { assigneeId: val }); setEditingCell(null); toast({ description: 'Assignee updated' }); }}
+                            >
+                              <SelectTrigger className="h-8 w-full min-w-[140px]"><SelectValue placeholder="Select Assignee" /></SelectTrigger>
+                              <SelectContent>
+                                {USERS.map(u => (
+                                  <SelectItem key={u.id} value={u.id}>
+                                    <div className="flex items-center gap-2"><UserAvatar userId={u.id} className="w-5 h-5" /> {u.name}</div>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <div className="flex items-center gap-2 relative">
+                              <UserAvatar userId={task.assigneeId} />
+                              <span>{user?.name}</span>
+                              <div className="absolute right-0 opacity-0 group-hover:opacity-100 bg-muted/80 px-1 rounded text-[10px] text-muted-foreground pointer-events-none">Click to edit</div>
+                            </div>
+                          )}
+                        </td>
+                        <td 
+                          className="p-3 cursor-pointer hover:bg-muted/50 rounded transition-colors group relative"
+                          onClick={() => setEditingCell({ taskId: task.id, field: 'status' })}
+                        >
+                          {editingCell?.taskId === task.id && editingCell?.field === 'status' ? (
+                            <Select 
+                              defaultOpen 
+                              onOpenChange={(open) => { if (!open) setEditingCell(null); }}
+                              onValueChange={(val: any) => { updateTask(task.id, { status: val }); setEditingCell(null); toast({ description: 'Status updated' }); }}
+                            >
+                              <SelectTrigger className="h-8 w-full min-w-[120px]"><SelectValue placeholder="Select Status" /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="todo"><StatusBadge status="todo" /></SelectItem>
+                                <SelectItem value="in-progress"><StatusBadge status="in-progress" /></SelectItem>
+                                <SelectItem value="lead-review"><StatusBadge status="lead-review" /></SelectItem>
+                                <SelectItem value="manager-review"><StatusBadge status="manager-review" /></SelectItem>
+                                <SelectItem value="approved"><StatusBadge status="approved" /></SelectItem>
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <>
+                              <StatusBadge status={task.status} />
+                              <div className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 bg-muted/90 px-1 rounded text-[10px] text-muted-foreground pointer-events-none">Edit</div>
+                            </>
+                          )}
+                        </td>
+                        <td 
+                          className="p-3 cursor-pointer hover:bg-muted/50 rounded transition-colors group relative"
+                          onClick={() => setEditingCell({ taskId: task.id, field: 'priority' })}
+                        >
+                          {editingCell?.taskId === task.id && editingCell?.field === 'priority' ? (
+                            <Select 
+                              defaultOpen 
+                              onOpenChange={(open) => { if (!open) setEditingCell(null); }}
+                              onValueChange={(val: any) => { updateTask(task.id, { priority: val }); setEditingCell(null); toast({ description: 'Priority updated' }); }}
+                            >
+                              <SelectTrigger className="h-8 w-full min-w-[100px]"><SelectValue placeholder="Select Priority" /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="normal"><PriorityChip priority="normal" /></SelectItem>
+                                <SelectItem value="high"><PriorityChip priority="high" /></SelectItem>
+                                <SelectItem value="critical"><PriorityChip priority="critical" /></SelectItem>
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <>
+                              <PriorityChip priority={task.priority} />
+                              <div className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 bg-muted/90 px-1 rounded text-[10px] text-muted-foreground pointer-events-none">Edit</div>
+                            </>
+                          )}
+                        </td>
+                        <td className="p-3 text-muted-foreground">{task.dueDate}</td>
+                        <td className="p-3 text-muted-foreground">{task.estimatedHours}h</td>
+                      </tr>
+                    );
+                  })}
+                </>
               );
             })}
           </tbody>

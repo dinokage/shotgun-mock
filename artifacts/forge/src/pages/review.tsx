@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { USERS } from '@/data/mockData';
-import { Play, Pause, SkipBack, SkipForward, Volume2, PenTool, MousePointer2, Type, Square, ArrowUpRight, CheckCircle2, MessageSquare, XCircle, ChevronLeft, Circle, Upload, Camera, Film, Loader2, SplitSquareHorizontal, Layers, Mic, Square as SquareIcon, Package } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, PenTool, MousePointer2, Type, Square, ArrowUpRight, CheckCircle2, MessageSquare, XCircle, ChevronLeft, Circle, Upload, Camera, Film, Loader2, SplitSquareHorizontal, Layers, Mic, Square as SquareIcon, Package, Columns2, GitCompareArrows, Link2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useHotkeys } from '@/hooks/use-hotkeys';
 import { Link } from 'wouter';
@@ -115,6 +115,21 @@ export default function Review() {
   const [isDraggingWipe, setIsDraggingWipe] = useState(false);
   const [onionSkin, setOnionSkin] = useState(false);
   
+  // Version Comparison State
+  const [compareMode, setCompareMode] = useState<'off' | 'side-by-side' | 'overlay'>('off');
+  const [compareVersionA, setCompareVersionA] = useState('v003');
+  const [compareVersionB, setCompareVersionB] = useState('v001');
+  const [overlayOpacity, setOverlayOpacity] = useState(50);
+  const compareVideoRefA = useRef<HTMLVideoElement>(null);
+  const compareVideoRefB = useRef<HTMLVideoElement>(null);
+  
+  // Mock version list for the compare dropdown
+  const VERSIONS = [
+    { id: 'v001', label: 'v001 — Initial Layout', src: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4' },
+    { id: 'v002', label: 'v002 — Lighting Pass', src: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4' },
+    { id: 'v003', label: 'v003 — Final Comp', src: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4' },
+  ];
+
   const [reviewWorkflowStatus, setReviewWorkflowStatus] = useState<'wip' | 'lead-review' | 'manager-review' | 'approved'>('wip');
 
   const { toast } = useToast();
@@ -131,26 +146,45 @@ export default function Review() {
   ]);
 
   useEffect(() => {
-    // Simulate real-time remote cursor movement
+    // Simulate real-time remote cursor movement and collaborative annotation
     const interval = setInterval(() => {
       setRemoteCursors(prev => prev.map(c => {
-        if (Math.random() > 0.8) {
+        if (Math.random() > 0.9) {
           return { ...c, active: Math.random() > 0.3 };
         }
         if (!c.active) return c;
         
-        // Randomly move towards center or around
-        const targetX = c.x + (Math.random() - 0.5) * 100;
-        const targetY = c.y + (Math.random() - 0.5) * 100;
-        return { 
-          ...c, 
-          x: Math.max(10, Math.min(800, targetX)), 
-          y: Math.max(10, Math.min(500, targetY)) 
-        };
+        const targetX = c.x + (Math.random() - 0.5) * 150;
+        const targetY = c.y + (Math.random() - 0.5) * 150;
+        const newX = Math.max(10, Math.min(800, targetX));
+        const newY = Math.max(10, Math.min(500, targetY));
+
+        // Occasionally simulate them drawing a box
+        if (Math.random() > 0.95 && !isPlaying) {
+          setAnnotations(prevAnns => [
+            ...prevAnns,
+            {
+              id: `remote-${Date.now()}`,
+              frame,
+              type: 'rectangle',
+              color: c.color,
+              x: newX,
+              y: newY,
+              w: 50 + Math.random() * 100,
+              h: 50 + Math.random() * 100,
+              text: 'Needs adjustment',
+              startFrame: frame,
+              endFrame: Math.min(maxFrames, frame + 30)
+            }
+          ]);
+          toast({ description: `${c.name} added an annotation.` });
+        }
+
+        return { ...c, x: newX, y: newY };
       }));
-    }, 1000);
+    }, 1200);
     return () => clearInterval(interval);
-  }, []);
+  }, [frame, isPlaying, maxFrames]);
 
   // Keyboard shortcuts
   useHotkeys({
@@ -498,6 +532,19 @@ export default function Review() {
           <Button variant="outline" size="sm" onClick={() => setViewerMode(!viewerMode)}>
             {viewerMode ? 'Exit Viewer Mode' : 'Read-only Reviewer'}
           </Button>
+          {!viewerMode && isProd && (
+            <Button 
+              size="sm" 
+              variant="outline"
+              className="border-blue-500/50 text-blue-500 hover:bg-blue-500/10"
+              onClick={() => {
+                navigator.clipboard.writeText(window.location.origin + '/client-review');
+                toast({ title: 'Link Copied', description: 'Secure client review link copied to clipboard.' });
+              }}
+            >
+              <Link2 className="w-4 h-4 mr-2" /> Copy Client Link
+            </Button>
+          )}
           {!viewerMode && isProd && reviewWorkflowStatus === 'manager-review' && (
             <Button 
               size="sm" 
@@ -615,6 +662,16 @@ export default function Review() {
                 <Layers className="w-4 h-4" />
               </Button>
               <div className="w-px h-6 bg-border mx-2" />
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={() => setCompareMode(prev => prev === 'off' ? 'side-by-side' : prev === 'side-by-side' ? 'overlay' : 'off')} 
+                title={compareMode === 'off' ? 'Compare Versions (Side-by-Side)' : compareMode === 'side-by-side' ? 'Compare (Overlay)' : 'Exit Compare'} 
+                className={compareMode !== 'off' ? 'text-primary bg-primary/10' : ''}
+              >
+                <Columns2 className="w-4 h-4" />
+              </Button>
+              <div className="w-px h-6 bg-border mx-2" />
               <Button variant="ghost" size="icon" onClick={handleScreenshot} title="Copy Screenshot to Clipboard">
                 <Camera className="w-4 h-4" />
               </Button>
@@ -651,6 +708,105 @@ export default function Review() {
                   <img src="https://images.unsplash.com/photo-1542204165-65bf26472b9b?w=400&q=80" className="w-full h-full object-cover" alt="next-shot" />
                   <div className="absolute inset-0 bg-black/40 flex items-center justify-center font-mono text-xs font-bold text-white">S01_050</div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* VERSION COMPARISON MODE */}
+          {compareMode !== 'off' && (
+            <div className="absolute inset-0 z-40 bg-black flex flex-col">
+              {/* Compare Header */}
+              <div className="h-10 bg-card/90 backdrop-blur border-b border-border flex items-center justify-between px-4 shrink-0">
+                <div className="flex items-center gap-3">
+                  <GitCompareArrows className="w-4 h-4 text-primary" />
+                  <span className="text-sm font-medium">Version Compare — {compareMode === 'side-by-side' ? 'Side by Side' : 'Overlay'}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Button size="sm" variant={compareMode === 'side-by-side' ? 'secondary' : 'ghost'} className="h-7 text-xs" onClick={() => setCompareMode('side-by-side')}>
+                    <Columns2 className="w-3 h-3 mr-1" /> Side-by-Side
+                  </Button>
+                  <Button size="sm" variant={compareMode === 'overlay' ? 'secondary' : 'ghost'} className="h-7 text-xs" onClick={() => setCompareMode('overlay')}>
+                    <Layers className="w-3 h-3 mr-1" /> Overlay
+                  </Button>
+                  <div className="w-px h-5 bg-border" />
+                  <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={() => setCompareMode('off')}>Exit Compare</Button>
+                </div>
+              </div>
+
+              {/* Version Selectors */}
+              <div className="flex items-center justify-center gap-8 py-2 bg-card/50 backdrop-blur border-b border-border shrink-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground font-medium">A:</span>
+                  <Select value={compareVersionA} onValueChange={setCompareVersionA}>
+                    <SelectTrigger className="w-48 h-7 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {VERSIONS.map(v => (
+                        <SelectItem key={v.id} value={v.id} className="text-xs">{v.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {compareMode === 'overlay' && (
+                  <div className="flex items-center gap-2 w-48">
+                    <span className="text-xs text-muted-foreground">Opacity</span>
+                    <Slider value={[overlayOpacity]} onValueChange={(v) => setOverlayOpacity(v[0])} min={0} max={100} step={1} className="flex-1" />
+                    <span className="text-xs font-mono w-8 text-right">{overlayOpacity}%</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground font-medium">B:</span>
+                  <Select value={compareVersionB} onValueChange={setCompareVersionB}>
+                    <SelectTrigger className="w-48 h-7 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {VERSIONS.map(v => (
+                        <SelectItem key={v.id} value={v.id} className="text-xs">{v.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Compare Viewport */}
+              <div className={`flex-1 flex ${compareMode === 'side-by-side' ? 'flex-row gap-1' : 'relative'} p-2 overflow-hidden`}>
+                {/* Version A */}
+                <div className={`${compareMode === 'side-by-side' ? 'flex-1' : 'absolute inset-2'} relative bg-black rounded overflow-hidden border border-border/30`}>
+                  <video
+                    ref={compareVideoRefA}
+                    src={VERSIONS.find(v => v.id === compareVersionA)?.src}
+                    className="w-full h-full object-contain"
+                    muted
+                    playsInline
+                  />
+                  <div className="absolute top-2 left-2 bg-black/70 backdrop-blur px-2 py-0.5 rounded text-xs font-mono text-green-400">
+                    A — {VERSIONS.find(v => v.id === compareVersionA)?.label}
+                  </div>
+                </div>
+                {/* Version B */}
+                <div className={`${compareMode === 'side-by-side' ? 'flex-1' : 'absolute inset-2'} relative bg-black rounded overflow-hidden border border-border/30`} style={compareMode === 'overlay' ? { opacity: overlayOpacity / 100, mixBlendMode: 'difference' } : undefined}>
+                  <video
+                    ref={compareVideoRefB}
+                    src={VERSIONS.find(v => v.id === compareVersionB)?.src}
+                    className="w-full h-full object-contain"
+                    muted
+                    playsInline
+                  />
+                  <div className="absolute top-2 right-2 bg-black/70 backdrop-blur px-2 py-0.5 rounded text-xs font-mono text-blue-400">
+                    B — {VERSIONS.find(v => v.id === compareVersionB)?.label}
+                  </div>
+                </div>
+              </div>
+
+              {/* Compare Scrubber */}
+              <div className="h-12 bg-card/90 backdrop-blur border-t border-border flex items-center px-6 gap-4 shrink-0">
+                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { setIsPlaying(false); setFrame(f => Math.max(1, f - 1)); }}><SkipBack className="w-3.5 h-3.5" /></Button>
+                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setIsPlaying(!isPlaying)}>{isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}</Button>
+                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { setIsPlaying(false); setFrame(f => Math.min(maxFrames, f + 1)); }}><SkipForward className="w-3.5 h-3.5" /></Button>
+                <input type="range" min={1} max={maxFrames} value={frame} onChange={(e) => { setIsPlaying(false); setFrame(parseInt(e.target.value)); }} className="flex-1 h-1 accent-primary" />
+                <span className="text-xs font-mono text-muted-foreground">{String(frame).padStart(3, '0')} / {maxFrames}</span>
               </div>
             </div>
           )}
@@ -1070,16 +1226,28 @@ export default function Review() {
             </div>
           </div>
 
-          {!viewerMode && isManager && (
-            <div className="h-16 bg-muted/30 border-t border-border flex items-center justify-center gap-4 shrink-0 px-4">
-              <Button className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white flex-1 max-w-xs" onClick={() => handleAction('Approved')}>
-                <CheckCircle2 className="w-4 h-4 mr-2" /> Approve
+          {!viewerMode && (
+            (isLead && !isProd && reviewWorkflowStatus === 'lead-review') ||
+            (isProd && reviewWorkflowStatus === 'manager-review')
+          ) && (
+            <div className="h-16 bg-muted/30 border-t border-border flex items-center justify-center gap-4 shrink-0 px-4 z-10">
+              <Button className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white flex-1 max-w-xs" onClick={() => {
+                handleAction('Approved');
+                if (isLead && !isProd) setReviewWorkflowStatus('manager-review');
+              }}>
+                <CheckCircle2 className="w-4 h-4 mr-2" /> {isProd ? 'Approve & Lock' : 'Approve for Manager'}
               </Button>
-              <Button className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white flex-1 max-w-xs" onClick={() => handleAction('Changes Requested')}>
+              <Button className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white flex-1 max-w-xs" onClick={() => {
+                handleAction('Changes Requested');
+                setReviewWorkflowStatus('wip');
+              }}>
                 <MessageSquare className="w-4 h-4 mr-2" /> Request Changes
               </Button>
-              <Button className="bg-[#A03030] hover:bg-[#A03030]/90 text-white flex-1 max-w-xs" onClick={() => handleAction('Rejected')}>
-                <XCircle className="w-4 h-4 mr-2" /> Reject
+              <Button className="bg-[#A03030] hover:bg-[#A03030]/90 text-white flex-1 max-w-xs" onClick={() => {
+                handleAction('Rejected');
+                setReviewWorkflowStatus('wip');
+              }}>
+                <XCircle className="w-4 h-4 mr-2" /> Reject (Send Back)
               </Button>
             </div>
           )}

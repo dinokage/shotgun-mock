@@ -7,6 +7,7 @@ interface TasksState {
   updateTaskStatus: (id: string, status: TaskStatus) => void;
   updateTaskDates: (id: string, newDate: string) => void;
   updateTaskAssignee: (id: string, newAssigneeId: string) => void;
+  updateTask: (id: string, updates: Partial<Task>) => void;
 }
 
 export const useTasksStore = create<TasksState>((set) => ({
@@ -27,4 +28,8 @@ export const useTasksStore = create<TasksState>((set) => ({
     set((state) => ({
       tasks: state.tasks.map((t) => (t.id === id ? { ...t, assigneeId: newAssigneeId } : t))
     })),
+  updateTask: (id, updates) =>
+    set((state) => ({
+      tasks: state.tasks.map((t) => (t.id === id ? { ...t, ...updates } : t))
+    }))
 }));
