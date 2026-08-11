@@ -6,8 +6,9 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { TASKS, USERS, PROJECTS, DEPARTMENTS } from '@/data/mockData';
-import { Search, ListTodo, LayoutGrid, List, Calendar, Filter, CheckCircle2, Clock, AlertTriangle, Circle } from 'lucide-react';
+import { USERS, PROJECTS, DEPARTMENTS } from '@/data/mockData';
+import { useTasksStore } from '@/store/tasks';
+import { Search, ListTodo, LayoutGrid, List, Calendar, Filter, CheckCircle2, Clock, AlertTriangle, Circle, Play } from 'lucide-react';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { PriorityChip } from '@/components/shared/PriorityChip';
 import { useUIStore } from '@/store/ui';
@@ -34,58 +35,24 @@ export default function Tasks() {
   const [departmentFilter, setDepartmentFilter] = useState('all');
   const [view, setView] = useState<ViewMode>('list');
   const [myTasksOnly, setMyTasksOnly] = useState(false);
-  const [liveTasks, setLiveTasks] = useState<any[]>(TASKS);
-  const [liveUsers, setLiveUsers] = useState<any[]>(USERS);
-  const [liveProjects, setLiveProjects] = useState<any[]>(PROJECTS);
-  const [liveDepartments, setLiveDepartments] = useState<any[]>(DEPARTMENTS);
+  const liveTasks = useTasksStore(state => state.tasks);
+  const submitForReview = useTasksStore(state => state.submitForReview);
+  const completeTask = useTasksStore(state => state.completeTask);
+  const liveUsers = USERS;
+  const liveProjects = PROJECTS;
+  const liveDepartments = DEPARTMENTS;
   const { setActiveTaskDrawer, setCreateTaskModalOpen } = useUIStore();
   const { toast } = useToast();
 
   const { currentUser } = useAuthStore();
   
-  // --- Live Polling via API ---
-  const fetchTasks = async () => {
-    try {
-      const [tasksData, usersData, projectsData, deptsData] = await Promise.all([
-        apiClient.get('/tasks'),
-        apiClient.get('/users'),
-        apiClient.get('/projects'),
-        apiClient.get('/departments')
-      ]);
-      
-      // Merge live data with mock fields (like tags/comments) missing from basic backend schemas
-      const mergedTasks = TASKS.map(mockTask => {
-        const liveMatch = tasksData.find((t: any) => t.id === mockTask.id);
-        return liveMatch ? { ...mockTask, ...liveMatch } : mockTask;
-      });
-      setLiveTasks(mergedTasks);
-      setLiveUsers(usersData.length ? usersData : USERS);
-      setLiveProjects(projectsData.length ? projectsData : PROJECTS);
-      setLiveDepartments(deptsData.length ? deptsData : DEPARTMENTS);
-    } catch (e) {
-      console.error("API Fetch Error:", e);
-    }
+  const handleCompleteTask = (taskId: string) => {
+    completeTask(taskId);
+    toast({
+      title: "Task Completed",
+      description: "Task marked as complete locally.",
+    });
   };
-
-  useEffect(() => {
-    fetchTasks();
-    const interval = setInterval(fetchTasks, 10000); // 10s polling
-    return () => clearInterval(interval);
-  }, []);
-
-  const handleCompleteTask = async (taskId: string) => {
-    try {
-      const result = await apiClient.post(`/tasks/${taskId}/complete`);
-      toast({
-        title: "Task Completed",
-        description: `Backend triggered ${(result as any).auto_assignments?.length || 0} auto-assignments.`,
-      });
-      fetchTasks(); // Instantly refetch
-    } catch (e) {
-      toast({ title: "Error", description: "Failed to complete task via API.", variant: "destructive" });
-    }
-  };
-  // ----------------------------
   
   // RBAC Setup
   const isArtist = currentUser ? ['senior_artist', 'artist', 'junior_artist'].includes(currentUser.role) : true;
@@ -265,6 +232,21 @@ export default function Tasks() {
                       </td>
                       <td className="p-4 text-muted-foreground text-xs">{project?.name}</td>
                       <td className="p-4 text-muted-foreground font-mono text-xs">{task.dueDate}</td>
+                      <td className="p-4 text-right">
+                        {task.status === 'in-progress' && task.assigneeId === currentUser?.id && (
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            className="h-7 text-[10px] bg-blue-500/10 text-blue-500 border-blue-500/20 hover:bg-blue-500/20 mr-2"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              submitForReview(task.id);
+                            }}
+                          >
+                            <Play className="w-3 h-3 mr-1" /> Submit
+                          </Button>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}

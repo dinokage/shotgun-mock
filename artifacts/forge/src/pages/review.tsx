@@ -545,44 +545,46 @@ export default function Review() {
               <Link2 className="w-4 h-4 mr-2" /> Copy Client Link
             </Button>
           )}
-          {!viewerMode && isProd && reviewWorkflowStatus === 'manager-review' && (
-            <Button 
-              size="sm" 
-              variant="outline"
-              className="border-[#1E7A34] text-[#1E7A34] hover:bg-[#1E7A34]/10"
-              onClick={() => {
-                setReviewWorkflowStatus('approved');
-                toast({ title: 'Published', description: 'Review published directly to pipeline.' });
-              }}
-            >
-              <Upload className="w-4 h-4 mr-2" /> Publish to Pipeline
-            </Button>
-          )}
-          {!viewerMode && (
-            (isArtist && reviewWorkflowStatus === 'wip') ||
-            (isLead && reviewWorkflowStatus === 'lead-review') ||
-            (isProd && reviewWorkflowStatus === 'manager-review')
-          ) && (
-            <Button 
-              size="sm" 
-              className="bg-primary text-primary-foreground"
-              onClick={() => {
-                if (isArtist && reviewWorkflowStatus === 'wip') {
+
+          {!viewerMode && reviewWorkflowStatus !== 'approved' && (
+            <div className="flex items-center gap-2">
+              {isArtist && reviewWorkflowStatus === 'wip' && (
+                <Button size="sm" className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white" onClick={() => {
                   setReviewWorkflowStatus('lead-review');
                   toast({ title: 'Submitted', description: 'Submitted for Lead Review' });
-                } else if (isLead && reviewWorkflowStatus === 'lead-review') {
-                  setReviewWorkflowStatus('manager-review');
-                  toast({ title: 'Submitted', description: 'Submitted for Manager Review' });
-                } else if (isProd && reviewWorkflowStatus === 'manager-review') {
-                  setReviewWorkflowStatus('approved');
-                  toast({ title: 'Routed to Client', description: 'Review approved and routed to Client Portal for external review.' });
-                }
-              }}
-            >
-              {isArtist ? 'Submit for Lead Review' : 
-               isLead ? 'Submit for Manager Review' : 
-               isProd ? 'Sanity Check & Route to Client' : ''}
-            </Button>
+                }}>
+                  <Upload className="w-4 h-4 mr-2" /> Submit to Lead/Supervisor for Review
+                </Button>
+              )}
+              
+              {(isLead || isProd) && (
+                <>
+                  <Button size="sm" className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white" onClick={() => {
+                    if (isProd) {
+                      setReviewWorkflowStatus('approved');
+                      toast({ title: 'Published', description: 'Approved & Published to Production' });
+                    } else {
+                      setReviewWorkflowStatus('manager-review');
+                      toast({ title: 'Submitted', description: 'Submitted to Manager' });
+                    }
+                  }}>
+                    <CheckCircle2 className="w-4 h-4 mr-2" /> {isProd ? 'Approve & Publish' : 'Submit to Manager'}
+                  </Button>
+                  <Button size="sm" className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white" onClick={() => {
+                    setReviewWorkflowStatus('wip');
+                    toast({ title: 'Changes Requested' });
+                  }}>
+                    <MessageSquare className="w-4 h-4 mr-2" /> Request Changes
+                  </Button>
+                  <Button size="sm" className="bg-[#A03030] hover:bg-[#A03030]/90 text-white" onClick={() => {
+                    setReviewWorkflowStatus('wip');
+                    toast({ title: 'Rejected' });
+                  }}>
+                    <XCircle className="w-4 h-4 mr-2" /> Reject
+                  </Button>
+                </>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -1226,31 +1228,7 @@ export default function Review() {
             </div>
           </div>
 
-          {!viewerMode && (
-            (isLead && !isProd && reviewWorkflowStatus === 'lead-review') ||
-            (isProd && reviewWorkflowStatus === 'manager-review')
-          ) && (
-            <div className="h-16 bg-muted/30 border-t border-border flex items-center justify-center gap-4 shrink-0 px-4 z-10">
-              <Button className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white flex-1 max-w-xs" onClick={() => {
-                handleAction('Approved');
-                if (isLead && !isProd) setReviewWorkflowStatus('manager-review');
-              }}>
-                <CheckCircle2 className="w-4 h-4 mr-2" /> {isProd ? 'Approve & Lock' : 'Approve for Manager'}
-              </Button>
-              <Button className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white flex-1 max-w-xs" onClick={() => {
-                handleAction('Changes Requested');
-                setReviewWorkflowStatus('wip');
-              }}>
-                <MessageSquare className="w-4 h-4 mr-2" /> Request Changes
-              </Button>
-              <Button className="bg-[#A03030] hover:bg-[#A03030]/90 text-white flex-1 max-w-xs" onClick={() => {
-                handleAction('Rejected');
-                setReviewWorkflowStatus('wip');
-              }}>
-                <XCircle className="w-4 h-4 mr-2" /> Reject (Send Back)
-              </Button>
-            </div>
-          )}
+
         </div>
 
         {/* Right: Comments & Properties */}
@@ -1291,7 +1269,7 @@ export default function Review() {
                           ) : (
                             <CheckCircle2 className="w-4 h-4 text-[#1E7A34]" />
                           )}
-                          Manager <span className="text-xs text-muted-foreground ml-auto">{reviewWorkflowStatus === 'manager-review' ? 'Pending' : 'Approved'}</span>
+                          Manager <span className="text-xs text-muted-foreground ml-auto">{reviewWorkflowStatus === 'manager-review' ? 'Pending' : 'Published'}</span>
                         </div>
                       )}
                     </>

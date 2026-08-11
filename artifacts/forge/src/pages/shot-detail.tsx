@@ -4,18 +4,23 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { SHOTS, PROJECTS, USERS, TASKS, ASSETS, VERSIONS, AUDIT_EVENTS } from '@/data/mockData';
+import { PROJECTS, USERS, TASKS, ASSETS, AUDIT_EVENTS } from '@/data/mockData';
+import { useShotStore } from '@/store/shots';
+import { useReviewStore } from '@/store/reviews';
 import { ChevronLeft, Film, Package, ListTodo, GitBranch, Clock, CheckCircle2, XCircle, MessageSquare } from 'lucide-react';
 
 export default function ShotDetail() {
   const [, params] = useRoute('/shots/:id');
-  const shot = SHOTS.find(s => s.id === params?.id);
+  const liveShots = useShotStore(state => state.shots);
+  const liveVersions = useReviewStore(state => state.versions);
+  
+  const shot = liveShots.find(s => s.id === params?.id);
   if (!shot) return <div className="p-6 text-center text-muted-foreground">Shot not found.</div>;
 
   const project = PROJECTS.find(p => p.id === shot.projectId);
   const assignee = USERS.find(u => u.id === shot.assigneeId);
   const relatedTasks = TASKS.filter(t => t.shotId === shot.id).slice(0, 5);
-  const versions = VERSIONS.filter(v => v.entityId === shot.id).slice(0, 8);
+  const versions = liveVersions.filter(v => v.entityId === shot.id).sort((a, b) => b.versionNumber.localeCompare(a.versionNumber));
   const events = AUDIT_EVENTS.filter(e => e.entityId === shot.id).slice(0, 10);
   const usedAssets = ASSETS.filter(a => TASKS.some(t => t.shotId === shot.id && t.assetId === a.id)).slice(0, 5);
 
@@ -66,7 +71,7 @@ export default function ShotDetail() {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6 mt-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 gap-6">
             <Card>
               <CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2"><Package className="w-4 h-4" /> Used Assets</CardTitle></CardHeader>
               <CardContent className="space-y-2">
@@ -81,31 +86,40 @@ export default function ShotDetail() {
                 )) : <p className="text-sm text-muted-foreground">No assets linked.</p>}
               </CardContent>
             </Card>
-            <Card>
-              <CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2"><GitBranch className="w-4 h-4" /> Dependencies</CardTitle></CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">Shot dependencies mapped through the Knowledge Graph.</p>
-                <Button variant="outline" size="sm" className="mt-3" asChild><Link href="/impact">View in Graph</Link></Button>
-              </CardContent>
-            </Card>
           </div>
         </TabsContent>
 
-        <TabsContent value="versions" className="mt-4 space-y-3">
-          {versions.map(v => (
-            <Card key={v.id}>
-              <CardContent className="p-4 flex items-center gap-4">
-                <div className="w-20 h-12 rounded bg-muted flex items-center justify-center font-mono text-sm font-bold">{v.versionNumber}</div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-medium text-sm">{v.notes}</span>
+        <TabsContent value="versions" className="mt-4">
+          <div className="flex gap-4 overflow-x-auto pb-6 pt-2 px-1 snap-x">
+            {versions.map((v, i) => (
+              <Card key={v.id} className="min-w-[300px] shrink-0 snap-center hover:border-primary/50 transition-colors">
+                <div className="h-32 bg-muted rounded-t-lg flex items-center justify-center relative overflow-hidden group">
+                  <Film className="w-8 h-8 text-muted-foreground/30" />
+                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                    <Button size="sm" asChild className="h-7 text-xs"><Link href="/review">View</Link></Button>
+                    {i < versions.length - 1 && (
+                      <Button size="sm" variant="secondary" asChild className="h-7 text-xs"><Link href="/review">Compare</Link></Button>
+                    )}
+                  </div>
+                </div>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-mono font-bold text-lg">{v.versionNumber}</span>
                     <Badge className={`text-[10px] ${v.status === 'approved' ? 'bg-green-500/10 text-green-500' : v.status === 'rejected' ? 'bg-red-500/10 text-red-500' : 'bg-yellow-500/10 text-yellow-500'}`}>{v.status}</Badge>
                   </div>
-                  <div className="text-xs text-muted-foreground">by {USERS.find(u => u.id === v.createdById)?.name} · {new Date(v.createdAt).toLocaleDateString()}</div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                  <p className="text-sm font-medium mb-2">{v.notes}</p>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1.5">
+                      <Avatar className="w-4 h-4"><AvatarImage src={USERS.find(u => u.id === v.createdById)?.avatar} /><AvatarFallback>{USERS.find(u => u.id === v.createdById)?.name.charAt(0)}</AvatarFallback></Avatar>
+                      {USERS.find(u => u.id === v.createdById)?.name.split(' ')[0]}
+                    </div>
+                    <span>{new Date(v.createdAt).toLocaleDateString()}</span>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+            {versions.length === 0 && <p className="text-sm text-muted-foreground w-full text-center py-12">No versions published yet.</p>}
+          </div>
         </TabsContent>
 
         <TabsContent value="tasks" className="mt-4 space-y-2">

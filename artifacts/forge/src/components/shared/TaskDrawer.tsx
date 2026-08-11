@@ -1,5 +1,6 @@
 import { useUIStore } from '@/store/ui';
-import { TASKS, USERS, PROJECTS, ASSETS, SHOTS, DEPARTMENTS, PIPELINE_ORDER, getNextDepartment } from '@/data/mockData';
+import { USERS, PROJECTS, ASSETS, SHOTS, DEPARTMENTS, PIPELINE_ORDER, getNextDepartment } from '@/data/mockData';
+import { useTasksStore } from '@/store/tasks';
 import { X, CheckCircle2, Circle, Clock, Tag, Paperclip, MessageSquare, GitBranch, Sparkles, AlertTriangle, CalendarDays, ArrowRight, Play, UserCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -42,17 +43,20 @@ export function TaskDrawer() {
   const { activeTaskDrawer, setActiveTaskDrawer } = useUIStore();
   const { currentUser } = useAuthStore();
   const { toast } = useToast();
-
-  if (!activeTaskDrawer || !currentUser) return null;
-
-  const task = TASKS.find(t => t.id === activeTaskDrawer);
-  if (!task) return null;
-
-  const assignee = USERS.find(u => u.id === task.assigneeId);
+  
+  const tasks = useTasksStore(state => state.tasks);
+  const submitForReview = useTasksStore(state => state.submitForReview);
   
   const [commentText, setCommentText] = useState('');
   const [showMentions, setShowMentions] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
+
+  if (!activeTaskDrawer || !currentUser) return null;
+
+  const task = tasks.find(t => t.id === activeTaskDrawer);
+  if (!task) return null;
+
+  const assignee = USERS.find(u => u.id === task.assigneeId);
 
   const handleCommentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
@@ -76,7 +80,7 @@ export function TaskDrawer() {
   const project = PROJECTS.find(p => p.id === task.projectId);
   const asset = task.assetId ? ASSETS.find(a => a.id === task.assetId) : null;
   const shot = task.shotId ? SHOTS.find(s => s.id === task.shotId) : null;
-  const depTasks = task.dependencies.map(d => TASKS.find(t => t.id === d)).filter(Boolean);
+  const depTasks = task.dependencies.map(d => tasks.find(t => t.id === d)).filter(Boolean);
   const checklistDone = task.checklist.filter(c => c.done).length;
   const checklistTotal = task.checklist.length;
   
@@ -103,19 +107,17 @@ export function TaskDrawer() {
               {task.status.replace('-', ' ').toUpperCase()}
             </Badge>
             
-            {isAssignee && task.status !== 'approved' && (
+            {isAssignee && task.status === 'in-progress' && (
               <Button 
                 size="sm" 
                 variant="outline" 
                 className="h-6 text-[10px] bg-blue-500/10 text-blue-500 border-blue-500/20 hover:bg-blue-500/20"
                 onClick={() => {
-                  toast({ title: 'Playblast Uploaded', description: 'Saved 1 copy locally. Routed 2 to Leads for review.' });
-                  setTimeout(() => {
-                    toast({ title: 'Auto-Routing', description: 'Leads approved. Sent 1 playblast to Client Review portal.' });
-                  }, 3000);
+                  submitForReview(task.id);
+                  toast({ title: 'Submitted for Review', description: `Your work on ${task.title} has been submitted for review. Your lead will be notified.` });
                 }}
               >
-                <Play className="w-3 h-3 mr-1" /> Submit Playblast
+                <Play className="w-3 h-3 mr-1" /> Submit for Review
               </Button>
             )}
 
@@ -212,45 +214,52 @@ export function TaskDrawer() {
             
             {/* Action Bar */}
             <div className="flex gap-2">
-              {(task.status === 'lead-review' || task.status === 'manager-review') && isLeadership ? (
-                (() => {
-                  const isMyDeptTask = currentUser?.departmentId === currentDept?.id;
-                  const isTopLeadership = currentUser ? ['vfx_producer', 'production_manager', 'coordinator'].includes(currentUser.role) : false;
-                  const canApprove = isMyDeptTask || isTopLeadership;
-
-                  if (canApprove) {
-                    return (
-                      <div className="flex w-full gap-2">
-                        <Button className="flex-1 bg-purple-600 hover:bg-purple-700" onClick={() => {
-                          toast({ title: "Review Approved", description: `Notification sent to ${assignee?.name || 'artist'}` });
-                        }}>
-                          <CheckCircle2 className="w-4 h-4 mr-2" /> Approve
-                        </Button>
-                        <Button variant="outline" className="flex-1 text-red-500 hover:bg-red-500/10" onClick={() => {
-                          toast({ title: "Review Rejected", description: `Notes sent back to ${assignee?.name || 'artist'}` });
-                        }}>
-                          <X className="w-4 h-4 mr-2" /> Reject
-                        </Button>
-                      </div>
-                    );
-                  } else {
-                    return (
-                      <Button className="w-full bg-amber-500/10 text-amber-600 border-amber-500/20 hover:bg-amber-500/20" variant="outline" onClick={() => {
-                        toast({ title: "Feedback Sent", description: `Your feedback has been forwarded to the ${task.department} manager.` });
-                      }}>
-                        <MessageSquare className="w-4 h-4 mr-2" /> Suggest Changes to {task.department} Manager
-                      </Button>
-                    );
-                  }
-                })()
-              ) : task.status !== 'approved' ? (
+              {/* Assignee Actions */}
+              {isAssignee && ['not-started', 'todo', 'in-progress', 'wip', 'changes-requested'].includes(task.status) && (
                 <Button className="flex-1" variant={task.status === 'in-progress' ? 'default' : 'outline'} onClick={() => {
-                  toast({ title: task.status === 'in-progress' ? 'Submitted for Review' : 'Task Started', description: `Task status updated successfully.` });
+                  if (task.status === 'in-progress') {
+                    submitForReview(task.id);
+                    toast({ title: 'Submitted for Lead Review' });
+                  } else {
+                    toast({ title: 'Task Started' });
+                  }
                 }}>
                   <Play className="w-4 h-4 mr-2" />
                   {task.status === 'in-progress' ? 'Submit for Lead Review' : 'Start Task'}
                 </Button>
-              ) : null}
+              )}
+
+              {/* Lead Actions */}
+              {currentUser.role === 'lead' && currentUser.departmentId === currentDept?.id && (
+                <div className="flex w-full gap-2">
+                  <Button className="flex-1 bg-purple-600 hover:bg-purple-700 text-white" onClick={() => {
+                    toast({ title: "Approved for Manager", description: `Sent to Production.` });
+                  }}>
+                    <CheckCircle2 className="w-4 h-4 mr-2" /> Approve
+                  </Button>
+                  <Button variant="outline" className="flex-1 text-red-500 hover:bg-red-500/10" onClick={() => {
+                    toast({ title: "Review Rejected", description: `Sent back to artist.` });
+                  }}>
+                    <X className="w-4 h-4 mr-2" /> Reject
+                  </Button>
+                </div>
+              )}
+
+              {/* Manager Actions */}
+              {['vfx_producer', 'production_manager', 'coordinator'].includes(currentUser.role) && (
+                <div className="flex w-full gap-2">
+                  <Button className="flex-1 bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white" onClick={() => {
+                    toast({ title: "Published", description: `Published to production dashboard.` });
+                  }}>
+                    <CheckCircle2 className="w-4 h-4 mr-2" /> Approve & Publish
+                  </Button>
+                  <Button variant="outline" className="flex-1 text-red-500 hover:bg-red-500/10" onClick={() => {
+                    toast({ title: "Review Rejected", description: `Sent back to team.` });
+                  }}>
+                    <X className="w-4 h-4 mr-2" /> Reject
+                  </Button>
+                </div>
+              )}
               {isAssignee && task.status === 'in-progress' && (
                 <Button variant="outline" className="flex-1 bg-blue-500/10 text-blue-500 border-blue-500/20 hover:bg-blue-500/20" onClick={() => {
                   toast({ title: 'Log Daily Time', description: 'Redirecting to time logging...' });

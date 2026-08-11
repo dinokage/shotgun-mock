@@ -42,6 +42,7 @@ import Chat from '@/pages/chat';
 import TrackingGrid from '@/pages/tracking';
 import IntegrationsHub from '@/pages/integrations';
 import Notifications from '@/pages/notifications';
+import FinancialDashboard from '@/pages/financials';
 
 const queryClient = new QueryClient();
 
@@ -130,7 +131,9 @@ function Router() {
               <Route path="/production">
                 <LeadershipGuard><ProductionDashboard /></LeadershipGuard>
               </Route>
-
+              <Route path="/financials">
+                <LeadershipGuard><FinancialDashboard /></LeadershipGuard>
+              </Route>
               <Route path="/audit">
                 <LeadershipGuard><Audit /></LeadershipGuard>
               </Route>

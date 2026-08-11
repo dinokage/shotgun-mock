@@ -132,7 +132,7 @@ export interface Shot {
   episodeId: string;
   sequenceId: string;
   sequence: string;
-  status: 'complete' | 'in-progress' | 'bottleneck' | 'review' | 'not-started' | 'at-risk' | 'client-review';
+  status: 'complete' | 'in-progress' | 'bottleneck' | 'review' | 'not-started' | 'at-risk' | 'client-review' | 'approved' | 'published';
   assigneeId: string;
   updatedAt: string;
   frameRange: string;

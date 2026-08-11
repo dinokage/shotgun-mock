@@ -121,7 +121,6 @@ export function GlobalSearch() {
                   { label: 'Dashboard', href: '/' },
                   { label: 'My Tasks', href: '/tasks' },
                   { label: 'Review Queue', href: '/review' },
-                  { label: 'Knowledge Graph', href: '/impact' },
                 ].map(link => (
                   <Link key={link.href} href={link.href} onClick={handleSelect}>
                     <div className="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-muted transition-colors text-sm cursor-pointer">

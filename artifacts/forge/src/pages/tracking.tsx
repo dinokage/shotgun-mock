@@ -5,7 +5,8 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuthStore } from '@/store/auth';
 import { useToast } from '@/hooks/use-toast';
-import { PROJECTS, EPISODES, SEQUENCES, SHOTS, USERS, Shot } from '@/data/mockData';
+import { PROJECTS, EPISODES, SEQUENCES, USERS, Shot } from '@/data/mockData';
+import { useShotStore } from '@/store/shots';
 
 export default function TrackingGrid() {
   const { currentUser } = useAuthStore();
@@ -16,11 +17,15 @@ export default function TrackingGrid() {
   const [view, setView] = useState<'list' | 'card'>('list');
   const [localOverrides, setLocalOverrides] = useState<Record<string, any>>({});
 
+  const liveShots = useShotStore(state => state.shots);
+  const updateShot = useShotStore(state => state.updateShot);
+  const updateReviewStatus = useShotStore(state => state.updateReviewStatus);
+
   const trackingData = useMemo(() => {
     let rowIndex = 1;
     
     // Filter shots based on project
-    let filteredShots = SHOTS;
+    let filteredShots = liveShots;
     if (projectFilter !== 'all') {
       filteredShots = filteredShots.filter(s => s.projectId === projectFilter);
     }
@@ -64,7 +69,7 @@ export default function TrackingGrid() {
         notes: localOverrides[shot.id]?.notes !== undefined ? localOverrides[shot.id]?.notes : (shot.notes || 'No notes.'),
       };
     });
-  }, [search, projectFilter, localOverrides]);
+  }, [search, projectFilter, localOverrides, liveShots]);
 
   const updateCell = (id: string, field: string, value: string) => {
     setLocalOverrides(prev => ({
@@ -118,7 +123,20 @@ export default function TrackingGrid() {
           <Button variant="outline" size="sm" onClick={() => toast({ title: "Exporting to Excel..." })} className="border-[#333] text-[#ccc]">
             <Download className="w-4 h-4 mr-2" /> Export CSV
           </Button>
-          <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white border-0">
+          <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white border-0" onClick={() => {
+            Object.entries(localOverrides).forEach(([id, changes]) => {
+              if (changes.status || changes.notes) {
+                updateShot(id, { 
+                  ...(changes.status ? { status: changes.status } : {}), 
+                  ...(changes.notes ? { notes: changes.notes } : {}) 
+                });
+              }
+              if (changes.internalReview) updateReviewStatus(id, true, changes.internalReview);
+              if (changes.clientReview) updateReviewStatus(id, false, changes.clientReview);
+            });
+            setLocalOverrides({});
+            toast({ title: 'Changes Saved', description: 'Tracking grid updated successfully.' });
+          }}>
             <Save className="w-4 h-4 mr-2" /> Save Changes
           </Button>
         </div>

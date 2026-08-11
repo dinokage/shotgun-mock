@@ -146,6 +146,7 @@ export default function ProductionDashboard() {
                                 </div>
                                 <div className="absolute top-2 left-2 flex gap-1">
                                   {shot.clientReviewStatus === 'pending' && <Badge variant="destructive" className="shadow-md text-[10px] uppercase">Client Review</Badge>}
+                                  {shot.status === 'approved' && <Badge className="shadow-md text-[10px] uppercase bg-[#1E7A34] text-white">Published</Badge>}
                                 </div>
                                 <div className="absolute bottom-2 right-2">
                                   <StatusBadge status={shot.status} className="shadow-md bg-background/90 backdrop-blur" />
