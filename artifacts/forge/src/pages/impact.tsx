@@ -3,7 +3,8 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PROJECTS, ASSETS, SHOTS, TASKS, USERS } from '@/data/mockData';
+import { PROJECTS, ASSETS, SHOTS, USERS } from '@/data/mockData';
+import { useTasksStore } from '@/store/tasks';
 import { Maximize2, ZoomIn, ZoomOut, Filter, Activity, GitFork, Crosshair, Users as UsersIcon, ListTodo, Film, Package, FolderOpen, AlertTriangle, Sparkles } from 'lucide-react';
 import * as d3 from 'd3-force';
 import * as d3Zoom from 'd3-zoom';
@@ -54,6 +55,7 @@ export default function ImpactAnalysis() {
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [dimensions, setDimensions] = useState({ width: 1000, height: 800 });
   const [transform, setTransform] = useState(d3Zoom.zoomIdentity);
+  const TASKS = useTasksStore(state => state.tasks);
 
   // Generate graph data based on selection
   const { nodes, links } = useMemo(() => {
@@ -118,7 +120,7 @@ export default function ImpactAnalysis() {
     });
 
     return { nodes: graphNodes, links: graphLinks };
-  }, [activeProject]);
+  }, [activeProject, TASKS]);
 
   // Simulation state
   const [simNodes, setSimNodes] = useState<GraphNode[]>([]);

@@ -28,7 +28,10 @@ import ShotDetail from '@/pages/shot-detail';
 import Analytics from '@/pages/analytics';
 import Publishing from '@/pages/publishing';
 import Profile from '@/pages/profile';
-import SchemaBuilder from '@/pages/schema';
+import ProductionDashboard from '@/pages/production';
+import Timesheets from '@/pages/timesheets';
+import ClientReview from '@/pages/client-review';
+
 import Audit from '@/pages/audit';
 import NotFound from '@/pages/not-found';
 import Delivery from '@/pages/delivery';
@@ -39,6 +42,7 @@ import DailyStandup from '@/pages/daily-standup';
 import Chat from '@/pages/chat';
 import TrackingGrid from '@/pages/tracking';
 import IntegrationsHub from '@/pages/integrations';
+import Notifications from '@/pages/notifications';
 
 const queryClient = new QueryClient();
 
@@ -77,6 +81,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/login" component={Login} />
+      <Route path="/client-review" component={ClientReview} />
       
       {/* Protected Routes wrapped in AppShell */}
       <Route path="/.*">
@@ -126,9 +131,11 @@ function Router() {
               </Route>
               <Route path="/marketplace" component={Marketplace} />
               <Route path="/profile" component={Profile} />
-              <Route path="/schema">
-                <LeadershipGuard><SchemaBuilder /></LeadershipGuard>
+              
+              <Route path="/production">
+                <LeadershipGuard><ProductionDashboard /></LeadershipGuard>
               </Route>
+
               <Route path="/audit">
                 <LeadershipGuard><Audit /></LeadershipGuard>
               </Route>
@@ -136,6 +143,10 @@ function Router() {
               <Route path="/delivery" component={Delivery} />
               <Route path="/chat" component={Chat} />
               <Route path="/tracking" component={TrackingGrid} />
+              <Route path="/review" component={Review} />
+              <Route path="/timesheets" component={Timesheets} />
+              <Route path="/daily-standup" component={DailyStandup} />
+              <Route path="/notifications" component={Notifications} />
               <Route component={NotFound} />
             </Switch>
           </AppShell>

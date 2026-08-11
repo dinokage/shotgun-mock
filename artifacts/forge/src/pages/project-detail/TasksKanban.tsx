@@ -7,6 +7,8 @@ import { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { PriorityChip } from '@/components/shared/PriorityChip';
 import { UserAvatar } from '@/components/shared/UserAvatar';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Calendar, ChevronDown, Clock, Tag } from 'lucide-react';
 
 const COLUMNS: { id: TaskStatus; title: string }[] = [
   { id: 'todo', title: 'To Do' },
@@ -26,13 +28,58 @@ function SortableTaskCard({ task }: { task: any }) {
     opacity: isDragging ? 0.4 : 1,
   };
 
+  const isOverdue = new Date(task.dueDate) < new Date();
+
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="mb-3 cursor-grab active:cursor-grabbing outline-none">
-      <Card className="p-3 shadow-sm border-border hover:border-primary/50 transition-colors">
-        <div className="text-sm font-medium leading-tight mb-2">{task.title}</div>
-        <div className="flex items-center justify-between mt-3">
-          <PriorityChip priority={task.priority} />
-          <UserAvatar userId={task.assigneeId} />
+      <Card className="p-3 shadow-sm border-border hover:border-primary/50 transition-colors flex flex-col gap-2 relative overflow-hidden group">
+        {/* Priority accent bar */}
+        <div className={`absolute left-0 top-0 bottom-0 w-1 ${
+          task.priority === 'critical' ? 'bg-red-500' : 
+          task.priority === 'high' ? 'bg-orange-500' : 
+          task.priority === 'medium' ? 'bg-blue-500' : 'bg-green-500'
+        }`} />
+        
+        <div className="pl-2">
+          <div className="text-sm font-semibold leading-tight text-foreground/90">{task.title}</div>
+          <div className="text-xs text-muted-foreground mt-1 truncate">{task.projectId} • {task.department}</div>
+        </div>
+        
+        {task.tags && task.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1 pl-2 mt-1">
+            {task.tags.map((tag: string) => (
+              <span key={tag} className="text-[9px] px-1.5 py-0.5 bg-muted text-muted-foreground rounded border border-border flex items-center gap-1">
+                <Tag className="w-2.5 h-2.5" /> {tag}
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div className="flex items-center justify-between mt-2 pl-2 border-t border-border/50 pt-2">
+          <div className="flex items-center gap-2">
+            <UserAvatar userId={task.assigneeId} />
+            <div className={`flex items-center gap-1 text-[10px] ${isOverdue ? 'text-red-500 font-medium' : 'text-muted-foreground'}`}>
+              <Clock className="w-3 h-3" />
+              {new Date(task.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+            </div>
+          </div>
+          
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <div 
+                className="cursor-pointer hover:opacity-80 transition-opacity" 
+                onPointerDown={(e) => e.stopPropagation()} // Prevent drag start when clicking menu
+              >
+                <PriorityChip priority={task.priority} />
+              </div>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-32 z-50">
+              <DropdownMenuItem onSelect={() => console.log('Update to critical')}>Critical</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => console.log('Update to high')}>High</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => console.log('Update to medium')}>Medium</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => console.log('Update to low')}>Low</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </Card>
     </div>

@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { SHOTS, AUDIT_EVENTS } from '@/data/mockData';
+import { PlayCircle } from 'lucide-react';
 
 const burndownData = [
   { name: 'Week 1', planned: 247, actual: 247 },
@@ -28,8 +29,33 @@ export default function DashboardTab({ project }: { project: any }) {
     { name: 'To Do', value: 50, fill: COLORS.todo },
   ];
 
+  const projectShots = SHOTS.filter(s => s.projectId === project.id).slice(0, 4);
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pb-8">
+      <div className="lg:col-span-3 min-w-0">
+        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Latest Shorts Previews</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {projectShots.map(shot => (
+            <div key={shot.id} className="group relative aspect-video bg-muted rounded-lg overflow-hidden border border-border cursor-pointer hover:border-primary/50 transition-colors">
+              <img src={shot.thumbnail} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt={shot.name} />
+              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                <PlayCircle className="w-10 h-10 text-white drop-shadow-md" />
+              </div>
+              <div className="absolute bottom-2 left-2 right-2 flex justify-between items-center text-xs text-white drop-shadow-md font-medium">
+                <span>{shot.name}</span>
+                <span className="bg-black/60 px-1.5 py-0.5 rounded backdrop-blur-md">{shot.status}</span>
+              </div>
+            </div>
+          ))}
+          {projectShots.length === 0 && (
+            <div className="col-span-4 h-24 border-2 border-dashed border-border rounded-lg flex items-center justify-center text-muted-foreground text-sm">
+              No shorts uploaded for this project yet.
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="lg:col-span-2 space-y-6 min-w-0">
         <Card>
           <CardHeader>

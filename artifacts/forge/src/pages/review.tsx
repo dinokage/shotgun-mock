@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu';
 import { Label } from '@/components/ui/label';
+import { useAuthStore } from '@/store/auth';
 
 type AnnotationTool = 'select' | 'pen' | 'arrow' | 'rectangle' | 'text';
 
@@ -65,6 +66,13 @@ interface MediaClip {
 const COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#eab308', '#d946ef', '#ffffff'];
 
 export default function Review() {
+  const { currentUser } = useAuthStore();
+  const isManager = currentUser && ['vfx_producer', 'production_manager', 'coordinator', 'supervisor', 'lead'].includes(currentUser.role);
+  
+  const isArtist = currentUser && ['artist', 'senior_artist'].includes(currentUser.role);
+  const isLead = currentUser && ['lead', 'supervisor'].includes(currentUser.role);
+  const isProd = currentUser && ['vfx_producer', 'production_manager', 'coordinator'].includes(currentUser.role);
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [frame, setFrame] = useState(1);
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
@@ -490,26 +498,43 @@ export default function Review() {
           <Button variant="outline" size="sm" onClick={() => setViewerMode(!viewerMode)}>
             {viewerMode ? 'Exit Viewer Mode' : 'Read-only Reviewer'}
           </Button>
+          {!viewerMode && isProd && reviewWorkflowStatus === 'manager-review' && (
+            <Button 
+              size="sm" 
+              variant="outline"
+              className="border-[#1E7A34] text-[#1E7A34] hover:bg-[#1E7A34]/10"
+              onClick={() => {
+                setReviewWorkflowStatus('approved');
+                toast({ title: 'Published', description: 'Review published directly to pipeline.' });
+              }}
+            >
+              <Upload className="w-4 h-4 mr-2" /> Publish to Pipeline
+            </Button>
+          )}
           {!viewerMode && (
+            (isArtist && reviewWorkflowStatus === 'wip') ||
+            (isLead && reviewWorkflowStatus === 'lead-review') ||
+            (isProd && reviewWorkflowStatus === 'manager-review')
+          ) && (
             <Button 
               size="sm" 
               className="bg-primary text-primary-foreground"
               onClick={() => {
-                if (reviewWorkflowStatus === 'wip') {
+                if (isArtist && reviewWorkflowStatus === 'wip') {
                   setReviewWorkflowStatus('lead-review');
                   toast({ title: 'Submitted', description: 'Submitted for Lead Review' });
-                } else if (reviewWorkflowStatus === 'lead-review') {
+                } else if (isLead && reviewWorkflowStatus === 'lead-review') {
                   setReviewWorkflowStatus('manager-review');
                   toast({ title: 'Submitted', description: 'Submitted for Manager Review' });
-                } else if (reviewWorkflowStatus === 'manager-review') {
+                } else if (isProd && reviewWorkflowStatus === 'manager-review') {
                   setReviewWorkflowStatus('approved');
-                  toast({ title: 'Approved', description: 'Review completed and approved' });
+                  toast({ title: 'Routed to Client', description: 'Review approved and routed to Client Portal for external review.' });
                 }
               }}
             >
-              {reviewWorkflowStatus === 'wip' ? 'Submit for Lead Review' : 
-               reviewWorkflowStatus === 'lead-review' ? 'Submit for Manager Review' : 
-               reviewWorkflowStatus === 'manager-review' ? 'Approve Review' : 'Approved'}
+              {isArtist ? 'Submit for Lead Review' : 
+               isLead ? 'Submit for Manager Review' : 
+               isProd ? 'Sanity Check & Route to Client' : ''}
             </Button>
           )}
         </div>
@@ -1045,7 +1070,7 @@ export default function Review() {
             </div>
           </div>
 
-          {!viewerMode && (
+          {!viewerMode && isManager && (
             <div className="h-16 bg-muted/30 border-t border-border flex items-center justify-center gap-4 shrink-0 px-4">
               <Button className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white flex-1 max-w-xs" onClick={() => handleAction('Approved')}>
                 <CheckCircle2 className="w-4 h-4 mr-2" /> Approve

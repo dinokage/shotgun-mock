@@ -77,6 +77,23 @@ export function TaskDrawer() {
             <Badge className={`${STATUS_COLORS[task.status]} text-xs`}>
               {task.status.replace('-', ' ').toUpperCase()}
             </Badge>
+            
+            {isAssignee && task.status !== 'approved' && (
+              <Button 
+                size="sm" 
+                variant="outline" 
+                className="h-6 text-[10px] bg-blue-500/10 text-blue-500 border-blue-500/20 hover:bg-blue-500/20"
+                onClick={() => {
+                  toast({ title: 'Playblast Uploaded', description: 'Saved 1 copy locally. Routed 2 to Leads for review.' });
+                  setTimeout(() => {
+                    toast({ title: 'Auto-Routing', description: 'Leads approved. Sent 1 playblast to Client Review portal.' });
+                  }, 3000);
+                }}
+              >
+                <Play className="w-3 h-3 mr-1" /> Submit Playblast
+              </Button>
+            )}
+
             {task.status === 'approved' && nextDept && isLeadership && (
               <Button size="sm" variant="outline" className="h-6 text-[10px] bg-primary/10 text-primary border-primary/20 hover:bg-primary/20">
                 Handoff to {nextDept.abbreviation} <ArrowRight className="w-3 h-3 ml-1" />

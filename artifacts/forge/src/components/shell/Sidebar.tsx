@@ -5,7 +5,7 @@ import {
   GitFork, Workflow, Store, Database,
   History, Bot, Settings2, Package, Film, ListTodo,
   Upload, BarChart3, ChevronLeft, ChevronRight,
-  Building2, ChevronDown, Users, MonitorPlay, MessageSquare, Grid3X3, Puzzle
+  Building2, ChevronDown, Users, MonitorPlay, MessageSquare, Grid3X3, Puzzle, Clock
 } from 'lucide-react';
 import { useUIStore } from '@/store/ui';
 import { useWorkspaceStore } from '@/store/workspace';
@@ -36,19 +36,22 @@ const BASE_NAV: NavItem[] = [
 
 // Production & Leadership get scheduling, analytics, projects, etc.
 const PROD_NAV: NavItem[] = [
+  { label: 'Production Dashboard', icon: LayoutDashboard, href: '/production' },
   { label: 'Projects', icon: FolderOpen, href: '/projects' },
   { label: 'Tracking Grid', icon: Grid3X3, href: '/tracking' },
   { label: 'Scheduling', icon: Calendar, href: '/scheduling' },
+  { label: 'Timesheets', icon: Clock, href: '/timesheets' },
   { label: 'Analytics', icon: BarChart3, href: '/analytics' },
   { label: 'Reviews', icon: PlayCircle, href: '/review', badge: 5 },
+  { label: 'Client Portal', icon: MonitorPlay, href: '/client-review' },
 ];
 
 // Artists get specific focus areas
 const ARTIST_NAV: NavItem[] = [
   { label: 'My Shots', icon: Film, href: '/shots' },
   { label: 'My Assets', icon: Package, href: '/assets' },
+  { label: 'Timesheets', icon: Clock, href: '/timesheets' },
   { label: 'Reviews', icon: PlayCircle, href: '/review', badge: 2 },
-  { label: 'Publishing', icon: Upload, href: '/publishing' },
 ];
 
 // Global directories
@@ -63,7 +66,7 @@ const SYSTEM_NAV: NavItem[] = [
   { label: 'Dependency Graph', icon: GitFork, href: '/impact' },
   { label: 'Workflows', icon: Workflow, href: '/workflows' },
   { label: 'Marketplace', icon: Store, href: '/marketplace' },
-  { label: 'Schema Builder', icon: Database, href: '/schema' },
+
   { label: 'Time Travel', icon: History, href: '/audit' },
 ];
 

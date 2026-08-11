@@ -59,23 +59,23 @@ export default function AuditLog() {
         </div>
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-4 relative before:absolute before:inset-0 before:ml-[35px] before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-border before:to-transparent">
         {events.map((event, index) => {
           const user = USERS.find(u => u.id === event.userId);
           const isExpanded = expandedId === event.id;
           const hasChanges = Object.keys(event.changedFields).length > 0;
           
           return (
-            <Card key={event.id} className="overflow-hidden hover:border-primary/30 transition-colors">
-              <div className="p-4 flex items-start gap-4 bg-card">
+            <Card key={event.id} className="relative overflow-hidden hover:border-primary/30 transition-colors z-10">
+              <div className="p-4 flex items-start gap-4 bg-card relative">
                 <button
                   type="button"
                   className="flex-1 flex items-start gap-4 text-left rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   aria-expanded={isExpanded}
                   onClick={() => setExpandedId(isExpanded ? null : event.id)}
                 >
-                  <div className="w-10 h-10 rounded bg-muted/50 border border-border flex items-center justify-center shrink-0">
-                    <History className="w-5 h-5 text-muted-foreground" />
+                  <div className="w-10 h-10 rounded-full bg-background border-2 border-primary flex items-center justify-center shrink-0 z-10 shadow-[0_0_10px_rgba(var(--primary),0.2)]">
+                    <History className="w-4 h-4 text-primary" />
                   </div>
 
                   <div className="flex-1">

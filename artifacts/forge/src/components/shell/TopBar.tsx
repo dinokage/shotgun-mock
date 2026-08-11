@@ -12,11 +12,12 @@ import { useUIStore } from '@/store/ui';
 import { useAuthStore } from '@/store/auth';
 import { Link, useLocation } from 'wouter';
 import { TimeClockWidget } from '@/components/shared/TimeClockWidget';
+import { USERS } from '@/data/mockData';
 
 export function TopBar() {
   const { setTheme, theme } = useTheme();
   const { setSearchOpen, setCommandPaletteOpen, notificationPanelOpen, setNotificationPanelOpen, setCreateTaskModalOpen } = useUIStore();
-  const { currentUser, logout } = useAuthStore();
+  const { currentUser, logout, switchUser } = useAuthStore();
   const [, setLocation] = useLocation();
   const unreadNotifs = NOTIFICATIONS.filter(n => !n.read).length;
 
@@ -155,6 +156,17 @@ export function TopBar() {
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild><Link href="/profile">Profile</Link></DropdownMenuItem>
             <DropdownMenuItem asChild><Link href="/settings">Settings</Link></DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Demo: Switch Role</div>
+            {USERS.filter(u => ['vfx_producer', 'artist'].includes(u.role)).slice(0, 3).map(u => (
+              <DropdownMenuItem 
+                key={u.id} 
+                onClick={() => { switchUser(u.id); window.location.reload(); }}
+                className={`cursor-pointer ${currentUser.id === u.id ? 'bg-primary/10' : ''}`}
+              >
+                {u.name} ({ROLE_LABELS[u.role] || u.role})
+              </DropdownMenuItem>
+            ))}
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleLogout} className="text-red-500 cursor-pointer flex items-center gap-2">
               <LogOut className="w-4 h-4" />

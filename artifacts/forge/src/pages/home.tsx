@@ -360,28 +360,7 @@ function ArtistDashboard({ currentUser }: { currentUser: any }) {
           </Card>
         </div>
 
-        <div className="space-y-6">
-          <Card className="border-border/50 bg-muted/20">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg flex items-center gap-2"><Upload className="w-5 h-5 text-primary" /> Quick Publish</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4 text-sm">
-                <p className="text-muted-foreground">Drag and drop files to instantly publish to your active task.</p>
-                <div className="border-2 border-dashed border-border rounded-lg p-8 flex flex-col items-center justify-center text-center hover:bg-muted/30 transition-colors cursor-pointer group">
-                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                    <Upload className="w-6 h-6 text-primary" />
-                  </div>
-                  <div className="font-semibold mb-1">Click or drag file to this area</div>
-                  <div className="text-xs text-muted-foreground">Supports .mov, .mp4, .usd, .png (Max 2GB)</div>
-                </div>
-                <Button className="w-full" onClick={() => {
-                  toast({ title: 'Upload Started', description: 'Your file is being published to the pipeline.' });
-                }}>Browse Files</Button>
-              </div>
-            </CardContent>
-          </Card>
-          
+
           <Card className="border-border/50 bg-muted/20">
             <CardHeader className="pb-2">
               <CardTitle className="text-lg flex items-center gap-2"><Sparkles className="w-5 h-5 text-purple-500" /> Recent Feedback</CardTitle>
@@ -400,7 +379,6 @@ function ArtistDashboard({ currentUser }: { currentUser: any }) {
           </Card>
         </div>
       </div>
-    </div>
   );
 }
 

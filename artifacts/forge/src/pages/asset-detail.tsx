@@ -67,7 +67,7 @@ export default function AssetDetail() {
           </div>
         </div>
         <div className="flex gap-2 shrink-0">
-          <Button variant="outline" size="sm"><Upload className="w-4 h-4 mr-1" /> Publish</Button>
+          <Button variant="outline" size="sm" className="hidden"><Upload className="w-4 h-4 mr-1" /> Publish</Button>
           <Button size="sm">Open in DCC</Button>
         </div>
       </div>

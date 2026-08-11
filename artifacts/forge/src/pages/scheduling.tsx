@@ -81,6 +81,28 @@ export default function Scheduling() {
 
   const cellWidth = 40 * zoom;
 
+  // Calculate exact coordinates for every task to draw dependency lines
+  const taskCoords = useMemo(() => {
+    const coords: Record<string, { x: number, y: number, width: number, height: number }> = {};
+    let currentY = 0;
+    
+    Object.keys(groupedByUser).forEach(userId => {
+      const tasks = groupedByUser[userId];
+      const rowHeight = Math.max(48, tasks.length * 40 + 8);
+      
+      tasks.forEach((task, i) => {
+        const left = task.startOffset * cellWidth;
+        const width = Math.max(task.visibleDuration * cellWidth - 4, 10);
+        const top = currentY + 8 + (i * 40);
+        coords[task.id] = { x: left, y: top, width, height: 28 };
+      });
+      
+      currentY += rowHeight;
+    });
+    
+    return coords;
+  }, [groupedByUser, cellWidth]);
+
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)]">
       {/* Header */}
@@ -201,9 +223,22 @@ export default function Scheduling() {
                 <div key={userId} className="border-b border-border" style={{ height: `${Math.max(48, tasks.length * 40 + 8)}px` }}>
                   <div className="flex items-center gap-3 p-3 absolute left-0 w-64 bg-card/80 backdrop-blur-sm pointer-events-none">
                     <Avatar className="w-6 h-6"><AvatarImage src={user?.avatar} /><AvatarFallback>{user?.name.charAt(0)}</AvatarFallback></Avatar>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate pointer-events-auto">{user?.name}</div>
-                      <div className="text-[10px] text-muted-foreground truncate">{user?.role}</div>
+                    <div className="flex-1 min-w-0 flex flex-col justify-center">
+                      <div className="text-sm font-medium truncate pointer-events-auto leading-tight">{user?.name}</div>
+                      <div className="text-[10px] text-muted-foreground truncate leading-tight flex items-center justify-between mt-1">
+                        <span>{user?.role}</span>
+                        {user && (
+                          <div className="flex items-center gap-1">
+                            <div className="w-12 h-1.5 bg-muted rounded-full overflow-hidden">
+                              <div 
+                                className={`h-full ${user.capacity > 90 ? 'bg-red-500' : user.capacity > 75 ? 'bg-yellow-500' : 'bg-green-500'}`} 
+                                style={{ width: `${Math.min(user.capacity, 100)}%` }}
+                              />
+                            </div>
+                            <span className="text-[9px] font-mono">{user.capacity}%</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -245,6 +280,46 @@ export default function Scheduling() {
                 );
               })}
             </div>
+
+            {/* Dependency Lines */}
+            <svg className="absolute inset-0 pointer-events-none z-10 w-full h-full" style={{ minHeight: '100%' }}>
+              <defs>
+                <marker id="arrowhead" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                  <polygon points="0 0, 6 3, 0 6" fill="rgba(156, 163, 175, 0.6)" />
+                </marker>
+              </defs>
+              {tasksToDisplay.flatMap(task => 
+                (task.dependencies || []).map(depId => {
+                  const start = taskCoords[depId]; // The task we depend on (parent)
+                  const end = taskCoords[task.id]; // This task (child)
+                  
+                  if (!start || !end) return null; // Dependency might be out of current view
+                  
+                  // Calculate control points for a smooth bezier curve
+                  const startX = start.x + start.width;
+                  const startY = start.y + (start.height / 2);
+                  const endX = end.x;
+                  const endY = end.y + (end.height / 2);
+                  
+                  // Make the curve stronger if tasks are far apart horizontally
+                  const cpOffset = Math.max(20, Math.abs(endX - startX) * 0.5);
+                  
+                  const d = `M ${startX} ${startY} C ${startX + cpOffset} ${startY}, ${endX - cpOffset} ${endY}, ${endX - 2} ${endY}`;
+                  
+                  return (
+                    <path 
+                      key={`dep-${depId}-${task.id}`}
+                      d={d}
+                      fill="none"
+                      stroke="rgba(156, 163, 175, 0.4)"
+                      strokeWidth="2"
+                      markerEnd="url(#arrowhead)"
+                      className="transition-all duration-300"
+                    />
+                  );
+                })
+              )}
+            </svg>
 
             {/* Task Rows */}
             {Object.keys(groupedByUser).map(userId => {

@@ -384,6 +384,9 @@ const getName = () => `${firstNames[nameCounter++ % firstNames.length]} ${lastNa
 // --- Users (65 with realistic VFX titles) ----------------------------------
 
 const USER_DEFS: { name: string; role: Role; deptIdx: number; title: string; skills: string[] }[] = [
+  // === Clients ===
+  { name: 'External Client', role: 'coordinator', deptIdx: 0, title: 'Client Reviewer', skills: ['Feedback', 'Review'] },
+  
   // === Production Management (dept 0) ===
   { name: 'Maya Chen', role: 'vfx_producer', deptIdx: 0, title: 'VFX Producer', skills: ['Budgeting', 'Client Relations', 'Scheduling'] },
   { name: 'Ethan Brooks', role: 'production_manager', deptIdx: 0, title: 'VFX Production Manager', skills: ['Show Management', 'Resource Planning', 'Shotgun'] },
@@ -653,7 +656,7 @@ PROJECTS.forEach(proj => {
 
 // --- Shots (100) -----------------------------------------------------------
 
-const shotStatuses: Shot['status'][] = ['complete', 'in-progress', 'bottleneck', 'review', 'not-started', 'at-risk'];
+const shotStatuses: Shot['status'][] = ['complete', 'in-progress', 'client-review', 'bottleneck', 'review', 'not-started', 'at-risk'];
 const shotComplexities: Shot['complexity'][] = ['low', 'medium', 'high'];
 const reviewStatuses: Shot['internalReviewStatus'][] = ['pending', 'approved', 'rejected', 'changes-requested', 'not-submitted'];
 
