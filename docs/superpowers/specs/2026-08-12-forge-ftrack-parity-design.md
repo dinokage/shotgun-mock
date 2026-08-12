@@ -59,6 +59,30 @@ This design was produced after:
 4. **Hosting model:** Multi-tenant SaaS first (matches ftrack's primary model) — tenant
    scoping designed into the schema and auth from Phase 0, not retrofitted later.
 
+### Scope update (2026-08-12, later session)
+
+Decisions 1 and 4 above assumed this workstream also owns the backend. That's no longer
+true: **backend implementation is now owned by a separate collaborator, working
+independently, on a stack not yet confirmed.** A product-description document (authored
+via an external AI tool, describing Forge's intended feature set) mentioned
+Python/FastAPI/PostgreSQL/SQLAlchemy, which doesn't match either real backend candidate
+in this repo today (the orphaned `artifacts/forge/server` FastAPI app uses SQLite, not
+Postgres; the TypeScript scaffold targets Postgres via Drizzle, not SQLAlchemy) — so the
+actual backend stack is **unconfirmed pending a plan from that collaborator.**
+
+Consequences for this document:
+- The **Phase 0–7 roadmap below is retained for reference** but is now a *backend-coupled
+  track*, not the active plan for this workstream.
+- **This workstream's active scope is frontend-only**: deepen `artifacts/forge`'s
+  existing mocked UI to real ftrack feature parity (richer interactions, real mock-data
+  persistence within a session, closing the gap between what looks interactive and what
+  actually is) — with no assumption about a specific backend contract yet. See "Phase
+  A–F: frontend feature-parity track" below, which is the current active plan.
+- When the collaborator's backend plan arrives, this document should be revisited to
+  reconcile the two tracks (e.g., deciding whether `artifacts/forge/server` gets revived
+  as-is, migrated to Postgres, replaced by the TS scaffold, or replaced by something
+  else entirely) — not decided now.
+
 ## Comparison: ftrack vs. Forge (current) vs. Forge (target)
 
 | Dimension | ftrack | Forge (current) | Forge (target) |
@@ -160,7 +184,13 @@ Vertical-slice-first is recommended because it produces a real, demoable, trustw
 product fastest, de-risks the backend rewrite early (rather than late), and keeps
 momentum consistent with how this codebase has actually evolved so far.
 
-## Phase-wise plan
+## Phase-wise plan (backend-coupled track — superseded, kept for reference)
+
+> **Status:** superseded by the "Phase A–F" frontend track below as of the 2026-08-12
+> scope update. Backend is now owned by a separate collaborator; this track's Phase
+> 0/1/3 backend tasks are not currently being executed. Kept here so the reasoning
+> (schema shapes, event-layer sizing, retirement plan for the orphaned FastAPI server)
+> isn't lost, and can be reconciled once a real backend plan exists.
 
 ### Phase 0 — Foundation
 - Multi-tenant auth: `studios`/`organizations` + `users` tables, tenant-scoped from the
@@ -254,7 +284,7 @@ DCC integrations, a Connect-style desktop launcher, a real plugin marketplace ba
 and on-prem/self-host packaging. Explicitly out of scope per the scoping decisions
 above; revisit only after Phases 0–7 are solid.
 
-## Cross-cutting concerns (apply throughout)
+## Cross-cutting concerns (backend-coupled track)
 
 - **Testing:** Vitest is already in the workspace (per the original core-backend plan's
   stated stack); each phase should add API-level tests for new endpoints and
@@ -267,7 +297,114 @@ above; revisit only after Phases 0–7 are solid.
   pinned `drizzle-orm`/`zod` catalog versions, and the existing `tsconfig.base.json`
   strict settings.
 
-## Open risks / questions for later phases
+---
+
+## Phase A–F: frontend feature-parity track (active plan)
+
+**Scope:** deepen `artifacts/forge`'s existing mocked UI to genuine ftrack feature
+parity — closing the gap between what looks interactive and what actually persists —
+with no assumption about a specific backend contract. Informed by: (a) a deep,
+module-by-module live re-verification of ftrack's actual feature set (task/board/
+timeline, review/annotation, workflows/schema/admin — each researched separately with
+concrete UI mechanics, not just feature names), (b) a full page-by-page audit of every
+file in `artifacts/forge/src/pages` and `src/store` documenting what's genuinely wired
+vs. decorative, and (c) an external AI-generated product-vision document that supplied
+useful target framing and feature naming ("Task Drawer," "Tracking Grids") — treated as
+aspirational, not a status report, since the audit found several of its claims (AI
+insights, financial tracking, voice notes, DCC publishing) describe mocked features as
+if they were fully functional.
+
+**The recurring pattern driving this track:** most pages are visually complete but
+functionally inert — buttons that only fire a toast, forms that don't persist,
+`financials.tsx` regenerating numbers with `Math.random()` on every render, a workflow
+editor whose node palette doesn't add nodes, timesheets that reset on reload. Every
+phase below is as much a "wire it up" pass over existing UI as a "build the missing
+piece" pass.
+
+### Phase A — Task & Asset Management
+- Formalize a reusable **"Task Drawer"** component (checklists, daily time logging,
+  threaded comments — the store's `addComment` already exists but no page surfaces a
+  thread — and dependency tracking), replacing the scattered ad hoc drawer patterns
+  in `home.tsx`, `tasks.tsx`, and `profile.tsx`. Reuse it for Shot/Asset detail too,
+  matching ftrack's universal "Sidebar" pattern (Info/Links/Notes/Activity tabs).
+- `tracking.tsx`: add multi-level grouping, saved/named filter views, and a Task
+  Columns–style per-department status rollup (all confirmed ftrack features, currently
+  absent).
+- Real dependency link types (Finish-to-Start/Start-to-Start/Finish-to-Finish/
+  Start-to-Finish + lag) instead of plain arrows; an "Available Tasks" self-serve
+  unassigned-task column on the Kanban board; persist Gantt drag-reschedule to the
+  store (`TasksTimeline.tsx` currently only updates visually in some flows).
+
+### Phase B — The Review Player & Client Review Portal
+- `review.tsx` / `client-review.tsx` currently duplicate the entire annotation toolset
+  independently — unify into one shared component.
+- Add **Ghosting** (motion-persistence annotation across frames) and **Presentation
+  Mode** (lock all viewers to the presenter's frame; they retain only
+  Approve/Request-Changes).
+- **Voice-Over Notes**: currently a mock audio blob — implement a real browser
+  `MediaRecorder` capture, persisted to the review store for the session (no backend
+  needed; matches the original brief's "persist within a session" rule).
+- **Multi-Tier Approvals**: the Lead→Supervisor→Producer chain already exists as a UI
+  state machine — persist it to the task/shot store instead of local-only state. Note:
+  ftrack itself has no visible multi-step approval chain (just one status field per
+  version) — this is a genuine Forge differentiator, not a gap to close to match ftrack.
+- Client Review Portal: add the "Transfer feedback" moderation step (client notes don't
+  auto-land internally by default in ftrack) and studio branding on the portal.
+
+### Phase C — Scheduling & Resourcing
+- Split `scheduling.tsx`'s single mega-Gantt into ftrack's three-tool pattern: **Team
+  Board** (drag unassigned tasks onto people for bulk assignment), **Team Calendar**
+  (per-person time-allocation view), and **Capacity Forecast** (studio-level
+  headcount-days vs. group availability, with Leave/vacation events subtracted).
+- Persist `timesheets.tsx` entries (currently local `useState`, resets on reload).
+
+### Phase D — Workflows, Schema & Admin
+- No-code Schema Builder with real field types (text/number/date/boolean/
+  single-and-multi-select enum/computed-expression), matching ftrack's confirmed
+  Custom Attribute model.
+- Task Templates (reusable named task-type bundles).
+- Make `workflow-editor.tsx`'s node palette actually add nodes and persist edited
+  graphs (currently one static hardcoded example).
+- Build out `settings.tsx`'s Members/Roles/Permissions tab into a working
+  permission-scheme editor (currently a form that doesn't save).
+
+### Phase E — Studio & Production Dashboards
+- Replace `financials.tsx`'s `Math.random()`-per-render numbers with a deterministic
+  mock model driven by each Project's existing `budget`/`riskScore` fields, so figures
+  are stable and traceable rather than reshuffling on every render.
+- **AI-Powered Insights**: the current "Forge AI Insights" panel on `home.tsx` is a
+  static headline array with no visible reasoning. The *original prototype brief*
+  explicitly required every AI recommendation to show a structured explanation (e.g.
+  "flagged because Shot 040 blocks 3 downstream tasks and velocity is 40% below pace")
+  — that requirement was never actually built. This is pure mock/frontend work (canned,
+  pre-written explanation text — no real model needed) and one of the more visible wins
+  available in this track.
+
+### Phase F — Cross-cutting UX systems
+- Global search (`ui.ts` already has a `searchOpen` flag with no UI behind it).
+- A keyboard-shortcut system beyond the review player's `useHotkeys` usage
+  (`commandPaletteOpen` exists, unused), plus a shortcuts cheatsheet.
+- Notification preferences that actually drive notification generation — currently
+  `notifications.tsx` doesn't even call its own store's `markAsRead`.
+- Consolidate pages that read directly from static mock arrays instead of their
+  Zustand store onto one consistent source of truth (e.g. `store/projects.ts` is
+  barely used; `projects.tsx` and `project-detail/` mostly read the raw import
+  instead).
+
+### Cross-cutting concerns (frontend track)
+- **No backend contract assumed.** Every phase above must be achievable entirely
+  within Zustand + session-scoped persistence (localStorage), consistent with the
+  original brief's "simulate persistence within a session" rule — nothing here should
+  require coordinating with the collaborator's still-unconfirmed backend stack.
+- **Don't let the external vision doc set false completion criteria.** Its feature
+  names are useful labels; its implied "this already works" framing is not evidence —
+  the page-by-page audit is the source of truth for what's actually wired.
+- When the backend plan does arrive, this track's work becomes the frontend
+  integration surface for it — Zustand stores here are the natural seam to swap for
+  real API calls later, matching the same "Zustand for UI state, real data source for
+  entities" split the backend-coupled track above already planned for.
+
+## Open risks / questions (backend-coupled track, Phase 0–7 numbering)
 
 - Pricing/packaging strategy is intentionally undecided here — revisit once Phase 2
   ships and there's a real product to price. Note for that future discussion: ftrack's
@@ -279,3 +416,15 @@ above; revisit only after Phases 0–7 are solid.
   set of admin-defined custom fields rather than a fully dynamic entity system.
 - LLM provider/cost model for Phase 6 is not decided — should be revisited with current
   options at that time rather than locked in now.
+
+## Open risks / questions (frontend track, Phase A–F numbering)
+
+- `financials.tsx` and `analytics.tsx` currently overlap (both show production/financial
+  metrics); Phase E should decide whether to merge them or keep them distinct before
+  building the deterministic mock model, to avoid duplicating the same numbers two ways.
+- The Schema Builder's field-type list (Phase D) is the same architectural-risk item as
+  the backend-coupled track's Phase 5 above, just scoped to mock/local data instead of a
+  real dynamic entity store — same fallback applies: scope to a small admin-defined
+  field set if a fully generic builder proves too large for this track.
+- Voice-Over Notes (Phase B) needs a browser permissions/fallback story (mic access
+  denied, unsupported browser) decided before implementation, not during.
