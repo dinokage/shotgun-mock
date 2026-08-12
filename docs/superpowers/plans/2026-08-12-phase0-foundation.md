@@ -50,7 +50,7 @@ git commit -m "docs: retire core-backend plan, superseded by phase0-foundation p
 **Interfaces:**
 - Produces: A local Postgres instance reachable at `postgresql://forge:forge@localhost:5433/forge`, and a documented list of required env vars for later tasks.
 
-Note: this repo's sandboxed dev environment ships a very old Docker (API 1.13.1, no `docker compose` plugin, no usable `docker-compose` binary) — use plain `docker run` rather than a compose file for portability. If your environment has a modern `docker compose`, feel free to translate this into a `docker-compose.yml` instead; the script below is the lowest-common-denominator choice.
+Note: this repo's sandboxed dev environment ships a very old Docker (API 1.13.1) whose image pulls fail outright (`Error response from daemon: missing signature key`, reproduced on both `postgres:15-alpine` and plain `alpine:latest` — a registry/signature-verification incompatibility with this ancient daemon, not a Postgres-specific issue), and `brew install postgresql@16` is not viable either (this sandbox reports as an unsupported Homebrew "Tier 1" configuration, so every dependency — down to `cmake` — has no bottle and must build from source, which does not complete in reasonable time). If your environment has working Docker, use the script below as written. **If it doesn't** (verify with `docker pull alpine:latest` — if that fails, don't bother debugging Postgres specifically), use this fallback instead, which needs no native compilation and no registry pulls: run `npx --yes @electric-sql/pglite-socket@0.2.7 --db=<some/scratch/path> --port=5433 --host=127.0.0.1 --max-connections=10` in the background. `@electric-sql/pglite-socket` speaks real Postgres wire protocol (backed by `@electric-sql/pglite`, a WASM Postgres build) over a plain TCP socket, so an ordinary `pg`/Drizzle client connecting to `postgresql://forge:forge@localhost:5433/forge` can't tell the difference — every later task's `DATABASE_URL`-based steps work unmodified. Do not add `pglite`/`pglite-socket` to this repo's `package.json` files — they're a sandbox-only stand-in for a real Postgres, not part of the shipped architecture (`lib/db` stays on `pg` + `drizzle-orm/node-postgres` throughout, as decided in the design doc).
 
 - [ ] **Step 1: Create `scripts/dev-db.sh` at the repo root's `scripts/` package**
 
@@ -121,6 +121,8 @@ PORT=5000
 
 Run: `./scripts/dev-db.sh start`
 Expected: prints `Waiting for Postgres to accept connections...— ready.`
+
+If Docker is unusable (see the note above), instead run the fallback in the background: `mkdir -p /tmp/forge-pglite-data && npx --yes @electric-sql/pglite-socket@0.2.7 --db=/tmp/forge-pglite-data --port=5433 --host=127.0.0.1 --max-connections=10 &`. Expected log line: `PGLiteSocketServer listening on {"port":5433,"host":"127.0.0.1"}`.
 
 - [ ] **Step 5: Commit**
 
