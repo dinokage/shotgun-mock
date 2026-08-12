@@ -322,11 +322,18 @@ phase below is as much a "wire it up" pass over existing UI as a "build the miss
 piece" pass.
 
 ### Phase A — Task & Asset Management
-- Formalize a reusable **"Task Drawer"** component (checklists, daily time logging,
-  threaded comments — the store's `addComment` already exists but no page surfaces a
-  thread — and dependency tracking), replacing the scattered ad hoc drawer patterns
-  in `home.tsx`, `tasks.tsx`, and `profile.tsx`. Reuse it for Shot/Asset detail too,
-  matching ftrack's universal "Sidebar" pattern (Info/Links/Notes/Activity tabs).
+- **Correction (verified while writing the implementation plan):** a unified
+  `components/shared/TaskDrawer.tsx` **already exists** and is already reused across
+  `home.tsx`, `tasks.tsx`, `scheduling.tsx`, `profile.tsx`, and `AppShell` via
+  `useUIStore`'s `activeTaskDrawer` id — no unification work is needed. Its actual gap
+  is narrower: checklist toggling has no `onClick` at all, and "Post Comment,"
+  Reassign/Revoke, Lead/Manager Approve-Reject, "Start Task," and "Log Daily Time" all
+  only fire a toast instead of calling the store actions that already exist for most of
+  them (`addComment`, `reassignTask`, `updateTaskStatus`). See
+  `docs/superpowers/plans/2026-08-12-task-drawer-wiring.md` for the wiring plan
+  (also adds the one missing store action, `toggleChecklistItem`, and Vitest/Testing
+  Library infra for `artifacts/forge`, which had none). Shot/Asset detail reuse of this
+  pattern is not yet planned — worth revisiting once the wiring plan ships.
 - `tracking.tsx`: add multi-level grouping, saved/named filter views, and a Task
   Columns–style per-department status rollup (all confirmed ftrack features, currently
   absent).
