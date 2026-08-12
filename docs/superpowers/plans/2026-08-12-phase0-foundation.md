@@ -44,37 +44,68 @@ git commit -m "docs: retire core-backend plan, superseded by phase0-foundation p
 ### Task 2: Local Postgres for dev + env template
 
 **Files:**
-- Create: `docker-compose.yml`
+- Create: `scripts/dev-db.sh`
 - Create: `.env.example`
 
 **Interfaces:**
 - Produces: A local Postgres instance reachable at `postgresql://forge:forge@localhost:5433/forge`, and a documented list of required env vars for later tasks.
 
-- [ ] **Step 1: Create `docker-compose.yml` at the repo root**
+Note: this repo's sandboxed dev environment ships a very old Docker (API 1.13.1, no `docker compose` plugin, no usable `docker-compose` binary) — use plain `docker run` rather than a compose file for portability. If your environment has a modern `docker compose`, feel free to translate this into a `docker-compose.yml` instead; the script below is the lowest-common-denominator choice.
 
-```yaml
-services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: forge
-      POSTGRES_PASSWORD: forge
-      POSTGRES_DB: forge
-    ports:
-      - "5433:5432"
-    volumes:
-      - forge_postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U forge -d forge"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
+- [ ] **Step 1: Create `scripts/dev-db.sh` at the repo root's `scripts/` package**
 
-volumes:
-  forge_postgres_data:
+```bash
+#!/usr/bin/env bash
+# Manage the local Postgres container used for Forge dev/test.
+set -euo pipefail
+
+CONTAINER_NAME=forge-postgres
+PORT=5433
+
+case "${1:-}" in
+  start)
+    if docker ps -a --format '{{.Names}}' | grep -qx "$CONTAINER_NAME"; then
+      docker start "$CONTAINER_NAME" >/dev/null
+    else
+      docker run -d \
+        --name "$CONTAINER_NAME" \
+        -e POSTGRES_USER=forge \
+        -e POSTGRES_PASSWORD=forge \
+        -e POSTGRES_DB=forge \
+        -p "${PORT}:5432" \
+        -v forge_postgres_data:/var/lib/postgresql/data \
+        postgres:16-alpine >/dev/null
+    fi
+    echo -n "Waiting for Postgres to accept connections"
+    for _ in $(seq 1 30); do
+      if docker exec "$CONTAINER_NAME" pg_isready -U forge -d forge >/dev/null 2>&1; then
+        echo " — ready."
+        exit 0
+      fi
+      echo -n "."
+      sleep 1
+    done
+    echo " — timed out waiting for Postgres to start." >&2
+    exit 1
+    ;;
+  stop)
+    docker stop "$CONTAINER_NAME" >/dev/null
+    ;;
+  status)
+    docker ps --filter "name=$CONTAINER_NAME" --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|status}" >&2
+    exit 1
+    ;;
+esac
 ```
 
-- [ ] **Step 2: Create `.env.example` at the repo root**
+- [ ] **Step 2: Make it executable**
+
+Run: `chmod +x scripts/dev-db.sh`
+
+- [ ] **Step 3: Create `.env.example` at the repo root**
 
 ```
 # Copy the values below into your shell before running db/api-server scripts:
@@ -86,16 +117,16 @@ JWT_SECRET=dev-secret-change-me
 PORT=5000
 ```
 
-- [ ] **Step 3: Start Postgres and verify it's healthy**
+- [ ] **Step 4: Start Postgres and verify it's ready**
 
-Run: `docker compose up -d postgres && docker compose ps`
-Expected: the `postgres` service shows state `running (healthy)`.
+Run: `./scripts/dev-db.sh start`
+Expected: prints `Waiting for Postgres to accept connections...— ready.`
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add docker-compose.yml .env.example
-git commit -m "chore: add local Postgres compose service and env template"
+git add scripts/dev-db.sh .env.example
+git commit -m "chore: add local Postgres dev script and env template"
 ```
 
 ---
@@ -371,7 +402,7 @@ Expected: prints `Seeded studio "Nebula VFX" with 9 demo users (password: forge1
 
 - [ ] **Step 6: Verify the rows landed**
 
-Run: `docker compose exec postgres psql -U forge -d forge -c "select emp_id, role from users order by emp_id;"`
+Run: `docker exec forge-postgres psql -U forge -d forge -c "select emp_id, role from users order by emp_id;"`
 Expected: 9 rows, one per `DEMO-*` empId, roles matching the list above.
 
 - [ ] **Step 7: Commit**
