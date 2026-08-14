@@ -47,7 +47,7 @@ export default function People() {
       <div className="flex items-center justify-between shrink-0">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Studio Roster</h1>
-          <p className="text-muted-foreground mt-1">Directory of all {USERS.length} active personnel</p>
+          <p className="text-muted-foreground mt-1">Directory of all {filteredUsers.length} active personnel</p>
         </div>
       </div>
 

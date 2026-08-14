@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { DEPARTMENTS, USERS, TASKS, ROLE_LABELS } from '@/data/mockData';
+import { DEPARTMENTS, USERS, TASKS, ROLE_LABELS, isTaskActive, isTaskDone } from '@/data/mockData';
 import { Users, ListTodo, TrendingUp, ArrowLeft, MoreHorizontal, Settings2, ShieldCheck, User } from 'lucide-react';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { PriorityChip } from '@/components/shared/PriorityChip';
@@ -36,8 +36,10 @@ export default function DepartmentDetail() {
   const lead = team.find(u => u.id === dept.leadId);
   
   const deptTasks = TASKS.filter(t => t.department === dept.name);
-  const activeTasks = deptTasks.filter(t => t.status === 'in-progress' || t.status === 'lead-review' || t.status === 'manager-review');
-  const completedTasks = deptTasks.filter(t => t.status === 'approved');
+  // Use the shared isTaskDone/isTaskActive classification (same as the Departments overview
+  // and Tracking Grid pages) so a department's active/done counts agree everywhere it's shown.
+  const activeTasks = deptTasks.filter(t => isTaskActive(t.status));
+  const completedTasks = deptTasks.filter(t => isTaskDone(t.status));
   
   const isSupervisorOrLead = currentUser?.role === 'supervisor' || currentUser?.role === 'lead' || currentUser?.role === 'production_manager' || currentUser?.role === 'vfx_producer';
 
@@ -192,7 +194,7 @@ export default function DepartmentDetail() {
                         <div key={skill} className="space-y-1.5">
                           <div className="flex justify-between text-xs">
                             <span className="font-medium">{skill}</span>
-                            <span className="text-muted-foreground">{usersWithSkill} artists ({percentage}%)</span>
+                            <span className="text-muted-foreground">{usersWithSkill} {usersWithSkill === 1 ? 'artist' : 'artists'} ({percentage}%)</span>
                           </div>
                           <div className="h-2 bg-muted rounded-full overflow-hidden">
                             <div 

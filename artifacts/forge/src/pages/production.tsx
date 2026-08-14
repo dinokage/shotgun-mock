@@ -106,7 +106,12 @@ export default function ProductionDashboard() {
           
           if (deptShots.length === 0) return null; // Don't show empty departments when filtering
 
-          const deptProgress = Math.floor(Math.random() * 40) + 40; // Mock progress
+          // Real completion percentage: share of this department's tasks (across all
+          // shots, not just the ones previewed below) that are complete/approved.
+          const deptAllTasks = TASKS.filter(t => t.department === dept.name);
+          const deptProgress = deptAllTasks.length > 0
+            ? Math.round((deptAllTasks.filter(t => t.status === 'complete' || t.status === 'approved').length / deptAllTasks.length) * 100)
+            : 0;
 
           return (
             <Card key={dept.id} className="border-border shadow-sm overflow-hidden">

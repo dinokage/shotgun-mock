@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { SHOTS, AUDIT_EVENTS } from '@/data/mockData';
+import { AUDIT_EVENTS } from '@/data/mockData';
+import { useShotStore } from '@/store/shots';
 import { PlayCircle } from 'lucide-react';
 
 const burndownData = [
@@ -29,7 +30,8 @@ export default function DashboardTab({ project }: { project: any }) {
     { name: 'To Do', value: 50, fill: COLORS.todo },
   ];
 
-  const projectShots = SHOTS.filter(s => s.projectId === project.id).slice(0, 4);
+  const shots = useShotStore((state) => state.shots);
+  const projectShots = shots.filter(s => s.projectId === project.id).slice(0, 4);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pb-8">

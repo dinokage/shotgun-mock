@@ -53,7 +53,7 @@
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "@testing-library/react": "^16.3.0",
-    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/jest-dom": "6.9.1",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/user-event": "^14.5.2",
     "@workspace/api-client-react": "workspace:*",

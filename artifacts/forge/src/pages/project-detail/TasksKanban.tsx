@@ -1,14 +1,18 @@
 import { useTasksStore } from '@/store/tasks';
+import { useAuthStore } from '@/store/auth';
 import { Task, TaskStatus } from '@/data/mockData';
 import { DndContext, DragOverlay, closestCorners, KeyboardSensor, PointerSensor, useSensor, useSensors, DragStartEvent, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { PriorityChip } from '@/components/shared/PriorityChip';
 import { UserAvatar } from '@/components/shared/UserAvatar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Calendar, ChevronDown, Clock, Tag } from 'lucide-react';
+import { Calendar, ChevronDown, Clock, Tag, Sparkles, HandMetal } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 const COLUMNS: { id: TaskStatus; title: string }[] = [
   { id: 'todo', title: 'To Do' },
@@ -20,6 +24,7 @@ const COLUMNS: { id: TaskStatus; title: string }[] = [
 ];
 
 function SortableTaskCard({ task }: { task: any }) {
+  const updateTask = useTasksStore(state => state.updateTask);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id, data: { type: 'Task', task } });
   
   const style = {
@@ -74,10 +79,10 @@ function SortableTaskCard({ task }: { task: any }) {
               </div>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-32 z-50">
-              <DropdownMenuItem onSelect={() => console.log('Update to critical')}>Critical</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => console.log('Update to high')}>High</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => console.log('Update to medium')}>Medium</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => console.log('Update to low')}>Low</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => updateTask(task.id, { priority: 'critical' })}>Critical</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => updateTask(task.id, { priority: 'high' })}>High</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => updateTask(task.id, { priority: 'medium' })}>Medium</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => updateTask(task.id, { priority: 'low' })}>Low</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -86,12 +91,62 @@ function SortableTaskCard({ task }: { task: any }) {
   );
 }
 
+function ClaimableTaskCard({ task, onClaim }: { task: any; onClaim: () => void }) {
+  const [claiming, setClaiming] = useState(false);
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 8, scale: 0.96 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.85, transition: { duration: 0.25, ease: 'easeIn' } }}
+      transition={{ duration: 0.25, ease: 'easeOut' }}
+      className="mb-3"
+    >
+      <Card className="p-3 shadow-sm border-dashed border-amber-500/30 hover:border-amber-500/60 transition-colors flex flex-col gap-2 relative overflow-hidden group bg-amber-500/[0.03]">
+        <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500/50" />
+        <div className="pl-2">
+          <div className="text-sm font-semibold leading-tight text-foreground/90">{task.title}</div>
+          <div className="text-xs text-muted-foreground mt-1 truncate">{task.projectId} • {task.department}</div>
+        </div>
+
+        <div className="flex items-center justify-between mt-1 pl-2 border-t border-border/50 pt-2">
+          <div className={`flex items-center gap-1 text-[10px] text-muted-foreground`}>
+            <Clock className="w-3 h-3" />
+            {new Date(task.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+          </div>
+          <PriorityChip priority={task.priority} />
+        </div>
+
+        <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-full mt-1 h-7 text-xs border-amber-500/40 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 hover:text-amber-600"
+            disabled={claiming}
+            onClick={() => {
+              setClaiming(true);
+              // Let the press/claim animation register before the card animates out of the pool.
+              setTimeout(onClaim, 120);
+            }}
+          >
+            <HandMetal className="w-3 h-3 mr-1.5" /> {claiming ? 'Claiming…' : 'Claim Task'}
+          </Button>
+        </motion.div>
+      </Card>
+    </motion.div>
+  );
+}
+
 export default function KanbanView({ projectId, tasks }: { projectId?: string, tasks?: any[] }) {
   const storeTasks = useTasksStore(state => state.tasks);
-  const { updateTaskStatus } = useTasksStore();
+  const { updateTaskStatus, updateTask } = useTasksStore();
+  const { currentUser } = useAuthStore();
+  const { toast } = useToast();
   const sourceTasks = tasks || storeTasks;
   const projectTasks = projectId ? sourceTasks.filter(t => t.projectId === projectId) : sourceTasks;
-  
+  const availableTasks = projectTasks.filter(t => !t.assigneeId);
+
   const [activeTask, setActiveTask] = useState<any | null>(null);
 
   const sensors = useSensors(
@@ -127,6 +182,34 @@ export default function KanbanView({ projectId, tasks }: { projectId?: string, t
   return (
     <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div className="h-full flex overflow-x-auto p-4 gap-4 pb-8">
+        {/* Self-serve pool: unassigned tasks any eligible teammate can claim */}
+        <div className="flex-shrink-0 w-72 flex flex-col bg-amber-500/[0.04] rounded-lg border border-dashed border-amber-500/30">
+          <div className="p-3 font-semibold text-sm border-b border-amber-500/20 flex justify-between items-center bg-amber-500/10 rounded-t-lg text-amber-700 dark:text-amber-400">
+            <span className="flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5" /> Available Tasks</span>
+            <span className="text-xs bg-background px-2 py-0.5 rounded-full text-muted-foreground">{availableTasks.length}</span>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3">
+            <AnimatePresence initial={false}>
+              {availableTasks.map(task => (
+                <ClaimableTaskCard
+                  key={task.id}
+                  task={task}
+                  onClaim={() => {
+                    if (!currentUser) return;
+                    updateTask(task.id, { assigneeId: currentUser.id });
+                    toast({ title: 'Task Claimed', description: `"${task.title}" is now assigned to you.` });
+                  }}
+                />
+              ))}
+            </AnimatePresence>
+            {availableTasks.length === 0 && (
+              <div className="h-20 border-2 border-dashed border-border rounded-lg flex items-center justify-center text-xs text-muted-foreground text-center px-4">
+                No unclaimed tasks right now
+              </div>
+            )}
+          </div>
+        </div>
+
         {COLUMNS.map(col => {
           const columnTasks = projectTasks.filter(t => t.status === col.id);
           return (

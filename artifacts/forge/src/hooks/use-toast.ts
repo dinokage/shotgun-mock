@@ -122,15 +122,34 @@ export const reducer = (state: State, action: Action): State => {
   }
 };
 
-const listeners: Array<(state: State) => void> = [];
+// Subscribers are notified (no payload) rather than handed a snapshot, so
+// `useSyncExternalStore` always re-reads `memoryState` via `getSnapshot`
+// through its own render/effect cycle. That's what makes subscribing safe
+// even when it happens after a dispatch has already fired (see `subscribe`
+// below for why that matters).
+const listeners: Array<() => void> = [];
 
 let memoryState: State = { toasts: [] };
 
 function dispatch(action: Action) {
   memoryState = reducer(memoryState, action);
   listeners.forEach((listener) => {
-    listener(memoryState);
+    listener();
   });
+}
+
+function getSnapshot(): State {
+  return memoryState;
+}
+
+function subscribe(listener: () => void) {
+  listeners.push(listener);
+  return () => {
+    const index = listeners.indexOf(listener);
+    if (index > -1) {
+      listeners.splice(index, 1);
+    }
+  };
 }
 
 type Toast = Omit<ToasterToast, 'id'>;
@@ -165,17 +184,17 @@ function toast({ ...props }: Toast) {
 }
 
 function useToast() {
-  const [state, setState] = React.useState<State>(memoryState);
-
-  React.useEffect(() => {
-    listeners.push(setState);
-    return () => {
-      const index = listeners.indexOf(setState);
-      if (index > -1) {
-        listeners.splice(index, 1);
-      }
-    };
-  }, [state]);
+  // useSyncExternalStore (not useState+useEffect) is what fixes the lost-toast
+  // race on hard navigation: it reads `memoryState` synchronously during render
+  // via `getSnapshot`, and after mounting it compares that render-time snapshot
+  // against a fresh `getSnapshot()` call before/while subscribing - if a
+  // dispatch happened in between (e.g. another component's earlier effect
+  // called `toast()` before this component's subscribe effect ran), React
+  // detects the mismatch and re-renders with the latest state. A plain
+  // `useState(memoryState)` + `useEffect(() => listeners.push(...))` has no
+  // such reconciliation step, so a dispatch that lands between initial render
+  // and effect-subscription is silently dropped.
+  const state = React.useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
   return {
     ...state,

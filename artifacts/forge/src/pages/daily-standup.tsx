@@ -1,9 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { cn } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { USERS, TASKS, DEPARTMENTS } from '@/data/mockData';
+import { USERS, DEPARTMENTS } from '@/data/mockData';
 import { useAuthStore } from '@/store/auth';
+import { useTasksStore } from '@/store/tasks';
+import { useStandupsStore } from '@/store/standups';
+import { useUIStore } from '@/store/ui';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { AlertCircle, CheckCircle2, MonitorPlay, ListVideo, GripVertical, PlayCircle, Plus, Calendar, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -15,48 +20,46 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Image as ImageIcon, Video, Paperclip, Send } from 'lucide-react';
 import { apiClient } from '@/lib/apiClient';
+import { fadeInUp, DURATION } from '@/lib/motion';
 
 export default function DailyStandup() {
   const { currentUser } = useAuthStore();
+  const tasks = useTasksStore((s) => s.tasks);
+  const updateTask = useTasksStore((s) => s.updateTask);
+  const updateTaskStatus = useTasksStore((s) => s.updateTaskStatus);
+  const standupUpdates = useStandupsStore((s) => s.updates);
+  const addStandupUpdate = useStandupsStore((s) => s.addUpdate);
+  const { setActiveTaskDrawer } = useUIStore();
   const [selectedDeptId, setSelectedDeptId] = useState<string>('ALL');
   const [playlist, setPlaylist] = useState<any[]>([]);
-  const [localTasks, setLocalTasks] = useState<any[]>(TASKS);
   const [sessionActive, setSessionActive] = useState(false);
-  const [feedUpdates, setFeedUpdates] = useState<any[]>([]);
   const [approvedUsers, setApprovedUsers] = useState<Set<string>>(new Set());
   const [updateText, setUpdateText] = useState('');
   const [updateHours, setUpdateHours] = useState('8');
+  const [postTaskId, setPostTaskId] = useState('');
   const [isPosting, setIsPosting] = useState(false);
+  const [syncError, setSyncError] = useState(false);
+  const [logDialogOpen, setLogDialogOpen] = useState(false);
+  const [logTaskId, setLogTaskId] = useState('');
+  const [logHours, setLogHours] = useState('8');
+  const [logNote, setLogNote] = useState('');
+  const [feedApproved, setFeedApproved] = useState(false);
+  const [feedApprovalCount, setFeedApprovalCount] = useState(3);
+  const [feedCommentsOpen, setFeedCommentsOpen] = useState(false);
   const { toast } = useToast();
 
+  // Tasks and standup updates now live in real, persisted Zustand stores
+  // (see src/store/tasks.ts / src/store/standups.ts). This poll is a
+  // connectivity heartbeat against the (decorative) apiClient stub, kept so
+  // a real backend could slot in later; a failed poll surfaces as a
+  // stale-data banner instead of only logging to the console.
   const fetchData = async () => {
     try {
-      const [tasksRes, updatesRes] = await Promise.all([
-        apiClient.get('/tasks'),
-        apiClient.get('/standups')
-      ]);
-      if (tasksRes) {
-        // Merge with mock tasks to preserve static complex structures
-        const mergedTasks = TASKS.map(mockTask => {
-          const liveMatch = tasksRes.find((t: any) => t.id === mockTask.id);
-          return liveMatch ? { ...mockTask, ...liveMatch } : mockTask;
-        });
-        setLocalTasks(mergedTasks);
-      }
-      if (updatesRes) {
-        // Map backend updates to include the full user object from USERS mock data (or liveUsers)
-        const mappedUpdates = updatesRes.map((update: any) => {
-          const user = USERS.find(u => u.id === update.userId) || currentUser;
-          return {
-            ...update,
-            user,
-            time: new Date(update.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-          };
-        });
-        setFeedUpdates(mappedUpdates);
-      }
+      await Promise.all([apiClient.get('/tasks'), apiClient.get('/standups')]);
+      setSyncError(false);
     } catch (e) {
       console.error(e);
+      setSyncError(true);
     }
   };
 
@@ -65,17 +68,49 @@ export default function DailyStandup() {
     const interval = setInterval(fetchData, 10000);
     return () => clearInterval(interval);
   }, []);
-  
+
   const isAllDepts = selectedDeptId === 'ALL';
   const dept = isAllDepts ? null : DEPARTMENTS.find(d => d.id === selectedDeptId);
   const team = isAllDepts ? USERS : USERS.filter(u => u.departmentId === selectedDeptId);
-  const isLeadership = currentUser?.role ? ['vfx_producer', 'production_manager', 'supervisor', 'lead'].includes(currentUser.role) : false;
-  
-  const pendingReviewTasks = localTasks.filter(t => 
+  const isLeadership = currentUser?.role ? ['vfx_producer', 'production_manager', 'coordinator', 'supervisor', 'lead'].includes(currentUser.role) : false;
+
+  const pendingReviewTasks = tasks.filter(t =>
     (isAllDepts || t.department === dept?.name) && t.status === 'review'
   );
-  
+
+  // Updates posted from the "My Updates" form, mapped with the full user
+  // object + a display time, the same shape the feed previously expected
+  // from the apiClient stub.
+  const feedUpdates = standupUpdates.map((update) => {
+    const user = USERS.find(u => u.id === update.userId) || currentUser;
+    return {
+      ...update,
+      user,
+      time: new Date(update.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+  });
+
+  const payrollRows = useMemo(() => team.map(member => {
+    const tasksWithLogs = tasks.filter(t => t.assigneeId === member.id);
+    const today = new Date().toISOString().split('T')[0];
+    let totalHoursToday = 0;
+    tasksWithLogs.forEach(task => {
+      const todaysLogs = task.dailyLogs.filter(log => log.date.startsWith(today) || true); // Defaulting to true for mock data visibility
+      totalHoursToday += todaysLogs.reduce((acc, log) => acc + log.hours, 0);
+    });
+    const memberDept = DEPARTMENTS.find(d => d.id === member.departmentId);
+    return {
+      member,
+      memberDept,
+      totalHoursToday,
+      isOverloaded: member.capacity > 95,
+      isApproved: approvedUsers.has(member.id),
+    };
+  }), [team, tasks, approvedUsers]);
+
   if (!currentUser) return null;
+
+  const myTasks = tasks.filter(t => t.assigneeId === currentUser.id);
 
   const addToPlaylist = (task: any) => {
     if (!playlist.find(p => p.id === task.id)) {
@@ -84,33 +119,98 @@ export default function DailyStandup() {
     }
   };
 
-  const handleUnblock = async (taskId: string) => {
-    try {
-      await apiClient.put(`/tasks/${taskId}`, { status: 'in-progress' });
-      toast({ title: 'Task Unbottleneck', description: 'The task has been moved back to in-progress.' });
-      fetchData();
-    } catch (e: any) {
-      toast({ title: 'Error', description: e.message, variant: "destructive" });
-    }
+  const handleUnblock = (taskId: string) => {
+    updateTaskStatus(taskId, 'in-progress');
+    toast({ title: 'Task Unbottleneck', description: 'The task has been moved back to in-progress.' });
   };
 
-  const handlePostUpdate = async () => {
-    if (!updateText) return;
+  const handlePostUpdate = () => {
+    if (!updateText.trim()) return;
     setIsPosting(true);
-    try {
-      await apiClient.post('/standups', {
+    // Small delay so the existing "Posting..." spinner state remains
+    // visible, using the shared fast-cut duration from lib/motion.
+    setTimeout(() => {
+      addStandupUpdate({
+        id: `su-${Date.now()}`,
+        userId: currentUser.id,
+        taskId: postTaskId || myTasks[0]?.id || null,
         text: updateText,
-        hours: updateHours,
-        taskId: null // Add specific task selection if needed
+        hours: Number(updateHours) || 0,
+        timestamp: new Date().toISOString(),
       });
       toast({ title: 'Update Posted!', description: 'Your daily progress has been shared.' });
       setUpdateText('');
-      fetchData();
-    } catch (e: any) {
-      toast({ title: 'Error', description: "Failed to post update.", variant: "destructive" });
-    } finally {
       setIsPosting(false);
+    }, DURATION.fast * 1000);
+  };
+
+  const handleLogUpdateSubmit = () => {
+    const resolvedTaskId = logTaskId || myTasks[0]?.id;
+    const hoursNum = parseFloat(logHours);
+    if (!resolvedTaskId || !hoursNum || hoursNum <= 0) {
+      toast({ title: 'Missing Info', description: 'Select a task and enter valid hours.', variant: 'destructive' });
+      return;
     }
+    const task = tasks.find(t => t.id === resolvedTaskId);
+    if (!task) return;
+    updateTask(task.id, {
+      dailyLogs: [
+        ...task.dailyLogs,
+        {
+          date: new Date().toISOString().slice(0, 10),
+          hours: hoursNum,
+          note: logNote.trim() || 'No notes provided.',
+          userId: currentUser.id,
+        },
+      ],
+      actualHours: task.actualHours + hoursNum,
+    });
+    toast({ title: 'Log Submitted', description: 'Your daily update has been recorded successfully.' });
+    setLogDialogOpen(false);
+    setLogTaskId('');
+    setLogHours('8');
+    setLogNote('');
+  };
+
+  const handleViewLogs = (memberId: string, memberName: string) => {
+    const memberTasks = tasks.filter(t => t.assigneeId === memberId);
+    const taskToOpen = memberTasks.find(t => t.dailyLogs.length > 0) || memberTasks[0];
+    if (taskToOpen) {
+      setActiveTaskDrawer(taskToOpen.id);
+    } else {
+      toast({ title: 'No Timesheet Data', description: `${memberName} has no logged tasks yet.` });
+    }
+  };
+
+  const escapePayrollCSVValue = (value: unknown) => {
+    const s = String(value ?? '');
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+
+  const handleExportPayrollCSV = () => {
+    const headers = ['Employee', 'Role', 'Department', 'Status', 'Hours Today', 'Capacity %', 'Timesheet Approved'];
+    const rows = payrollRows.map(({ member, memberDept, totalHoursToday, isApproved }) => [
+      member.name,
+      member.title,
+      memberDept?.name ?? '',
+      member.status === 'active' ? 'Punched In' : 'Away',
+      totalHoursToday,
+      member.capacity,
+      isApproved ? 'Yes' : 'No',
+    ]);
+    const csv = [headers, ...rows].map((r) => r.map(escapePayrollCSVValue).join(',')).join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `payroll-attendance-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    toast({ title: 'Export Complete', description: `${payrollRows.length} employee records exported to CSV.` });
   };
 
   return (
@@ -138,6 +238,18 @@ export default function DailyStandup() {
           </select>
         )}
       </div>
+
+      <AnimatePresence>
+        {syncError && (
+          <motion.div
+            {...fadeInUp}
+            className="flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400"
+          >
+            <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+            Live sync failed — showing last known data. Retrying automatically…
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <Tabs defaultValue={isLeadership ? "overview" : "updates"} className="w-full">
         <TabsList className="mb-4">
@@ -212,7 +324,7 @@ export default function DailyStandup() {
                    Bottleneck / Needs Attention
                  </h3>
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                   {localTasks.filter(t => (isAllDepts || t.department === dept?.name) && (t.status === 'bottleneck' || t.weeklyRating === 'at-risk' || t.weeklyRating === 'behind')).slice(0, 4).map(task => {
+                   {tasks.filter(t => (isAllDepts || t.department === dept?.name) && (t.status === 'bottleneck' || t.weeklyRating === 'at-risk' || t.weeklyRating === 'behind')).slice(0, 4).map(task => {
                      const assignee = USERS.find(u => u.id === task.assigneeId);
                      return (
                        <Card key={task.id} className="border-red-500/20 bg-red-500/5">
@@ -254,7 +366,10 @@ export default function DailyStandup() {
                      <CheckCircle2 className="w-5 h-5 text-green-500" />
                      Recent Progress & Daily Logs
                   </h3>
-                  <Dialog>
+                  <Dialog open={logDialogOpen} onOpenChange={(open) => {
+                    setLogDialogOpen(open);
+                    if (open) setLogTaskId(myTasks[0]?.id ?? '');
+                  }}>
                     <DialogTrigger asChild>
                       <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90">
                         <Plus className="w-4 h-4 mr-2" /> Log Update
@@ -267,23 +382,33 @@ export default function DailyStandup() {
                       <div className="space-y-4 py-4">
                         <div className="space-y-2">
                           <Label>Task</Label>
-                          <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-                            {TASKS.filter(t => t.assigneeId === currentUser?.id).map(t => (
+                          <select
+                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                            value={logTaskId}
+                            onChange={(e) => setLogTaskId(e.target.value)}
+                          >
+                            {myTasks.length === 0 && <option value="">No tasks assigned</option>}
+                            {myTasks.map(t => (
                               <option key={t.id} value={t.id}>{t.title}</option>
                             ))}
                           </select>
                         </div>
                         <div className="space-y-2">
                           <Label>Hours Spent</Label>
-                          <Input type="number" defaultValue="8" min="0" max="24" />
+                          <Input type="number" value={logHours} onChange={(e) => setLogHours(e.target.value)} min="0" max="24" />
                         </div>
                         <div className="space-y-2">
                           <Label>Update Notes</Label>
-                          <textarea className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" placeholder="What did you accomplish today? Any blockers?" />
+                          <textarea
+                            className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                            placeholder="What did you accomplish today? Any blockers?"
+                            value={logNote}
+                            onChange={(e) => setLogNote(e.target.value)}
+                          />
                         </div>
                       </div>
                       <DialogFooter>
-                        <Button onClick={() => toast({ title: 'Log Submitted', description: 'Your daily update has been recorded successfully.' })}>Submit Update</Button>
+                        <Button onClick={handleLogUpdateSubmit} disabled={myTasks.length === 0}>Submit Update</Button>
                       </DialogFooter>
                     </DialogContent>
                   </Dialog>
@@ -291,7 +416,7 @@ export default function DailyStandup() {
                 <Card className="border-border/50">
                   <CardContent className="p-0">
                     <div className="divide-y divide-border">
-                      {localTasks.filter(t => (isAllDepts || t.department === dept?.name) && t.dailyLogs.length > 0).slice(0, 8).map(task => {
+                      {tasks.filter(t => (isAllDepts || t.department === dept?.name) && t.dailyLogs.length > 0).slice(0, 8).map(task => {
                         const assignee = USERS.find(u => u.id === task.assigneeId);
                         const latestLog = task.dailyLogs[task.dailyLogs.length - 1];
                         return (
@@ -441,8 +566,13 @@ export default function DailyStandup() {
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
                     <Label>Select Task</Label>
-                    <select className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50">
-                      {TASKS.filter(t => t.assigneeId === currentUser?.id).map(t => (
+                    <select
+                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                      value={postTaskId || myTasks[0]?.id || ''}
+                      onChange={(e) => setPostTaskId(e.target.value)}
+                    >
+                      {myTasks.length === 0 && <option value="">No tasks assigned</option>}
+                      {myTasks.map(t => (
                         <option key={t.id} value={t.id} className="bg-background">{t.title}</option>
                       ))}
                     </select>
@@ -560,13 +690,40 @@ export default function DailyStandup() {
                   
                   {/* Feed Item Footer / Interactions */}
                   <div className="p-3 bg-muted/20 flex gap-4 text-xs font-medium text-muted-foreground">
-                    <button className="flex items-center gap-1.5 hover:text-primary transition-colors">
-                      <CheckCircle2 className="w-4 h-4" /> 3 Approvals
+                    <button
+                      className={cn(
+                        'flex items-center gap-1.5 hover:text-primary transition-colors',
+                        feedApproved && 'text-primary',
+                      )}
+                      onClick={() => {
+                        setFeedApproved((prev) => !prev);
+                        setFeedApprovalCount((prev) => (feedApproved ? prev - 1 : prev + 1));
+                      }}
+                    >
+                      <CheckCircle2 className={cn('w-4 h-4', feedApproved && 'fill-primary/20')} /> {feedApprovalCount} Approval{feedApprovalCount === 1 ? '' : 's'}
                     </button>
-                    <button className="flex items-center gap-1.5 hover:text-primary transition-colors">
+                    <button
+                      className={cn(
+                        'flex items-center gap-1.5 hover:text-primary transition-colors',
+                        feedCommentsOpen && 'text-primary',
+                      )}
+                      onClick={() => setFeedCommentsOpen((prev) => !prev)}
+                    >
                       <MessageSquare className="w-4 h-4" /> 2 Comments
                     </button>
                   </div>
+                  {feedCommentsOpen && (
+                    <div className="px-4 pb-4 pt-1 space-y-2 border-t border-border/50 bg-muted/10">
+                      <div className="flex items-start gap-2 pt-3 text-xs">
+                        <Avatar className="w-6 h-6 shrink-0"><AvatarImage src={USERS[1]?.avatar} /><AvatarFallback>{USERS[1]?.name.charAt(0)}</AvatarFallback></Avatar>
+                        <div><span className="font-semibold">{USERS[1]?.name}</span> <span className="text-muted-foreground">Weight looks great now, ship it.</span></div>
+                      </div>
+                      <div className="flex items-start gap-2 text-xs">
+                        <Avatar className="w-6 h-6 shrink-0"><AvatarImage src={USERS[2]?.avatar} /><AvatarFallback>{USERS[2]?.name.charAt(0)}</AvatarFallback></Avatar>
+                        <div><span className="font-semibold">{USERS[2]?.name}</span> <span className="text-muted-foreground">Agreed, left leg reads much better.</span></div>
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -609,7 +766,7 @@ export default function DailyStandup() {
                   <p className="text-sm text-muted-foreground mt-1">Monitor logged hours and active statuses for {isAllDepts ? 'the entire studio' : dept?.name}.</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm">Export CSV</Button>
+                  <Button variant="outline" size="sm" onClick={handleExportPayrollCSV}>Export CSV</Button>
                   <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white" onClick={() => {
                     const allMemberIds = new Set(team.map(m => m.id));
                     setApprovedUsers(allMemberIds);
@@ -631,21 +788,7 @@ export default function DailyStandup() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
-                      {team.map(member => {
-                        // Calculate total hours logged today
-                        const tasksWithLogs = TASKS.filter(t => t.assigneeId === member.id);
-                        let totalHoursToday = 0;
-                        
-                        tasksWithLogs.forEach(task => {
-                          const today = new Date().toISOString().split('T')[0];
-                          const todaysLogs = task.dailyLogs.filter(log => log.date.startsWith(today) || true); // Defaulting to true for mock data visibility
-                          totalHoursToday += todaysLogs.reduce((acc, log) => acc + log.hours, 0);
-                        });
-
-                        const memberDept = DEPARTMENTS.find(d => d.id === member.departmentId);
-                        const isOverloaded = member.capacity > 95;
-                        const isApproved = approvedUsers.has(member.id);
-
+                      {payrollRows.map(({ member, memberDept, totalHoursToday, isOverloaded, isApproved }) => {
                         return (
                           <tr key={member.id} className="hover:bg-muted/30 transition-colors">
                             <td className="px-4 py-3">
@@ -681,7 +824,7 @@ export default function DailyStandup() {
                               </div>
                             </td>
                             <td className="px-4 py-3 text-right">
-                              <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => toast({ title: 'Viewing Logs', description: `Opened timesheet for ${member.name}` })}>View Logs</Button>
+                              <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => handleViewLogs(member.id, member.name)}>View Logs</Button>
                             </td>
                           </tr>
                         );

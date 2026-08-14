@@ -1,5 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '@/store/auth';
+import { useUIStore } from '@/store/ui';
+import { useTimesheetStore, TimeLog } from '@/store/timesheets';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,34 +12,27 @@ import { Clock, Plus, CheckCircle2, ChevronLeft, ChevronRight, Calendar as Calen
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { useToast } from '@/hooks/use-toast';
 
-interface TimeLog {
-  id: string;
-  taskId: string;
-  userId: string;
-  date: string;
-  hours: number;
-  notes: string;
-}
-
 export default function Timesheets() {
   const { currentUser } = useAuthStore();
   const { toast } = useToast();
-  
-  // Local state for mock time logs
-  const [logs, setLogs] = useState<TimeLog[]>([
-    { id: 'log1', taskId: 't1', userId: currentUser?.id || 'u1', date: new Date().toISOString().split('T')[0], hours: 4, notes: 'Blocking animation' },
-    { id: 'log2', taskId: 't2', userId: currentUser?.id || 'u1', date: new Date().toISOString().split('T')[0], hours: 3.5, notes: 'Initial lighting setup' }
-  ]);
+  const { setActiveTaskDrawer } = useUIStore();
+
+  // Persisted time logs (survives reload)
+  const logs = useTimesheetStore((state) => state.logs);
+  const addLog = useTimesheetStore((state) => state.addLog);
 
   const [currentWeekOffset, setCurrentWeekOffset] = useState(0);
   const [newTaskSelection, setNewTaskSelection] = useState<string>('');
   const [newHours, setNewHours] = useState<string>('');
   const [newNotes, setNewNotes] = useState<string>('');
+  const [justAddedId, setJustAddedId] = useState<string | null>(null);
+  const [confirmPulse, setConfirmPulse] = useState(false);
+  const [taskSearch, setTaskSearch] = useState('');
 
   if (!currentUser) return null;
 
   const isManager = ['vfx_producer', 'production_manager', 'coordinator', 'supervisor', 'lead'].includes(currentUser.role);
-  
+
   // Get date range for the week
   const today = new Date();
   today.setDate(today.getDate() + (currentWeekOffset * 7));
@@ -45,8 +41,20 @@ export default function Timesheets() {
   const endOfWeek = new Date(startOfWeek);
   endOfWeek.setDate(startOfWeek.getDate() + 6); // Sunday
 
-  const myTasks = TASKS.filter(t => t.assigneeId === currentUser.id || isManager);
-  
+  // Managers can log time against their own department's tasks or their
+  // direct reports' tasks — not the entire studio's ~300 tasks. Everyone
+  // else only sees tasks assigned to them.
+  const directReportIds = new Set(USERS.filter(u => u.supervisorId === currentUser.id).map(u => u.id));
+  const myTasks = TASKS.filter(t =>
+    t.assigneeId === currentUser.id ||
+    (isManager && (t.department === currentUser.departmentId || directReportIds.has(t.assigneeId)))
+  );
+  const filteredTasks = myTasks.filter(t => {
+    if (!taskSearch.trim()) return true;
+    const proj = PROJECTS.find(p => p.id === t.projectId);
+    return `${proj?.name ?? ''} ${t.title}`.toLowerCase().includes(taskSearch.trim().toLowerCase());
+  });
+
   const weekLogs = logs.filter(l => {
     const logDate = new Date(l.date);
     return logDate >= startOfWeek && logDate <= endOfWeek && (isManager ? true : l.userId === currentUser.id);
@@ -75,11 +83,17 @@ export default function Timesheets() {
       notes: newNotes
     };
 
-    setLogs([newLog, ...logs]);
+    addLog(newLog);
     setNewTaskSelection('');
     setNewHours('');
     setNewNotes('');
     toast({ title: 'Time Logged', description: `Successfully logged ${parsedHours} hours.` });
+
+    // Confirmation micro-interaction: pulse the submit button and highlight the new entry
+    setJustAddedId(newLog.id);
+    setConfirmPulse(true);
+    window.setTimeout(() => setConfirmPulse(false), 900);
+    window.setTimeout(() => setJustAddedId(null), 1600);
   };
 
   return (
@@ -111,7 +125,7 @@ export default function Timesheets() {
               <CardTitle className="text-sm text-muted-foreground">This Week's Hours</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-4xl font-bold text-primary flex items-baseline gap-2">
+              <div className="text-4xl font-bold text-accent-tally flex items-baseline gap-2 timecode">
                 {totalHours.toFixed(1)} <span className="text-lg text-muted-foreground font-normal">hrs</span>
               </div>
             </CardContent>
@@ -129,14 +143,27 @@ export default function Timesheets() {
                     <SelectValue placeholder="Choose a task..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {myTasks.map(t => {
-                      const proj = PROJECTS.find(p => p.id === t.projectId);
-                      return (
-                        <SelectItem key={t.id} value={t.id}>
-                          {proj?.name}: {t.title}
-                        </SelectItem>
-                      );
-                    })}
+                    <div className="sticky top-0 z-10 -mx-1 -mt-1 mb-1 bg-popover p-1.5 border-b border-border">
+                      <Input
+                        placeholder="Search tasks..."
+                        value={taskSearch}
+                        onChange={(e) => setTaskSearch(e.target.value)}
+                        onKeyDown={(e) => e.stopPropagation()}
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                    {filteredTasks.length === 0 ? (
+                      <div className="px-2 py-4 text-xs text-muted-foreground text-center">No matching tasks</div>
+                    ) : (
+                      filteredTasks.map(t => {
+                        const proj = PROJECTS.find(p => p.id === t.projectId);
+                        return (
+                          <SelectItem key={t.id} value={t.id}>
+                            {proj?.name}: {t.title}
+                          </SelectItem>
+                        );
+                      })
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -160,8 +187,32 @@ export default function Timesheets() {
                   onChange={(e) => setNewNotes(e.target.value)}
                 />
               </div>
-              <Button className="w-full mt-2 gap-2" onClick={handleAddLog}>
-                <Plus className="w-4 h-4" /> Add Time Log
+              <Button className="w-full mt-2 gap-2 relative overflow-hidden" onClick={handleAddLog} disabled={confirmPulse}>
+                <AnimatePresence mode="wait" initial={false}>
+                  {confirmPulse ? (
+                    <motion.span
+                      key="confirmed"
+                      className="flex items-center gap-2"
+                      initial={{ opacity: 0, y: 6, scale: 0.9 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -6, scale: 0.9 }}
+                      transition={{ duration: 0.2, ease: 'easeOut' }}
+                    >
+                      <CheckCircle2 className="w-4 h-4" /> Logged!
+                    </motion.span>
+                  ) : (
+                    <motion.span
+                      key="idle"
+                      className="flex items-center gap-2"
+                      initial={{ opacity: 0, y: 6, scale: 0.9 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -6, scale: 0.9 }}
+                      transition={{ duration: 0.2, ease: 'easeOut' }}
+                    >
+                      <Plus className="w-4 h-4" /> Add Time Log
+                    </motion.span>
+                  )}
+                </AnimatePresence>
               </Button>
             </CardContent>
           </Card>
@@ -184,41 +235,62 @@ export default function Timesheets() {
                 </div>
               ) : (
                 <div className="divide-y divide-border">
-                  {weekLogs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(log => {
-                    const task = TASKS.find(t => t.id === log.taskId);
-                    const project = PROJECTS.find(p => p.id === task?.projectId);
-                    const user = USERS.find(u => u.id === log.userId);
-                    
-                    return (
-                      <div key={log.id} className="p-4 flex items-start justify-between hover:bg-muted/20 transition-colors">
-                        <div className="flex gap-4">
-                          <div className="w-16 h-16 rounded-md bg-muted/50 border border-border flex flex-col items-center justify-center shrink-0">
-                            <span className="text-xs text-muted-foreground uppercase">{new Date(log.date).toLocaleDateString('en-US', { weekday: 'short' })}</span>
-                            <span className="text-xl font-bold">{new Date(log.date).getDate()}</span>
-                          </div>
-                          <div>
-                            <div className="font-semibold text-lg hover:text-primary cursor-pointer transition-colors">{task?.title || 'Unknown Task'}</div>
-                            <div className="text-sm text-muted-foreground flex items-center gap-2 mt-0.5">
-                              <span className="text-primary font-medium">{project?.name}</span>
-                              {isManager && (
-                                <>
-                                  <span className="opacity-50">•</span>
-                                  <span>{user?.name}</span>
-                                </>
-                              )}
+                  <AnimatePresence initial={false}>
+                    {weekLogs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(log => {
+                      const task = TASKS.find(t => t.id === log.taskId);
+                      const project = PROJECTS.find(p => p.id === task?.projectId);
+                      const user = USERS.find(u => u.id === log.userId);
+                      const isNew = log.id === justAddedId;
+
+                      return (
+                        <motion.div
+                          key={log.id}
+                          layout
+                          initial={{ opacity: 0, y: -12, scale: 0.98 }}
+                          animate={{
+                            opacity: 1,
+                            y: 0,
+                            scale: 1,
+                            backgroundColor: isNew ? 'hsl(var(--accent-tally) / 0.08)' : 'hsl(var(--accent-tally) / 0)',
+                          }}
+                          exit={{ opacity: 0, scale: 0.98 }}
+                          transition={{ duration: 0.3, ease: 'easeOut' }}
+                          className="p-4 flex items-start justify-between hover:bg-muted/20 transition-colors"
+                        >
+                          <div className="flex gap-4">
+                            <div className="w-16 h-16 rounded-md bg-muted/50 border border-border flex flex-col items-center justify-center shrink-0">
+                              <span className="text-xs text-muted-foreground uppercase">{new Date(log.date).toLocaleDateString('en-US', { weekday: 'short' })}</span>
+                              <span className="text-xl font-bold">{new Date(log.date).getDate()}</span>
                             </div>
-                            {log.notes && <div className="text-sm mt-2 italic text-foreground/80">"{log.notes}"</div>}
+                            <div>
+                              <div
+                                className="font-semibold text-lg hover:text-primary cursor-pointer transition-colors"
+                                onClick={() => task && setActiveTaskDrawer(task.id)}
+                              >
+                                {task?.title || 'Unknown Task'}
+                              </div>
+                              <div className="text-sm text-muted-foreground flex items-center gap-2 mt-0.5">
+                                <span className="text-accent-scope font-medium">{project?.name}</span>
+                                {isManager && (
+                                  <>
+                                    <span className="opacity-50">•</span>
+                                    <span>{user?.name}</span>
+                                  </>
+                                )}
+                              </div>
+                              {log.notes && <div className="text-sm mt-2 italic text-foreground/80">"{log.notes}"</div>}
+                            </div>
                           </div>
-                        </div>
-                        <div className="text-right flex flex-col items-end gap-2">
-                          <div className="text-xl font-bold text-primary bg-primary/10 px-3 py-1 rounded-md border border-primary/20">
-                            {log.hours} <span className="text-sm font-normal text-muted-foreground">hrs</span>
+                          <div className="text-right flex flex-col items-end gap-2">
+                            <div className="text-xl font-bold text-accent-tally bg-accent-tally/10 px-3 py-1 rounded-md border border-accent-tally/20 timecode">
+                              {log.hours} <span className="text-sm font-normal text-muted-foreground">hrs</span>
+                            </div>
+                            {task && <StatusBadge status={task.status} />}
                           </div>
-                          {task && <StatusBadge status={task.status} />}
-                        </div>
-                      </div>
-                    );
-                  })}
+                        </motion.div>
+                      );
+                    })}
+                  </AnimatePresence>
                 </div>
               )}
             </CardContent>

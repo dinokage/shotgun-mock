@@ -15,18 +15,31 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { UserAvatar } from '@/components/shared/UserAvatar';
-import { ChevronDown, ChevronUp, History, RotateCcw } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { ChevronDown, ChevronUp, History, RotateCcw, Undo2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useAuditStore } from '@/store/audit';
 
 export default function AuditLog() {
   const [selectedEntity, setSelectedEntity] = useState('ast_001');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const { toast } = useToast();
 
+  const rollbackPoints = useAuditStore(s => s.rollbackPoints);
+  const rollbackEntity = useAuditStore(s => s.rollbackEntity);
+  const clearRollback = useAuditStore(s => s.clearRollback);
+  const rollbackPoint = rollbackPoints[selectedEntity];
+
   const events = AUDIT_EVENTS.filter(e => e.entityId === selectedEntity).reverse();
 
   const handleRollback = (timestamp: string) => {
-    toast({ title: 'Rollback initiated', description: `Entity rolled back to state at ${timestamp}` });
+    rollbackEntity(selectedEntity, timestamp);
+    toast({ title: 'Rollback complete', description: `${selectedEntity} restored to state at ${timestamp}. Later events are now marked reverted.` });
+  };
+
+  const handleRestoreLatest = () => {
+    clearRollback(selectedEntity);
+    toast({ title: 'Restored to latest', description: `${selectedEntity} is back to its current state.` });
   };
 
   return (
@@ -59,14 +72,35 @@ export default function AuditLog() {
         </div>
       </div>
 
+      {rollbackPoint && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardContent className="p-4 flex items-center justify-between gap-4">
+            <div className="text-sm">
+              <span className="font-medium">Rolled back</span>{' '}
+              <span className="text-muted-foreground">
+                — <span className="font-mono">{selectedEntity}</span> is showing state as of{' '}
+                <span className="font-mono">{rollbackPoint}</span>. Events after this point are marked reverted below.
+              </span>
+            </div>
+            <Button variant="outline" size="sm" className="shrink-0" onClick={handleRestoreLatest}>
+              <Undo2 className="w-3.5 h-3.5 mr-1.5" /> Restore latest
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="space-y-4 relative before:absolute before:inset-0 before:ml-[35px] before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-border before:to-transparent">
         {events.map((event, index) => {
           const user = USERS.find(u => u.id === event.userId);
           const isExpanded = expandedId === event.id;
           const hasChanges = Object.keys(event.changedFields).length > 0;
-          
+          const isReverted = Boolean(rollbackPoint) && event.timestamp > rollbackPoint;
+
           return (
-            <Card key={event.id} className="relative overflow-hidden hover:border-primary/30 transition-colors z-10">
+            <Card
+              key={event.id}
+              className={`relative overflow-hidden hover:border-primary/30 transition-colors z-10 ${isReverted ? 'opacity-50' : ''}`}
+            >
               <div className="p-4 flex items-start gap-4 bg-card relative">
                 <button
                   type="button"
@@ -82,7 +116,12 @@ export default function AuditLog() {
                     <div className="flex justify-between items-start mb-1">
                       <div className="font-medium text-sm flex items-center gap-2">
                         <span className="font-mono text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">{event.eventType}</span>
-                        {event.description}
+                        <span className={isReverted ? 'line-through decoration-destructive/60' : ''}>{event.description}</span>
+                        {isReverted && (
+                          <Badge variant="outline" className="text-[10px] border-destructive/30 text-destructive">
+                            Reverted
+                          </Badge>
+                        )}
                       </div>
                       <div className="font-mono text-xs text-muted-foreground">
                         {event.timestamp}

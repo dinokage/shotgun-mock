@@ -1,38 +1,83 @@
-import { useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { StatusBadge } from '@/components/shared/StatusBadge';
-import { PROJECTS, EPISODES, SHOTS } from '@/data/mockData';
+import { EPISODES } from '@/data/mockData';
+import { useProjectStore } from '@/store/projects';
+import { useShotStore } from '@/store/shots';
+import { useUIStore } from '@/store/ui';
 import { Plus, Filter, Search, Download, LayoutGrid, List } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Input } from '@/components/ui/input';
 import { Link } from 'wouter';
-import { apiClient } from '@/lib/apiClient';
+import { cut } from '@/lib/motion';
+
+const STATUS_LABELS: Record<string, string> = {
+  ON_TRACK: 'On Track',
+  AT_RISK: 'At Risk',
+  BOTTLENECK: 'Bottleneck',
+  COMPLETE: 'Complete',
+};
 
 export default function Projects() {
   const { toast } = useToast();
   const [search, setSearch] = useState('');
   const [view, setView] = useState<'list' | 'card'>('list');
-  const [liveProjects, setLiveProjects] = useState<any[]>(PROJECTS);
-
-  useEffect(() => {
-    const fetchProjects = async () => {
-      try {
-        const data = await apiClient.get('/projects');
-        if (data && data.length > 0) {
-          setLiveProjects(data);
-        }
-      } catch (e) {
-        console.error("Failed to fetch projects:", e);
-      }
-    };
-    fetchProjects();
-  }, []);
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [showFilters, setShowFilters] = useState(false);
+  const projects = useProjectStore((state) => state.projects);
+  const shots = useShotStore((state) => state.shots);
+  const { setCreateProjectModalOpen } = useUIStore();
 
   const handleNewProject = () => {
-    toast({ title: 'New Project', description: 'Opening project creation wizard...' });
+    setCreateProjectModalOpen(true);
   };
 
-  const filteredProjects = liveProjects.filter(p => !search || p.name.toLowerCase().includes(search.toLowerCase()));
+  const projectTypes = useMemo(
+    () => Array.from(new Set(projects.map((p) => p.type))).sort(),
+    [projects]
+  );
+
+  const filteredProjects = projects.filter(p => {
+    if (search && !p.name.toLowerCase().includes(search.toLowerCase())) return false;
+    if (statusFilter !== 'all' && p.status !== statusFilter) return false;
+    if (typeFilter !== 'all' && p.type !== typeFilter) return false;
+    return true;
+  });
+
+  const escapeCSVValue = (value: unknown) => {
+    const s = String(value ?? '');
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+
+  const handleExportCSV = () => {
+    const headers = ['ID', 'Project Name', 'Type', 'Client', 'Episodes', 'Progress %', 'Status', 'Due Date'];
+    const rows = filteredProjects.map((project, idx) => [
+      String(idx + 1).padStart(3, '0'),
+      project.name,
+      project.type,
+      project.client,
+      EPISODES.filter(e => e.projectId === project.id).length,
+      project.progress,
+      STATUS_LABELS[project.status] || project.status,
+      project.dueDate,
+    ]);
+    const csv = [headers, ...rows].map((r) => r.map(escapeCSVValue).join(',')).join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `projects-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    toast({ title: 'Export Complete', description: `${filteredProjects.length} projects exported to CSV.` });
+  };
 
   return (
     <div className="p-6 max-w-[1600px] mx-auto h-[calc(100vh-3.5rem)] flex flex-col space-y-4 bg-background">
@@ -43,7 +88,7 @@ export default function Projects() {
           <p className="text-muted-foreground text-sm mt-1">Production pipeline tracking and client deliveries.</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => toast({ title: "Exporting CSV..." })}>
+          <Button variant="outline" size="sm" onClick={handleExportCSV}>
             <Download className="w-4 h-4 mr-2" /> Export
           </Button>
           <Button onClick={handleNewProject} size="sm" className="gap-2">
@@ -81,8 +126,61 @@ export default function Projects() {
             <LayoutGrid className="w-4 h-4" />
           </Button>
         </div>
-        <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground"><Filter className="w-4 h-4" /></Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setShowFilters((v) => !v)}
+          title={showFilters ? 'Hide filters' : 'Show filters'}
+          className={`h-9 w-9 ${showFilters ? 'text-foreground bg-muted' : 'text-muted-foreground'}`}
+        >
+          <Filter className="w-4 h-4" />
+        </Button>
       </div>
+
+      {/* Filters row 2: status & type */}
+      <AnimatePresence initial={false}>
+        {showFilters && (
+          <motion.div
+            key="project-filter-controls"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={cut.transition}
+            className="overflow-hidden shrink-0"
+          >
+            <div className="flex items-center gap-3 p-3 bg-card border border-border rounded-lg shadow-sm">
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-40 h-9"><SelectValue placeholder="Status" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger className="w-40 h-9"><SelectValue placeholder="Type" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  {projectTypes.map((t) => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {(statusFilter !== 'all' || typeFilter !== 'all') && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground"
+                  onClick={() => { setStatusFilter('all'); setTypeFilter('all'); }}
+                >
+                  Clear filters
+                </Button>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Main Content */}
       {view === 'list' ? (
@@ -184,12 +282,12 @@ export default function Projects() {
                     <div className="mb-4">
                       <div className="text-[10px] uppercase font-bold text-muted-foreground mb-2">Latest Deliveries</div>
                       <div className="flex gap-1">
-                        {SHOTS.filter(s => s.projectId === project.id && s.thumbnail).slice(0, 4).map(shot => (
+                        {shots.filter(s => s.projectId === project.id && s.thumbnail).slice(0, 4).map(shot => (
                           <div key={shot.id} className="w-8 h-8 rounded-sm bg-muted overflow-hidden border border-border">
                             <img src={shot.thumbnail} alt={shot.name} className="w-full h-full object-cover opacity-80 group-hover:opacity-100" />
                           </div>
                         ))}
-                        {SHOTS.filter(s => s.projectId === project.id && s.thumbnail).length === 0 && (
+                        {shots.filter(s => s.projectId === project.id && s.thumbnail).length === 0 && (
                           <span className="text-xs text-muted-foreground italic">No deliveries yet.</span>
                         )}
                       </div>

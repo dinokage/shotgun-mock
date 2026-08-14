@@ -1,27 +1,47 @@
 import { useState } from 'react';
-import { SHOTS, ASSETS, USERS } from '@/data/mockData';
+import { motion } from 'framer-motion';
+import { ASSETS, USERS } from '@/data/mockData';
+import { useShotStore } from '@/store/shots';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Checkbox } from '@/components/ui/checkbox';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { UserAvatar } from '@/components/shared/UserAvatar';
 import { Search, SlidersHorizontal, X, FileVideo, Box } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { fadeInUp } from '@/lib/motion';
 
 export default function AssetsTab({ project }: { project: any }) {
   const [view, setView] = useState('shots');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [typeFilter, setTypeFilter] = useState<string[]>([]);
+  const shots = useShotStore((state) => state.shots);
 
-  const items = view === 'shots' ? SHOTS.filter(s => s.projectId === project.id) : ASSETS.filter(a => a.projectId === project.id);
+  const allItems = view === 'shots' ? shots.filter(s => s.projectId === project.id) : ASSETS.filter(a => a.projectId === project.id);
+  const availableStatuses = Array.from(new Set(allItems.map(i => i.status))).sort();
+  const availableTypes = view === 'assets' ? Array.from(new Set((allItems as any[]).map(i => i.type))).sort() : [];
+
+  const items = allItems.filter(i =>
+    (statusFilter.length === 0 || statusFilter.includes(i.status)) &&
+    (view !== 'assets' || typeFilter.length === 0 || typeFilter.includes((i as any).type))
+  );
+  const activeFilterCount = statusFilter.length + typeFilter.length;
   const selectedItem = items.find(i => i.id === selectedId);
+
+  const toggleFilter = (list: string[], setList: (v: string[]) => void, value: string) => {
+    setList(list.includes(value) ? list.filter(v => v !== value) : [...list, value]);
+  };
 
   return (
     <div className="flex h-full overflow-hidden border border-border rounded-lg bg-card/50">
       <div className="flex-1 flex flex-col">
         <div className="p-4 border-b border-border flex items-center justify-between bg-card">
           <div className="flex items-center gap-4">
-            <ToggleGroup type="single" value={view} onValueChange={(v) => { if(v) setView(v); setSelectedId(null); }}>
+            <ToggleGroup type="single" value={view} onValueChange={(v) => { if(v) setView(v); setSelectedId(null); setStatusFilter([]); setTypeFilter([]); }}>
               <ToggleGroupItem value="shots" className="gap-2 px-3"><FileVideo className="w-4 h-4"/> Shots</ToggleGroupItem>
               <ToggleGroupItem value="assets" className="gap-2 px-3"><Box className="w-4 h-4"/> Assets</ToggleGroupItem>
             </ToggleGroup>
@@ -31,11 +51,84 @@ export default function AssetsTab({ project }: { project: any }) {
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <Input placeholder={`Search ${view}...`} className="pl-9 h-9" />
             </div>
-            <Button variant="outline" size="icon" className="h-9 w-9"><SlidersHorizontal className="w-4 h-4" /></Button>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="icon" className="h-9 w-9 relative">
+                  <SlidersHorizontal className="w-4 h-4" />
+                  {activeFilterCount > 0 && (
+                    <motion.span
+                      key={activeFilterCount}
+                      {...fadeInUp}
+                      className="absolute -top-1.5 -right-1.5 h-4 min-w-4 px-1 rounded-full bg-primary text-primary-foreground text-[9px] font-bold flex items-center justify-center"
+                    >
+                      {activeFilterCount}
+                    </motion.span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-56 p-3">
+                <div className="space-y-3">
+                  <div>
+                    <div className="text-xs font-semibold mb-2 flex items-center justify-between">
+                      Status
+                      {statusFilter.length > 0 && (
+                        <button className="text-[10px] text-muted-foreground hover:text-foreground" onClick={() => setStatusFilter([])}>Clear</button>
+                      )}
+                    </div>
+                    <div className="space-y-1.5">
+                      {availableStatuses.map(status => (
+                        <label key={status} className="flex items-center gap-2 text-xs cursor-pointer">
+                          <Checkbox
+                            checked={statusFilter.includes(status)}
+                            onCheckedChange={() => toggleFilter(statusFilter, setStatusFilter, status)}
+                          />
+                          <span className="capitalize">{status.replace(/-/g, ' ')}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  {view === 'assets' && availableTypes.length > 0 && (
+                    <div className="pt-2 border-t border-border">
+                      <div className="text-xs font-semibold mb-2 flex items-center justify-between">
+                        Type
+                        {typeFilter.length > 0 && (
+                          <button className="text-[10px] text-muted-foreground hover:text-foreground" onClick={() => setTypeFilter([])}>Clear</button>
+                        )}
+                      </div>
+                      <div className="space-y-1.5">
+                        {availableTypes.map(type => (
+                          <label key={type} className="flex items-center gap-2 text-xs cursor-pointer">
+                            <Checkbox
+                              checked={typeFilter.includes(type)}
+                              onCheckedChange={() => toggleFilter(typeFilter, setTypeFilter, type)}
+                            />
+                            <span>{type}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {activeFilterCount > 0 && (
+                    <Button variant="ghost" size="sm" className="w-full h-7 text-xs" onClick={() => { setStatusFilter([]); setTypeFilter([]); }}>
+                      Reset all filters
+                    </Button>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
         </div>
 
         <ScrollArea className="flex-1 p-4">
+          {items.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full py-16 text-center">
+              <SlidersHorizontal className="w-8 h-8 text-muted-foreground/40 mb-3" />
+              <p className="text-sm text-muted-foreground">No {view} match the selected filters.</p>
+              <Button variant="link" size="sm" className="mt-1" onClick={() => { setStatusFilter([]); setTypeFilter([]); }}>
+                Clear filters
+              </Button>
+            </div>
+          ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 pb-8">
             {items.map(item => (
               <div 
@@ -62,6 +155,7 @@ export default function AssetsTab({ project }: { project: any }) {
               </div>
             ))}
           </div>
+          )}
         </ScrollArea>
       </div>
 

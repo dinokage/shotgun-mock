@@ -7,19 +7,26 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { NOTIFICATIONS, DEPARTMENTS, ROLE_LABELS } from '@/data/mockData';
+import { DEPARTMENTS, ROLE_LABELS } from '@/data/mockData';
 import { useUIStore } from '@/store/ui';
 import { useAuthStore } from '@/store/auth';
+import { useNotificationStore } from '@/store/notifications';
 import { Link, useLocation } from 'wouter';
 import { TimeClockWidget } from '@/components/shared/TimeClockWidget';
 import { USERS } from '@/data/mockData';
 
 export function TopBar() {
   const { setTheme, theme } = useTheme();
-  const { setSearchOpen, setCommandPaletteOpen, notificationPanelOpen, setNotificationPanelOpen, setCreateTaskModalOpen } = useUIStore();
+  const { setCommandPaletteOpen, notificationPanelOpen, setNotificationPanelOpen, setCreateTaskModalOpen } = useUIStore();
   const { currentUser, logout, switchUser } = useAuthStore();
   const [, setLocation] = useLocation();
-  const unreadNotifs = NOTIFICATIONS.filter(n => !n.read).length;
+  const notifications = useNotificationStore((s) => s.notifications);
+  const notificationPreferences = useNotificationStore((s) => s.preferences);
+  const markAsRead = useNotificationStore((s) => s.markAsRead);
+  const markAllAsRead = useNotificationStore((s) => s.markAllAsRead);
+  // Muted categories (see Settings > Notifications) are hidden here too, same as the full notifications page.
+  const visibleNotifs = notifications.filter((n) => notificationPreferences[n.category]?.push !== false);
+  const unreadNotifs = visibleNotifs.filter(n => !n.read).length;
 
   if (!currentUser) return null;
 
@@ -31,7 +38,7 @@ export function TopBar() {
   };
 
   return (
-    <header className="h-14 border-b border-border bg-card/80 backdrop-blur-md sticky top-0 z-50 flex items-center justify-between px-4 w-full">
+    <header className="h-14 shrink-0 border-b border-border bg-card/80 backdrop-blur-md z-50 flex items-center justify-between px-4 w-full">
       
       {/* Left: Brand + Role */}
       <div className="flex items-center gap-3 shrink-0">
@@ -64,7 +71,7 @@ export function TopBar() {
       {/* Center: Search */}
       <div className="flex-1 max-w-md relative mx-4 min-w-0 overflow-hidden hidden md:block">
         <button
-          onClick={() => setSearchOpen(true)}
+          onClick={() => setCommandPaletteOpen(true)}
           className="w-full flex items-center gap-2 px-3 py-1.5 bg-muted/50 border border-transparent rounded-lg text-sm text-muted-foreground hover:bg-muted hover:border-border transition-all min-w-0 overflow-hidden"
         >
           <Search className="w-4 h-4 shrink-0" />
@@ -114,11 +121,23 @@ export function TopBar() {
           <DropdownMenuContent align="end" className="w-80 max-h-96 overflow-y-auto">
             <DropdownMenuLabel className="flex items-center justify-between">
               <span>Notifications</span>
-              <Button variant="ghost" size="sm" className="h-6 text-xs text-muted-foreground">Mark all read</Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 text-xs text-muted-foreground"
+                disabled={unreadNotifs === 0}
+                onClick={(e) => { e.stopPropagation(); markAllAsRead(); }}
+              >
+                Mark all read
+              </Button>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {NOTIFICATIONS.slice(0, 10).map(notif => (
-              <DropdownMenuItem key={notif.id} className="flex-col items-start gap-1 py-3 cursor-pointer">
+            {visibleNotifs.slice(0, 10).map(notif => (
+              <DropdownMenuItem
+                key={notif.id}
+                className="flex-col items-start gap-1 py-3 cursor-pointer"
+                onSelect={(e) => { e.preventDefault(); if (!notif.read) markAsRead(notif.id); }}
+              >
                 <div className="flex items-center gap-2 w-full">
                   {!notif.read && <div className="w-2 h-2 rounded-full bg-primary shrink-0" />}
                   <span className={`font-medium text-sm ${notif.read ? 'text-muted-foreground' : ''}`}>{notif.title}</span>
@@ -128,6 +147,9 @@ export function TopBar() {
                 <span className="text-[10px] text-muted-foreground/60 pl-4">{notif.timestamp}</span>
               </DropdownMenuItem>
             ))}
+            {visibleNotifs.length === 0 && (
+              <div className="px-2 py-6 text-center text-xs text-muted-foreground">No notifications.</div>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild className="justify-center text-primary">
               <Link href="/notifications">View all notifications</Link>

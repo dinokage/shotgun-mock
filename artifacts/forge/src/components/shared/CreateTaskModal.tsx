@@ -68,6 +68,7 @@ export function CreateTaskModal() {
       lastStatusUpdate: new Date().toISOString(),
       dailyLogs: [],
       pipelinePhase: 'MAIN',
+      approvalHistory: [],
     };
 
     // Add to Zustand store

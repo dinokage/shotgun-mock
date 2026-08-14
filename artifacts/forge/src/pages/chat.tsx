@@ -1,35 +1,90 @@
 import { useState, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '@/store/auth';
-import { DEPARTMENTS, USERS, MESSAGES as MOCK_MESSAGES, ChatMessage } from '@/data/mockData';
+import { useChatGroupsStore } from '@/store/chatGroups';
+import { DEPARTMENTS, USERS, MESSAGES as MOCK_MESSAGES, ChatMessage, Department } from '@/data/mockData';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Hash, Send, Paperclip, Image as ImageIcon, Video, Shield, User as UserIcon, Plus } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import { Hash, Send, Paperclip, Image as ImageIcon, Video, Shield, User as UserIcon, Plus, Users } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
+import { fadeInUp } from '@/lib/motion';
+
+// Synthetic "channel" representing all studio members. It isn't a real row in
+// DEPARTMENTS, so any lookup that resolves the active channel needs to check
+// for this id before falling back to the real department list.
+const EVERYONE_DEPT: Department = {
+  id: 'everyone',
+  name: 'Everyone',
+  abbreviation: 'ALL',
+  color: '#6b7280',
+  supervisorId: '',
+  leadId: '',
+  studioId: 'studio1',
+  description: 'All studio members',
+  icon: 'Users',
+  pipelineOrder: 0,
+  pipeline: 'PROD',
+};
 
 export default function Chat() {
   const { currentUser } = useAuthStore();
   const { toast } = useToast();
+  const { groups, addGroup } = useChatGroupsStore();
   const [messages, setMessages] = useState<ChatMessage[]>(MOCK_MESSAGES);
   const [inputText, setInputText] = useState('');
-  
+
+  const [groupDialogOpen, setGroupDialogOpen] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [newGroupMemberIds, setNewGroupMemberIds] = useState<Set<string>>(new Set());
+
   // A user can see all departments if they are top leadership, otherwise just their own.
   const isTopLeadership = currentUser && ['vfx_producer', 'production_manager', 'coordinator'].includes(currentUser.role);
-  
+
   const visibleDepartments = useMemo(() => {
-    const everyoneDept = { id: 'everyone', name: 'Everyone', headId: '' };
-    if (isTopLeadership) return [everyoneDept, ...DEPARTMENTS];
-    return [everyoneDept, ...DEPARTMENTS.filter(d => d.id === currentUser?.departmentId)];
+    if (isTopLeadership) return [EVERYONE_DEPT, ...DEPARTMENTS];
+    return [EVERYONE_DEPT, ...DEPARTMENTS.filter(d => d.id === currentUser?.departmentId)];
   }, [currentUser, isTopLeadership]);
 
+  const myGroups = useMemo(() => {
+    if (!currentUser) return [];
+    return groups.filter(g => g.memberIds.includes(currentUser.id));
+  }, [groups, currentUser]);
+
   const [activeDeptId, setActiveDeptId] = useState<string>(visibleDepartments[0]?.id || '');
-  
-  const activeDept = useMemo(() => DEPARTMENTS.find(d => d.id === activeDeptId), [activeDeptId]);
-  
+
+  const activeGroup = useMemo(() => groups.find(g => g.id === activeDeptId), [groups, activeDeptId]);
+
+  const activeDept = useMemo(() => {
+    if (activeDeptId === 'everyone') return EVERYONE_DEPT;
+    const dept = DEPARTMENTS.find(d => d.id === activeDeptId);
+    if (dept) return dept;
+    if (activeGroup) return { ...EVERYONE_DEPT, id: activeGroup.id, name: activeGroup.name };
+    return undefined;
+  }, [activeDeptId, activeGroup]);
+
   const deptUsers = useMemo(() => {
-    return USERS.filter(u => u.departmentId === activeDeptId).sort((a, b) => {
+    let source;
+    if (activeDeptId === 'everyone') {
+      source = [...USERS];
+    } else if (activeGroup) {
+      source = USERS.filter(u => activeGroup.memberIds.includes(u.id));
+    } else {
+      source = USERS.filter(u => u.departmentId === activeDeptId);
+    }
+    return source.sort((a, b) => {
       // Sort leadership to top
       const aIsLead = ['supervisor', 'lead'].includes(a.role);
       const bIsLead = ['supervisor', 'lead'].includes(b.role);
@@ -37,7 +92,7 @@ export default function Chat() {
       if (!aIsLead && bIsLead) return 1;
       return a.name.localeCompare(b.name);
     });
-  }, [activeDeptId]);
+  }, [activeDeptId, activeGroup]);
 
   const deptMessages = useMemo(() => {
     return messages.filter(m => m.departmentId === activeDeptId).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
@@ -82,6 +137,39 @@ export default function Chat() {
     setMessages([...messages, newMsg]);
   };
 
+  const openGroupDialog = () => {
+    setNewGroupName('');
+    setNewGroupMemberIds(currentUser ? new Set([currentUser.id]) : new Set());
+    setGroupDialogOpen(true);
+  };
+
+  const toggleGroupMember = (userId: string) => {
+    setNewGroupMemberIds(prev => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  };
+
+  const handleCreateGroup = () => {
+    if (!currentUser || !newGroupName.trim() || newGroupMemberIds.size === 0) return;
+    const group = {
+      id: `group_${Date.now()}`,
+      name: newGroupName.trim(),
+      memberIds: Array.from(newGroupMemberIds),
+      createdBy: currentUser.id,
+      createdAt: new Date().toISOString(),
+    };
+    addGroup(group);
+    setActiveDeptId(group.id);
+    setGroupDialogOpen(false);
+    toast({
+      title: "Group Created",
+      description: `#${group.name} is ready with ${group.memberIds.length} member${group.memberIds.length === 1 ? '' : 's'}.`,
+    });
+  };
+
   if (!currentUser) return null;
 
   return (
@@ -91,7 +179,7 @@ export default function Chat() {
       <div className="w-64 bg-sidebar/50 border-r border-border flex flex-col">
         <div className="p-4 border-b border-border flex items-center justify-between">
           <h2 className="font-semibold">Team Chat</h2>
-          <Button variant="ghost" size="icon" className="w-6 h-6 hover:bg-muted" title="Create Group" onClick={() => toast({title: "Create Group", description: "Opening group creation dialog..."})}>
+          <Button variant="ghost" size="icon" className="w-6 h-6 hover:bg-muted" title="Create Group" onClick={openGroupDialog}>
             <Plus className="w-4 h-4" />
           </Button>
         </div>
@@ -103,8 +191,8 @@ export default function Chat() {
                 key={dept.id}
                 onClick={() => setActiveDeptId(dept.id)}
                 className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
-                  activeDeptId === dept.id 
-                    ? 'bg-primary/10 text-primary font-medium' 
+                  activeDeptId === dept.id
+                    ? 'bg-primary/10 text-primary font-medium hover:bg-primary/15'
                     : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                 }`}
               >
@@ -112,9 +200,85 @@ export default function Chat() {
                 {dept.name}
               </button>
             ))}
+
+            {myGroups.length > 0 && (
+              <>
+                <div className="text-xs font-semibold text-muted-foreground mb-2 mt-4 px-2 uppercase tracking-wider">Groups</div>
+                <AnimatePresence initial={false}>
+                  {myGroups.map((group, i) => (
+                    <motion.button
+                      key={group.id}
+                      {...fadeInUp}
+                      transition={{ ...fadeInUp.transition, delay: i * 0.03 }}
+                      onClick={() => setActiveDeptId(group.id)}
+                      className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
+                        activeDeptId === group.id
+                          ? 'bg-primary/10 text-primary font-medium hover:bg-primary/15'
+                          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                      }`}
+                    >
+                      <Users className="w-4 h-4 opacity-70" />
+                      {group.name}
+                    </motion.button>
+                  ))}
+                </AnimatePresence>
+              </>
+            )}
           </div>
         </ScrollArea>
       </div>
+
+      {/* Create Group Dialog */}
+      <Dialog open={groupDialogOpen} onOpenChange={setGroupDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create Group</DialogTitle>
+            <DialogDescription>Name the group and pick who's in it.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Group Name</Label>
+              <Input
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                placeholder="e.g. Shot Review Task Force"
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Members ({newGroupMemberIds.size} selected)</Label>
+              <ScrollArea className="h-56 rounded-md border border-border p-2">
+                <div className="space-y-1">
+                  {USERS.filter(u => u.id !== currentUser.id).map(u => (
+                    <label
+                      key={u.id}
+                      className="flex items-center gap-2.5 p-1.5 rounded hover:bg-muted/50 cursor-pointer"
+                    >
+                      <Checkbox
+                        checked={newGroupMemberIds.has(u.id)}
+                        onCheckedChange={() => toggleGroupMember(u.id)}
+                      />
+                      <Avatar className="w-6 h-6">
+                        <AvatarImage src={u.avatar} />
+                        <AvatarFallback>{u.name.charAt(0)}</AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium truncate">{u.name}</div>
+                        <div className="text-[10px] text-muted-foreground truncate">{u.title}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </ScrollArea>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={handleCreateGroup} disabled={!newGroupName.trim() || newGroupMemberIds.size === 0}>
+              Create Group
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col min-w-0 bg-card">

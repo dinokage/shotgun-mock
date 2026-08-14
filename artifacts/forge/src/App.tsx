@@ -3,8 +3,9 @@ import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Route, Switch, Router as WouterRouter, useLocation } from 'wouter';
 import { ThemeProvider } from '@/components/theme-provider';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useAuthStore } from '@/store/auth';
+import { useToast } from '@/hooks/use-toast';
 
 // Components
 import { AppShell } from '@/components/shell/AppShell';
@@ -18,7 +19,10 @@ import ProjectDetail from '@/pages/project-detail/index';
 import Review from '@/pages/review';
 import Scheduling from '@/pages/scheduling';
 import WorkflowEditor from '@/pages/workflow-editor';
+import Workflows from '@/pages/workflows';
+import WorkflowRun from '@/pages/workflow-run';
 import Marketplace from '@/pages/marketplace';
+import PluginDetail from '@/pages/plugin-detail';
 import Settings from '@/pages/settings';
 import Assets from '@/pages/assets';
 import AssetDetail from '@/pages/asset-detail';
@@ -43,6 +47,7 @@ import TrackingGrid from '@/pages/tracking';
 import IntegrationsHub from '@/pages/integrations';
 import Notifications from '@/pages/notifications';
 import FinancialDashboard from '@/pages/financials';
+import SchemaBuilder from '@/pages/schema-builder';
 
 const queryClient = new QueryClient();
 
@@ -66,12 +71,18 @@ const LEADERSHIP_ROLES = ['vfx_producer', 'production_manager', 'coordinator', '
 function LeadershipGuard({ children }: { children: React.ReactNode }) {
   const { currentUser } = useAuthStore();
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const hasWarnedRef = useRef(false);
 
   useEffect(() => {
     if (currentUser && !LEADERSHIP_ROLES.includes(currentUser.role)) {
+      if (!hasWarnedRef.current) {
+        hasWarnedRef.current = true;
+        toast({ description: "You don't have access to that page.", variant: 'destructive' });
+      }
       setLocation('/');
     }
-  }, [currentUser, setLocation]);
+  }, [currentUser, setLocation, toast]);
 
   if (!currentUser || !LEADERSHIP_ROLES.includes(currentUser.role)) return null;
   return <>{children}</>;
@@ -116,11 +127,26 @@ function Router() {
               <Route path="/marketplace">
                 <LeadershipGuard><Marketplace /></LeadershipGuard>
               </Route>
+              <Route path="/marketplace/:id">
+                <LeadershipGuard><PluginDetail /></LeadershipGuard>
+              </Route>
               <Route path="/integrations">
                 <LeadershipGuard><IntegrationsHub /></LeadershipGuard>
               </Route>
               <Route path="/workflows">
+                <LeadershipGuard><Workflows /></LeadershipGuard>
+              </Route>
+              <Route path="/workflows/new">
                 <LeadershipGuard><WorkflowEditor /></LeadershipGuard>
+              </Route>
+              <Route path="/workflows/run/:id">
+                <LeadershipGuard><WorkflowRun /></LeadershipGuard>
+              </Route>
+              <Route path="/workflows/:id">
+                <LeadershipGuard><WorkflowEditor /></LeadershipGuard>
+              </Route>
+              <Route path="/schema-builder">
+                <LeadershipGuard><SchemaBuilder /></LeadershipGuard>
               </Route>
               <Route path="/publishing" component={Publishing} />
               <Route path="/analytics">
@@ -137,7 +163,9 @@ function Router() {
               <Route path="/audit">
                 <LeadershipGuard><Audit /></LeadershipGuard>
               </Route>
-              <Route path="/settings" component={Settings} />
+              <Route path="/settings">
+                <LeadershipGuard><Settings /></LeadershipGuard>
+              </Route>
               <Route path="/delivery" component={Delivery} />
               <Route path="/chat" component={Chat} />
               <Route path="/tracking" component={TrackingGrid} />
