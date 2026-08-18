@@ -172,11 +172,23 @@ export default function ClientReview() {
         e.preventDefault();
         setIsPlaying(false);
         setFrame(f => Math.min(maxFrames, f + 1));
-      }
+      } else if (e.code === 'Backspace' || e.code === 'Delete') {
+        if (selectedAnnotationId) {
+          setAnnotations(prev => prev.filter(a => a.id !== selectedAnnotationId));
+          setSelectedAnnotationId(null);
+        }
+      } else if (e.code === 'Escape') {
+        setSelectedAnnotationId(null);
+        setTool('select');
+      } else if (e.key === '1') setTool('select');
+      else if (e.key === '2') setTool('pen');
+      else if (e.key === '3') setTool('arrow');
+      else if (e.key === '4') setTool('rectangle');
+      else if (e.key === '5') setTool('text');
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [maxFrames, isLockedViewer]);
+  }, [maxFrames, isLockedViewer, selectedAnnotationId]);
 
   // Handle global mouse move for canvas dragging
   useEffect(() => {

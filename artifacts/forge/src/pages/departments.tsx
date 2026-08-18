@@ -7,10 +7,18 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { DEPARTMENTS, USERS, TASKS, isTaskActive, isTaskDone } from '@/data/mockData';
 import { Users, ListTodo, CheckCircle2, ArrowRight, Settings, Check, ChevronLeft, ChevronRight, Workflow } from 'lucide-react';
 
+import { useAuthStore } from '@/store/auth';
+
 export default function Departments() {
+  const { currentUser } = useAuthStore();
+  const isGlobalManager = currentUser && ['vfx_producer', 'production_manager'].includes(currentUser.role);
+
   const [isEditing, setIsEditing] = useState(false);
   const [pipelineDepts, setPipelineDepts] = useState(
-    DEPARTMENTS.filter(d => d.pipelineOrder > 0).sort((a, b) => a.pipelineOrder - b.pipelineOrder)
+    DEPARTMENTS
+      .filter(d => d.pipelineOrder > 0)
+      .filter(d => isGlobalManager || d.id === currentUser?.departmentId)
+      .sort((a, b) => a.pipelineOrder - b.pipelineOrder)
   );
 
   const moveItem = (index: number, direction: 'left' | 'right') => {
@@ -105,7 +113,7 @@ export default function Departments() {
             '2D': '2D Pipeline'
           }[pipelineType];
 
-          const depts = DEPARTMENTS.filter(d => d.pipeline === pipelineType);
+          const depts = DEPARTMENTS.filter(d => d.pipeline === pipelineType && (isGlobalManager || d.id === currentUser?.departmentId));
           if (depts.length === 0) return null;
 
           return (

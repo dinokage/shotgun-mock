@@ -244,7 +244,7 @@ function ProducerDashboard() {
         </div>
         
         {/* Right Column */}
-        <div className="space-y-6">
+        <div className="space-y-6 sticky top-0 self-start h-[calc(100vh-12rem)] overflow-y-auto pr-2 custom-scrollbar pb-10">
           {/* AI Insights Module — rule-based cards computed from live mock-data relationships (dependency fan-out, weeklyRating, riskScore). See src/lib/aiInsights.ts. */}
           <Card className="border-indigo-500/50 bg-indigo-500/5 overflow-hidden">
             <div className="bg-indigo-500/20 p-3 flex items-center gap-2 border-b border-indigo-500/30">
@@ -445,7 +445,7 @@ function SupervisorDashboard({ currentUser }: { currentUser: any }) {
           </CardContent>
         </Card>
 
-        <Card className="border-border/50">
+        <Card className="border-border/50 sticky top-0 self-start">
           <CardHeader>
             <CardTitle className="text-lg">Team Capacity (Next 7 Days)</CardTitle>
           </CardHeader>
@@ -545,7 +545,7 @@ function ArtistDashboard({ currentUser }: { currentUser: any }) {
         </div>
 
 
-          <Card className="border-border/50 bg-muted/20">
+          <Card className="border-border/50 bg-muted/20 sticky top-0 self-start">
             <CardHeader className="pb-2">
               <CardTitle className="text-lg flex items-center gap-2"><Sparkles className="w-5 h-5 text-purple-500" /> Recent Feedback</CardTitle>
             </CardHeader>

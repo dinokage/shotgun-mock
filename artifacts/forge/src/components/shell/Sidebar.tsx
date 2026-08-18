@@ -41,7 +41,6 @@ const PROD_NAV: NavItem[] = [
   { label: 'Tracking Grid', icon: Grid3X3, href: '/tracking' },
   { label: 'Scheduling', icon: Calendar, href: '/scheduling' },
   { label: 'Timesheets', icon: Clock, href: '/timesheets' },
-  { label: 'Financials', icon: BarChart3, href: '/financials' },
   { label: 'Analytics', icon: BarChart3, href: '/analytics' },
   { label: 'Reviews', icon: PlayCircle, href: '/review', badge: 5 },
 ];

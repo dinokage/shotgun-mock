@@ -3,15 +3,20 @@ import { Clock } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
+import { useAuthStore } from '@/store/auth';
+
 export function TimeClockWidget() {
   const [seconds, setSeconds] = useState(0);
+  const currentUser = useAuthStore((s) => s.currentUser);
 
   useEffect(() => {
-    // Check if we have a stored start time
-    let startTime = localStorage.getItem('forge-punch-in-time');
+    if (!currentUser) return;
+    
+    const storageKey = `forge-punch-in-time-${currentUser.id}`;
+    let startTime = localStorage.getItem(storageKey);
     if (!startTime) {
       startTime = Date.now().toString();
-      localStorage.setItem('forge-punch-in-time', startTime);
+      localStorage.setItem(storageKey, startTime);
     }
 
     const calculateElapsed = () => {
@@ -24,7 +29,7 @@ export function TimeClockWidget() {
     const interval = setInterval(calculateElapsed, 1000);
     
     return () => clearInterval(interval);
-  }, []);
+  }, [currentUser]);
 
   const formatTime = (totalSeconds: number) => {
     const h = Math.floor(totalSeconds / 3600);

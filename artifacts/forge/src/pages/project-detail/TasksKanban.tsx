@@ -1,7 +1,7 @@
 import { useTasksStore } from '@/store/tasks';
 import { useAuthStore } from '@/store/auth';
 import { Task, TaskStatus } from '@/data/mockData';
-import { DndContext, DragOverlay, closestCorners, KeyboardSensor, PointerSensor, useSensor, useSensors, DragStartEvent, DragEndEvent } from '@dnd-kit/core';
+import { DndContext, DragOverlay, closestCorners, KeyboardSensor, PointerSensor, useSensor, useSensors, DragStartEvent, DragEndEvent, useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useState } from 'react';
@@ -138,6 +138,28 @@ function ClaimableTaskCard({ task, onClaim }: { task: any; onClaim: () => void }
   );
 }
 
+function DroppableColumn({ col, tasks }: { col: { id: TaskStatus; title: string }; tasks: any[] }) {
+  const { setNodeRef } = useDroppable({ id: col.id });
+  return (
+    <div className="flex-shrink-0 w-72 flex flex-col bg-muted/30 rounded-lg border border-border">
+      <div className="p-3 font-semibold text-sm border-b border-border flex justify-between items-center bg-muted/50 rounded-t-lg">
+        {col.title}
+        <span className="text-xs bg-background px-2 py-0.5 rounded-full text-muted-foreground">{tasks.length}</span>
+      </div>
+      <div ref={setNodeRef} className="flex-1 overflow-y-auto p-3 flex flex-col gap-3 min-h-[150px]">
+        <SortableContext items={tasks.map(t => t.id)} strategy={verticalListSortingStrategy} id={col.id}>
+          {tasks.map(task => <SortableTaskCard key={task.id} task={task} />)}
+          {tasks.length === 0 && (
+            <div className="h-20 border-2 border-dashed border-border rounded-lg flex items-center justify-center text-xs text-muted-foreground pointer-events-none">
+              Drop here
+            </div>
+          )}
+        </SortableContext>
+      </div>
+    </div>
+  );
+}
+
 export default function KanbanView({ projectId, tasks }: { projectId?: string, tasks?: any[] }) {
   const storeTasks = useTasksStore(state => state.tasks);
   const { updateTaskStatus, updateTask } = useTasksStore();
@@ -211,25 +233,8 @@ export default function KanbanView({ projectId, tasks }: { projectId?: string, t
         </div>
 
         {COLUMNS.map(col => {
-          const columnTasks = projectTasks.filter(t => t.status === col.id);
-          return (
-            <div key={col.id} className="flex-shrink-0 w-72 flex flex-col bg-muted/30 rounded-lg border border-border">
-              <div className="p-3 font-semibold text-sm border-b border-border flex justify-between items-center bg-muted/50 rounded-t-lg">
-                {col.title}
-                <span className="text-xs bg-background px-2 py-0.5 rounded-full text-muted-foreground">{columnTasks.length}</span>
-              </div>
-              <div className="flex-1 overflow-y-auto p-3">
-                <SortableContext items={columnTasks.map(t => t.id)} strategy={verticalListSortingStrategy} id={col.id}>
-                  {columnTasks.map(task => <SortableTaskCard key={task.id} task={task} />)}
-                  {columnTasks.length === 0 && (
-                    <div className="h-20 border-2 border-dashed border-border rounded-lg flex items-center justify-center text-xs text-muted-foreground">
-                      Drop here
-                    </div>
-                  )}
-                </SortableContext>
-              </div>
-            </div>
-          );
+          const columnTasks = projectTasks.filter(t => t.status === col.id && t.assigneeId);
+          return <DroppableColumn key={col.id} col={col} tasks={columnTasks} />;
         })}
       </div>
       <DragOverlay>

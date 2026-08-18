@@ -20,6 +20,17 @@ export default function DepartmentDetail() {
     return <div className="p-6 text-center text-muted-foreground">Department not found</div>;
   }
 
+  const isGlobalManager = currentUser && ['vfx_producer', 'production_manager'].includes(currentUser.role);
+  if (!isGlobalManager && currentUser?.departmentId !== dept.id) {
+    return (
+      <div className="p-6 max-w-[1400px] mx-auto text-center mt-20">
+        <h2 className="text-2xl font-bold mb-2">Access Denied</h2>
+        <p className="text-muted-foreground mb-4">You do not have permission to view other department's details.</p>
+        <Link href="/departments" className="text-primary hover:underline">Return to your department</Link>
+      </div>
+    );
+  }
+
   const team = USERS.filter(u => u.departmentId === dept.id).sort((a, b) => {
     // Sort by role hierarchy
     const roleWeight = {

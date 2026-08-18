@@ -51,21 +51,47 @@ export function TopBar() {
 
         <div className="h-5 w-px bg-border hidden md:block" />
 
-        {/* Current User Role/Dept Badge */}
-        <div className={`hidden md:flex items-center gap-2 px-2.5 py-1 rounded-md border text-xs shadow-sm transition-all shrink-0 ${
-          ['vfx_producer', 'production_manager', 'coordinator', 'supervisor', 'lead'].includes(currentUser.role)
-            ? 'bg-gradient-to-r from-amber-500/10 to-orange-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400'
-            : 'bg-muted/50 border-border/50 text-foreground'
-        }`}>
-          <Shield className={`w-3.5 h-3.5 shrink-0 ${['vfx_producer', 'production_manager', 'coordinator', 'supervisor', 'lead'].includes(currentUser.role) ? 'text-amber-500' : 'text-primary'}`} />
-          <span className="font-semibold truncate">{ROLE_LABELS[currentUser.role] || currentUser.title}</span>
-          {dept && (
-            <>
-              <span className="opacity-50 shrink-0">•</span>
-              <span className="font-medium opacity-80 shrink-0">{dept.abbreviation}</span>
-            </>
-          )}
-        </div>
+        {/* Current User Role/Dept/Tenant Switcher */}
+        {['vfx_producer', 'production_manager'].includes(currentUser.role) ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full border border-amber-500/30 bg-gradient-to-r from-amber-500/10 to-orange-500/10 text-xs shadow-sm transition-all hover:shadow-md hover:border-amber-500/50 shrink-0 outline-none text-amber-700 dark:text-amber-400">
+                <Building2 className="w-3.5 h-3.5 shrink-0 text-amber-600 dark:text-amber-500" />
+                <span className="font-semibold truncate">{ROLE_LABELS[currentUser.role] || currentUser.title}</span>
+                <span className="opacity-50 shrink-0">•</span>
+                <span className="font-medium opacity-90 shrink-0">{dept ? dept.abbreviation : 'All Depts'}</span>
+                <ChevronDown className="w-3 h-3 ml-1 opacity-50" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-48">
+              <DropdownMenuLabel>Switch Department</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="cursor-pointer font-medium">
+                Global Overview
+              </DropdownMenuItem>
+              {DEPARTMENTS.map(d => (
+                <DropdownMenuItem key={d.id} className="cursor-pointer">
+                  {d.name} ({d.abbreviation})
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <div className={`hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs shadow-sm transition-all shrink-0 ${
+            ['coordinator', 'supervisor', 'lead'].includes(currentUser.role)
+              ? 'bg-gradient-to-r from-amber-500/10 to-orange-500/10 border-amber-500/20 text-amber-700 dark:text-amber-400'
+              : 'bg-white border-gray-200 text-gray-700 dark:bg-zinc-900 dark:border-zinc-800 dark:text-gray-300 shadow-[0_2px_10px_rgba(0,0,0,0.02)]'
+          }`}>
+            <Shield className={`w-3.5 h-3.5 shrink-0 ${['coordinator', 'supervisor', 'lead'].includes(currentUser.role) ? 'text-amber-600 dark:text-amber-500' : 'text-gray-500'}`} />
+            <span className="font-semibold truncate">{ROLE_LABELS[currentUser.role] || currentUser.title}</span>
+            {dept && (
+              <>
+                <span className="opacity-40 shrink-0">•</span>
+                <span className="font-medium opacity-90 shrink-0">{dept.abbreviation}</span>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Center: Search */}
@@ -107,7 +133,7 @@ export function TopBar() {
         </Button>
 
         {/* Notifications */}
-        <DropdownMenu open={notificationPanelOpen} onOpenChange={setNotificationPanelOpen}>
+        <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="relative h-8 w-8" aria-label={`Notifications, ${unreadNotifs} unread`}>
               <Bell className="w-4 h-4" />

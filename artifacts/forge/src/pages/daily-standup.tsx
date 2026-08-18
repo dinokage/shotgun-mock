@@ -88,6 +88,17 @@ export default function DailyStandup() {
       user,
       time: new Date(update.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
+  }).filter(update => {
+    // RBAC: Main production managers see everything.
+    if (['vfx_producer', 'production_manager'].includes(currentUser.role)) return true;
+    
+    // RBAC: Dept managers/leads see their dept + their own updates
+    if (['supervisor', 'lead', 'coordinator'].includes(currentUser.role)) {
+      return update.user?.departmentId === currentUser.departmentId || update.userId === currentUser.id;
+    }
+    
+    // RBAC: Artists only see their own updates
+    return update.userId === currentUser.id;
   });
 
   const payrollRows = useMemo(() => team.map(member => {
@@ -651,6 +662,7 @@ export default function DailyStandup() {
               ))}
               
               {/* Mock Feed Item 1 (With Image/Video) */}
+              {(['vfx_producer', 'production_manager'].includes(currentUser.role) || currentUser.departmentId === USERS[2]?.departmentId) && (
               <Card className="border-border/50 bg-card overflow-hidden">
                 <CardContent className="p-0">
                   <div className="p-4 border-b border-border/50 flex items-start gap-3">
@@ -726,8 +738,10 @@ export default function DailyStandup() {
                   )}
                 </CardContent>
               </Card>
+              )}
 
               {/* Mock Feed Item 2 (Text Only) */}
+              {(['vfx_producer', 'production_manager'].includes(currentUser.role) || currentUser.departmentId === USERS[1]?.departmentId) && (
               <Card className="border-border/50 bg-card overflow-hidden">
                 <CardContent className="p-0">
                   <div className="p-4 flex items-start gap-3">
@@ -751,6 +765,7 @@ export default function DailyStandup() {
                   </div>
                 </CardContent>
               </Card>
+              )}
 
             </div>
           </div>
