@@ -12,6 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/comp
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { ROLE_LABELS, USERS } from '@/data/mockData';
 import { UserAvatar } from '@/components/shared/UserAvatar';
+import { copyToClipboard } from '@/lib/utils';
 import {
   Building2,
   Cloud,
@@ -181,8 +182,10 @@ export default function Settings() {
       'shots = session.query(\'Shot where status is "manager-review"\')',
       'print(f"Found {len(shots)} shots for review")',
     ].join('\n');
-    navigator.clipboard.writeText(snippet);
-    toast({ title: 'Copied to clipboard' });
+    copyToClipboard(snippet).then(success => {
+      if (success) toast({ title: 'Copied to clipboard' });
+      else toast({ title: 'Failed to copy', variant: 'destructive' });
+    });
   };
 
   const [permissionDraft, setPermissionDraft] = useState<PermissionScheme>(permissionScheme);

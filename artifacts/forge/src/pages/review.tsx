@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu';
 import { Label } from '@/components/ui/label';
-import { cn } from '@/lib/utils';
+import { cn, copyToClipboard } from '@/lib/utils';
 import { cut } from '@/lib/motion';
 import { useAuthStore } from '@/store/auth';
 import { useTasksStore } from '@/store/tasks';
@@ -800,9 +800,13 @@ export default function Review() {
               size="sm" 
               variant="outline"
               className="border-blue-500/50 text-blue-500 hover:bg-blue-500/10"
-              onClick={() => {
-                navigator.clipboard.writeText(window.location.origin + '/client-review');
-                toast({ title: 'Link Copied', description: 'Secure client review link copied to clipboard.' });
+              onClick={async () => {
+                const success = await copyToClipboard(window.location.origin + '/client-review');
+                if (success) {
+                  toast({ title: 'Link Copied', description: 'Secure client review link copied to clipboard.' });
+                } else {
+                  toast({ title: 'Copy Failed', description: 'Could not copy link.', variant: 'destructive' });
+                }
               }}
             >
               <Link2 className="w-4 h-4 mr-2" /> Copy Client Link
