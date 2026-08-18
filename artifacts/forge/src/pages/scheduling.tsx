@@ -334,8 +334,8 @@ export default function Scheduling() {
                 </marker>
               </defs>
               {tasksToDisplay.flatMap(task => 
-                (task.dependencies || []).map(depId => {
-                  const start = taskCoords[depId]; // The task we depend on (parent)
+                (task.dependencies || []).map(dep => {
+                  const start = taskCoords[dep.taskId]; // The task we depend on (parent)
                   const end = taskCoords[task.id]; // This task (child)
                   
                   if (!start || !end) return null; // Dependency might be out of current view
@@ -353,7 +353,7 @@ export default function Scheduling() {
                   
                   return (
                     <path 
-                      key={`dep-${depId}-${task.id}`}
+                      key={`dep-${dep.taskId}-${task.id}`}
                       d={d}
                       fill="none"
                       stroke="rgba(156, 163, 175, 0.4)"

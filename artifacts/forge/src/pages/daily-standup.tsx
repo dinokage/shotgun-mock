@@ -89,6 +89,7 @@ export default function DailyStandup() {
       time: new Date(update.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
   }).filter(update => {
+    if (!currentUser) return false;
     // RBAC: Main production managers see everything.
     if (['vfx_producer', 'production_manager'].includes(currentUser.role)) return true;
     
