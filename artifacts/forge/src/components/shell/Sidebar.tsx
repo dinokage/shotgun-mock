@@ -5,7 +5,7 @@ import {
   GitFork, Workflow, Store, Database,
   History, Bot, Settings2, Package, Film, ListTodo,
   Upload, BarChart3, ChevronLeft, ChevronRight,
-  Building2, ChevronDown, Users, MonitorPlay, MessageSquare, Grid3X3, Puzzle, Clock
+  Building2, ChevronDown, Users, MonitorPlay, MessageSquare, Grid3X3, Puzzle, Clock, Boxes
 } from 'lucide-react';
 import { useUIStore } from '@/store/ui';
 import { useWorkspaceStore } from '@/store/workspace';
@@ -41,15 +41,14 @@ const PROD_NAV: NavItem[] = [
   { label: 'Tracking Grid', icon: Grid3X3, href: '/tracking' },
   { label: 'Scheduling', icon: Calendar, href: '/scheduling' },
   { label: 'Timesheets', icon: Clock, href: '/timesheets' },
-  { label: 'Financials', icon: BarChart3, href: '/financials' },
   { label: 'Analytics', icon: BarChart3, href: '/analytics' },
   { label: 'Reviews', icon: PlayCircle, href: '/review', badge: 5 },
 ];
 
 // Artists get specific focus areas
 const ARTIST_NAV: NavItem[] = [
-  { label: 'My Shots', icon: Film, href: '/shots' },
-  { label: 'My Assets', icon: Package, href: '/assets' },
+  { label: 'My Shots', icon: Film, href: '/shots?mine=1' },
+  { label: 'My Assets', icon: Package, href: '/assets?mine=1' },
   { label: 'Timesheets', icon: Clock, href: '/timesheets' },
   { label: 'Reviews', icon: PlayCircle, href: '/review', badge: 2 },
 ];
@@ -62,6 +61,7 @@ const DIRECTORY_NAV: NavItem[] = [
 
 // System nav
 const SYSTEM_NAV: NavItem[] = [
+  { label: 'Schema Builder', icon: Boxes, href: '/schema-builder' },
   { label: 'Integrations Hub', icon: Puzzle, href: '/integrations' },
   { label: 'Workflows', icon: Workflow, href: '/workflows' },
   { label: 'Marketplace', icon: Store, href: '/marketplace' },
@@ -90,7 +90,7 @@ export function Sidebar() {
   return (
     <div
       className={cn(
-        "flex-shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex flex-col h-[calc(100vh-3.5rem)] sticky top-14 transition-all duration-300 ease-in-out",
+        "flex-shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex flex-col h-full transition-all duration-300 ease-in-out",
         sidebarCollapsed ? "w-16" : "w-64"
       )}
     >
@@ -102,8 +102,8 @@ export function Sidebar() {
               "w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-sidebar-accent/50 transition-colors text-left",
               sidebarCollapsed && "justify-center px-0"
             )}>
-              <div className="w-7 h-7 rounded-md bg-primary/20 flex items-center justify-center text-sm shrink-0">
-                {currentStudio?.logo || '🌌'}
+              <div className="w-7 h-7 rounded-md bg-primary/20 flex items-center justify-center shrink-0">
+                <Building2 className="w-4 h-4 text-primary" />
               </div>
               {!sidebarCollapsed && (
                 <>
@@ -119,7 +119,7 @@ export function Sidebar() {
           <DropdownMenuContent className="w-56" align="start">
             {STUDIOS.map(s => (
               <DropdownMenuItem key={s.id} onClick={() => setStudio(s.id)}>
-                <span className="mr-2">{s.logo}</span>
+                <Building2 className="w-4 h-4 mr-2 text-muted-foreground" />
                 {s.name}
               </DropdownMenuItem>
             ))}
@@ -130,14 +130,17 @@ export function Sidebar() {
       {/* Navigation Links */}
       <div className="flex-1 overflow-y-auto py-4 px-3 space-y-1 scrollbar-thin">
         {navItems.map((item) => {
-          const isActive = location === item.href || (item.href !== '/' && location.startsWith(item.href));
+          // Compare against the path only — item.href may carry a query string
+          // (e.g. artist "My Shots" -> /shots?mine=1) which `location` never includes.
+          const itemPath = item.href.split('?')[0];
+          const isActive = location === itemPath || (itemPath !== '/' && location.startsWith(itemPath));
           return (
             <Link key={item.label} href={item.href}>
               <div
                 className={cn(
                   "flex items-center gap-3 px-3 py-2 rounded-md transition-colors cursor-pointer relative group",
-                  isActive 
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium" 
+                  isActive
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-[inset_2px_0_0_0_hsl(var(--accent-tally))] hover:bg-sidebar-accent/80"
                     : "text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
                   sidebarCollapsed && "justify-center px-2"
                 )}
@@ -145,13 +148,13 @@ export function Sidebar() {
               >
                 <item.icon className={cn(
                   "w-4 h-4 shrink-0 transition-colors",
-                  isActive ? "text-primary" : "text-muted-foreground group-hover:text-sidebar-foreground"
+                  isActive ? "text-accent-tally" : "text-muted-foreground group-hover:text-sidebar-foreground"
                 )} />
                 {!sidebarCollapsed && (
                   <span className="flex-1 truncate text-sm">{item.label}</span>
                 )}
                 {!sidebarCollapsed && item.badge && (
-                  <Badge variant="secondary" className="px-1.5 py-0 text-[10px] h-4 bg-primary/10 text-primary hover:bg-primary/20">
+                  <Badge variant="secondary" className="px-1.5 py-0 text-[10px] h-4 bg-accent-tally/10 text-accent-tally hover:bg-accent-tally/20">
                     {item.badge}
                   </Badge>
                 )}
@@ -169,18 +172,20 @@ export function Sidebar() {
 
       {/* Bottom Actions */}
       <div className={cn("p-2 border-t border-sidebar-border space-y-0.5", sidebarCollapsed && "px-1")}>
-        <Link href="/settings" className="block">
-          <div className={cn(
-            "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",
-            sidebarCollapsed && "justify-center px-2",
-            location.startsWith('/settings')
-              ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm"
-              : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-          )}>
-            <Settings2 className="w-4 h-4 shrink-0" />
-            {!sidebarCollapsed && <span>Settings</span>}
-          </div>
-        </Link>
+        {isLeadership && (
+          <Link href="/settings" className="block">
+            <div className={cn(
+              "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",
+              sidebarCollapsed && "justify-center px-2",
+              location.startsWith('/settings')
+                ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-[inset_2px_0_0_0_hsl(var(--accent-tally))] hover:bg-sidebar-accent/80"
+                : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+            )}>
+              <Settings2 className={cn("w-4 h-4 shrink-0 transition-colors", location.startsWith('/settings') && "text-accent-tally")} />
+              {!sidebarCollapsed && <span>Settings</span>}
+            </div>
+          </Link>
+        )}
 
         {/* Collapse Button */}
         <button

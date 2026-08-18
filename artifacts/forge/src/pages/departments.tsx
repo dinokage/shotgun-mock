@@ -4,13 +4,21 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { DEPARTMENTS, USERS, TASKS } from '@/data/mockData';
+import { DEPARTMENTS, USERS, TASKS, isTaskActive, isTaskDone } from '@/data/mockData';
 import { Users, ListTodo, CheckCircle2, ArrowRight, Settings, Check, ChevronLeft, ChevronRight, Workflow } from 'lucide-react';
 
+import { useAuthStore } from '@/store/auth';
+
 export default function Departments() {
+  const { currentUser } = useAuthStore();
+  const isGlobalManager = currentUser && ['vfx_producer', 'production_manager'].includes(currentUser.role);
+
   const [isEditing, setIsEditing] = useState(false);
   const [pipelineDepts, setPipelineDepts] = useState(
-    DEPARTMENTS.filter(d => d.pipelineOrder > 0).sort((a, b) => a.pipelineOrder - b.pipelineOrder)
+    DEPARTMENTS
+      .filter(d => d.pipelineOrder > 0)
+      .filter(d => isGlobalManager || d.id === currentUser?.departmentId)
+      .sort((a, b) => a.pipelineOrder - b.pipelineOrder)
   );
 
   const moveItem = (index: number, direction: 'left' | 'right') => {
@@ -29,7 +37,7 @@ export default function Departments() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Departments</h1>
-          <p className="text-muted-foreground mt-1">14 departments · VFX production pipeline</p>
+          <p className="text-muted-foreground mt-1">{DEPARTMENTS.length} departments · VFX production pipeline</p>
         </div>
       </div>
 
@@ -40,7 +48,7 @@ export default function Departments() {
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Pipeline Flow</p>
             <div className="flex gap-2">
               <Button variant="ghost" size="sm" className="h-7 text-xs" asChild>
-                <Link href="/workflows">
+                <Link href="/workflows/new">
                   <Workflow className="w-3.5 h-3.5 mr-1.5" /> Advanced Builder
                 </Link>
               </Button>
@@ -62,7 +70,7 @@ export default function Departments() {
                 <div className="relative group">
                   <Link href={`/departments/${dept.id}`}>
                     <div
-                      className={`px-3 py-1.5 rounded-full text-[11px] font-semibold cursor-pointer transition-transform text-white ${isEditing ? 'pr-8' : 'hover:scale-105'}`}
+                      className={`px-3 py-1.5 rounded-full text-[11px] font-semibold cursor-pointer transition-transform text-white hover:scale-105 ${isEditing ? 'pr-8' : ''}`}
                       style={{ backgroundColor: dept.color }}
                     >
                       {dept.abbreviation}
@@ -105,7 +113,7 @@ export default function Departments() {
             '2D': '2D Pipeline'
           }[pipelineType];
 
-          const depts = DEPARTMENTS.filter(d => d.pipeline === pipelineType);
+          const depts = DEPARTMENTS.filter(d => d.pipeline === pipelineType && (isGlobalManager || d.id === currentUser?.departmentId));
           if (depts.length === 0) return null;
 
           return (
@@ -120,8 +128,10 @@ export default function Departments() {
                   const supervisor = USERS.find(u => u.id === dept.supervisorId);
                   const lead = USERS.find(u => u.id === dept.leadId);
                   const deptTasks = TASKS.filter(t => t.department === dept.name);
-                  const completedTasks = deptTasks.filter(t => t.status === 'approved').length;
-                  const activeTasks = deptTasks.filter(t => t.status === 'in-progress').length;
+                  // Use the shared isTaskDone/isTaskActive classification so this "active"/"done"
+                  // count matches the Department Detail and Tracking Grid pages for the same dept.
+                  const completedTasks = deptTasks.filter(t => isTaskDone(t.status)).length;
+                  const activeTasks = deptTasks.filter(t => isTaskActive(t.status)).length;
                   const completionRate = deptTasks.length > 0 ? Math.round((completedTasks / deptTasks.length) * 100) : 0;
 
                   return (

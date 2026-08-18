@@ -139,9 +139,11 @@ export default function Profile() {
                 {user.skills.map(skill => (
                   <Badge key={skill} variant="secondary" className="font-normal">{skill}</Badge>
                 ))}
-                {user.licenses.map(license => (
-                  <Badge key={license} variant="outline" className="font-normal bg-muted/30">{license}</Badge>
-                ))}
+                {user.licenses
+                  .filter(license => !user.skills.some(skill => skill.toLowerCase() === license.toLowerCase()))
+                  .map(license => (
+                    <Badge key={license} variant="outline" className="font-normal bg-muted/30">{license}</Badge>
+                  ))}
               </div>
             </CardContent>
           </Card>

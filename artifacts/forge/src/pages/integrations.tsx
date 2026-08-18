@@ -1,10 +1,21 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { CheckCircle2, AlertTriangle, Settings, RefreshCw, UploadCloud, Link as LinkIcon, Puzzle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useIntegrationsStore } from '@/store/integrations';
 
 const INTEGRATIONS = [
   { id: 'maya', name: 'Autodesk Maya', category: '3D/Animation', status: 'connected', version: 'v2.4.1', lastSync: '2 mins ago', icon: 'M' },
@@ -17,11 +28,47 @@ const INTEGRATIONS = [
 
 export default function IntegrationsHub() {
   const { toast } = useToast();
+  const runtime = useIntegrationsStore((s) => s.runtime);
+  const autoSync = useIntegrationsStore((s) => s.autoSync);
+  const syncIntegration = useIntegrationsStore((s) => s.syncIntegration);
+  const toggleAutoSync = useIntegrationsStore((s) => s.toggleAutoSync);
+  const pathConfig = useIntegrationsStore((s) => s.pathConfig);
+  const savePathConfig = useIntegrationsStore((s) => s.savePathConfig);
 
-  const handleSync = (name: string) => {
+  const [settingsId, setSettingsId] = useState<string | null>(null);
+  const [formConfig, setFormConfig] = useState(pathConfig);
+
+  // Merge static seed data with any persisted runtime overrides (status/lastSync).
+  const integrations = INTEGRATIONS.map((integration) => ({
+    ...integration,
+    ...runtime[integration.id],
+  }));
+  const settingsIntegration = integrations.find((i) => i.id === settingsId) ?? null;
+
+  const handleSync = (id: string, name: string) => {
+    const wasDisconnected = INTEGRATIONS.find((i) => i.id === id)?.status === 'disconnected' && !runtime[id];
+    syncIntegration(id);
     toast({
-      title: "Sync Initiated",
-      description: `Synchronizing pipeline data with ${name}...`,
+      title: wasDisconnected ? 'Connected' : 'Sync Initiated',
+      description: wasDisconnected
+        ? `${name} is now connected and synchronized.`
+        : `Synchronizing pipeline data with ${name}...`,
+    });
+  };
+
+  const handleSyncAll = () => {
+    integrations.forEach((integration) => syncIntegration(integration.id));
+    toast({
+      title: 'Sync All Initiated',
+      description: `Synchronizing pipeline data with all ${integrations.length} integrations...`,
+    });
+  };
+
+  const handleSaveConfig = () => {
+    savePathConfig(formConfig);
+    toast({
+      title: 'Configuration Saved',
+      description: 'Path mapping and environment variables have been updated.',
     });
   };
 
@@ -34,12 +81,14 @@ export default function IntegrationsHub() {
 
       <div className="flex items-center gap-4">
         <Input placeholder="Search integrations..." className="max-w-md" />
-        <Button variant="outline"><RefreshCw className="w-4 h-4 mr-2" /> Sync All</Button>
-        <Button><Puzzle className="w-4 h-4 mr-2" /> Install Plugin</Button>
+        <Button variant="outline" onClick={handleSyncAll}><RefreshCw className="w-4 h-4 mr-2" /> Sync All</Button>
+        <Button asChild>
+          <Link href="/marketplace"><Puzzle className="w-4 h-4 mr-2" /> Install Plugin</Link>
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {INTEGRATIONS.map(integration => (
+        {integrations.map(integration => (
           <Card key={integration.id} className="relative overflow-hidden group">
             {integration.status === 'connected' && (
               <div className="absolute top-0 right-0 w-16 h-16 bg-green-500/10 rounded-bl-full -z-10 transition-transform group-hover:scale-110" />
@@ -77,14 +126,23 @@ export default function IntegrationsHub() {
                   <span>{integration.lastSync}</span>
                 </div>
                 <div className="pt-4 flex gap-2">
-                  <Button 
-                    variant={integration.status === 'disconnected' ? 'default' : 'outline'} 
+                  <Button
+                    variant={integration.status === 'disconnected' ? 'default' : 'outline'}
                     className="flex-1"
-                    onClick={() => handleSync(integration.name)}
+                    onClick={() => handleSync(integration.id, integration.name)}
                   >
                     {integration.status === 'disconnected' ? 'Connect' : 'Sync Data'}
                   </Button>
-                  <Button variant="outline" size="icon"><Settings className="w-4 h-4" /></Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => {
+                      setSettingsId(integration.id);
+                    }}
+                    aria-label={`${integration.name} settings`}
+                  >
+                    <Settings className="w-4 h-4" />
+                  </Button>
                 </div>
               </div>
             </CardContent>
@@ -102,24 +160,97 @@ export default function IntegrationsHub() {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">Project Root Path (Windows)</label>
-              <Input defaultValue="Z:\Projects\Forge" />
+              <Input
+                value={formConfig.winPath}
+                onChange={(e) => setFormConfig((c) => ({ ...c, winPath: e.target.value }))}
+              />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Project Root Path (macOS/Linux)</label>
-              <Input defaultValue="/Volumes/Projects/Forge" />
+              <Input
+                value={formConfig.macPath}
+                onChange={(e) => setFormConfig((c) => ({ ...c, macPath: e.target.value }))}
+              />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Python Interpreter</label>
-              <Input defaultValue="/usr/local/bin/python3" />
+              <Input
+                value={formConfig.pythonInterpreter}
+                onChange={(e) => setFormConfig((c) => ({ ...c, pythonInterpreter: e.target.value }))}
+              />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">ShotGrid/Forge API URL</label>
-              <Input defaultValue="https://api.forge-vfx.local/v1" />
+              <Input
+                value={formConfig.apiUrl}
+                onChange={(e) => setFormConfig((c) => ({ ...c, apiUrl: e.target.value }))}
+              />
             </div>
           </div>
-          <Button className="mt-4"><UploadCloud className="w-4 h-4 mr-2" /> Save Configuration</Button>
+          <Button className="mt-4" onClick={handleSaveConfig}>
+            <UploadCloud className="w-4 h-4 mr-2" /> Save Configuration
+          </Button>
         </CardContent>
       </Card>
+
+      <Dialog open={settingsIntegration !== null} onOpenChange={(open) => !open && setSettingsId(null)}>
+        <DialogContent className="max-w-md">
+          {settingsIntegration && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <span className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center font-bold text-sm text-primary">
+                    {settingsIntegration.icon}
+                  </span>
+                  {settingsIntegration.name}
+                </DialogTitle>
+                <DialogDescription>{settingsIntegration.category} integration settings</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Status</span>
+                  <Badge variant="outline" className={
+                    settingsIntegration.status === 'connected' ? 'bg-green-500/10 text-green-500 border-green-500/20' :
+                    settingsIntegration.status === 'warning' ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' :
+                    'bg-muted text-muted-foreground'
+                  }>
+                    {settingsIntegration.status === 'connected' ? 'Connected' : settingsIntegration.status === 'warning' ? 'Update Reqd' : 'Disconnected'}
+                  </Badge>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Plugin Version</span>
+                  <span className="font-mono">{settingsIntegration.version}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Last Sync</span>
+                  <span>{settingsIntegration.lastSync}</span>
+                </div>
+                <div className="flex items-center justify-between rounded-md border border-border px-3 py-2.5">
+                  <div>
+                    <div className="text-sm font-medium">Auto-sync</div>
+                    <div className="text-xs text-muted-foreground">Automatically pull pipeline data on a schedule</div>
+                  </div>
+                  <Switch
+                    checked={autoSync[settingsIntegration.id] ?? false}
+                    onCheckedChange={(checked) => toggleAutoSync(settingsIntegration.id, checked)}
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    handleSync(settingsIntegration.id, settingsIntegration.name);
+                    setSettingsId(null);
+                  }}
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" /> Sync Now
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

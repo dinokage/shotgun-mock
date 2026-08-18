@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Play, Pause, SkipBack, SkipForward, Maximize, Lock, Download, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
+import { useToast } from '@/hooks/use-toast';
 
 // Mock Client Data
 const clientName = "Netflix Executive (M. Murdock)";
@@ -12,9 +13,10 @@ export default function Delivery() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [frame, setFrame] = useState(1);
   const maxFrames = 240;
-  
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const { toast } = useToast();
 
   // Playback loop
   useEffect(() => {
@@ -49,6 +51,31 @@ export default function Delivery() {
     }
   };
 
+  const handleDownloadProxy = () => {
+    const notice = [
+      'FORGE SECURE DELIVERY - WATERMARKED PROXY',
+      '==========================================',
+      'File: vfx_shot_042_v003.mov',
+      `Delivered to: ${clientName}`,
+      `Client IP: ${ipAddress}`,
+      `Session expires: ${sessionExpires}`,
+      `Downloaded at: ${new Date().toISOString()}`,
+      '',
+      'This proxy is burned in with a forensic watermark and is not for',
+      'redistribution. Do not distribute outside of the approved review chain.',
+    ].join('\n');
+    const blob = new Blob([notice], { type: 'text/plain;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'vfx_shot_042_v003_proxy.txt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast({ title: 'Proxy Download Started', description: 'Watermarked proxy file downloaded to your device.' });
+  };
+
   return (
     <div className="fixed inset-0 bg-black text-white flex flex-col z-[100]">
       {/* Header */}
@@ -62,7 +89,11 @@ export default function Delivery() {
             <div>Session expires at {sessionExpires}</div>
             <div className="flex items-center gap-1 justify-end mt-1"><Lock className="w-3 h-3" /> End-to-end Encrypted</div>
           </div>
-          <Button variant="outline" className="bg-white/10 border-white/20 hover:bg-white/20 text-white shadow-black drop-shadow-md">
+          <Button
+            variant="outline"
+            className="bg-white/10 border-white/20 hover:bg-white/20 text-white shadow-black drop-shadow-md"
+            onClick={handleDownloadProxy}
+          >
             <Download className="w-4 h-4 mr-2" /> Download Proxy
           </Button>
         </div>

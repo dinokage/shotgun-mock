@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useRoute } from 'wouter';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { PROJECTS } from '@/data/mockData';
+import { useProjectStore } from '@/store/projects';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft } from 'lucide-react';
 import { Link } from 'wouter';
@@ -15,7 +15,8 @@ import { StatusBadge } from '@/components/shared/StatusBadge';
 export default function ProjectDetail() {
   const [, params] = useRoute('/projects/:id');
   const projectId = params?.id;
-  const project = PROJECTS.find(p => p.id === projectId) || PROJECTS[0];
+  const projects = useProjectStore((state) => state.projects);
+  const project = projects.find(p => p.id === projectId) || projects[0];
 
   return (
     <div className="flex flex-col h-full">

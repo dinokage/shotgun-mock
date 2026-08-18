@@ -176,7 +176,63 @@ export interface DailyLog {
   userId: string;
 }
 
+/**
+ * One step in a task's multi-tier approval chain (Artist -> Lead/Supervisor ->
+ * Producer/Manager). Unlike a single `status` field, this is a real, growing
+ * audit trail: every submit/approve/reject/changes-requested action along the
+ * chain is appended here and persisted with the task, so the full history of
+ * who moved a version through review — and when — survives reload/navigation.
+ */
+export interface ApprovalEvent {
+  id: string;
+  action:
+    | 'submitted-for-lead-review'
+    | 'submitted-for-manager-review'
+    | 'approved'
+    | 'changes-requested'
+    | 'rejected'
+    | 'published';
+  byUserId: string;
+  byUserName: string;
+  byRole: Role;
+  timestamp: string;
+}
+
 export type TaskStatus = 'todo' | 'not-started' | 'in-progress' | 'bottleneck' | 'review' | 'lead-review' | 'manager-review' | 'approved' | 'complete' | 'cancelled';
+
+// Shared status classification so every page's "active"/"done" task rollups agree with each
+// other. Previously each page (departments overview, department detail, tracking grid) rolled
+// its own ad-hoc status check — e.g. one page counted only 'in-progress' as active and only
+// 'approved' as done, another added lead/manager review to active, and the tracking grid
+// correctly treated 'complete' and 'approved' both as done — so the same department showed
+// different active/done counts on different pages even with identical underlying task data.
+export function isTaskDone(status: TaskStatus): boolean {
+  return status === 'approved' || status === 'complete';
+}
+export function isTaskActive(status: TaskStatus): boolean {
+  return !isTaskDone(status) && status !== 'cancelled';
+}
+
+// Dependency link type, ftrack-style: how this task's schedule relates to the task it depends on.
+//  - FS (Finish-to-Start): dependency must finish before this task can start (default, most common)
+//  - SS (Start-to-Start): dependency must start before this task can start
+//  - FF (Finish-to-Finish): dependency must finish before this task can finish
+//  - SF (Start-to-Finish): dependency must start before this task can finish (rare)
+export type DependencyType = 'FS' | 'SS' | 'FF' | 'SF';
+
+export const DEPENDENCY_TYPE_LABELS: Record<DependencyType, string> = {
+  FS: 'Finish → Start',
+  SS: 'Start → Start',
+  FF: 'Finish → Finish',
+  SF: 'Start → Finish',
+};
+
+export interface TaskDependency {
+  taskId: string;
+  type: DependencyType;
+  /** Optional lag/lead time in days applied after the relationship is satisfied. */
+  lagDays?: number;
+}
 
 export interface Task {
   id: string;
@@ -193,7 +249,7 @@ export interface Task {
   estimatedHours: number;
   actualHours: number;
   tags: string[];
-  dependencies: string[];
+  dependencies: TaskDependency[];
   checklist: { text: string; done: boolean }[];
   comments: { userId: string; text: string; timestamp: string }[];
   attachments: string[];
@@ -203,6 +259,8 @@ export interface Task {
   dailyLogs: DailyLog[];
   weeklyRating?: 'on-track' | 'at-risk' | 'behind';
   pipelinePhase: string;
+  /** Full history of Lead/Supervisor -> Producer approval-chain actions on this task. */
+  approvalHistory: ApprovalEvent[];
 }
 
 export interface Version {
@@ -398,101 +456,115 @@ const USER_DEFS: { name: string; role: Role; deptIdx: number; title: string; ski
   { name: 'Kofi Mensah', role: 'coordinator', deptIdx: 0, title: 'Production Coordinator', skills: ['Dailies', 'Tracking', 'Communication'] },
   { name: 'Ava Sterling', role: 'coordinator', deptIdx: 0, title: 'Production Coordinator', skills: ['Vendor Management', 'Data Wrangling'] },
 
-  // === Concept & Previs (dept 1) ===
-  { name: 'Luca Moretti', role: 'supervisor', deptIdx: 1, title: 'Concept/Previs Supervisor', skills: ['Storyboarding', 'Maya', 'Unreal Engine'] },
-  { name: 'Isla MacLeod', role: 'lead', deptIdx: 1, title: 'Previs Lead', skills: ['Previs', 'Layout', 'Cinematography'] },
-  { name: 'Jin Park', role: 'artist', deptIdx: 1, title: 'Concept Artist', skills: ['Photoshop', 'ZBrush', 'Illustration'] },
-  { name: 'Clara Werner', role: 'junior_artist', deptIdx: 1, title: 'Jr. Previs Artist', skills: ['Maya', 'Storyboarding'] },
+  // === Concept & Previs -> dept 17 '2D Animation / Motion Graphics' (closest current dept for concept/storyboard/2D previs work; there's no standalone Previs dept in the current DEPT_DEFINITIONS) ===
+  { name: 'Luca Moretti', role: 'supervisor', deptIdx: 16, title: 'Concept/Previs Supervisor', skills: ['Storyboarding', 'Maya', 'Unreal Engine'] },
+  { name: 'Isla MacLeod', role: 'lead', deptIdx: 16, title: 'Previs Lead', skills: ['Previs', 'Layout', 'Cinematography'] },
+  { name: 'Jin Park', role: 'artist', deptIdx: 16, title: 'Concept Artist', skills: ['Photoshop', 'ZBrush', 'Illustration'] },
+  { name: 'Clara Werner', role: 'junior_artist', deptIdx: 16, title: 'Jr. Previs Artist', skills: ['Maya', 'Storyboarding'] },
 
-  // === Tracking (dept 2) ===
-  { name: 'Rafi Solomonov', role: 'supervisor', deptIdx: 2, title: 'Tracking Supervisor', skills: ['3DEqualizer', 'PFTrack', 'SynthEyes'] },
-  { name: 'Nadia Ivanova', role: 'lead', deptIdx: 2, title: 'Tracking Lead', skills: ['Camera Tracking', 'Object Tracking', 'Lidar'] },
-  { name: 'Soren Lindqvist', role: 'artist', deptIdx: 2, title: 'Match Move Artist', skills: ['3DEqualizer', 'Nuke'] },
-  { name: 'Leila Karimi', role: 'junior_artist', deptIdx: 2, title: 'Jr. Tracking Artist', skills: ['PFTrack', 'Maya'] },
+  // === Tracking -> dept 9 'Matchmove / Camera Tracking' ===
+  { name: 'Rafi Solomonov', role: 'supervisor', deptIdx: 8, title: 'Tracking Supervisor', skills: ['3DEqualizer', 'PFTrack', 'SynthEyes'] },
+  { name: 'Nadia Ivanova', role: 'lead', deptIdx: 8, title: 'Tracking Lead', skills: ['Camera Tracking', 'Object Tracking', 'Lidar'] },
+  { name: 'Soren Lindqvist', role: 'artist', deptIdx: 8, title: 'Match Move Artist', skills: ['3DEqualizer', 'Nuke'] },
+  { name: 'Leila Karimi', role: 'junior_artist', deptIdx: 8, title: 'Jr. Tracking Artist', skills: ['PFTrack', 'Maya'] },
 
-  // === Layout (dept 3) ===
-  { name: 'Yuki Tanaka', role: 'supervisor', deptIdx: 3, title: 'Layout Supervisor', skills: ['Maya', 'Cinematography', 'Previz'] },
-  { name: 'Hugo Laurent', role: 'lead', deptIdx: 3, title: 'Layout Lead', skills: ['Virtual Camera', 'Maya', 'Shotgun'] },
-  { name: 'Ada Okonkwo', role: 'artist', deptIdx: 3, title: 'Layout Artist', skills: ['Maya', 'Camera Work'] },
-  { name: 'Theo Beaumont', role: 'junior_artist', deptIdx: 3, title: 'Jr. Layout Artist', skills: ['Maya', 'Previs'] },
+  // === Layout -> dept 5 'Layout' ===
+  { name: 'Yuki Tanaka', role: 'supervisor', deptIdx: 4, title: 'Layout Supervisor', skills: ['Maya', 'Cinematography', 'Previz'] },
+  { name: 'Hugo Laurent', role: 'lead', deptIdx: 4, title: 'Layout Lead', skills: ['Virtual Camera', 'Maya', 'Shotgun'] },
+  { name: 'Ada Okonkwo', role: 'artist', deptIdx: 4, title: 'Layout Artist', skills: ['Maya', 'Camera Work'] },
+  { name: 'Theo Beaumont', role: 'junior_artist', deptIdx: 4, title: 'Jr. Layout Artist', skills: ['Maya', 'Previs'] },
 
-  // === Modelling (dept 4) ===
-  { name: 'Priya Nair', role: 'supervisor', deptIdx: 4, title: 'Modelling Supervisor', skills: ['ZBrush', 'Maya', 'Hard Surface'] },
-  { name: 'Tomasz Kowalski', role: 'lead', deptIdx: 4, title: 'Modelling Lead', skills: ['Maya', 'ZBrush', 'Retopology'] },
-  { name: 'Mia Rodriguez', role: 'senior_artist', deptIdx: 4, title: 'Senior Modeller', skills: ['ZBrush', 'Maya', 'Substance'] },
-  { name: 'Kai Nakamura', role: 'artist', deptIdx: 4, title: 'Modeller', skills: ['Maya', 'ZBrush'] },
-  { name: 'Dante Costa', role: 'junior_artist', deptIdx: 4, title: 'Jr. Modeller', skills: ['Maya', 'Blender'] },
+  // === Modelling -> dept 2 'Modeling' ===
+  { name: 'Priya Nair', role: 'supervisor', deptIdx: 1, title: 'Modelling Supervisor', skills: ['ZBrush', 'Maya', 'Hard Surface'] },
+  { name: 'Tomasz Kowalski', role: 'lead', deptIdx: 1, title: 'Modelling Lead', skills: ['Maya', 'ZBrush', 'Retopology'] },
+  { name: 'Mia Rodriguez', role: 'senior_artist', deptIdx: 1, title: 'Senior Modeller', skills: ['ZBrush', 'Maya', 'Substance'] },
+  { name: 'Kai Nakamura', role: 'artist', deptIdx: 1, title: 'Modeller', skills: ['Maya', 'ZBrush'] },
+  { name: 'Dante Costa', role: 'junior_artist', deptIdx: 1, title: 'Jr. Modeller', skills: ['Maya', 'Blender'] },
 
-  // === Texture / Surfacing (dept 5) ===
-  { name: 'Aisha Diallo', role: 'supervisor', deptIdx: 5, title: 'Surfacing Supervisor', skills: ['Substance Painter', 'Mari', 'Look Dev'] },
-  { name: 'Lena Petrov', role: 'lead', deptIdx: 5, title: 'Surfacing Lead', skills: ['Mari', 'Substance Painter', 'Arnold'] },
-  { name: 'Zara Ahmed', role: 'senior_artist', deptIdx: 5, title: 'Senior Surfacing Artist', skills: ['Mari', 'Substance', 'Katana'] },
-  { name: 'Freya Johansson', role: 'artist', deptIdx: 5, title: 'Texture Artist', skills: ['Substance Painter', 'Photoshop'] },
-  { name: 'Lucas Mendes', role: 'junior_artist', deptIdx: 5, title: 'Jr. Texture Artist', skills: ['Substance Painter'] },
+  // === Texture / Surfacing -> dept 3 'Texturing / LookDev' ===
+  { name: 'Aisha Diallo', role: 'supervisor', deptIdx: 2, title: 'Surfacing Supervisor', skills: ['Substance Painter', 'Mari', 'Look Dev'] },
+  { name: 'Lena Petrov', role: 'lead', deptIdx: 2, title: 'Surfacing Lead', skills: ['Mari', 'Substance Painter', 'Arnold'] },
+  { name: 'Zara Ahmed', role: 'senior_artist', deptIdx: 2, title: 'Senior Surfacing Artist', skills: ['Mari', 'Substance', 'Katana'] },
+  { name: 'Freya Johansson', role: 'artist', deptIdx: 2, title: 'Texture Artist', skills: ['Substance Painter', 'Photoshop'] },
+  { name: 'Lucas Mendes', role: 'junior_artist', deptIdx: 2, title: 'Jr. Texture Artist', skills: ['Substance Painter'] },
 
-  // === Rigging (dept 6) ===
-  { name: 'Diego Vargas', role: 'supervisor', deptIdx: 6, title: 'Rigging Supervisor', skills: ['Maya', 'Python', 'mGear'] },
-  { name: 'Arjun Mehta', role: 'lead', deptIdx: 6, title: 'Rigging Lead', skills: ['Maya', 'Python', 'Facial Rigs'] },
-  { name: 'Hana Kim', role: 'senior_artist', deptIdx: 6, title: 'Senior Rigger', skills: ['Maya', 'Python', 'Muscle Systems'] },
-  { name: 'Omar Hassan', role: 'artist', deptIdx: 6, title: 'Rigger', skills: ['Maya', 'Python'] },
+  // === Rigging -> dept 4 'Rigging' ===
+  { name: 'Diego Vargas', role: 'supervisor', deptIdx: 3, title: 'Rigging Supervisor', skills: ['Maya', 'Python', 'mGear'] },
+  { name: 'Arjun Mehta', role: 'lead', deptIdx: 3, title: 'Rigging Lead', skills: ['Maya', 'Python', 'Facial Rigs'] },
+  { name: 'Hana Kim', role: 'senior_artist', deptIdx: 3, title: 'Senior Rigger', skills: ['Maya', 'Python', 'Muscle Systems'] },
+  { name: 'Omar Hassan', role: 'artist', deptIdx: 3, title: 'Rigger', skills: ['Maya', 'Python'] },
 
-  // === Animation (dept 7) ===
-  { name: 'Akira Suzuki', role: 'supervisor', deptIdx: 7, title: 'Animation Supervisor', skills: ['Maya', 'Acting', 'Motion Capture'] },
-  { name: 'Nia Okafor', role: 'lead', deptIdx: 7, title: 'Animation Lead', skills: ['Maya', 'Character Animation', 'Blocking'] },
-  { name: 'Felix Braun', role: 'senior_artist', deptIdx: 7, title: 'Senior Animator', skills: ['Maya', 'Body Mechanics', 'Facial Anim'] },
-  { name: 'Chiara Rossi', role: 'artist', deptIdx: 7, title: 'Character Animator', skills: ['Maya', 'Animation'] },
-  { name: 'Rafael Almeida', role: 'artist', deptIdx: 7, title: 'Character Animator', skills: ['Maya', 'Creature Animation'] },
-  { name: 'Sakura Ito', role: 'junior_artist', deptIdx: 7, title: 'Jr. Animator', skills: ['Maya'] },
+  // === Animation -> dept 6 'Animation' ===
+  { name: 'Akira Suzuki', role: 'supervisor', deptIdx: 5, title: 'Animation Supervisor', skills: ['Maya', 'Acting', 'Motion Capture'] },
+  { name: 'Nia Okafor', role: 'lead', deptIdx: 5, title: 'Animation Lead', skills: ['Maya', 'Character Animation', 'Blocking'] },
+  { name: 'Felix Braun', role: 'senior_artist', deptIdx: 5, title: 'Senior Animator', skills: ['Maya', 'Body Mechanics', 'Facial Anim'] },
+  { name: 'Chiara Rossi', role: 'artist', deptIdx: 5, title: 'Character Animator', skills: ['Maya', 'Animation'] },
+  { name: 'Rafael Almeida', role: 'artist', deptIdx: 5, title: 'Character Animator', skills: ['Maya', 'Creature Animation'] },
+  { name: 'Sakura Ito', role: 'junior_artist', deptIdx: 5, title: 'Jr. Animator', skills: ['Maya'] },
 
-  // === Creature FX / Tech Anim (dept 8) ===
-  { name: 'Ryo Watanabe', role: 'supervisor', deptIdx: 8, title: 'Creature FX Supervisor', skills: ['Houdini', 'Maya', 'Cloth Sim'] },
-  { name: 'Elena Volkov', role: 'lead', deptIdx: 8, title: 'CFX Lead', skills: ['Houdini', 'Maya', 'Hair Groom'] },
-  { name: 'Marcus Singh', role: 'senior_artist', deptIdx: 8, title: 'Senior CFX Artist', skills: ['Houdini', 'Maya', 'Muscle Sim'] },
-  { name: 'Mateo Rivero', role: 'artist', deptIdx: 8, title: 'CFX Artist', skills: ['Houdini', 'XGen'] },
+  // === Creature FX / Tech Anim -> dept 11 'Creature Effects (CFX)' ===
+  { name: 'Ryo Watanabe', role: 'supervisor', deptIdx: 10, title: 'Creature FX Supervisor', skills: ['Houdini', 'Maya', 'Cloth Sim'] },
+  { name: 'Elena Volkov', role: 'lead', deptIdx: 10, title: 'CFX Lead', skills: ['Houdini', 'Maya', 'Hair Groom'] },
+  { name: 'Marcus Singh', role: 'senior_artist', deptIdx: 10, title: 'Senior CFX Artist', skills: ['Houdini', 'Maya', 'Muscle Sim'] },
+  { name: 'Mateo Rivero', role: 'artist', deptIdx: 10, title: 'CFX Artist', skills: ['Houdini', 'XGen'] },
 
-  // === FX (Effects) (dept 9) ===
-  { name: 'Amara Kone', role: 'supervisor', deptIdx: 9, title: 'FX Supervisor', skills: ['Houdini', 'Maya', 'Pyro'] },
-  { name: 'Leo Fischer', role: 'lead', deptIdx: 9, title: 'FX Lead TD', skills: ['Houdini', 'FLIP', 'Pyro'] },
-  { name: 'Fatima Al-Rashid', role: 'senior_artist', deptIdx: 9, title: 'Senior FX Artist', skills: ['Houdini', 'Destruction', 'RBD'] },
-  { name: 'Bastian Müller', role: 'artist', deptIdx: 9, title: 'FX Artist', skills: ['Houdini', 'Particles'] },
-  { name: 'Tariq Patel', role: 'junior_artist', deptIdx: 9, title: 'Jr. FX Artist', skills: ['Houdini'] },
+  // === FX (Effects) -> dept 12 'FX Simulations' ===
+  { name: 'Amara Kone', role: 'supervisor', deptIdx: 11, title: 'FX Supervisor', skills: ['Houdini', 'Maya', 'Pyro'] },
+  { name: 'Leo Fischer', role: 'lead', deptIdx: 11, title: 'FX Lead TD', skills: ['Houdini', 'FLIP', 'Pyro'] },
+  { name: 'Fatima Al-Rashid', role: 'senior_artist', deptIdx: 11, title: 'Senior FX Artist', skills: ['Houdini', 'Destruction', 'RBD'] },
+  { name: 'Bastian Müller', role: 'artist', deptIdx: 11, title: 'FX Artist', skills: ['Houdini', 'Particles'] },
+  { name: 'Tariq Patel', role: 'junior_artist', deptIdx: 11, title: 'Jr. FX Artist', skills: ['Houdini'] },
 
-  // === Lighting (dept 10) ===
-  { name: 'Mikhail Petrov', role: 'supervisor', deptIdx: 10, title: 'Lighting/CG Supervisor', skills: ['Katana', 'Arnold', 'RenderMan'] },
-  { name: 'Zoe Chapman', role: 'lead', deptIdx: 10, title: 'Lighting Lead', skills: ['Katana', 'Arnold', 'Color Theory'] },
-  { name: 'Ingrid Olsen', role: 'senior_artist', deptIdx: 10, title: 'Senior Lighting TD', skills: ['Katana', 'Arnold', 'V-Ray'] },
-  { name: 'Suki Yamamoto', role: 'artist', deptIdx: 10, title: 'Lighting TD', skills: ['Arnold', 'Maya'] },
+  // === Lighting -> dept 7 'Lighting' ===
+  { name: 'Mikhail Petrov', role: 'supervisor', deptIdx: 6, title: 'Lighting/CG Supervisor', skills: ['Katana', 'Arnold', 'RenderMan'] },
+  { name: 'Zoe Chapman', role: 'lead', deptIdx: 6, title: 'Lighting Lead', skills: ['Katana', 'Arnold', 'Color Theory'] },
+  { name: 'Ingrid Olsen', role: 'senior_artist', deptIdx: 6, title: 'Senior Lighting TD', skills: ['Katana', 'Arnold', 'V-Ray'] },
+  { name: 'Suki Yamamoto', role: 'artist', deptIdx: 6, title: 'Lighting TD', skills: ['Arnold', 'Maya'] },
 
-  // === Compositing (dept 11) ===
-  { name: 'Dante Rivera', role: 'supervisor', deptIdx: 11, title: 'Compositing Supervisor', skills: ['Nuke', 'Flame', 'Color Science'] },
-  { name: 'Lila Johannsen', role: 'lead', deptIdx: 11, title: 'Compositing Lead', skills: ['Nuke', 'Deep Compositing', 'Stereo'] },
-  { name: 'Chen Wei', role: 'senior_artist', deptIdx: 11, title: 'Senior Compositor', skills: ['Nuke', 'Flame', 'CG Integration'] },
-  { name: 'Ananya Sharma', role: 'artist', deptIdx: 11, title: 'Compositor', skills: ['Nuke', 'Roto'] },
-  { name: 'Tomoko Hayashi', role: 'artist', deptIdx: 11, title: 'Compositor', skills: ['Nuke', 'Keying'] },
-  { name: 'Dylan O\'Brien', role: 'junior_artist', deptIdx: 11, title: 'Jr. Compositor', skills: ['Nuke'] },
+  // === Compositing -> dept 18 'Compositing' ===
+  { name: 'Dante Rivera', role: 'supervisor', deptIdx: 17, title: 'Compositing Supervisor', skills: ['Nuke', 'Flame', 'Color Science'] },
+  { name: 'Lila Johannsen', role: 'lead', deptIdx: 17, title: 'Compositing Lead', skills: ['Nuke', 'Deep Compositing', 'Stereo'] },
+  { name: 'Chen Wei', role: 'senior_artist', deptIdx: 17, title: 'Senior Compositor', skills: ['Nuke', 'Flame', 'CG Integration'] },
+  { name: 'Ananya Sharma', role: 'artist', deptIdx: 17, title: 'Compositor', skills: ['Nuke', 'Roto'] },
+  { name: 'Tomoko Hayashi', role: 'artist', deptIdx: 17, title: 'Compositor', skills: ['Nuke', 'Keying'] },
+  { name: 'Dylan O\'Brien', role: 'junior_artist', deptIdx: 17, title: 'Jr. Compositor', skills: ['Nuke'] },
 
-  // === Rotopaint (dept 12) ===
-  { name: 'Priscilla Mendes', role: 'supervisor', deptIdx: 12, title: 'Rotopaint Supervisor', skills: ['Nuke', 'Silhouette', 'Mocha'] },
-  { name: 'Kwame Asante', role: 'lead', deptIdx: 12, title: 'Rotopaint Lead', skills: ['Nuke', 'Silhouette', 'Paint Fixes'] },
-  { name: 'Mei Lin', role: 'artist', deptIdx: 12, title: 'Roto Artist', skills: ['Nuke', 'Silhouette'] },
-  { name: 'Viktor Novak', role: 'junior_artist', deptIdx: 12, title: 'Jr. Roto Artist', skills: ['Nuke'] },
+  // === Rotopaint -> dept 14 'Rotoscoping (Roto)' ===
+  { name: 'Priscilla Mendes', role: 'supervisor', deptIdx: 13, title: 'Rotopaint Supervisor', skills: ['Nuke', 'Silhouette', 'Mocha'] },
+  { name: 'Kwame Asante', role: 'lead', deptIdx: 13, title: 'Rotopaint Lead', skills: ['Nuke', 'Silhouette', 'Paint Fixes'] },
+  { name: 'Mei Lin', role: 'artist', deptIdx: 13, title: 'Roto Artist', skills: ['Nuke', 'Silhouette'] },
+  { name: 'Viktor Novak', role: 'junior_artist', deptIdx: 13, title: 'Jr. Roto Artist', skills: ['Nuke'] },
 
-  // === DMP (dept 13) ===
-  { name: 'Gabriela Santos', role: 'supervisor', deptIdx: 13, title: 'DMP Supervisor', skills: ['Photoshop', 'Nuke', 'Maya'] },
-  { name: 'Olaf Eriksen', role: 'lead', deptIdx: 13, title: 'DMP Lead', skills: ['Photoshop', 'Nuke 3D', 'Projections'] },
-  { name: 'Rina Tanaka', role: 'artist', deptIdx: 13, title: 'Matte Painter', skills: ['Photoshop', 'Nuke'] },
-  { name: 'Jamal Williams', role: 'junior_artist', deptIdx: 13, title: 'Jr. Matte Painter', skills: ['Photoshop'] },
+  // === DMP -> dept 16 'Digital Matte Painting (DMP)' ===
+  { name: 'Gabriela Santos', role: 'supervisor', deptIdx: 15, title: 'DMP Supervisor', skills: ['Photoshop', 'Nuke', 'Maya'] },
+  { name: 'Olaf Eriksen', role: 'lead', deptIdx: 15, title: 'DMP Lead', skills: ['Photoshop', 'Nuke 3D', 'Projections'] },
+  { name: 'Rina Tanaka', role: 'artist', deptIdx: 15, title: 'Matte Painter', skills: ['Photoshop', 'Nuke'] },
+  { name: 'Jamal Williams', role: 'junior_artist', deptIdx: 15, title: 'Jr. Matte Painter', skills: ['Photoshop'] },
 ];
 
 const possibleLicenses = ['Autodesk Maya', 'The Foundry Nuke', 'SideFX Houdini', 'Arnold Render', 'Substance Painter', 'ZBrush', 'Unreal Engine', 'Katana', 'Flame', 'Silhouette', 'PFTrack', '3DEqualizer'];
 
+// Departments that already have a hand-authored supervisor/lead/artist team above must NOT
+// get a second auto-generated set here — that used to double up leadership headcount per dept.
+// Only fill in the departments the hand-authored USER_DEFS block doesn't already cover.
+const handAuthoredDeptIdxs = new Set(USER_DEFS.map(u => u.deptIdx));
 for (let i = 1; i < DEPT_DEFINITIONS.length; i++) {
+  if (handAuthoredDeptIdxs.has(i)) continue;
   const deptName = DEPT_DEFINITIONS[i].name;
   USER_DEFS.push({ name: getName(), role: 'supervisor', deptIdx: i, title: `${deptName} Manager`, skills: [deptName] });
   USER_DEFS.push({ name: getName(), role: 'lead', deptIdx: i, title: `${deptName} Lead`, skills: [deptName] });
   USER_DEFS.push({ name: getName(), role: 'artist', deptIdx: i, title: `${deptName} Artist`, skills: [deptName] });
   USER_DEFS.push({ name: getName(), role: 'junior_artist', deptIdx: i, title: `Jr. ${deptName} Artist`, skills: [deptName] });
 }
+
+// The VFX Producer is the top of the reporting chain (Production Managers and
+// department Supervisors report directly to them). Derive their id from
+// wherever they actually land in USER_DEFS rather than hardcoding 'u1' /
+// index 0 — that literal was the 'External Client' placeholder at index 0,
+// not the real VFX Producer (Maya Chen), and would silently break again if
+// USER_DEFS is ever reordered.
+const vfxProducerIdx = USER_DEFS.findIndex(u => u.role === 'vfx_producer');
+const vfxProducerId = vfxProducerIdx >= 0 ? `u${vfxProducerIdx + 1}` : 'u1';
 
 export const USERS: User[] = USER_DEFS.map((def, i) => {
   const deptId = `dept${def.deptIdx + 1}`;
@@ -509,12 +581,12 @@ export const USERS: User[] = USER_DEFS.map((def, i) => {
     const sup = USER_DEFS.findIndex(u => u.deptIdx === def.deptIdx && u.role === 'supervisor');
     supervisorId = sup >= 0 ? `u${sup + 1}` : undefined;
   } else if (def.role === 'supervisor') {
-    supervisorId = 'u1'; // Reports to VFX Producer
+    supervisorId = vfxProducerId; // Reports to VFX Producer
   } else if (def.role === 'coordinator') {
     const pm = USER_DEFS.findIndex(u => u.role === 'production_manager');
-    supervisorId = pm >= 0 ? `u${pm + 1}` : 'u1';
+    supervisorId = pm >= 0 ? `u${pm + 1}` : vfxProducerId;
   } else if (def.role === 'production_manager') {
-    supervisorId = 'u1'; // Reports to VFX Producer
+    supervisorId = vfxProducerId; // Reports to VFX Producer
   }
 
   return {
@@ -758,32 +830,94 @@ const taskTitles = [
   'Final polish {entity}', 'Review {entity}', 'Fix feedback on {entity}', 'Optimize {entity}',
   'QC check {entity}', 'Color grade {entity}', 'Render {entity}', 'Prep delivery for {entity}',
   'Retopology {entity}', 'UV unwrap {entity}', 'Hair groom {entity}',
+  // Task titles for the 7 departments (Matchmove/Camera Tracking, Rotomation, Creature
+  // Effects/CFX, Rotoscoping, Paint/Prep, Digital Matte Painting, 2D Animation/Motion
+  // Graphics) that taskDeptMap previously had no entries for at all, so they never
+  // received any generated tasks.
+  'Camera track {entity}', 'Digital double match {entity}', 'Creature sim {entity}',
+  'Roto pass for {entity}', 'Paint fix {entity}', 'Matte paint {entity}', 'Motion graphics {entity}',
 ];
 
 const taskStatuses: Task['status'][] = ['todo', 'not-started', 'in-progress', 'bottleneck', 'review', 'lead-review', 'manager-review', 'approved', 'complete'];
 const taskPriorities: Task['priority'][] = ['critical', 'high', 'medium', 'low'];
+// Weighted toward Finish-to-Start since that's the overwhelmingly common real-world case.
+const DEPENDENCY_TYPES: DependencyType[] = ['FS', 'FS', 'FS', 'SS', 'FF', 'SF'];
 
-// Map task titles to departments for realistic pipeline assignment
+// Map task titles to departments for realistic pipeline assignment.
+// Indices reference DEPT_DEFINITIONS' current order (0=Production Management,
+// 1=Modeling, 2=Texturing/LookDev, 3=Rigging, 4=Layout, 5=Animation, 6=Lighting,
+// 7=Rendering, 8=Matchmove/Tracking, 9=Rotomation, 10=CFX, 11=FX Simulations,
+// 12=Grooming, 13=Roto, 14=Paint/Prep, 15=DMP, 16=2D Animation/MotionGraphics, 17=Compositing).
 const taskDeptMap: Record<string, number> = {
-  'Model': 4, 'Rig': 6, 'Animate': 7, 'Light': 10, 'Composite': 11,
-  'Texture': 5, 'FX sim': 9, 'Layout pass': 3, 'Look dev': 5,
-  'Final polish': 11, 'Review': 0, 'Fix feedback': 7, 'Optimize': 10,
-  'QC check': 0, 'Color grade': 11, 'Render': 10, 'Prep delivery': 0,
-  'Retopology': 4, 'UV unwrap': 4, 'Hair groom': 8,
+  'Model': 1, 'Rig': 3, 'Animate': 5, 'Light': 6, 'Composite': 17,
+  'Texture': 2, 'FX sim': 11, 'Layout pass': 4, 'Look dev': 2,
+  'Final polish': 17, 'Review': 0, 'Fix feedback': 5, 'Optimize': 6,
+  'QC check': 0, 'Color grade': 17, 'Render': 7, 'Prep delivery': 0,
+  'Retopology': 1, 'UV unwrap': 1, 'Hair groom': 12,
+  // Previously-missing departments (see taskTitles above) — every one of the
+  // 18 real departments must have at least one task-title source so the
+  // Supervisor/Lead home dashboard has generated tasks/velocity to show.
+  'Camera track': 8, 'Digital double match': 9, 'Creature sim': 10,
+  'Roto pass': 13, 'Paint fix': 14, 'Matte paint': 15, 'Motion graphics': 16,
 };
+
+const CHECKLIST_ITEMS = ['Setup scene', 'First pass', 'Internal review', 'Final polish'];
+
+// weeklyRating must vary independently of which task title/department a task landed
+// on. taskTitles.length (title selection uses `i % taskTitles.length`) is a multiple
+// of 5 in practice, so indexing a 5-item rating cycle by the same `i` made every task
+// generated from a given title land on the exact same rating every time. Using a
+// 7-item cycle keeps the rating's period coprime with any title-pool length that's a
+// multiple of 5 (or of itself), so the two no longer march in lockstep.
+const WEEKLY_RATING_CYCLE = ['on-track', 'on-track', 'at-risk', 'on-track', 'behind', 'at-risk', 'on-track'] as const;
+
+// How many checklist items should be checked off for a given task status/assignment state.
+// Keeps checklist completion honest relative to status instead of an independent modulo,
+// e.g. a 'todo'/unassigned task can never show a fully (or mostly) checked-off checklist.
+function checklistDoneCount(status: TaskStatus, unassigned: boolean, seed: number): number {
+  // A finished, signed-off task is fully done regardless of whether it's since been unassigned.
+  if (status === 'approved' || status === 'complete') return CHECKLIST_ITEMS.length;
+  if (unassigned || status === 'todo' || status === 'not-started' || status === 'cancelled') return 0;
+  if (status === 'bottleneck') return 1;
+  if (status === 'in-progress') return 1 + (seed % 2); // 1-2 items: work is underway but not done
+  if (status === 'review' || status === 'lead-review' || status === 'manager-review') return 3; // submitted, final polish still pending sign-off
+  return 0;
+}
+
+function checklistForStatus(status: TaskStatus, seed: number, unassigned: boolean): { text: string; done: boolean }[] {
+  const doneCount = checklistDoneCount(status, unassigned, seed);
+  return CHECKLIST_ITEMS.map((text, idx) => ({ text, done: idx < doneCount }));
+}
 
 export const TASKS: Task[] = [];
 for (let i = 0; i < 300; i++) {
   const projIdx = i < 80 ? 0 : i < 120 ? 1 : i < 140 ? 2 : i < 190 ? 3 : i < 210 ? 4 : i < 250 ? 5 : i < 260 ? 6 : i < 275 ? 7 : i < 288 ? 8 : 9;
+  const projId = `p${projIdx + 1}`;
   const hasAsset = i % 3 !== 2;
   const hasShot = i % 3 !== 0;
-  const assetIdx = i % ASSETS.length;
-  const shotIdx = i % SHOTS.length;
-  const entity = hasAsset ? ASSETS[assetIdx].name : SHOTS[shotIdx].name;
+  // Only ever pick an asset/shot that actually belongs to this task's own project —
+  // picking from the full ASSETS/SHOTS pool independent of project produced 'used in'/
+  // 'related' cross-references pointing at a totally different production.
+  const projectAssets = ASSETS.filter(a => a.projectId === projId);
+  const projectShots = SHOTS.filter(s => s.projectId === projId);
+  const asset = hasAsset && projectAssets.length > 0 ? projectAssets[i % projectAssets.length] : undefined;
+  const shot = hasShot && projectShots.length > 0 ? projectShots[i % projectShots.length] : undefined;
+  const entity = asset ? asset.name : shot ? shot.name : PROJECTS[projIdx].name;
   const titleTemplate = taskTitles[i % taskTitles.length];
   const titleKey = Object.keys(taskDeptMap).find(k => titleTemplate.startsWith(k)) || 'Model';
-  const deptIdx = taskDeptMap[titleKey] || (i % 14);
+  const deptIdx = taskDeptMap[titleKey] ?? (i % DEPARTMENTS.length);
   const dept = DEPARTMENTS[deptIdx];
+  // status must vary independently of which title/department a task's index landed on.
+  // taskTitles.length is currently 27 (a multiple of taskStatuses.length === 9), so a bare
+  // `i % taskStatuses.length` makes every task generated from the same title land on the
+  // exact same status every time (same lockstep failure mode already fixed for
+  // weeklyRating below via WEEKLY_RATING_CYCLE). Folding in how many times this title has
+  // already repeated (i / taskTitles.length), scaled by a step coprime with 9, makes each
+  // repeat of the same title cycle through a different status instead of being pinned to one.
+  const titleRepeatIdx = Math.floor(i / taskTitles.length);
+  const status = taskStatuses[(i + titleRepeatIdx * 5) % taskStatuses.length];
+  // Every ~23rd task is left unclaimed (self-serve pool) rather than pre-assigned.
+  const isUnassigned = i % 23 === 0;
   
   // Find artists in this department for assignment
   const deptArtists = USERS.filter(u => u.departmentId === dept.id && ['artist', 'senior_artist', 'junior_artist'].includes(u.role));
@@ -811,12 +945,12 @@ for (let i = 0; i < 300; i++) {
     id: `t${i + 1}`,
     title: titleTemplate.replace('{entity}', entity),
     description: `Task for ${PROJECTS[projIdx].name}: ${titleTemplate.replace('{entity}', entity)}. Follow pipeline guidelines and submit for review when complete.`,
-    projectId: `p${projIdx + 1}`,
-    assetId: hasAsset ? ASSETS[assetIdx].id : undefined,
-    shotId: hasShot ? SHOTS[shotIdx].id : undefined,
-    assigneeId: assignee.id,
+    projectId: projId,
+    assetId: asset?.id,
+    shotId: shot?.id,
+    assigneeId: isUnassigned ? '' : assignee.id,
     assignedById: assigner.id,
-    status: taskStatuses[i % taskStatuses.length],
+    status,
     priority: taskPriorities[i % taskPriorities.length],
     dueDate: `2025-${String((i % 12) + 1).padStart(2, '0')}-${String((i % 28) + 1).padStart(2, '0')}`,
     estimatedHours: [4, 8, 16, 24, 40, 80][i % 6],
@@ -825,13 +959,15 @@ for (let i = 0; i < 300; i++) {
       dept.abbreviation.toLowerCase(),
       i % 4 === 0 ? 'urgent' : i % 4 === 1 ? 'bottleneck' : i % 4 === 2 ? 'ready' : 'waiting',
     ],
-    dependencies: i > 5 && i % 3 === 0 ? [`t${i - 1}`] : [],
-    checklist: [
-      { text: 'Setup scene', done: i % 3 !== 2 },
-      { text: 'First pass', done: i % 4 < 2 },
-      { text: 'Internal review', done: i % 5 === 0 },
-      { text: 'Final polish', done: i % 6 === 0 },
-    ],
+    dependencies: i > 5 && i % 3 === 0 ? [{
+      taskId: `t${i - 1}`,
+      type: DEPENDENCY_TYPES[i % DEPENDENCY_TYPES.length],
+      ...(i % 4 === 0 ? { lagDays: (i % 5) + 1 } : {}),
+    }] : [],
+    // Checklist completion must correlate with status/assignment, not be derived independently —
+    // an unassigned/todo task can't have finished its checklist, and only a task that's actually
+    // been submitted (review+) or signed off (approved/complete) can show later items checked.
+    checklist: checklistForStatus(status, i, isUnassigned),
     comments: i % 2 === 0 ? [
       { userId: assigner.id, text: 'Looking good, keep it up!', timestamp: '2024-09-20T10:30:00Z' },
       { userId: assignee.id, text: 'Working on the feedback.', timestamp: '2024-09-21T14:15:00Z' },
@@ -841,10 +977,20 @@ for (let i = 0; i < 300; i++) {
     createdAt: `2024-${String(6 + (i % 6)).padStart(2, '0')}-${String((i % 28) + 1).padStart(2, '0')}`,
     lastStatusUpdate: `2024-09-${String((i % 28) + 1).padStart(2, '0')}T${String(8 + (i % 14)).padStart(2, '0')}:00:00Z`,
     dailyLogs,
-    weeklyRating: (['on-track', 'at-risk', 'behind', 'on-track', 'on-track'] as const)[i % 5],
+    weeklyRating: WEEKLY_RATING_CYCLE[i % WEEKLY_RATING_CYCLE.length],
     pipelinePhase: dept.abbreviation,
+    approvalHistory: [],
   });
 }
+
+/**
+ * The task backing "the version under review" on the internal review page —
+ * a mock stand-in for what would otherwise arrive via routing (the review
+ * page is a fixed demo route, not parameterized by task/shot id). Picked
+ * deterministically (first seeded task with a linked shot) so its approval
+ * chain is the same task across reloads.
+ */
+export const REVIEWED_TASK_ID = TASKS.find(t => t.shotId)?.id ?? TASKS[0].id;
 
 // --- Versions (200) --------------------------------------------------------
 
@@ -867,6 +1013,32 @@ for (let i = 0; i < 200; i++) {
     fileSize: `${((i * 23 + 10) % 500 + 20).toFixed(0)} MB`,
   });
 }
+
+// The randomized distribution above (entityIdx = i % ASSETS.length, with i
+// only ever odd for assets) never lands on an even-indexed asset — so assets
+// like asset1/asset3 end up with zero rows here despite their header showing
+// a real "Version: v001, Published" state. Backfill one version per asset
+// that's otherwise missing entirely, so an asset never shows a published
+// current version with a blank version history.
+ASSETS.forEach((asset) => {
+  const hasVersion = VERSIONS.some((v) => v.entityId === asset.id);
+  if (hasVersion) return;
+  VERSIONS.push({
+    id: `v-seed-${asset.id}`,
+    entityId: asset.id,
+    entityType: 'asset',
+    versionNumber: asset.version,
+    status: asset.publishStatus === 'published' ? 'approved'
+      : asset.publishStatus === 'failed' ? 'rejected'
+      : 'pending',
+    createdById: asset.assigneeId,
+    createdAt: `${asset.updatedAt}T12:00:00Z`,
+    thumbnailSeed: asset.thumbnailSeed,
+    notes: 'Initial submission.',
+    derivedFromId: '',
+    fileSize: asset.fileSize,
+  });
+});
 
 // --- Reviews (80) ----------------------------------------------------------
 
@@ -1098,6 +1270,48 @@ export const SCHEDULING_CAPACITY = USERS.slice(0, 20).map((user, i) => ({
     75 + (i * 6 + 9) % 45,
   ],
 }));
+
+// --- Leave / Time Off -------------------------------------------------------
+// Roughly a quarter of the roster has an upcoming leave block within the
+// scheduling window (2025-06-01 + 45 days), used by Team Calendar & Capacity
+// Forecast to subtract time-off from available capacity.
+
+export interface LeaveEvent {
+  id: string;
+  userId: string;
+  type: 'vacation' | 'sick' | 'holiday';
+  start: string;
+  end: string;
+  reason: string;
+}
+
+const leaveTypes: LeaveEvent['type'][] = ['vacation', 'sick', 'holiday'];
+const leaveReasons: Record<LeaveEvent['type'], string[]> = {
+  vacation: ['Annual leave', 'Family trip', 'Long weekend'],
+  sick: ['Sick leave', 'Medical appointment'],
+  holiday: ['Studio closure', 'Public holiday'],
+};
+
+export const LEAVE_EVENTS: LeaveEvent[] = USERS
+  .filter((u, i) => u.role !== 'client' && i % 4 === 0)
+  .map((user, i) => {
+    const type = leaveTypes[i % leaveTypes.length];
+    const startOffset = 2 + ((i * 5 + 7) % 40);
+    const duration = type === 'holiday' ? 1 : type === 'sick' ? 1 + (i % 2) : 2 + (i % 4);
+    const start = new Date('2025-06-01');
+    start.setDate(start.getDate() + startOffset);
+    const end = new Date(start);
+    end.setDate(end.getDate() + duration - 1);
+    const reasons = leaveReasons[type];
+    return {
+      id: `leave${i + 1}`,
+      userId: user.id,
+      type,
+      start: start.toISOString().split('T')[0],
+      end: end.toISOString().split('T')[0],
+      reason: reasons[i % reasons.length],
+    };
+  });
 
 // --- Milestones -----------------------------------------------------------
 

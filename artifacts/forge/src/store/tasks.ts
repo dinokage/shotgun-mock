@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { TASKS, Task, TaskStatus } from '@/data/mockData';
+import { TASKS, Task, TaskStatus, ApprovalEvent } from '@/data/mockData';
 
 interface TaskState {
   tasks: Task[];
@@ -12,7 +12,17 @@ interface TaskState {
   submitForReview: (id: string) => void;
   completeTask: (id: string) => void;
   reassignTask: (id: string, assigneeId: string) => void;
+  revokeAssignment: (id: string) => void;
   addComment: (taskId: string, userId: string, text: string) => void;
+  toggleChecklistItem: (taskId: string, index: number) => void;
+  /**
+   * Advances a task's multi-tier approval-chain status AND appends a
+   * permanent, persisted audit-trail entry for the action taken (who, what,
+   * when). This is what makes the Lead -> Supervisor -> Producer chain real
+   * first-class state rather than transient UI-only stage tracking: both the
+   * current stage (`status`) and the full history survive reload/navigation.
+   */
+  recordApprovalEvent: (id: string, status: TaskStatus, event: Omit<ApprovalEvent, 'id' | 'timestamp'>) => void;
 }
 
 export const useTasksStore = create<TaskState>()(
@@ -57,6 +67,10 @@ export const useTasksStore = create<TaskState>()(
         set((state) => ({
           tasks: state.tasks.map((t) => (t.id === id ? { ...t, assigneeId } : t)),
         })),
+      revokeAssignment: (id) =>
+        set((state) => ({
+          tasks: state.tasks.map((t) => (t.id === id ? { ...t, assigneeId: '' } : t)),
+        })),
       addComment: (taskId, userId, text) =>
         set((state) => ({
           tasks: state.tasks.map((t) =>
@@ -71,6 +85,38 @@ export const useTasksStore = create<TaskState>()(
               : t
           ),
         })),
+      toggleChecklistItem: (taskId, index) =>
+        set((state) => ({
+          tasks: state.tasks.map((t) =>
+            t.id === taskId
+              ? {
+                  ...t,
+                  checklist: t.checklist.map((item, i) =>
+                    i === index ? { ...item, done: !item.done } : item
+                  ),
+                }
+              : t
+          ),
+        })),
+      recordApprovalEvent: (id, status, event) =>
+        set((state) => {
+          const timestamp = new Date().toISOString();
+          return {
+            tasks: state.tasks.map((t) =>
+              t.id === id
+                ? {
+                    ...t,
+                    status,
+                    lastStatusUpdate: timestamp,
+                    approvalHistory: [
+                      ...t.approvalHistory,
+                      { ...event, id: `ae-${Date.now()}`, timestamp },
+                    ],
+                  }
+                : t
+            ),
+          };
+        }),
     }),
     {
       name: 'forge-task-storage',

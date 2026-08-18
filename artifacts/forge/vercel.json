@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "cd ../.. && pnpm install && pnpm --filter @workspace/forge build",
+  "buildCommand": "cd ../.. && pnpm install --filter @workspace/forge... && pnpm --filter @workspace/forge build",
   "outputDirectory": "dist/public",
   "framework": null,
   "rewrites": [

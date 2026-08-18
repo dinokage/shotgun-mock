@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -8,8 +8,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { ASSETS, PROJECTS, USERS } from '@/data/mockData';
-import { Search, Grid3X3, List, Filter, Package, Eye, ArrowUpDown } from 'lucide-react';
-import { Link } from 'wouter';
+import { Search, Grid3X3, List, Filter, Package, Eye, ArrowUpDown, X, ChevronDown } from 'lucide-react';
+import { Link, useSearchParams } from 'wouter';
+import { useAuthStore } from '@/store/auth';
+
+// Leadership-tier roles allowed to create top-level pipeline assets — matches
+// the gating convention used for task creation (CreateTaskModal) and command
+// palette actions elsewhere in the app.
+const LEADERSHIP_ROLES = ['vfx_producer', 'production_manager', 'coordinator', 'supervisor', 'lead'];
 
 const TYPE_COLORS: Record<string, string> = {
   Character: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
@@ -32,6 +38,9 @@ const STATUS_COLORS: Record<string, string> = {
   review: 'bg-purple-500/10 text-purple-500',
 };
 
+const GRID_PAGE_SIZE = 40;
+const LIST_PAGE_SIZE = 50;
+
 export default function Assets() {
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [search, setSearch] = useState('');
@@ -40,6 +49,12 @@ export default function Assets() {
   const [projectFilter, setProjectFilter] = useState('all');
   const [newAssetOpen, setNewAssetOpen] = useState(false);
   const { toast } = useToast();
+  const { currentUser } = useAuthStore();
+  const canCreateAsset = !!currentUser && LEADERSHIP_ROLES.includes(currentUser.role);
+  const [searchParams] = useSearchParams();
+  // Artist sidebar links to /assets?mine=1 — scope the catalog down to the
+  // current user's own assignments instead of showing the whole studio.
+  const mineOnly = searchParams.get('mine') === '1';
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,53 +64,78 @@ export default function Assets() {
 
   const filtered = useMemo(() => {
     return ASSETS.filter(a => {
+      if (mineOnly && a.assigneeId !== currentUser?.id) return false;
       if (search && !a.name.toLowerCase().includes(search.toLowerCase()) && !a.id.toLowerCase().includes(search.toLowerCase())) return false;
       if (typeFilter !== 'all' && a.type !== typeFilter) return false;
       if (statusFilter !== 'all' && a.status !== statusFilter) return false;
       if (projectFilter !== 'all' && a.projectId !== projectFilter) return false;
       return true;
     });
-  }, [search, typeFilter, statusFilter, projectFilter]);
+  }, [search, typeFilter, statusFilter, projectFilter, mineOnly, currentUser?.id]);
+
+  // How many results are currently visible per view — reset back to the
+  // first page whenever the filter set (or the active view) changes, so
+  // "Load more" always starts from a predictable, honest baseline.
+  const [gridVisible, setGridVisible] = useState(GRID_PAGE_SIZE);
+  const [listVisible, setListVisible] = useState(LIST_PAGE_SIZE);
+  useEffect(() => {
+    setGridVisible(GRID_PAGE_SIZE);
+    setListVisible(LIST_PAGE_SIZE);
+  }, [search, typeFilter, statusFilter, projectFilter, mineOnly, currentUser?.id]);
 
   return (
     <div className="p-6 max-w-[1600px] mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Asset Browser</h1>
-          <p className="text-muted-foreground mt-1">{filtered.length} assets across {PROJECTS.length} projects</p>
+          <h1 className="text-3xl font-bold tracking-tight">{mineOnly ? 'My Assets' : 'Asset Browser'}</h1>
+          <p className="text-muted-foreground mt-1">
+            {filtered.length} assets across {PROJECTS.length} projects
+            {mineOnly && ' · assigned to you'}
+          </p>
         </div>
-        <Dialog open={newAssetOpen} onOpenChange={setNewAssetOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2"><Package className="w-4 h-4" /> New Asset</Button>
-          </DialogTrigger>
-          <DialogContent>
-            <form onSubmit={handleCreate}>
-              <DialogHeader>
-                <DialogTitle>Create New Asset</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label>Asset Name</Label>
-                  <Input required placeholder="e.g. Hero Character" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Asset Type</Label>
-                  <Select required defaultValue="Character">
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {['Character', 'Environment', 'Prop', 'Rig', 'Effects'].map(t => (
-                        <SelectItem key={t} value={t}>{t}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button type="submit">Create Asset</Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+        <div className="flex items-center gap-2">
+          {mineOnly && (
+            <Link href="/assets">
+              <Button variant="outline" size="sm" className="gap-2">
+                <X className="w-3.5 h-3.5" /> Clear "My Assets" filter
+              </Button>
+            </Link>
+          )}
+          {canCreateAsset && (
+            <Dialog open={newAssetOpen} onOpenChange={setNewAssetOpen}>
+              <DialogTrigger asChild>
+                <Button className="gap-2"><Package className="w-4 h-4" /> New Asset</Button>
+              </DialogTrigger>
+              <DialogContent>
+                <form onSubmit={handleCreate}>
+                  <DialogHeader>
+                    <DialogTitle>Create New Asset</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                      <Label>Asset Name</Label>
+                      <Input required placeholder="e.g. Hero Character" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Asset Type</Label>
+                      <Select required defaultValue="Character">
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {['Character', 'Environment', 'Prop', 'Rig', 'Effects'].map(t => (
+                            <SelectItem key={t} value={t}>{t}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button type="submit">Create Asset</Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+          )}
+        </div>
       </div>
 
       {/* Filters */}
@@ -141,8 +181,9 @@ export default function Assets() {
 
       {/* Grid View */}
       {view === 'grid' && (
+        <div className="space-y-4">
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-          {filtered.slice(0, 40).map(asset => {
+          {filtered.slice(0, gridVisible).map(asset => {
             const project = PROJECTS.find(p => p.id === asset.projectId);
             return (
               <Link key={asset.id} href={`/assets/${asset.id}`}>
@@ -175,10 +216,17 @@ export default function Assets() {
             );
           })}
         </div>
+        <AssetsLoadMore
+          shown={Math.min(gridVisible, filtered.length)}
+          total={filtered.length}
+          onLoadMore={() => setGridVisible(v => v + GRID_PAGE_SIZE)}
+        />
+        </div>
       )}
 
       {/* List View */}
       {view === 'list' && (
+        <div className="space-y-4">
         <div className="rounded-md border border-border">
           <table className="w-full text-sm">
             <thead>
@@ -194,7 +242,7 @@ export default function Assets() {
               </tr>
             </thead>
             <tbody>
-              {filtered.slice(0, 50).map(asset => {
+              {filtered.slice(0, listVisible).map(asset => {
                 const project = PROJECTS.find(p => p.id === asset.projectId);
                 const assignee = USERS.find(u => u.id === asset.assigneeId);
                 return (
@@ -217,6 +265,12 @@ export default function Assets() {
             </tbody>
           </table>
         </div>
+        <AssetsLoadMore
+          shown={Math.min(listVisible, filtered.length)}
+          total={filtered.length}
+          onLoadMore={() => setListVisible(v => v + LIST_PAGE_SIZE)}
+        />
+        </div>
       )}
 
       {filtered.length === 0 && (
@@ -224,6 +278,24 @@ export default function Assets() {
           <Package className="w-12 h-12 mx-auto mb-3 opacity-30" />
           <p>No assets match your filters</p>
         </div>
+      )}
+    </div>
+  );
+}
+
+/** Honest "Showing X of Y" copy plus a Load More action, shared by the grid and list views. */
+function AssetsLoadMore({ shown, total, onLoadMore }: { shown: number; total: number; onLoadMore: () => void }) {
+  if (total === 0) return null;
+  const hasMore = shown < total;
+  return (
+    <div className="flex flex-col items-center gap-2 py-2">
+      <p className="text-xs text-muted-foreground">
+        Showing {shown} of {total} assets
+      </p>
+      {hasMore && (
+        <Button variant="outline" size="sm" className="gap-2" onClick={onLoadMore}>
+          <ChevronDown className="w-3.5 h-3.5" /> Load More
+        </Button>
       )}
     </div>
   );

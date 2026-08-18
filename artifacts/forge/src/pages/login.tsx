@@ -91,13 +91,12 @@ export default function Login() {
     setTimeout(() => {
       if (user) {
         login(empId, password);
-        if (user.role === 'vfx_producer' || user.role === 'production_manager') {
-          setLocation('/production');
-        } else if (user.role === 'artist' || user.role === 'senior_artist') {
-          setLocation('/tasks');
-        } else {
-          setLocation('/');
-        }
+        // Every role lands on Home ('/'), which already renders the
+        // role-appropriate dashboard variant (ProducerDashboard,
+        // SupervisorDashboard, or ArtistDashboard) via home.tsx's role
+        // router. This keeps landing consistent across all roles within
+        // the same dashboard tier, instead of only some of them.
+        setLocation('/');
       } else {
         toast({ title: 'Login Failed', description: 'Invalid Employee ID or Password.', variant: 'destructive' });
       }

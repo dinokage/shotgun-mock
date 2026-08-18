@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { PLUGINS } from '@/data/mockData';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -13,9 +14,19 @@ const ICON_MAP: Record<string, any> = {
   Package, Zap, Link: LinkIcon, Activity, PenTool, Palette, Link2, Camera
 };
 
+const CATEGORIES = ['All', 'Pipeline', 'Render', 'Integration', 'Monitoring', 'Annotation'];
+
 export default function Marketplace() {
   const { installedPlugins, installPlugin, uninstallPlugin, enabledPlugins, togglePlugin } = usePluginsStore();
   const { toast } = useToast();
+  const [activeCategory, setActiveCategory] = useState('All');
+  const [search, setSearch] = useState('');
+
+  const visiblePlugins = PLUGINS.filter(p => {
+    const matchesCategory = activeCategory === 'All' || p.category === activeCategory;
+    const matchesSearch = search.trim() === '' || p.name.toLowerCase().includes(search.trim().toLowerCase());
+    return matchesCategory && matchesSearch;
+  });
 
   const handleInstallToggle = (e: React.MouseEvent, id: string) => {
     e.preventDefault(); // Prevent link click
@@ -41,20 +52,35 @@ export default function Marketplace() {
 
       <div className="flex items-center justify-between py-2 border-b border-border">
         <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0">
-          {['All', 'Pipeline', 'Render', 'Integration', 'Monitoring', 'Annotation'].map(cat => (
-            <Badge key={cat} variant={cat === 'All' ? 'default' : 'secondary'} className="cursor-pointer">
+          {CATEGORIES.map(cat => (
+            <Badge
+              key={cat}
+              variant={cat === activeCategory ? 'default' : 'secondary'}
+              className="cursor-pointer"
+              onClick={() => setActiveCategory(cat)}
+            >
               {cat}
             </Badge>
           ))}
         </div>
         <div className="relative w-64 hidden md:block">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Search plugins..." className="pl-9 h-9" />
+          <Input
+            placeholder="Search plugins..."
+            className="pl-9 h-9"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 pt-4">
-        {PLUGINS.map(plugin => {
+        {visiblePlugins.length === 0 && (
+          <div className="col-span-full text-center text-sm text-muted-foreground py-12">
+            No plugins match your filters.
+          </div>
+        )}
+        {visiblePlugins.map(plugin => {
           const Icon = ICON_MAP[plugin.icon] || Package;
           const isInstalled = installedPlugins[plugin.id];
           const isEnabled = enabledPlugins[plugin.id];

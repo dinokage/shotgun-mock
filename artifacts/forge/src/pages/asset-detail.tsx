@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { motion } from 'framer-motion';
 import { useRoute, Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,10 +8,63 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { Slider } from '@/components/ui/slider';
-import { ASSETS, PROJECTS, USERS, TASKS, SHOTS, VERSIONS, AUDIT_EVENTS } from '@/data/mockData';
-import { ChevronLeft, Package, Film, ListTodo, GitBranch, Clock, Upload, Sparkles, ArrowRight, CheckCircle2, XCircle, AlertTriangle, RotateCcw } from 'lucide-react';
+import { ASSETS, PROJECTS, USERS, TASKS, SHOTS, AUDIT_EVENTS, type Version } from '@/data/mockData';
+import { ChevronLeft, Package, Film, ListTodo, GitBranch, Clock, Upload, Sparkles, ArrowRight, CheckCircle2, XCircle, AlertTriangle, RotateCcw, Download } from 'lucide-react';
 import { PipelineVisualizer } from '@/components/shared/PipelineVisualizer';
 import { useToast } from '@/hooks/use-toast';
+import { useReviewStore } from '@/store/reviews';
+import { useAssetActivityStore } from '@/store/assetActivity';
+import { useAuthStore } from '@/store/auth';
+import { fadeInUp, confirmPulse } from '@/lib/motion';
+
+/** Best-guess DCC app for an asset's type — there's no real desktop launch
+ * behind this in a browser mock, but the mapping keeps the "Launching..."
+ * toast honest rather than generic. */
+function dccAppForAssetType(type: string): string {
+  switch (type) {
+    case 'Character':
+    case 'Rig':
+      return 'Maya';
+    case 'Effects':
+      return 'Houdini';
+    case 'Texture':
+    case 'Material':
+      return 'Substance Painter';
+    case 'Audio':
+      return 'Pro Tools';
+    default:
+      return 'Maya';
+  }
+}
+
+function downloadVersionAsUSD(asset: { id: string; name: string }, version: Version) {
+  const content = [
+    '#usda 1.0',
+    '(',
+    '    doc = "Forge mock USD export"',
+    ')',
+    '',
+    `def Xform "${asset.name.replace(/\s+/g, '_')}"`,
+    '{',
+    `    custom string forge:assetId = "${asset.id}"`,
+    `    custom string forge:version = "${version.versionNumber}"`,
+    `    custom string forge:status = "${version.status}"`,
+    `    custom string forge:notes = "${version.notes}"`,
+    `    custom string forge:fileSize = "${version.fileSize}"`,
+    `    custom string forge:exportedAt = "${new Date().toISOString()}"`,
+    '}',
+    '',
+  ].join('\n');
+  const blob = new Blob([content], { type: 'model/vnd.usda;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${asset.name.replace(/\s+/g, '_')}_${version.versionNumber}.usda`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 export default function AssetDetail() {
   const { toast } = useToast();
@@ -20,6 +74,13 @@ export default function AssetDetail() {
   const [v1, setV1] = useState<string | null>(null);
   const [v2, setV2] = useState<string | null>(null);
 
+  const allVersions = useReviewStore((s) => s.versions);
+  const currentVersionOverrides = useReviewStore((s) => s.currentVersionOverrides);
+  const rollbackToVersion = useReviewStore((s) => s.rollbackToVersion);
+  const lastOpenedInDCC = useAssetActivityStore((s) => s.lastOpenedInDCC);
+  const recordDccOpen = useAssetActivityStore((s) => s.recordDccOpen);
+  const currentUser = useAuthStore((s) => s.currentUser);
+
   const asset = ASSETS.find(a => a.id === params?.id);
 
   if (!asset) return <div className="p-6 text-center text-muted-foreground">Asset not found.</div>;
@@ -28,10 +89,31 @@ export default function AssetDetail() {
   const assignee = USERS.find(u => u.id === asset.assigneeId);
   const relatedTasks = TASKS.filter(t => t.assetId === asset.id).slice(0, 5);
   const relatedShots = SHOTS.filter(s => TASKS.some(t => t.shotId === s.id && t.assetId === asset.id)).slice(0, 5);
-  const versions = VERSIONS.filter(v => v.entityId === asset.id).slice(0, 8);
+  const versions = allVersions.filter(v => v.entityId === asset.id).slice(0, 8);
   const events = AUDIT_EVENTS.filter(e => e.entityId === asset.id).slice(0, 10);
-  
+
   const deps = asset.dependencies.map(d => ASSETS.find(a => a.id === d)).filter(Boolean);
+
+  const currentVersionId = currentVersionOverrides[asset.id];
+  const currentVersion = versions.find(v => v.id === currentVersionId);
+  const displayVersionNumber = currentVersion?.versionNumber ?? asset.version;
+  const dccOpen = lastOpenedInDCC[asset.id];
+
+  const handleOpenInDCC = () => {
+    const app = dccAppForAssetType(asset.type);
+    recordDccOpen(asset.id, { app, userName: currentUser?.name ?? 'You', timestamp: new Date().toISOString() });
+    toast({ title: `Launching ${app}`, description: `Opening ${asset.name} (${displayVersionNumber}) in ${app}...`, duration: 2500 });
+  };
+
+  const handleRollback = (v: Version) => {
+    rollbackToVersion(asset.id, v.id);
+    toast({ title: 'Rolled Back', description: `${v.versionNumber} is now the current version of ${asset.name}.`, duration: 2000 });
+  };
+
+  const handleDownloadUSD = (v: Version) => {
+    downloadVersionAsUSD(asset, v);
+    toast({ title: 'Download Started', description: `${asset.name} ${v.versionNumber} (.usda) downloaded.`, duration: 2000 });
+  };
 
   return (
     <div className="p-6 max-w-[1400px] mx-auto space-y-6">
@@ -60,15 +142,20 @@ export default function AssetDetail() {
               <Avatar className="w-5 h-5"><AvatarImage src={assignee?.avatar} /><AvatarFallback>{assignee?.name.charAt(0)}</AvatarFallback></Avatar>
               {assignee?.name}
             </div>
-            <span>Version: <span className="font-mono text-foreground">{asset.version}</span></span>
+            <span>Version: <span className="font-mono text-foreground">{displayVersionNumber}</span></span>
             <span>Size: {asset.fileSize}</span>
             {asset.polyCount && <span>Polys: {asset.polyCount}</span>}
             <span>Project: <Link href={`/projects/${project?.id}`} className="text-primary hover:underline">{project?.name}</Link></span>
           </div>
+          {dccOpen && (
+            <motion.p key={dccOpen.timestamp} {...fadeInUp} className="text-xs text-muted-foreground mt-2">
+              Last opened in {dccOpen.app} by {dccOpen.userName} · {new Date(dccOpen.timestamp).toLocaleString()}
+            </motion.p>
+          )}
         </div>
         <div className="flex gap-2 shrink-0">
           <Button variant="outline" size="sm" className="hidden"><Upload className="w-4 h-4 mr-1" /> Publish</Button>
-          <Button size="sm">Open in DCC</Button>
+          <Button size="sm" onClick={handleOpenInDCC}>Open in DCC</Button>
         </div>
       </div>
 
@@ -150,7 +237,7 @@ export default function AssetDetail() {
                   </div>
                   <div className="text-sm text-muted-foreground space-y-1">
                     <div>Target: production</div>
-                    <div>Version: {asset.version}</div>
+                    <div>Version: {displayVersionNumber}</div>
                     <div>Last updated: {asset.updatedAt}</div>
                   </div>
                 </CardContent>
@@ -160,7 +247,13 @@ export default function AssetDetail() {
         </TabsContent>
 
         <TabsContent value="versions" className="mt-4">
-          {!compareMode ? (
+          {versions.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-2 py-16 text-center border border-dashed border-border rounded-lg">
+              <GitBranch className="w-8 h-8 text-muted-foreground/40" />
+              <p className="text-sm font-medium text-muted-foreground">No version history recorded for this asset yet</p>
+              <p className="text-xs text-muted-foreground/70 max-w-sm">Publishes and uploads for {asset.name} will appear here once a version is submitted.</p>
+            </div>
+          ) : !compareMode ? (
             <div className="space-y-4">
               <div className="flex justify-end">
                 <Button variant="outline" size="sm" onClick={() => setCompareMode(true)} disabled={versions.length < 2}>
@@ -168,29 +261,39 @@ export default function AssetDetail() {
                 </Button>
               </div>
               <div className="space-y-3">
-                {versions.map(v => (
-                  <Card key={v.id} className="hover:bg-muted/20 transition-colors">
-                    <CardContent className="p-4 flex items-center gap-4">
-                      <div className="w-20 h-12 rounded bg-muted flex items-center justify-center font-mono text-sm font-bold">{v.versionNumber}</div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-medium text-sm">{v.notes}</span>
-                          <Badge className={`text-[10px] ${v.status === 'approved' ? 'bg-green-500/10 text-green-500' : v.status === 'rejected' ? 'bg-red-500/10 text-red-500' : 'bg-yellow-500/10 text-yellow-500'}`}>{v.status}</Badge>
-                          <Badge variant="outline" className="text-[9px] uppercase border-indigo-500/30 text-indigo-400">USD Format</Badge>
+                {versions.map(v => {
+                  const isCurrent = currentVersionId ? v.id === currentVersionId : v.versionNumber === asset.version;
+                  return (
+                    <Card key={v.id} className="hover:bg-muted/20 transition-colors">
+                      <CardContent className="p-4 flex items-center gap-4">
+                        <div className="w-20 h-12 rounded bg-muted flex items-center justify-center font-mono text-sm font-bold">{v.versionNumber}</div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-medium text-sm">{v.notes}</span>
+                            <Badge className={`text-[10px] ${v.status === 'approved' ? 'bg-green-500/10 text-green-500' : v.status === 'rejected' ? 'bg-red-500/10 text-red-500' : 'bg-yellow-500/10 text-yellow-500'}`}>{v.status}</Badge>
+                            <Badge variant="outline" className="text-[9px] uppercase border-indigo-500/30 text-indigo-400">USD Format</Badge>
+                            {isCurrent && (
+                              <motion.span key={`${v.id}-current`} {...confirmPulse}>
+                                <Badge className="text-[10px] bg-primary/10 text-primary border border-primary/30">Current</Badge>
+                              </motion.span>
+                            )}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            by {USERS.find(u => u.id === v.createdById)?.name} · {new Date(v.createdAt).toLocaleDateString()} · {v.fileSize}
+                          </div>
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                          by {USERS.find(u => u.id === v.createdById)?.name} · {new Date(v.createdAt).toLocaleDateString()} · {v.fileSize}
+                        <div className="flex gap-2">
+                          <Button variant="outline" size="sm" disabled={isCurrent} onClick={() => handleRollback(v)}>
+                            <RotateCcw className="w-4 h-4 mr-2" /> {isCurrent ? 'Current Version' : 'Rollback'}
+                          </Button>
+                          <Button variant="secondary" size="sm" onClick={() => handleDownloadUSD(v)}>
+                            <Download className="w-4 h-4 mr-2" /> Download USD
+                          </Button>
                         </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={() => toast({ title: "Rolling Back", description: `Rolling back to version ${v.versionNumber}...`, duration: 2000 })}>
-                          <RotateCcw className="w-4 h-4 mr-2" /> Rollback
-                        </Button>
-                        <Button variant="secondary" size="sm">Download USD</Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </div>
             </div>
           ) : (

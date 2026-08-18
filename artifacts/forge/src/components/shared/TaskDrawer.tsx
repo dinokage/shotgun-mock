@@ -1,5 +1,6 @@
 import { useUIStore } from '@/store/ui';
-import { USERS, PROJECTS, ASSETS, SHOTS, DEPARTMENTS, PIPELINE_ORDER, getNextDepartment } from '@/data/mockData';
+import { cn } from '@/lib/utils';
+import { USERS, PROJECTS, ASSETS, SHOTS, DEPARTMENTS, PIPELINE_ORDER, getNextDepartment, DEPENDENCY_TYPE_LABELS, type DailyLog, type TaskDependency } from '@/data/mockData';
 import { useTasksStore } from '@/store/tasks';
 import { X, CheckCircle2, Circle, Clock, Tag, Paperclip, MessageSquare, GitBranch, Sparkles, AlertTriangle, CalendarDays, ArrowRight, Play, UserCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -10,6 +11,7 @@ import { Separator } from '@/components/ui/separator';
 import { Progress } from '@/components/ui/progress';
 import { useAuthStore } from '@/store/auth';
 import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -46,10 +48,19 @@ export function TaskDrawer() {
   
   const tasks = useTasksStore(state => state.tasks);
   const submitForReview = useTasksStore(state => state.submitForReview);
-  
+  const updateTask = useTasksStore(state => state.updateTask);
+  const updateTaskStatus = useTasksStore(state => state.updateTaskStatus);
+  const reassignTask = useTasksStore(state => state.reassignTask);
+  const revokeAssignment = useTasksStore(state => state.revokeAssignment);
+  const addComment = useTasksStore(state => state.addComment);
+  const toggleChecklistItem = useTasksStore(state => state.toggleChecklistItem);
+
   const [commentText, setCommentText] = useState('');
   const [showMentions, setShowMentions] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
+  const [logFormOpen, setLogFormOpen] = useState(false);
+  const [logHours, setLogHours] = useState('');
+  const [logNote, setLogNote] = useState('');
 
   if (!activeTaskDrawer || !currentUser) return null;
 
@@ -80,12 +91,14 @@ export function TaskDrawer() {
   const project = PROJECTS.find(p => p.id === task.projectId);
   const asset = task.assetId ? ASSETS.find(a => a.id === task.assetId) : null;
   const shot = task.shotId ? SHOTS.find(s => s.id === task.shotId) : null;
-  const depTasks = task.dependencies.map(d => tasks.find(t => t.id === d)).filter(Boolean);
+  const depTasks = task.dependencies
+    .map(dep => ({ dep, depTask: tasks.find(t => t.id === dep.taskId) }))
+    .filter((x): x is { dep: TaskDependency; depTask: NonNullable<typeof x.depTask> } => Boolean(x.depTask));
   const checklistDone = task.checklist.filter(c => c.done).length;
   const checklistTotal = task.checklist.length;
   
   
-  const isLeadership = ['supervisor', 'lead', 'vfx_producer', 'production_manager'].includes(currentUser.role);
+  const isLeadership = ['supervisor', 'lead', 'vfx_producer', 'production_manager', 'coordinator'].includes(currentUser.role);
   const isAssignee = currentUser.id === task.assigneeId;
   const currentDept = DEPARTMENTS.find(d => d.name === task.department);
   const nextDept = currentDept ? getNextDepartment(currentDept.id) : null;
@@ -108,10 +121,10 @@ export function TaskDrawer() {
             </Badge>
             
             {isAssignee && task.status === 'in-progress' && (
-              <Button 
-                size="sm" 
-                variant="outline" 
-                className="h-6 text-[10px] bg-blue-500/10 text-blue-500 border-blue-500/20 hover:bg-blue-500/20"
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 text-[10px] bg-accent-tally/10 text-accent-tally border-accent-tally/20 hover:bg-accent-tally/20"
                 onClick={() => {
                   submitForReview(task.id);
                   toast({ title: 'Submitted for Review', description: `Your work on ${task.title} has been submitted for review. Your lead will be notified.` });
@@ -122,7 +135,19 @@ export function TaskDrawer() {
             )}
 
             {task.status === 'approved' && nextDept && isLeadership && (
-              <Button size="sm" variant="outline" className="h-6 text-[10px] bg-primary/10 text-primary border-primary/20 hover:bg-primary/20">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 text-[10px] bg-accent-tally/10 text-accent-tally border-accent-tally/20 hover:bg-accent-tally/20"
+                onClick={() => {
+                  updateTask(task.id, {
+                    department: nextDept.name,
+                    status: 'not-started',
+                    lastStatusUpdate: new Date().toISOString(),
+                  });
+                  toast({ title: 'Task Handed Off', description: `${task.title} moved to ${nextDept.name}.` });
+                }}
+              >
                 Handoff to {nextDept.abbreviation} <ArrowRight className="w-3 h-3 ml-1" />
               </Button>
             )}
@@ -148,12 +173,13 @@ export function TaskDrawer() {
                   {isLeadership && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <span className="text-primary text-[10px] cursor-pointer hover:underline bg-primary/10 px-1.5 py-0.5 rounded">Reassign</span>
+                        <span className="text-accent-scope text-[10px] cursor-pointer hover:underline bg-accent-scope/10 px-1.5 py-0.5 rounded">Reassign</span>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-48">
                         <div className="text-xs font-semibold px-2 py-1.5 text-muted-foreground">Department Roster</div>
                         {USERS.filter(u => u.departmentId === currentDept?.id && u.id !== task.assigneeId).slice(0, 4).map(u => (
                           <DropdownMenuItem key={u.id} className="text-xs gap-2 cursor-pointer" onClick={() => {
+                            reassignTask(task.id, u.id);
                             toast({ title: "Task Reassigned", description: `Task assigned to ${u.name}` });
                           }}>
                             <Avatar className="w-4 h-4"><AvatarImage src={u.avatar} /></Avatar>
@@ -162,6 +188,7 @@ export function TaskDrawer() {
                         ))}
                         <DropdownMenuSeparator />
                         <DropdownMenuItem className="text-xs text-red-500 cursor-pointer" onClick={() => {
+                          revokeAssignment(task.id);
                           toast({ title: "Task Revoked", description: "Task is now unassigned", variant: "destructive" });
                         }}>
                           Revoke Assignment
@@ -196,7 +223,7 @@ export function TaskDrawer() {
                 <div className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1">
                   <Clock className="w-3 h-3" /> Time
                 </div>
-                <span className="text-sm font-medium">{task.actualHours}h / {task.estimatedHours}h</span>
+                <span className="text-sm font-medium timecode">{task.actualHours}h / {task.estimatedHours}h</span>
               </div>
               {asset && (
                 <div>
@@ -216,12 +243,21 @@ export function TaskDrawer() {
             <div className="flex gap-2">
               {/* Assignee Actions */}
               {isAssignee && ['not-started', 'todo', 'in-progress', 'wip', 'changes-requested'].includes(task.status) && (
-                <Button className="flex-1" variant={task.status === 'in-progress' ? 'default' : 'outline'} onClick={() => {
+                <Button
+                  className={cn(
+                    "flex-1",
+                    task.status === 'in-progress'
+                      ? "bg-accent-tally text-accent-tally-foreground border-accent-tally hover:bg-accent-tally/90"
+                      : "border-accent-tally/40 text-accent-tally hover:bg-accent-tally/10"
+                  )}
+                  variant={task.status === 'in-progress' ? 'default' : 'outline'}
+                  onClick={() => {
                   if (task.status === 'in-progress') {
                     submitForReview(task.id);
                     toast({ title: 'Submitted for Lead Review' });
                   } else {
-                    toast({ title: 'Task Started' });
+                    updateTaskStatus(task.id, 'in-progress');
+                    toast({ title: 'Task Started', description: `${task.title} is now in progress.` });
                   }
                 }}>
                   <Play className="w-4 h-4 mr-2" />
@@ -229,15 +265,22 @@ export function TaskDrawer() {
                 </Button>
               )}
 
-              {/* Lead Actions */}
-              {currentUser.role === 'lead' && currentUser.departmentId === currentDept?.id && (
+              {/* Lead Actions: only once the task has actually been submitted for
+                  lead review. Assignees reach that queue two ways in this app -
+                  the quick "Submit for Review" actions in this drawer (which set
+                  status to 'review'), and the formal chain driven from the
+                  review player (which sets 'lead-review' directly) - so both
+                  values are treated as "awaiting lead review" here. */}
+              {currentUser.role === 'lead' && currentUser.departmentId === currentDept?.id && ['review', 'lead-review'].includes(task.status) && (
                 <div className="flex w-full gap-2">
                   <Button className="flex-1 bg-purple-600 hover:bg-purple-700 text-white" onClick={() => {
+                    updateTaskStatus(task.id, 'manager-review');
                     toast({ title: "Approved for Manager", description: `Sent to Production.` });
                   }}>
                     <CheckCircle2 className="w-4 h-4 mr-2" /> Approve
                   </Button>
                   <Button variant="outline" className="flex-1 text-red-500 hover:bg-red-500/10" onClick={() => {
+                    updateTaskStatus(task.id, 'in-progress');
                     toast({ title: "Review Rejected", description: `Sent back to artist.` });
                   }}>
                     <X className="w-4 h-4 mr-2" /> Reject
@@ -245,15 +288,19 @@ export function TaskDrawer() {
                 </div>
               )}
 
-              {/* Manager Actions */}
-              {['vfx_producer', 'production_manager', 'coordinator'].includes(currentUser.role) && (
+              {/* Manager Actions: only once a lead has approved and moved the task
+                  into manager review - not for tasks still in progress or already
+                  submitted-but-unreviewed. */}
+              {['vfx_producer', 'production_manager', 'coordinator'].includes(currentUser.role) && task.status === 'manager-review' && (
                 <div className="flex w-full gap-2">
                   <Button className="flex-1 bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white" onClick={() => {
+                    updateTaskStatus(task.id, 'approved');
                     toast({ title: "Published", description: `Published to production dashboard.` });
                   }}>
                     <CheckCircle2 className="w-4 h-4 mr-2" /> Approve & Publish
                   </Button>
                   <Button variant="outline" className="flex-1 text-red-500 hover:bg-red-500/10" onClick={() => {
+                    updateTaskStatus(task.id, 'in-progress');
                     toast({ title: "Review Rejected", description: `Sent back to team.` });
                   }}>
                     <X className="w-4 h-4 mr-2" /> Reject
@@ -261,13 +308,86 @@ export function TaskDrawer() {
                 </div>
               )}
               {isAssignee && task.status === 'in-progress' && (
-                <Button variant="outline" className="flex-1 bg-blue-500/10 text-blue-500 border-blue-500/20 hover:bg-blue-500/20" onClick={() => {
-                  toast({ title: 'Log Daily Time', description: 'Redirecting to time logging...' });
-                }}>
+                <Button
+                  variant="outline"
+                  className="flex-1 bg-accent-scope/10 text-accent-scope border-accent-scope/20 hover:bg-accent-scope/20"
+                  onClick={() => setLogFormOpen(v => !v)}
+                >
                   <Clock className="w-4 h-4 mr-2" /> Log Daily Time
                 </Button>
               )}
             </div>
+
+            {/* Inline Daily Time Log Form */}
+            <AnimatePresence initial={false}>
+              {logFormOpen && (
+                <motion.div
+                  key="log-time-form"
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2, ease: 'easeInOut' }}
+                  className="overflow-hidden"
+                >
+                  <div className="p-3 rounded-md border border-border bg-muted/20 space-y-2">
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        placeholder="Hours"
+                        value={logHours}
+                        onChange={(e) => setLogHours(e.target.value)}
+                        className="w-24 bg-background border border-border rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                      <input
+                        type="text"
+                        placeholder="What did you work on?"
+                        value={logNote}
+                        onChange={(e) => setLogNote(e.target.value)}
+                        className="flex-1 bg-background border border-border rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setLogFormOpen(false);
+                          setLogHours('');
+                          setLogNote('');
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          const hoursNum = parseFloat(logHours);
+                          if (!hoursNum || hoursNum <= 0) return;
+                          const newLog: DailyLog = {
+                            date: new Date().toISOString().slice(0, 10),
+                            hours: hoursNum,
+                            note: logNote.trim() || 'No notes provided.',
+                            userId: currentUser.id,
+                          };
+                          updateTask(task.id, {
+                            dailyLogs: [...task.dailyLogs, newLog],
+                            actualHours: task.actualHours + hoursNum,
+                          });
+                          toast({ title: 'Time Logged', description: `Logged ${hoursNum}h on ${task.title}.` });
+                          setLogFormOpen(false);
+                          setLogHours('');
+                          setLogNote('');
+                        }}
+                      >
+                        Add Log
+                      </Button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Daily Logs (if any) */}
             {task.dailyLogs.length > 0 && (
@@ -277,8 +397,8 @@ export function TaskDrawer() {
                   {task.dailyLogs.map((log, i) => (
                     <div key={i} className="text-xs bg-muted/30 p-2 rounded-md border border-border">
                       <div className="flex justify-between font-medium mb-1">
-                        <span>{log.date}</span>
-                        <span className="text-primary">{log.hours}h</span>
+                        <span className="timecode">{log.date}</span>
+                        <span className="text-accent-tally timecode">{log.hours}h</span>
                       </div>
                       <div className="text-muted-foreground italic">"{log.note}"</div>
                     </div>
@@ -299,12 +419,39 @@ export function TaskDrawer() {
               <div className="space-y-2">
                 {task.checklist.map((item, i) => (
                   <div key={i} className="flex items-center gap-2 text-sm">
-                    {item.done ? (
-                      <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
-                    ) : (
-                      <Circle className="w-4 h-4 text-muted-foreground shrink-0 cursor-pointer hover:text-foreground" />
-                    )}
-                    <span className={item.done ? 'text-muted-foreground line-through' : ''}>{item.text}</span>
+                    <button
+                      type="button"
+                      onClick={() => toggleChecklistItem(task.id, i)}
+                      className="shrink-0 flex items-center justify-center rounded-full p-0.5 -m-0.5 hover:bg-muted transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+                      aria-label={item.done ? 'Mark as not done' : 'Mark as done'}
+                    >
+                      <AnimatePresence mode="wait" initial={false}>
+                        {item.done ? (
+                          <motion.span
+                            key="done"
+                            initial={{ scale: 0.4, opacity: 0, rotate: -45 }}
+                            animate={{ scale: 1, opacity: 1, rotate: 0 }}
+                            exit={{ scale: 0.4, opacity: 0 }}
+                            transition={{ duration: 0.15, ease: 'easeOut' }}
+                            className="block"
+                          >
+                            <CheckCircle2 className="w-4 h-4 text-green-500" />
+                          </motion.span>
+                        ) : (
+                          <motion.span
+                            key="undone"
+                            initial={{ scale: 0.4, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.4, opacity: 0 }}
+                            transition={{ duration: 0.15, ease: 'easeOut' }}
+                            className="block"
+                          >
+                            <Circle className="w-4 h-4 text-muted-foreground hover:text-foreground transition-colors" />
+                          </motion.span>
+                        )}
+                      </AnimatePresence>
+                    </button>
+                    <span className={`transition-colors duration-200 ${item.done ? 'text-muted-foreground line-through' : ''}`}>{item.text}</span>
                   </div>
                 ))}
               </div>
@@ -319,13 +466,28 @@ export function TaskDrawer() {
                   <GitBranch className="w-4 h-4" /> Dependencies
                 </div>
                 <div className="space-y-2">
-                  {depTasks.map(dt => dt && (
-                    <div key={dt.id} className="flex items-center justify-between p-2.5 rounded-md border border-border bg-muted/20 text-sm">
-                      <span className="font-medium">{dt.title}</span>
-                      <Badge className={`${STATUS_COLORS[dt.status]} text-[10px]`}>
-                        {dt.status.replace('-', ' ')}
-                      </Badge>
-                    </div>
+                  {depTasks.map(({ dep, depTask }, i) => (
+                    <motion.div
+                      key={depTask.id}
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.2, delay: i * 0.04, ease: 'easeOut' }}
+                      className="flex items-center justify-between gap-2 p-2.5 rounded-md border border-border bg-muted/20 text-sm"
+                    >
+                      <span className="font-medium truncate">{depTask.title}</span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <Badge
+                          variant="outline"
+                          className="text-[9px] font-mono border-primary/30 text-primary bg-primary/5"
+                          title={DEPENDENCY_TYPE_LABELS[dep.type]}
+                        >
+                          {dep.type}{dep.lagDays ? ` +${dep.lagDays}d` : ''}
+                        </Badge>
+                        <Badge className={`${STATUS_COLORS[depTask.status]} text-[10px]`}>
+                          {depTask.status.replace('-', ' ')}
+                        </Badge>
+                      </div>
+                    </motion.div>
                   ))}
                 </div>
               </div>
@@ -356,24 +518,33 @@ export function TaskDrawer() {
                 <MessageSquare className="w-4 h-4" /> Comments ({task.comments.length})
               </div>
               <div className="space-y-4">
-                {task.comments.map((comment, i) => {
-                  const commenter = USERS.find(u => u.id === comment.userId);
-                  return (
-                    <div key={i} className="flex gap-3">
-                      <Avatar className="w-7 h-7 shrink-0">
-                        <AvatarImage src={commenter?.avatar} />
-                        <AvatarFallback>{commenter?.name.charAt(0)}</AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1">
-                        <div className="flex items-baseline gap-2 mb-0.5">
-                          <span className="text-sm font-medium">{commenter?.name}</span>
-                          <span className="text-[10px] text-muted-foreground">{new Date(comment.timestamp).toLocaleDateString()}</span>
+                <AnimatePresence initial={false}>
+                  {task.comments.map((comment, i) => {
+                    const commenter = USERS.find(u => u.id === comment.userId);
+                    return (
+                      <motion.div
+                        key={i}
+                        layout
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.25, ease: 'easeOut' }}
+                        className="flex gap-3"
+                      >
+                        <Avatar className="w-7 h-7 shrink-0">
+                          <AvatarImage src={commenter?.avatar} />
+                          <AvatarFallback>{commenter?.name.charAt(0)}</AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1">
+                          <div className="flex items-baseline gap-2 mb-0.5">
+                            <span className="text-sm font-medium">{commenter?.name}</span>
+                            <span className="text-[10px] text-muted-foreground">{new Date(comment.timestamp).toLocaleDateString()}</span>
+                          </div>
+                          <p className="text-sm text-muted-foreground">{comment.text}</p>
                         </div>
-                        <p className="text-sm text-muted-foreground">{comment.text}</p>
-                      </div>
-                    </div>
-                  );
-                })}
+                      </motion.div>
+                    );
+                  })}
+                </AnimatePresence>
                 {task.comments.length === 0 && (
                   <p className="text-sm text-muted-foreground">No comments yet.</p>
                 )}
@@ -414,6 +585,7 @@ export function TaskDrawer() {
                   className="mt-2"
                   onClick={() => {
                     if (commentText.trim()) {
+                      addComment(task.id, currentUser.id, commentText.trim());
                       toast({ title: 'Comment Posted', description: 'Your comment has been added.' });
                       setCommentText('');
                       setShowMentions(false);

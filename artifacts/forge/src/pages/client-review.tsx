@@ -1,44 +1,45 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { Play, Pause, SkipBack, SkipForward, ThumbsUp, ThumbsDown, MessageSquare, ChevronLeft, LogOut, CheckCircle2, PenTool, MousePointer2, Type, Square, ArrowUpRight } from 'lucide-react';
+import { Play, ThumbsUp, ThumbsDown, MessageSquare, ChevronLeft, LogOut, CheckCircle2, Send, Clock, Building2, User } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { SHOTS, PROJECTS } from '@/data/mockData';
+import { PROJECTS, STUDIOS, VERSIONS } from '@/data/mockData';
 import { useLocation } from 'wouter';
 import { useAuthStore } from '@/store/auth';
 import { Badge } from '@/components/ui/badge';
 import { Lock, Key } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-
-type AnnotationTool = 'select' | 'pen' | 'arrow' | 'rectangle' | 'text';
-
-const TOOLS: { id: AnnotationTool; icon: typeof MousePointer2; label: string }[] = [
-  { id: 'select', icon: MousePointer2, label: 'Select' },
-  { id: 'pen', icon: PenTool, label: 'Draw freehand' },
-  { id: 'arrow', icon: ArrowUpRight, label: 'Draw arrow' },
-  { id: 'rectangle', icon: Square, label: 'Draw rectangle' },
-  { id: 'text', icon: Type, label: 'Add text annotation' },
-];
+import { useReviewStore, PRESENTED_VERSION_ID } from '@/store/reviews';
+import { useShotStore } from '@/store/shots';
+import { cn } from '@/lib/utils';
+import { getPlaceholderThumbnail } from '@/lib/placeholderArt';
+import {
+  AnnotationToolbar,
+  AnnotationCanvas,
+  PlaybackControls,
+  FrameScrubber,
+  PresentationLockBanner,
+  GhostingToggle,
+  type AnnotationTool,
+  type Annotation,
+  type DraggingElement,
+} from '@/components/shared/review';
 
 const COLORS = ['#10b981', '#ef4444', '#3b82f6', '#eab308', '#d946ef', '#ffffff'];
 
-interface Annotation {
-  id: string;
-  frame: number;
-  type: AnnotationTool;
-  color: string;
-  x: number;
-  y: number;
-  w?: number;
-  h?: number;
-  points?: {x: number, y: number}[];
-  text?: string;
-  startFrame?: number;
-  endFrame?: number;
-  fontFamily?: string;
-  fontSize?: number;
-  backgroundColor?: string;
+/**
+ * Resolves the thumbnail seed to render for a shot's preview art. Prefers
+ * the seed on the shot's actual current Version record (so the preview
+ * reflects the delivered version, not just the shot), falling back to the
+ * shot's own seed when no matching Version row exists in the mock data.
+ */
+function resolveThumbnailSeed(shot: { id: string; currentVersion: string; thumbnailSeed: number }): number {
+  const currentVersionRecord = VERSIONS.find(
+    (v) => v.entityType === 'shot' && v.entityId === shot.id && v.versionNumber === shot.currentVersion
+  );
+  return currentVersionRecord?.thumbnailSeed ?? shot.thumbnailSeed;
 }
 
 export default function ClientReview() {
@@ -66,26 +67,53 @@ export default function ClientReview() {
   const [tool, setTool] = useState<AnnotationTool>('select');
   const [color, setColor] = useState('#10b981');
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [currentDrawStart, setCurrentDrawStart] = useState<{x: number, y: number} | null>(null);
-  const [currentPoints, setCurrentPoints] = useState<{x: number, y: number}[]>([]);
-  const [tempRect, setTempRect] = useState<{x: number, y: number, w: number, h: number} | null>(null);
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
-  const [draggingElement, setDraggingElement] = useState<{ id: string, type: 'video' | 'annotation', startX: number, startY: number, initialX: number, initialY: number } | null>(null);
-  
+  const [ghosting, setGhosting] = useState(false);
+  const [draggingElement, setDraggingElement] = useState<DraggingElement | null>(null);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const maxFrames = 240;
 
-  // Pending client reviews
-  const pendingReviews = SHOTS.filter(s => s.status === 'client-review');
-  const activeShot = activeReviewId ? SHOTS.find(s => s.id === activeReviewId) : null;
+  // Presentation Mode: when an internal reviewer is presenting the version
+  // the client is looking at, this viewer's playhead is locked to theirs and
+  // the only actions available collapse down to Approve / Request Changes —
+  // which is already the entirety of this portal's decision actions.
+  const presentation = useReviewStore((s) => s.presentation);
+  const isLockedViewer =
+    presentation.isActive &&
+    presentation.versionId === PRESENTED_VERSION_ID &&
+    presentation.presenterId !== currentUser?.id;
+
+  // Pending client reviews — sourced from the persisted shot store (not the
+  // static SHOTS import) so an Approve/Request Changes decision below is
+  // reflected here immediately, and stays reflected across reloads.
+  const shots = useShotStore((s) => s.shots);
+  const updateReviewStatus = useShotStore((s) => s.updateReviewStatus);
+  const updateShot = useShotStore((s) => s.updateShot);
+  const pendingReviews = shots.filter(s => s.status === 'client-review');
+  const activeShot = activeReviewId ? shots.find(s => s.id === activeReviewId) : null;
   const activeProject = activeShot ? PROJECTS.find(p => p.id === activeShot.projectId) : null;
+  const activeStudio = activeProject ? STUDIOS.find(s => s.id === activeProject.studioId) : null;
+
+  // Deterministic render-preview art for the player's video area, so there's
+  // always something on screen before playback starts (or if it never does).
+  const activeVersionPoster = useMemo(
+    () => (activeShot ? getPlaceholderThumbnail(resolveThumbnailSeed(activeShot), 1280, 720) : undefined),
+    [activeShot]
+  );
+
+  // Client feedback moderation: notes submitted here are held pending until
+  // an internal reviewer explicitly transfers them into the team comment
+  // stream — they never become visible internally by default.
+  const clientNotes = useReviewStore((s) => s.clientNotes);
+  const addClientNote = useReviewStore((s) => s.addClientNote);
+  const shotNotes = activeShot ? clientNotes.filter(n => n.shotId === activeShot.id) : [];
 
   useEffect(() => {
     let animationFrameId: number;
     let lastTime = Date.now();
-    
-    if (isPlaying && activeReviewId) {
+
+    if (isPlaying && activeReviewId && !isLockedViewer) {
       if (videoRef.current) {
         videoRef.current.currentTime = (frame - 1) / 24;
         videoRef.current.play().catch(() => {});
@@ -94,11 +122,11 @@ export default function ClientReview() {
       const updateFrame = () => {
         const now = Date.now();
         const dt = now - lastTime;
-        if (dt >= 1000 / 24) { 
+        if (dt >= 1000 / 24) {
           setFrame(f => {
             let nextF = f + 1;
             if (nextF > maxFrames) {
-              nextF = 1; 
+              nextF = 1;
               if (videoRef.current) {
                 videoRef.current.currentTime = 0;
                 videoRef.current.play().catch(() => {});
@@ -114,17 +142,25 @@ export default function ClientReview() {
     } else {
       if (videoRef.current) videoRef.current.pause();
     }
-    
+
     return () => {
       if (animationFrameId) cancelAnimationFrame(animationFrameId);
     }
-  }, [isPlaying, activeReviewId, maxFrames]);
+  }, [isPlaying, activeReviewId, maxFrames, isLockedViewer]);
+
+  // While locked, mirror the presenter's playhead and give up local playback.
+  useEffect(() => {
+    if (!isLockedViewer) return;
+    setIsPlaying(false);
+    setFrame(presentation.frame);
+  }, [isLockedViewer, presentation.frame]);
 
   // Global keydown for Spacebar play/pause and Arrow keys for scrubbing
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't trigger if user is typing in an input or textarea
       if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return;
+      if (isLockedViewer) return;
       if (e.code === 'Space') {
         e.preventDefault();
         setIsPlaying(p => !p);
@@ -136,11 +172,23 @@ export default function ClientReview() {
         e.preventDefault();
         setIsPlaying(false);
         setFrame(f => Math.min(maxFrames, f + 1));
-      }
+      } else if (e.code === 'Backspace' || e.code === 'Delete') {
+        if (selectedAnnotationId) {
+          setAnnotations(prev => prev.filter(a => a.id !== selectedAnnotationId));
+          setSelectedAnnotationId(null);
+        }
+      } else if (e.code === 'Escape') {
+        setSelectedAnnotationId(null);
+        setTool('select');
+      } else if (e.key === '1') setTool('select');
+      else if (e.key === '2') setTool('pen');
+      else if (e.key === '3') setTool('arrow');
+      else if (e.key === '4') setTool('rectangle');
+      else if (e.key === '5') setTool('text');
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [maxFrames]);
+  }, [maxFrames, isLockedViewer, selectedAnnotationId]);
 
   // Handle global mouse move for canvas dragging
   useEffect(() => {
@@ -168,9 +216,17 @@ export default function ClientReview() {
   }, [draggingElement]);
 
   const handleSubmit = (action: 'approved' | 'changes_requested') => {
-    toast({ 
-      title: action === 'approved' ? 'Approved' : 'Changes Requested', 
-      description: 'Feedback sent back to Manager to assign tasks to pipeline.' 
+    if (activeShot) {
+      // Persist the real decision: the shot's clientReviewStatus (the
+      // review-pipeline record) and its overall status (what takes it out of
+      // "Awaiting Review" on this dashboard and on the producer home page,
+      // both of which filter on status === 'client-review').
+      updateReviewStatus(activeShot.id, false, action === 'approved' ? 'approved' : 'changes-requested');
+      updateShot(activeShot.id, { status: action === 'approved' ? 'approved' : 'in-progress' });
+    }
+    toast({
+      title: action === 'approved' ? 'Approved' : 'Changes Requested',
+      description: 'Your decision has been sent to the studio team.'
     });
     setTimeout(() => {
       setActiveReviewId(null);
@@ -180,6 +236,14 @@ export default function ClientReview() {
   const handleLogout = () => {
     logout();
     setLocation('/login');
+  };
+
+  const handleAccessSubmit = () => {
+    if (accessCode.toLowerCase() === 'demo') {
+      setClientAuthenticated(true);
+    } else {
+      toast({ title: 'Invalid Code', description: 'Please check your email for the correct access code.', variant: 'destructive' });
+    }
   };
 
   // Separate Client Login (Access Code)
@@ -202,22 +266,14 @@ export default function ClientReview() {
                 value={accessCode} 
                 onChange={e => setAccessCode(e.target.value)}
                 onKeyDown={e => {
-                  if (e.key === 'Enter' && accessCode.toLowerCase() === 'demo') {
-                    setClientAuthenticated(true);
-                  }
+                  if (e.key === 'Enter') handleAccessSubmit();
                 }}
                 className="text-center text-lg tracking-widest h-12"
               />
             </div>
-            <Button 
-              className="w-full h-12 text-md font-semibold" 
-              onClick={() => {
-                if (accessCode.toLowerCase() === 'demo') {
-                  setClientAuthenticated(true);
-                } else {
-                  toast({ title: "Invalid Code", description: "Please check your email for the correct access code.", variant: "destructive" });
-                }
-              }}
+            <Button
+              className="w-full h-12 text-md font-semibold"
+              onClick={handleAccessSubmit}
             >
               Access Review Session
             </Button>
@@ -263,17 +319,22 @@ export default function ClientReview() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {pendingReviews.map(shot => {
                 const project = PROJECTS.find(p => p.id === shot.projectId);
+                const studio = project ? STUDIOS.find(s => s.id === project.studioId) : null;
                 return (
                   <div key={shot.id} className="group bg-zinc-900 border border-white/10 rounded-xl overflow-hidden hover:border-emerald-500/50 hover:shadow-[0_0_20px_rgba(16,185,129,0.15)] transition-all cursor-pointer flex flex-col" onClick={() => setActiveReviewId(shot.id)}>
-                    <div className="relative aspect-video bg-zinc-800 overflow-hidden">
-                      {shot.thumbnail ? (
-                        <img src={shot.thumbnail} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
-                      ) : (
-                        <div className="w-full h-full bg-zinc-800" />
-                      )}
+                    <div
+                      className="relative aspect-video bg-zinc-800 overflow-hidden bg-cover bg-center"
+                      style={{ backgroundImage: `url(${getPlaceholderThumbnail(resolveThumbnailSeed(shot))})` }}
+                    >
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                         <Play className="w-12 h-12 text-white drop-shadow-md" />
                       </div>
+                      {studio && (
+                        <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-black/60 backdrop-blur px-2 py-1 rounded-md text-[11px] font-medium text-zinc-100 border border-white/10">
+                          <Building2 className="w-3 h-3 text-zinc-300" />
+                          <span>{studio.name}</span>
+                        </div>
+                      )}
                     </div>
                     <div className="p-5 flex-1 flex flex-col">
                       <div className="flex justify-between items-start mb-2">
@@ -285,7 +346,7 @@ export default function ClientReview() {
                       </div>
                       <div className="mt-auto pt-4 flex items-center justify-between text-xs text-zinc-500 border-t border-white/5">
                         <span>{shot.usdVersion || 'v003.usd'}</span>
-                        <span>Delivered Today</span>
+                        <span>Delivered {new Date(shot.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
                       </div>
                     </div>
                   </div>
@@ -312,7 +373,13 @@ export default function ClientReview() {
             <div className="text-xs text-white/50">External Client Review • Secure</div>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-4">
+          {activeStudio && (
+            <div className="flex items-center gap-2 pr-4 border-r border-white/10 text-xs text-white/60">
+              <Building2 className="w-4 h-4 text-white/40" />
+              <span>Delivered by <span className="text-white font-medium">{activeStudio.name}</span></span>
+            </div>
+          )}
           <span className="text-sm text-white/50">Viewing {activeShot?.usdVersion || 'v003.usd'}</span>
         </div>
       </div>
@@ -320,184 +387,37 @@ export default function ClientReview() {
       <div className="flex flex-1 overflow-hidden">
         {/* Main Player */}
         <div className="flex-1 relative flex flex-col items-center justify-center p-4">
-          <div className="relative w-full max-w-5xl aspect-video bg-zinc-900 rounded-lg overflow-hidden shadow-2xl border border-white/5">
-            <video 
+          <div
+            className="relative w-full max-w-5xl aspect-video bg-zinc-900 bg-cover bg-center rounded-lg overflow-hidden shadow-2xl border border-white/5"
+            style={{ backgroundImage: `url(${activeVersionPoster})` }}
+          >
+            <video
               ref={videoRef}
               src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4"
+              poster={activeVersionPoster}
               className="absolute inset-0 w-full h-full object-contain pointer-events-none"
               muted
               playsInline
             />
 
-            {/* Annotation SVG Overlay */}
-            <svg className="annotation-svg absolute inset-0 z-10 pointer-events-none w-full h-full">
-              <defs>
-                {COLORS.map(c => (
-                  <marker key={c} id={`arrowhead-${c.replace('#', '')}`} markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-                    <polygon points="0 0, 10 3.5, 0 7" fill={c} />
-                  </marker>
-                ))}
-              </defs>
-              {annotations.filter(a => {
-                if (a.type === 'text') return false;
-                const start = a.startFrame ?? a.frame;
-                const end = a.endFrame ?? a.frame + 60;
-                return frame >= start && frame <= end;
-              }).map(a => {
-                const opacity = 1;
-                if (a.type === 'rectangle' && a.w && a.h) {
-                  return <rect key={a.id} x={a.x} y={a.y} width={a.w} height={a.h} fill={`${a.color}20`} stroke={a.color} strokeWidth={2} className="pointer-events-auto cursor-pointer" onClick={() => tool === 'select' && setAnnotations(prev => prev.filter(p => p.id !== a.id))} />;
-                }
-                if (a.type === 'pen' && a.points) {
-                  const d = `M ${a.points.map(p => `${p.x},${p.y}`).join(' L ')}`;
-                  return <path key={a.id} d={d} fill="none" stroke={a.color} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" className="pointer-events-auto cursor-pointer hover:stroke-opacity-70" onClick={() => tool === 'select' && setAnnotations(prev => prev.filter(p => p.id !== a.id))} />;
-                }
-                if (a.type === 'arrow' && a.points && a.points.length === 2) {
-                  return <line key={a.id} x1={a.points[0].x} y1={a.points[0].y} x2={a.points[1].x} y2={a.points[1].y} stroke={a.color} strokeWidth={3} markerEnd={`url(#arrowhead-${a.color.replace('#', '')})`} className="pointer-events-auto cursor-pointer" onClick={() => tool === 'select' && setAnnotations(prev => prev.filter(p => p.id !== a.id))} />;
-                }
-                return null;
-              })}
-              {isDrawing && tool === 'pen' && currentPoints.length > 0 && (
-                 <path d={`M ${currentPoints.map(p => `${p.x},${p.y}`).join(' L ')}`} fill="none" stroke={color} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
-              )}
-              {isDrawing && tool === 'arrow' && currentDrawStart && currentPoints.length > 0 && (
-                 <line x1={currentDrawStart.x} y1={currentDrawStart.y} x2={currentPoints[currentPoints.length - 1].x} y2={currentPoints[currentPoints.length - 1].y} stroke={color} strokeWidth={3} markerEnd={`url(#arrowhead-${color.replace('#', '')})`} />
-              )}
-              {tempRect && (
-                <rect x={tempRect.x} y={tempRect.y} width={tempRect.w} height={tempRect.h} fill={`${color}20`} stroke={color} strokeWidth={2} />
-              )}
-            </svg>
-
-            {/* Drawing Interaction Overlay */}
-            {tool !== 'select' && (
-              <div 
-                className="absolute inset-0 cursor-crosshair z-20" 
-                onMouseDown={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const x = e.clientX - rect.left;
-                  const y = e.clientY - rect.top;
-                  
-                  if (tool === 'rectangle') {
-                    setIsDrawing(true);
-                    setCurrentDrawStart({ x, y });
-                    setTempRect({ x, y, w: 0, h: 0 });
-                  } else if (tool === 'pen' || tool === 'arrow') {
-                    setIsDrawing(true);
-                    setCurrentDrawStart({ x, y });
-                    setCurrentPoints([{ x, y }]);
-                  }
-                }}
-                onClick={(e) => {
-                  if (tool === 'text') {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const x = e.clientX - rect.left;
-                    const y = e.clientY - rect.top;
-                    setAnnotations(prev => [...prev, { 
-                      id: Date.now().toString(), 
-                      frame, 
-                      startFrame: frame, 
-                      endFrame: Math.min(frame + 60, maxFrames), 
-                      type: 'text', 
-                      color, 
-                      x, 
-                      y, 
-                      text: '',
-                      fontFamily: 'font-sans',
-                      fontSize: 14,
-                      backgroundColor: 'transparent'
-                    }]);
-                    setSelectedAnnotationId(Date.now().toString());
-                  }
-                }}
-                onMouseMove={(e) => {
-                  if (!isDrawing) return;
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const x = e.clientX - rect.left;
-                  const y = e.clientY - rect.top;
-                  
-                  if (tool === 'rectangle' && currentDrawStart) {
-                    const newX = Math.min(x, currentDrawStart.x);
-                    const newY = Math.min(y, currentDrawStart.y);
-                    const w = Math.abs(x - currentDrawStart.x);
-                    const h = Math.abs(y - currentDrawStart.y);
-                    setTempRect({ x: newX, y: newY, w, h });
-                  } else if (tool === 'pen' || tool === 'arrow') {
-                    setCurrentPoints(prev => [...prev, { x, y }]);
-                  }
-                }}
-                onMouseUp={(e) => {
-                  if (tool === 'rectangle' && tempRect && tempRect.w > 5) {
-                    setAnnotations(prev => [...prev, { id: Date.now().toString(), frame, startFrame: frame, endFrame: Math.min(frame + 60, maxFrames), type: 'rectangle', color, ...tempRect }]);
-                    setSelectedAnnotationId(Date.now().toString());
-                  } else if (tool === 'pen' && currentPoints.length > 1) {
-                    setAnnotations(prev => [...prev, { id: Date.now().toString(), frame, startFrame: frame, endFrame: Math.min(frame + 60, maxFrames), type: 'pen', color, x: 0, y: 0, points: currentPoints }]);
-                    setSelectedAnnotationId(Date.now().toString());
-                  } else if (tool === 'arrow' && currentDrawStart && currentPoints.length > 1) {
-                    setAnnotations(prev => [...prev, { id: Date.now().toString(), frame, startFrame: frame, endFrame: Math.min(frame + 60, maxFrames), type: 'arrow', color, x: 0, y: 0, points: [currentDrawStart, currentPoints[currentPoints.length - 1]] }]);
-                    setSelectedAnnotationId(Date.now().toString());
-                  }
-                  setIsDrawing(false);
-                  setCurrentDrawStart(null);
-                  setCurrentPoints([]);
-                  setTempRect(null);
-                }}
-                onMouseLeave={() => {
-                  setIsDrawing(false);
-                  setCurrentDrawStart(null);
-                  setCurrentPoints([]);
-                  setTempRect(null);
-                }}
-              />
-            )}
-
-            {/* Text Annotations Overlay */}
-            <div className="absolute inset-0 z-30 pointer-events-none">
-              {annotations.filter(a => {
-                if (a.type !== 'text') return false;
-                const start = a.startFrame ?? a.frame;
-                const end = a.endFrame ?? a.frame + 60;
-                return frame >= start && frame <= end;
-              }).map(a => {
-                return (
-                <div 
-                  key={a.id} 
-                  className={`absolute pointer-events-auto rounded border-2 transition-colors ${selectedAnnotationId === a.id ? 'border-emerald-500 ring-2 ring-emerald-500/50' : 'border-transparent'} ${tool === 'select' ? 'cursor-move' : ''}`} 
-                  style={{ left: a.x, top: a.y, backgroundColor: a.backgroundColor !== 'transparent' ? a.backgroundColor : undefined }}
-                  onMouseDown={(e) => {
-                    if (tool === 'select') {
-                      e.stopPropagation();
-                      setSelectedAnnotationId(a.id);
-                      setDraggingElement({ id: a.id, type: 'annotation', startX: e.clientX, startY: e.clientY, initialX: a.x, initialY: a.y });
-                    }
-                  }}
-                  onClick={() => setSelectedAnnotationId(a.id)}
-                >
-                  <input
-                    type="text"
-                    className={`text-annotation-input bg-transparent text-white font-medium focus:outline-none min-w-[120px] px-2 py-1 ${a.backgroundColor !== 'transparent' ? 'drop-shadow-none' : 'drop-shadow-md'}`}
-                    style={{ color: a.color, fontFamily: a.fontFamily === 'font-sans' ? 'Inter, sans-serif' : a.fontFamily === 'font-serif' ? 'Georgia, serif' : 'monospace', fontSize: `${a.fontSize}px` }}
-                    autoFocus
-                    defaultValue={a.text}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') e.currentTarget.blur();
-                    }}
-                    onBlur={(e) => {
-                      const val = e.target.value.trim();
-                      if (!val) {
-                        setAnnotations(prev => prev.filter(p => p.id !== a.id));
-                        if (selectedAnnotationId === a.id) setSelectedAnnotationId(null);
-                      } else {
-                        setAnnotations(prev => prev.map(p => p.id === a.id ? { ...p, text: val } : p));
-                      }
-                    }}
-                  />
-                </div>
-              )})}
-            </div>
+            <AnnotationCanvas
+              annotations={annotations}
+              onAnnotationsChange={setAnnotations}
+              frame={frame}
+              maxFrames={maxFrames}
+              tool={isLockedViewer ? 'select' : tool}
+              color={color}
+              colors={COLORS}
+              selectedAnnotationId={selectedAnnotationId}
+              onSelectedAnnotationIdChange={setSelectedAnnotationId}
+              onDraggingElementChange={setDraggingElement}
+              selectionRingClassName="border-emerald-500 ring-2 ring-emerald-500/50"
+              ghosting={ghosting}
+            />
 
             {/* Play overlay if paused */}
-            {!isPlaying && (
-              <div 
+            {!isPlaying && !isLockedViewer && (
+              <div
                 className="absolute inset-0 bg-black/20 flex items-center justify-center cursor-pointer hover:bg-black/40 transition-colors"
                 onClick={() => setIsPlaying(true)}
               >
@@ -507,64 +427,63 @@ export default function ClientReview() {
               </div>
             )}
           </div>
-          
-          {/* Top Floating Toolbar */}
-          <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-zinc-900/90 backdrop-blur border border-white/10 rounded-lg p-1.5 flex gap-3 z-40 shadow-xl">
-            <div className="flex gap-1 items-center">
-              {TOOLS.map(({ id, icon: Icon, label }) => (
-                <Button
-                  key={id}
-                  size="icon"
-                  variant={tool === id ? 'secondary' : 'ghost'}
-                  className={`h-8 w-8 text-zinc-300 hover:text-white hover:bg-white/10 ${tool === id ? 'bg-white/10 text-emerald-400' : ''}`}
-                  aria-label={label}
-                  aria-pressed={tool === id}
-                  onClick={() => setTool(id)}
-                >
-                  <Icon className="w-4 h-4" />
-                </Button>
-              ))}
-            </div>
-            <div className="w-px bg-white/10 my-1" />
-            <div className="flex gap-1 items-center px-1">
-              {COLORS.map(c => (
-                <button
-                  key={c}
-                  className={`w-5 h-5 rounded-full border-2 transition-transform ${color === c ? 'scale-125 border-emerald-500 shadow-sm' : 'border-transparent hover:scale-110'}`}
-                  style={{ backgroundColor: c }}
-                  onClick={() => setColor(c)}
-                />
-              ))}
-            </div>
+
+          {/* Presentation Mode lock indicator */}
+          <div className="absolute top-6 left-6 z-40">
+            <PresentationLockBanner
+              show={isLockedViewer}
+              presenterName={presentation.presenterName}
+              frame={presentation.frame}
+              maxFrames={maxFrames}
+              variant="client"
+            />
           </div>
-          
+
+          {/* Top Floating Toolbar */}
+          <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-zinc-900/90 backdrop-blur border border-white/10 rounded-lg p-1.5 flex items-center gap-3 z-40 shadow-xl">
+            <AnnotationToolbar
+              tool={tool}
+              onToolChange={setTool}
+              color={color}
+              onColorChange={setColor}
+              colors={COLORS}
+              variant="client"
+            />
+            <div className="w-px h-6 bg-white/10" />
+            <GhostingToggle active={ghosting} onToggle={() => setGhosting(!ghosting)} variant="client" />
+          </div>
+
           {/* Scrubber */}
           <div className="w-full max-w-5xl mt-6 px-4 z-40">
-            <input 
-              type="range" 
-              min="1" 
-              max={maxFrames} 
-              value={frame}
-              onChange={(e) => { setIsPlaying(false); setFrame(parseInt(e.target.value)); }}
-              className="w-full h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+            <FrameScrubber
+              frame={frame}
+              maxFrames={maxFrames}
+              disabled={isLockedViewer}
+              onFrameChange={(f) => { setIsPlaying(false); setFrame(f); }}
+              className="w-full bg-white/20 rounded-lg appearance-none cursor-pointer accent-emerald-500"
             />
             <div className="flex justify-between text-xs text-white/50 mt-2 font-mono">
               <span>{String(frame).padStart(3, '0')}</span>
               <span>{maxFrames}</span>
             </div>
           </div>
-          
+
           {/* Controls */}
           <div className="flex items-center gap-4 mt-4">
-            <Button variant="ghost" size="icon" className="text-white hover:bg-white/10" onClick={() => { setIsPlaying(false); setFrame(Math.max(1, frame - 1)); }}>
-              <SkipBack className="w-5 h-5" />
-            </Button>
-            <Button size="icon" className="bg-emerald-600 hover:bg-emerald-700 text-white w-12 h-12 rounded-full" onClick={() => setIsPlaying(!isPlaying)}>
-              {isPlaying ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6 ml-1" />}
-            </Button>
-            <Button variant="ghost" size="icon" className="text-white hover:bg-white/10" onClick={() => { setIsPlaying(false); setFrame(Math.min(maxFrames, frame + 1)); }}>
-              <SkipForward className="w-5 h-5" />
-            </Button>
+            <PlaybackControls
+              isPlaying={isPlaying}
+              disabled={isLockedViewer}
+              onTogglePlay={() => setIsPlaying(!isPlaying)}
+              onStepBack={() => { setIsPlaying(false); setFrame(Math.max(1, frame - 1)); }}
+              onStepForward={() => { setIsPlaying(false); setFrame(Math.min(maxFrames, frame + 1)); }}
+              frame={frame}
+              maxFrames={maxFrames}
+              buttonClassName="text-white hover:bg-white/10"
+              playButtonClassName="bg-emerald-600 hover:bg-emerald-700 text-white w-12 h-12 rounded-full"
+              iconClassName="w-5 h-5"
+              playIconClassName="w-6 h-6"
+              centerPlayIcon
+            />
           </div>
         </div>
 
@@ -577,18 +496,68 @@ export default function ClientReview() {
           
           <div className="flex-1 p-6 overflow-y-auto space-y-6">
             <div className="space-y-3">
-              <label className="text-sm font-medium">Add a note at frame {frame}</label>
-              <Textarea 
+              <label className="text-sm font-medium">Add a note at frame {String(frame).padStart(3, '0')}</label>
+              <Textarea
                 placeholder="E.g. The lighting on the left looks a bit dark..."
                 className="bg-zinc-900 border-white/10 text-white min-h-[120px] focus:ring-emerald-500"
                 value={feedback}
                 onChange={e => setFeedback(e.target.value)}
               />
-              <Button className="w-full bg-white/10 hover:bg-white/20 text-white">
+              <Button
+                className="w-full bg-white/10 hover:bg-white/20 text-white"
+                disabled={!feedback.trim()}
+                onClick={() => {
+                  if (!activeShot || !feedback.trim()) return;
+                  addClientNote({
+                    shotId: activeShot.id,
+                    shotName: activeShot.name,
+                    frame,
+                    text: feedback.trim(),
+                    authorName: currentUser?.name || 'Client Reviewer',
+                  });
+                  setFeedback('');
+                  toast({ title: 'Note Added', description: 'Sent to the studio for review — they’ll transfer it to the team once seen.' });
+                }}
+              >
                 <MessageSquare className="w-4 h-4 mr-2" />
                 Add Note
               </Button>
             </div>
+
+            {shotNotes.length > 0 && (
+              <div className="space-y-3">
+                <div className="text-xs font-semibold text-zinc-500 tracking-wide">YOUR NOTES</div>
+                <AnimatePresence initial={false}>
+                  {shotNotes.map(note => (
+                    <motion.div
+                      key={note.id}
+                      layout
+                      initial={{ opacity: 0, y: -6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="rounded-lg border border-white/10 bg-zinc-900/60 p-3"
+                    >
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-200">
+                          <User className="w-3 h-3 text-zinc-500" />
+                          {note.authorName}
+                        </span>
+                        <span className="text-[10px] text-zinc-500">{new Date(note.createdAt).toLocaleString()}</span>
+                      </div>
+                      <p className="text-sm text-zinc-200 mb-2">{note.text}</p>
+                      <div className="text-[10px] font-mono text-zinc-500 mb-2">Frame {String(note.frame).padStart(3, '0')}</div>
+                      <div className={cn(
+                        'inline-flex items-center gap-1.5 text-[11px] px-1.5 py-0.5 rounded',
+                        note.transferred ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'
+                      )}>
+                        {note.transferred ? <Send className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+                        {note.transferred ? 'Seen by studio team' : 'Awaiting studio review'}
+                      </div>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </div>
+            )}
           </div>
           
           <div className="p-6 border-t border-white/10 bg-zinc-900/50">
@@ -600,7 +569,7 @@ export default function ClientReview() {
                 onClick={() => handleSubmit('changes_requested')}
               >
                 <ThumbsDown className="w-4 h-4 mr-2" />
-                Revise
+                Request Changes
               </Button>
               <Button 
                 className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"

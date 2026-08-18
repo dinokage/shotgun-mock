@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { useTasksStore } from '@/store/tasks';
 import { UserAvatar } from '@/components/shared/UserAvatar';
-import { USERS } from '@/data/mockData';
+import { DEPENDENCY_TYPE_LABELS } from '@/data/mockData';
 
 const PIXELS_PER_DAY = 30;
 const START_DATE = new Date('2024-09-15').getTime();
@@ -51,6 +52,15 @@ export default function TasksTimelineView({ projectId }: { projectId: string }) 
     };
   }, [draggingTask, startX, originalLeft, updateTaskDates]);
 
+  // Coordinates of each task's bar (in the same space as the bars themselves) so we can draw
+  // dependency arrows/badges between them.
+  const taskBarCoords: Record<string, { left: number; right: number; y: number }> = {};
+  projectTasks.forEach((task, index) => {
+    const right = getDaysFromStart(task.dueDate) * PIXELS_PER_DAY;
+    const width = Math.max(PIXELS_PER_DAY, (task.estimatedHours / 8) * PIXELS_PER_DAY);
+    taskBarCoords[task.id] = { left: right - width, right, y: index * 48 + 24 };
+  });
+
   // Generate 30 days of headers
   const days = Array.from({ length: 30 }).map((_, i) => {
     const d = new Date(START_DATE + i * 24 * 60 * 60 * 1000);
@@ -91,6 +101,58 @@ export default function TasksTimelineView({ projectId }: { projectId: string }) 
             ))}
           </div>
           
+          {/* Dependency arrows */}
+          <svg className="absolute inset-0 pointer-events-none z-[15]" style={{ width: days.length * PIXELS_PER_DAY, height: projectTasks.length * 48 }}>
+            <defs>
+              <marker id="timeline-arrowhead" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <polygon points="0 0, 6 3, 0 6" fill="rgba(156, 163, 175, 0.6)" />
+              </marker>
+            </defs>
+            {projectTasks.flatMap(task =>
+              (task.dependencies || []).map(dep => {
+                const start = taskBarCoords[dep.taskId];
+                const end = taskBarCoords[task.id];
+                if (!start || !end) return null;
+                const cpOffset = Math.max(20, Math.abs(end.left - start.right) * 0.5);
+                const d = `M ${start.right} ${start.y} C ${start.right + cpOffset} ${start.y}, ${end.left - cpOffset} ${end.y}, ${end.left - 2} ${end.y}`;
+                return (
+                  <path
+                    key={`dep-${dep.taskId}-${task.id}`}
+                    d={d}
+                    fill="none"
+                    stroke="rgba(156, 163, 175, 0.45)"
+                    strokeWidth="2"
+                    markerEnd="url(#timeline-arrowhead)"
+                    className="transition-all duration-300"
+                  />
+                );
+              })
+            )}
+          </svg>
+
+          {/* Dependency link-type badges */}
+          <div className="absolute inset-0 pointer-events-none z-[15]">
+            {projectTasks.flatMap(task =>
+              (task.dependencies || []).map(dep => {
+                const start = taskBarCoords[dep.taskId];
+                const end = taskBarCoords[task.id];
+                if (!start || !end) return null;
+                const midX = (start.right + end.left) / 2;
+                const midY = (start.y + end.y) / 2;
+                return (
+                  <div
+                    key={`dep-badge-${dep.taskId}-${task.id}`}
+                    className="absolute -translate-x-1/2 -translate-y-1/2 px-1 py-0.5 rounded text-[8px] font-mono font-semibold bg-card border border-border text-muted-foreground shadow-sm whitespace-nowrap"
+                    style={{ left: midX, top: midY }}
+                    title={DEPENDENCY_TYPE_LABELS[dep.type]}
+                  >
+                    {dep.type}{dep.lagDays ? ` +${dep.lagDays}d` : ''}
+                  </div>
+                );
+              })
+            )}
+          </div>
+
           {/* Milestones */}
           {[
             { id: 'm1', date: '2024-09-20', label: 'Director Review', color: 'bg-blue-500' },
@@ -127,18 +189,26 @@ export default function TasksTimelineView({ projectId }: { projectId: string }) 
             
             return (
               <div key={task.id} className="absolute h-12 flex items-center z-20" style={{ top: index * 48, left: 0, right: 0 }}>
-                <div 
-                  className={`h-7 rounded-sm border cursor-ew-resize flex items-center px-2 text-xs font-medium text-white overflow-hidden shadow-sm transition-transform hover:-translate-y-0.5 ${isCritical ? 'bg-[#A03030] border-[#A03030]' : 'bg-primary border-primary-foreground/20'}`}
-                  style={{ 
-                    marginLeft: left - width, 
+                <motion.div
+                  className={`h-7 rounded-sm border cursor-ew-resize flex items-center px-2 text-xs font-medium text-white overflow-hidden ${isCritical ? 'bg-[#A03030] border-[#A03030]' : 'bg-primary border-primary-foreground/20'}`}
+                  style={{
+                    marginLeft: left - width,
                     width,
-                    opacity: draggingTask === task.id ? 0.7 : 1,
                     zIndex: draggingTask === task.id ? 30 : 20
                   }}
+                  animate={{
+                    opacity: draggingTask === task.id ? 0.85 : 1,
+                    scale: draggingTask === task.id ? 1.04 : 1,
+                    boxShadow: draggingTask === task.id
+                      ? '0 8px 20px rgba(0,0,0,0.35)'
+                      : '0 1px 2px rgba(0,0,0,0.15)',
+                  }}
+                  whileHover={{ y: draggingTask === task.id ? 0 : -2 }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 32 }}
                   onMouseDown={(e) => handleMouseDown(e, task.id, task.dueDate)}
                 >
                   <span className="truncate">{task.estimatedHours}h - {task.title}</span>
-                </div>
+                </motion.div>
               </div>
             );
           })}

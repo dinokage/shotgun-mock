@@ -2,14 +2,84 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PROJECTS, TASKS, REVIEWS, PUBLISH_LOGS, DEPARTMENTS, USERS, TIME_LOGS, SHOTS } from '@/data/mockData';
+import { PROJECTS, TASKS, REVIEWS, PUBLISH_LOGS, DEPARTMENTS, USERS, TIME_LOGS, SHOTS, Project } from '@/data/mockData';
 import { BarChart3, TrendingUp, Clock, CheckCircle2, AlertTriangle, Users, Download, ArrowUpRight, ArrowDownRight, Flame } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Link } from 'wouter';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useEffect, useState } from 'react';
+import { useAuthStore } from '@/store/auth';
+
+/** Stable string hash, used to seed deterministic mock figures below (no Math.random). */
+function hashString(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) hash = Math.imul(31, hash) + str.charCodeAt(i) | 0;
+  return Math.abs(hash);
+}
+
+/** Deterministic pseudo-random float in [0, 1), seeded by two integers. */
+function seededFraction(a: number, b: number): number {
+  const x = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+/**
+ * Deterministic per-project bid vs. actual hours + rate for the Bid Margins
+ * table. Mirrors the spend-ratio model in financials.tsx's getProjectFinancials:
+ * a stable per-project hash seeds an hour estimate, and a risk/progress-driven
+ * ratio (with a small per-project jitter) decides how actuals diverge from the
+ * bid - so every project lands on its own curve instead of a shared placeholder.
+ */
+function getProjectBidMargin(p: Project): { bids: number; actuals: number; rate: number } {
+  const seed = hashString(p.id);
+  const bids = 150 + (seed % 1200); // stable bid-hours estimate per project, 150-1349h
+  const jitter = seededFraction(seed, 41); // stable per-project value in [0,1)
+
+  const progressFactor = p.progress / 100;
+  const riskPremium = (p.riskScore / 100) * 0.4; // riskier shows tend to burn hotter
+  const jitterSpread = (jitter - 0.5) * 0.3; // +/-15%, keeps similar-risk projects visually distinct
+
+  let burnRatio = progressFactor * (0.8 + riskPremium) + jitterSpread;
+  if (p.status === 'COMPLETE') burnRatio = 0.95 + jitter * 0.25; // wrapped shows land near/over their bid
+  burnRatio = Math.max(0.1, Math.min(1.5, burnRatio));
+
+  const actuals = Math.max(1, Math.round(bids * burnRatio));
+  const rate = 75 + (seed % 21); // stable $75-95/h per project
+
+  return { bids, actuals, rate };
+}
+
+/**
+ * Mirrors the header clock's punched-in state (TimeClockWidget reads/writes the
+ * same 'forge-punch-in-time' localStorage key the moment the app loads) so the
+ * logged-in user's own Timecards row never contradicts the header's live
+ * PUNCHED IN indicator.
+ */
+function usePunchedInSession(): { hours: number; since: string | null } {
+  const [session, setSession] = useState<{ hours: number; since: string | null }>({ hours: 0, since: null });
+
+  useEffect(() => {
+    const compute = () => {
+      const startTime = localStorage.getItem('forge-punch-in-time');
+      if (!startTime) {
+        setSession({ hours: 0, since: null });
+        return;
+      }
+      const startMs = parseInt(startTime, 10);
+      setSession({ hours: Math.max(0, (Date.now() - startMs) / 3600000), since: new Date(startMs).toISOString() });
+    };
+    compute();
+    const interval = setInterval(compute, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return session;
+}
 
 export default function Analytics() {
   const { toast } = useToast();
+  const { currentUser } = useAuthStore();
+  const punchedInSession = usePunchedInSession();
   const totalTasks = TASKS.length;
   const completedTasks = TASKS.filter(t => t.status === 'approved').length;
   const avgReviewTime = 2.4; // hours mock
@@ -78,7 +148,7 @@ export default function Analytics() {
       <Tabs defaultValue="production" className="w-full">
         <TabsList className="mb-4">
           <TabsTrigger value="production">Production Metrics</TabsTrigger>
-          <TabsTrigger value="financials">Financials & Bidding</TabsTrigger>
+          <TabsTrigger value="financials">Bid Margins</TabsTrigger>
           <TabsTrigger value="timecards">Timecards & Tracking</TabsTrigger>
         </TabsList>
 
@@ -93,7 +163,7 @@ export default function Analytics() {
             <CardContent className="pt-4 space-y-5">
               {TASKS.slice(0, 5).map(task => {
                 const bids = task.estimatedHours || 40;
-                const actuals = task.actualHours || (Math.floor(Math.random() * 50) + 10); // Mock actuals if undefined
+                const actuals = task.actualHours || ((hashString(task.id) % 40) + 10); // Deterministic fallback if undefined
                 const burnRate = Math.round((actuals / bids) * 100);
                 const isOverBudget = actuals > bids;
                 
@@ -178,10 +248,10 @@ export default function Analytics() {
                   </thead>
                   <tbody>
                     {DEPARTMENTS.slice(0, 6).map((dept, i) => {
-                      // Generate some fake capacity data per week (0-150%)
+                      // Deterministic capacity curve per week (0-150%), seeded per dept+week
                       const baseLoad = [80, 95, 60, 110, 40, 85][i];
                       const weekLoads = Array.from({ length: 8 }).map((_, w) => {
-                        return Math.max(0, baseLoad + Math.sin(w) * 30 + Math.random() * 20);
+                        return Math.max(0, baseLoad + Math.sin(w) * 30 + seededFraction(i, w) * 20);
                       });
 
                       return (
@@ -327,7 +397,11 @@ export default function Analytics() {
           <div className="grid grid-cols-1 gap-6">
             <Card>
               <CardHeader>
-                <CardTitle className="text-xl flex items-center gap-2"><Flame className="text-orange-500" /> Studio Burn Rate & Margins</CardTitle>
+                <CardTitle className="text-xl flex items-center gap-2"><Flame className="text-orange-500" /> Bid vs. Delivered Profitability</CardTitle>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Won bid hours vs. hours actually delivered, per project. For live budget spend and burn-rate tracking, see the{' '}
+                  <Link href="/financials"><span className="text-primary hover:underline cursor-pointer">Financials dashboard</span></Link>.
+                </p>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
@@ -344,10 +418,8 @@ export default function Analytics() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border/50">
-                      {PROJECTS.map((proj, i) => {
-                        const bids = [400, 1200, 850, 200, 150][i] || 300;
-                        const actuals = [450, 1100, 920, 180, 50][i] || 250;
-                        const rate = 85; // Avg hourly rate
+                      {PROJECTS.map((proj) => {
+                        const { bids, actuals, rate } = getProjectBidMargin(proj);
                         const bidValue = bids * rate;
                         const actualCost = actuals * rate;
                         const profit = bidValue - actualCost;
@@ -401,13 +473,22 @@ export default function Analytics() {
                       // Filter all logs for the user to compute actual hours, or mock it if missing
                       const userLogs = TIME_LOGS.filter(l => l.userId === user.id);
                       const actualHours = userLogs.reduce((acc, l) => acc + l.hours, 0);
-                      
-                      // Mock additional status since our TimeLog interface is very simple
-                      const mockStatus = i % 3 === 0 ? 'punched-in' : 'offline';
-                      const punchedInAt = mockStatus === 'punched-in' ? new Date().toISOString() : undefined;
-                      const totalHoursToday = actualHours > 0 ? actualHours : (i % 2 === 0 ? 6.5 : 0);
-                      const totalHoursWeek = actualHours > 0 ? actualHours * 5 : (i % 2 === 0 ? 32.5 : 0);
-                      
+                      const dept = DEPARTMENTS.find(d => d.id === user.departmentId);
+                      const isCurrentUser = currentUser?.id === user.id;
+
+                      // Mock additional status since our TimeLog interface is very simple.
+                      // The logged-in user's own row instead mirrors the header clock's
+                      // punched-in state (usePunchedInSession above) so the two live
+                      // status indicators never contradict each other.
+                      const mockStatus = isCurrentUser ? 'punched-in' : (i % 3 === 0 ? 'punched-in' : 'offline');
+                      const punchedInAt = mockStatus === 'punched-in'
+                        ? (isCurrentUser ? punchedInSession.since ?? new Date().toISOString() : new Date().toISOString())
+                        : undefined;
+                      const baseHoursToday = actualHours > 0 ? actualHours : (i % 2 === 0 ? 6.5 : 0);
+                      const baseHoursWeek = actualHours > 0 ? actualHours * 5 : (i % 2 === 0 ? 32.5 : 0);
+                      const totalHoursToday = isCurrentUser ? baseHoursToday + punchedInSession.hours : baseHoursToday;
+                      const totalHoursWeek = isCurrentUser ? baseHoursWeek + punchedInSession.hours : baseHoursWeek;
+
                       const todayHrs = totalHoursToday.toFixed(1);
                       const weekHrs = totalHoursWeek.toFixed(1);
                       const util = Math.round((Number(weekHrs) / 40) * 100);
@@ -425,7 +506,7 @@ export default function Analytics() {
                             </div>
                           </td>
                           <td className="py-4">
-                            <Badge variant="secondary" className="text-[10px]">{user.departmentId}</Badge>
+                            <Badge variant="secondary" className="text-[10px]">{dept?.name || user.departmentId}</Badge>
                           </td>
                           <td className="py-4 text-center">
                             <Badge variant="outline" className={mockStatus === 'punched-in' ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-muted text-muted-foreground'}>

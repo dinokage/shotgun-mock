@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { USERS } from '@/data/mockData';
-import { Play, Pause, SkipBack, SkipForward, Volume2, PenTool, MousePointer2, Type, Square, ArrowUpRight, CheckCircle2, MessageSquare, XCircle, ChevronLeft, Circle, Upload, Camera, Film, Loader2, SplitSquareHorizontal, Layers, Mic, Square as SquareIcon, Package, Columns2, GitCompareArrows, Link2 } from 'lucide-react';
+import { USERS, SHOTS, REVIEWED_TASK_ID, type ApprovalEvent } from '@/data/mockData';
+import { Play, Pause, SkipBack, SkipForward, Volume2, MousePointer2, CheckCircle2, MessageSquare, XCircle, ChevronLeft, Circle, Upload, Camera, Film, Loader2, SplitSquareHorizontal, Layers, Mic, MicOff, Square as SquareIcon, Package, Columns2, GitCompareArrows, Link2, AlertTriangle, Send, Inbox } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useHotkeys } from '@/hooks/use-hotkeys';
 import { Link } from 'wouter';
@@ -11,43 +12,23 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu';
 import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
+import { cut } from '@/lib/motion';
 import { useAuthStore } from '@/store/auth';
-
-type AnnotationTool = 'select' | 'pen' | 'arrow' | 'rectangle' | 'text';
-
-const TOOLS: { id: AnnotationTool; icon: typeof MousePointer2; label: string }[] = [
-  { id: 'select', icon: MousePointer2, label: 'Select' },
-  { id: 'pen', icon: PenTool, label: 'Draw freehand' },
-  { id: 'arrow', icon: ArrowUpRight, label: 'Draw arrow' },
-  { id: 'rectangle', icon: Square, label: 'Draw rectangle' },
-  { id: 'text', icon: Type, label: 'Add text annotation' },
-];
-
-interface Comment {
-  id: string;
-  userIndex: number;
-  frame: number;
-  text: string;
-  audioUrl?: string;
-}
-
-interface Annotation {
-  id: string;
-  frame: number;
-  type: AnnotationTool;
-  color: string;
-  x: number;
-  y: number;
-  w?: number;
-  h?: number;
-  points?: {x: number, y: number}[];
-  text?: string;
-  startFrame?: number;
-  endFrame?: number;
-  fontFamily?: string;
-  fontSize?: number;
-  backgroundColor?: string;
-}
+import { useTasksStore } from '@/store/tasks';
+import { useReviewStore, PRESENTED_VERSION_ID, type ReviewComment } from '@/store/reviews';
+import {
+  AnnotationToolbar,
+  AnnotationCanvas,
+  PlaybackControls,
+  FrameScrubber,
+  PresentationToggle,
+  PresentationLockBanner,
+  GhostingToggle,
+  type AnnotationTool,
+  type Annotation,
+  type DraggingElement,
+} from '@/components/shared/review';
 
 interface MediaClip {
   id: string;
@@ -65,6 +46,110 @@ interface MediaClip {
 
 const COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#eab308', '#d946ef', '#ffffff'];
 
+const APPROVAL_ACTION_LABEL: Record<ApprovalEvent['action'], string> = {
+  'submitted-for-lead-review': 'submitted for Lead review',
+  'submitted-for-manager-review': 'submitted for Manager review',
+  'approved': 'approved',
+  'changes-requested': 'requested changes',
+  'rejected': 'rejected',
+  'published': 'approved & published',
+};
+
+function ApprovalActionIcon({ action }: { action: ApprovalEvent['action'] }) {
+  switch (action) {
+    case 'approved':
+    case 'published':
+      return <CheckCircle2 className="w-3.5 h-3.5 text-[#1E7A34] shrink-0" />;
+    case 'changes-requested':
+      return <MessageSquare className="w-3.5 h-3.5 text-[#B5651D] shrink-0" />;
+    case 'rejected':
+      return <XCircle className="w-3.5 h-3.5 text-[#A03030] shrink-0" />;
+    default:
+      return <Upload className="w-3.5 h-3.5 text-muted-foreground shrink-0" />;
+  }
+}
+
+/**
+ * Plays back a recorded voice-note comment and draws its waveform from the
+ * real amplitude samples captured during recording (see `toggleRecording`
+ * below) — not a decorative placeholder. `audioUrl` is a `blob:` object URL,
+ * so it only survives for this browser tab's session; if the page was
+ * reloaded (or the note is from a different session) the URL is dead and the
+ * `<audio>` element fires `onError` — handled below rather than left to crash.
+ */
+function VoiceNotePlayer({ comment }: { comment: ReviewComment }) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState<number | null>(null);
+  const [unavailable, setUnavailable] = useState(false);
+
+  if (!comment.audioUrl) return null;
+
+  if (unavailable) {
+    return (
+      <div className="mt-2 bg-muted/50 rounded-full h-8 flex items-center px-3 gap-2 w-56 text-xs text-muted-foreground">
+        <MicOff className="w-3.5 h-3.5 shrink-0" />
+        Voice note unavailable (session ended)
+      </div>
+    );
+  }
+
+  const waveform = comment.waveform && comment.waveform.length > 0 ? comment.waveform : Array.from({ length: 18 }, () => 0.35);
+  const durationLabel = duration && isFinite(duration) ? `0:${String(Math.round(duration)).padStart(2, '0')}` : '--:--';
+
+  const togglePlay = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (isPlaying) {
+      audio.pause();
+    } else {
+      audio.currentTime = audio.ended || audio.currentTime >= audio.duration ? 0 : audio.currentTime;
+      audio.play().catch(() => setUnavailable(true));
+    }
+  };
+
+  return (
+    <div className="mt-2 bg-primary/10 rounded-full h-8 flex items-center px-3 gap-2 w-48">
+      <audio
+        ref={audioRef}
+        src={comment.audioUrl}
+        preload="metadata"
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+        onEnded={() => setIsPlaying(false)}
+        onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+        onTimeUpdate={(e) => {
+          const d = e.currentTarget.duration;
+          if (d && isFinite(d) && d > 0) setProgress(e.currentTarget.currentTime / d);
+        }}
+        onError={() => setUnavailable(true)}
+        className="hidden"
+      />
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-6 w-6 rounded-full hover:bg-primary/20 shrink-0 text-primary"
+        onClick={togglePlay}
+        aria-label={isPlaying ? 'Pause voice note' : 'Play voice note'}
+      >
+        {isPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+      </Button>
+      <div className="flex-1 flex items-center gap-0.5 h-3">
+        {waveform.map((v, i) => (
+          <div
+            key={i}
+            className={cn('w-1 rounded-full transition-colors', i / waveform.length <= progress ? 'bg-primary' : 'bg-primary/40')}
+            style={{ height: `${Math.max(15, v * 100)}%` }}
+          />
+        ))}
+      </div>
+      <span className="text-[10px] text-primary font-mono shrink-0">{durationLabel}</span>
+    </div>
+  );
+}
+
 export default function Review() {
   const { currentUser } = useAuthStore();
   const isManager = currentUser && ['vfx_producer', 'production_manager', 'coordinator', 'supervisor', 'lead'].includes(currentUser.role);
@@ -72,6 +157,28 @@ export default function Review() {
   const isArtist = currentUser && ['artist', 'senior_artist'].includes(currentUser.role);
   const isLead = currentUser && ['lead', 'supervisor'].includes(currentUser.role);
   const isProd = currentUser && ['vfx_producer', 'production_manager', 'coordinator'].includes(currentUser.role);
+  const canPresent = Boolean(isLead || isProd);
+  // Index into USERS for the logged-in user, used to attribute anything this
+  // page writes into the shared comment stream (comments, stamps) to whoever
+  // is actually signed in — not a hardcoded seed user. -1 (renders as
+  // "Unknown") if somehow nobody is logged in.
+  const currentUserIndex = currentUser ? USERS.findIndex((u) => u.id === currentUser.id) : -1;
+
+  // Presentation Mode: a Lead/Producer can broadcast their playhead to every
+  // other tab open to this version (this internal page, and the client
+  // portal). Sync is real but transport-limited to this mock's zustand
+  // `persist` + storage-event bridge (see src/store/reviews.ts) — it only
+  // reaches other tabs/windows in the same browser, not another reviewer's
+  // own machine, so copy shown to the user must say "tabs", not "viewers".
+  const presentation = useReviewStore((s) => s.presentation);
+  const startPresentation = useReviewStore((s) => s.startPresentation);
+  const stopPresentation = useReviewStore((s) => s.stopPresentation);
+  const setPresenterFrame = useReviewStore((s) => s.setPresenterFrame);
+  const isPresenting = presentation.isActive && presentation.presenterId === currentUser?.id;
+  const isLockedViewer =
+    presentation.isActive &&
+    presentation.versionId === PRESENTED_VERSION_ID &&
+    presentation.presenterId !== currentUser?.id;
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [frame, setFrame] = useState(1);
@@ -93,27 +200,32 @@ export default function Review() {
   ]);
   const [tool, setTool] = useState<AnnotationTool>('select');
   const [viewerMode, setViewerMode] = useState(false);
-  const [comments, setComments] = useState<Comment[]>([
-    { id: 'c1', userIndex: 1, frame: 45, text: 'The rim light on the left side is blowing out a bit too much.' },
-    { id: 'c2', userIndex: 0, frame: 112, text: 'Agreed. Also, can we add a bit more falloff to the shadow here?' },
-  ]);
+  // Comments (including voice notes) live in the review store so they persist
+  // across reloads/tabs like presentation state does, rather than being lost
+  // local-only state.
+  const comments = useReviewStore((s) => s.comments);
+  const addComment = useReviewStore((s) => s.addComment);
   const [commentDraft, setCommentDraft] = useState('');
   const [isRecording, setIsRecording] = useState(false);
+  const [micError, setMicError] = useState<string | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const waveformSamplesRef = useRef<number[]>([]);
+  const waveformIntervalRef = useRef<number | null>(null);
   const [color, setColor] = useState('#ef4444');
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [currentDrawStart, setCurrentDrawStart] = useState<{x: number, y: number} | null>(null);
-  const [currentPoints, setCurrentPoints] = useState<{x: number, y: number}[]>([]);
-  const [tempRect, setTempRect] = useState<{x: number, y: number, w: number, h: number} | null>(null);
   const [resizing, setResizing] = useState<{ id: string, type: 'video' | 'annotation', edge: 'start' | 'end' } | null>(null);
   const [isRendering, setIsRendering] = useState(false);
   const [renderProgress, setRenderProgress] = useState(0);
-  const [draggingElement, setDraggingElement] = useState<{ id: string, type: 'video' | 'annotation', startX: number, startY: number, initialX: number, initialY: number } | null>(null);
+  const [draggingElement, setDraggingElement] = useState<DraggingElement | null>(null);
   
   const [abWipe, setAbWipe] = useState(false);
   const [abWipePosition, setAbWipePosition] = useState(50);
   const [isDraggingWipe, setIsDraggingWipe] = useState(false);
   const [onionSkin, setOnionSkin] = useState(false);
+  const [ghosting, setGhosting] = useState(false);
   
   // Version Comparison State
   const [compareMode, setCompareMode] = useState<'off' | 'side-by-side' | 'overlay'>('off');
@@ -130,14 +242,44 @@ export default function Review() {
     { id: 'v003', label: 'v003 — Final Comp', src: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4' },
   ];
 
-  const [reviewWorkflowStatus, setReviewWorkflowStatus] = useState<'wip' | 'lead-review' | 'manager-review' | 'approved'>('wip');
+  // Multi-tier approval chain (Artist -> Lead/Supervisor -> Producer) is real,
+  // persisted state on the task backing this version — not local UI state —
+  // so it survives reload/navigation and stays in sync with every other view
+  // of the same task (Kanban, task drawer, dashboards). ftrack only tracks a
+  // single status field per version; this is a genuine multi-step chain with
+  // a full audit trail.
+  const tasks = useTasksStore((s) => s.tasks);
+  const recordApprovalEvent = useTasksStore((s) => s.recordApprovalEvent);
+  const reviewedTask = tasks.find((t) => t.id === REVIEWED_TASK_ID);
+  const reviewedShot = reviewedTask?.shotId ? SHOTS.find((s) => s.id === reviewedTask.shotId) : undefined;
+  const reviewWorkflowStatus: 'wip' | 'lead-review' | 'manager-review' | 'approved' =
+    reviewedTask?.status === 'lead-review' || reviewedTask?.status === 'manager-review' || reviewedTask?.status === 'approved'
+      ? reviewedTask.status
+      : 'wip';
+  const submitApproval = (status: 'in-progress' | 'lead-review' | 'manager-review' | 'approved', action: ApprovalEvent['action']) => {
+    if (!currentUser) return;
+    recordApprovalEvent(REVIEWED_TASK_ID, status, {
+      action,
+      byUserId: currentUser.id,
+      byUserName: currentUser.name,
+      byRole: currentUser.role,
+    });
+  };
+
+  // Client feedback moderation: notes a client leaves in the client portal
+  // land in a holding area here rather than the shared comment stream — an
+  // internal reviewer has to explicitly "transfer" a note before it becomes
+  // visible team-wide.
+  const clientNotes = useReviewStore((s) => s.clientNotes);
+  const transferClientNote = useReviewStore((s) => s.transferClientNote);
+  const pendingClientNotes = clientNotes.filter((n) => !n.transferred);
 
   const { toast } = useToast();
   const maxFrames = 240;
-  const drawMode = tool !== 'select';
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
   const timelineRef = useRef<HTMLDivElement>(null);
+  const videoCanvasContainerRef = useRef<HTMLDivElement>(null);
   
   // Mock Remote Cursors
   const [remoteCursors, setRemoteCursors] = useState<{ id: string; name: string; color: string; x: number; y: number; active: boolean }[]>([
@@ -188,12 +330,12 @@ export default function Review() {
 
   // Keyboard shortcuts
   useHotkeys({
-    'Space': () => setIsPlaying(p => !p),
-    'ArrowLeft': () => { setIsPlaying(false); setFrame(f => Math.max(1, f - 1)); },
-    'ArrowRight': () => { setIsPlaying(false); setFrame(f => Math.min(maxFrames, f + 1)); },
-    'j': () => { setIsPlaying(false); setFrame(f => Math.max(1, f - 5)); },
-    'k': () => setIsPlaying(p => !p),
-    'l': () => { setIsPlaying(false); setFrame(f => Math.min(maxFrames, f + 5)); },
+    'Space': () => !isLockedViewer && setIsPlaying(p => !p),
+    'ArrowLeft': () => { if (isLockedViewer) return; setIsPlaying(false); setFrame(f => Math.max(1, f - 1)); },
+    'ArrowRight': () => { if (isLockedViewer) return; setIsPlaying(false); setFrame(f => Math.min(maxFrames, f + 1)); },
+    'j': () => { if (isLockedViewer) return; setIsPlaying(false); setFrame(f => Math.max(1, f - 5)); },
+    'k': () => !isLockedViewer && setIsPlaying(p => !p),
+    'l': () => { if (isLockedViewer) return; setIsPlaying(false); setFrame(f => Math.min(maxFrames, f + 5)); },
     '[': () => { /* trim in point placeholder */ },
     ']': () => { /* trim out point placeholder */ },
     'Escape': () => { setSelectedAnnotationId(null); setTool('select'); },
@@ -216,7 +358,30 @@ export default function Review() {
     '3': () => setTool('arrow'),
     '4': () => setTool('rectangle'),
     '5': () => setTool('text'),
-  }, [selectedAnnotationId, maxFrames]);
+  }, [selectedAnnotationId, maxFrames, isLockedViewer]);
+
+  // Push our playhead out to locked viewers whenever we're presenting.
+  useEffect(() => {
+    if (isPresenting) setPresenterFrame(frame);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frame, isPresenting]);
+
+  // While locked to a presenter, mirror their playhead and give up local playback.
+  useEffect(() => {
+    if (!isLockedViewer) return;
+    setIsPlaying(false);
+    setFrame(presentation.frame);
+  }, [isLockedViewer, presentation.frame]);
+
+  // Don't leave the room "presenting" after navigating away.
+  useEffect(() => {
+    return () => {
+      if (useReviewStore.getState().presentation.presenterId === currentUser?.id) {
+        stopPresentation();
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleScreenshot = async () => {
     try {
@@ -244,7 +409,7 @@ export default function Review() {
       ctx.globalCompositeOperation = 'source-over';
       
       // Draw text overlays
-      const textOverlays = document.querySelectorAll('.text-annotation-input');
+      const textOverlays = document.querySelectorAll('[data-annotation-marker="text"]');
       const videoRect = baseVideo ? baseVideo.getBoundingClientRect() : { width: 1920, height: 1080, left: 0, top: 0 };
       const scaleX = canvas.width / videoRect.width;
       const scaleY = canvas.height / videoRect.height;
@@ -317,6 +482,7 @@ export default function Review() {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't trigger if user is typing in an input or textarea
       if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return;
+      if (isLockedViewer) return;
       if (e.code === 'Space') {
         e.preventDefault();
         setIsPlaying(p => !p);
@@ -332,7 +498,7 @@ export default function Review() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [isLockedViewer]);
 
   // Handle global mouse move for timeline resizing
   useEffect(() => {
@@ -405,7 +571,7 @@ export default function Review() {
     if (!isDraggingWipe) return;
     
     const handleMouseMove = (e: MouseEvent) => {
-      const videoContainer = document.getElementById('video-canvas-container');
+      const videoContainer = videoCanvasContainerRef.current;
       if (!videoContainer) return;
       const rect = videoContainer.getBoundingClientRect();
       let newPct = ((e.clientX - rect.left) / rect.width) * 100;
@@ -495,43 +661,140 @@ export default function Review() {
     }
   }, [frame, isPlaying, videoClips]);
 
-  const handleAction = (action: string) => {
-    toast({ title: action, description: 'Action recorded.' });
-  };
-
-  const handleSubmitComment = (audioUrl?: string) => {
+  const handleSubmitComment = (audioUrl?: string, waveform?: number[]) => {
     const text = commentDraft.trim();
     if (!text && !audioUrl) return;
-    setComments(prev => [...prev, { id: `c${prev.length + 1}`, userIndex: 0, frame, text, audioUrl }]);
+    addComment({ userIndex: currentUserIndex, frame, text, audioUrl, waveform });
     setCommentDraft('');
     toast({ description: audioUrl ? `Voice note added at frame ${frame}.` : `Comment added at frame ${frame}.` });
   };
 
-  const toggleRecording = () => {
+  const stopMicStream = () => {
+    if (waveformIntervalRef.current !== null) {
+      window.clearInterval(waveformIntervalRef.current);
+      waveformIntervalRef.current = null;
+    }
+    mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
+    mediaStreamRef.current = null;
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+    }
+  };
+
+  // Release the mic if the component unmounts mid-recording.
+  useEffect(() => stopMicStream, []);
+
+  const toggleRecording = async () => {
     if (isRecording) {
-      setIsRecording(false);
-      // Simulate stopping recording and saving blob
-      handleSubmitComment('mock-audio-blob:12345');
-    } else {
+      mediaRecorderRef.current?.stop();
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      const message = "Voice recording isn't supported in this browser.";
+      setMicError(message);
+      toast({ title: 'Not supported', description: message, variant: 'destructive' });
+      return;
+    }
+
+    setMicError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+
+      // Real-time amplitude sampling (Web Audio) for a genuine waveform, not a decorative fake one.
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const audioCtx = new AudioCtx();
+      audioContextRef.current = audioCtx;
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      waveformSamplesRef.current = [];
+      waveformIntervalRef.current = window.setInterval(() => {
+        analyser.getByteTimeDomainData(dataArray);
+        let sumSquares = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          const normalized = (dataArray[i] - 128) / 128;
+          sumSquares += normalized * normalized;
+        }
+        const rms = Math.sqrt(sumSquares / dataArray.length);
+        waveformSamplesRef.current = [...waveformSamplesRef.current, Math.min(1, rms * 4)].slice(-40);
+      }, 100);
+
+      const recorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+
+      recorder.onstop = () => {
+        const waveform = waveformSamplesRef.current;
+        stopMicStream();
+        setIsRecording(false);
+
+        const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+        audioChunksRef.current = [];
+        if (blob.size === 0) {
+          toast({ title: 'Recording too short', description: 'No audio was captured — try again.', variant: 'destructive' });
+          return;
+        }
+        const audioUrl = URL.createObjectURL(blob);
+        handleSubmitComment(audioUrl, waveform.length ? waveform : undefined);
+      };
+
+      recorder.start();
       setIsRecording(true);
-      toast({ title: 'Recording Started', description: 'Speak now. Click again to stop.' });
+      toast({ title: 'Recording started', description: 'Speak now. Click the record button again to stop.' });
+    } catch (err) {
+      stopMicStream();
+      const isPermissionError = err instanceof DOMException && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError');
+      const message = isPermissionError
+        ? 'Microphone access was denied. Allow microphone access in your browser settings to record a voice note.'
+        : "Couldn't access your microphone. Check that one is connected and try again.";
+      setMicError(message);
+      toast({ title: 'Microphone unavailable', description: message, variant: 'destructive' });
     }
   };
 
   return (
     <div className="flex flex-col h-screen bg-background relative overflow-hidden">
-      <div className="h-14 border-b border-border bg-card flex items-center justify-between px-4 shrink-0">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" asChild className="h-8 w-8 text-muted-foreground">
+      <div className="h-14 border-b border-border bg-card flex items-center justify-between gap-4 px-4 shrink-0 overflow-hidden">
+        <div className="flex items-center gap-4 min-w-0">
+          <Button variant="ghost" size="icon" asChild className="h-8 w-8 text-muted-foreground shrink-0">
             <Link href="/projects/p1"><ChevronLeft className="w-5 h-5" /></Link>
           </Button>
-          <div className="font-medium">FORGE REVIEW — SEQ_020_SH_040 v003</div>
+          <div className="font-medium truncate" title={`FORGE REVIEW — ${reviewedShot ? `${reviewedShot.name} ${reviewedShot.currentVersion}` : 'SEQ_020_SH_040 v003'}`}>
+            FORGE REVIEW — {reviewedShot ? `${reviewedShot.name} ${reviewedShot.currentVersion}` : 'SEQ_020_SH_040 v003'}
+          </div>
         </div>
-        <div className="flex items-center gap-4">
-          {viewerMode && <div className="text-xs bg-blue-500/20 text-blue-500 px-2 py-1 rounded border border-blue-500/30">Viewer Mode</div>}
+        <div className="flex items-center gap-4 shrink-0">
+          {viewerMode && <div className="text-xs bg-blue-500/20 text-blue-500 px-2 py-1 rounded border border-blue-500/30 whitespace-nowrap">Viewer Mode</div>}
           <Button variant="outline" size="sm" onClick={() => setViewerMode(!viewerMode)}>
             {viewerMode ? 'Exit Viewer Mode' : 'Read-only Reviewer'}
           </Button>
+          {!isLockedViewer && canPresent && (
+            <PresentationToggle
+              isPresenting={isPresenting}
+              onStart={() => {
+                startPresentation({
+                  versionId: PRESENTED_VERSION_ID,
+                  presenterId: currentUser!.id,
+                  presenterName: currentUser!.name,
+                  frame,
+                });
+                toast({ title: 'Presenting', description: 'Your playhead is now synced across your open browser tabs on this version.' });
+              }}
+              onStop={() => {
+                stopPresentation();
+                toast({ title: 'Presentation Ended', description: 'Viewers can scrub independently again.' });
+              }}
+            />
+          )}
           {!viewerMode && isProd && (
             <Button 
               size="sm" 
@@ -547,44 +810,86 @@ export default function Review() {
           )}
 
           {!viewerMode && reviewWorkflowStatus !== 'approved' && (
-            <div className="flex items-center gap-2">
-              {isArtist && reviewWorkflowStatus === 'wip' && (
+            isLockedViewer ? (
+              // Presentation Mode: locked viewers get a collapsed action set.
+              <div className="flex items-center gap-2">
                 <Button size="sm" className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white" onClick={() => {
-                  setReviewWorkflowStatus('lead-review');
-                  toast({ title: 'Submitted', description: 'Submitted for Lead Review' });
+                  submitApproval('approved', 'approved');
+                  toast({ title: 'Approved', description: 'Approved while following the presenter.' });
                 }}>
-                  <Upload className="w-4 h-4 mr-2" /> Submit to Lead/Supervisor for Review
+                  <CheckCircle2 className="w-4 h-4 mr-2" /> Approve
                 </Button>
-              )}
-              
-              {(isLead || isProd) && (
-                <>
+                <Button size="sm" className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white" onClick={() => {
+                  submitApproval('in-progress', 'changes-requested');
+                  toast({ title: 'Changes Requested' });
+                }}>
+                  <MessageSquare className="w-4 h-4 mr-2" /> Request Changes
+                </Button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                {isArtist && reviewWorkflowStatus === 'wip' && (
                   <Button size="sm" className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white" onClick={() => {
-                    if (isProd) {
-                      setReviewWorkflowStatus('approved');
-                      toast({ title: 'Published', description: 'Approved & Published to Production' });
-                    } else {
-                      setReviewWorkflowStatus('manager-review');
+                    submitApproval('lead-review', 'submitted-for-lead-review');
+                    toast({ title: 'Submitted', description: 'Submitted for Lead Review' });
+                  }}>
+                    <Upload className="w-4 h-4 mr-2" /> Submit to Lead/Supervisor for Review
+                  </Button>
+                )}
+
+                {/* Lead/Supervisor can only act once the Artist has actually
+                    submitted for Lead review — mirrors the Artist button's
+                    own 'wip' gate above so the UI can't fabricate an
+                    approval step that never happened. */}
+                {isLead && reviewWorkflowStatus === 'lead-review' && (
+                  <>
+                    <Button size="sm" className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white" onClick={() => {
+                      submitApproval('manager-review', 'submitted-for-manager-review');
                       toast({ title: 'Submitted', description: 'Submitted to Manager' });
-                    }
-                  }}>
-                    <CheckCircle2 className="w-4 h-4 mr-2" /> {isProd ? 'Approve & Publish' : 'Submit to Manager'}
-                  </Button>
-                  <Button size="sm" className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white" onClick={() => {
-                    setReviewWorkflowStatus('wip');
-                    toast({ title: 'Changes Requested' });
-                  }}>
-                    <MessageSquare className="w-4 h-4 mr-2" /> Request Changes
-                  </Button>
-                  <Button size="sm" className="bg-[#A03030] hover:bg-[#A03030]/90 text-white" onClick={() => {
-                    setReviewWorkflowStatus('wip');
-                    toast({ title: 'Rejected' });
-                  }}>
-                    <XCircle className="w-4 h-4 mr-2" /> Reject
-                  </Button>
-                </>
-              )}
-            </div>
+                    }}>
+                      <CheckCircle2 className="w-4 h-4 mr-2" /> Submit to Manager
+                    </Button>
+                    <Button size="sm" className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white" onClick={() => {
+                      submitApproval('in-progress', 'changes-requested');
+                      toast({ title: 'Changes Requested' });
+                    }}>
+                      <MessageSquare className="w-4 h-4 mr-2" /> Request Changes
+                    </Button>
+                    <Button size="sm" className="bg-[#A03030] hover:bg-[#A03030]/90 text-white" onClick={() => {
+                      submitApproval('in-progress', 'rejected');
+                      toast({ title: 'Rejected' });
+                    }}>
+                      <XCircle className="w-4 h-4 mr-2" /> Reject
+                    </Button>
+                  </>
+                )}
+
+                {/* Producer/Manager can only act once the Lead has submitted
+                    for Manager review — same discipline as above. */}
+                {isProd && reviewWorkflowStatus === 'manager-review' && (
+                  <>
+                    <Button size="sm" className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white" onClick={() => {
+                      submitApproval('approved', 'published');
+                      toast({ title: 'Published', description: 'Approved & Published to Production' });
+                    }}>
+                      <CheckCircle2 className="w-4 h-4 mr-2" /> Approve & Publish
+                    </Button>
+                    <Button size="sm" className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white" onClick={() => {
+                      submitApproval('in-progress', 'changes-requested');
+                      toast({ title: 'Changes Requested' });
+                    }}>
+                      <MessageSquare className="w-4 h-4 mr-2" /> Request Changes
+                    </Button>
+                    <Button size="sm" className="bg-[#A03030] hover:bg-[#A03030]/90 text-white" onClick={() => {
+                      submitApproval('in-progress', 'rejected');
+                      toast({ title: 'Rejected' });
+                    }}>
+                      <XCircle className="w-4 h-4 mr-2" /> Reject
+                    </Button>
+                  </>
+                )}
+              </div>
+            )
           )}
         </div>
       </div>
@@ -593,7 +898,17 @@ export default function Review() {
         {/* Left: Player */}
         <div className="flex-1 flex flex-col bg-black relative">
           {!viewerMode && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-card/80 backdrop-blur border border-border rounded-lg p-1.5 flex gap-3 z-30">
+            <motion.div
+              layout
+              transition={cut.transition}
+              className={cn(
+                'absolute left-1/2 -translate-x-1/2 bg-card/80 backdrop-blur border border-border rounded-lg p-1.5 flex gap-3 z-30',
+                // The presentation-lock banner sits top-4 left-4; when it's
+                // showing, drop the toolbar below it instead of letting the
+                // two collide over the horizontal center.
+                isLockedViewer ? 'top-16' : 'top-4',
+              )}
+            >
               <div className="flex gap-1 items-center">
                 <input 
                   type="file" 
@@ -630,32 +945,15 @@ export default function Review() {
                 >
                   <Upload className="w-4 h-4" />
                 </Button>
-                <div className="w-px h-5 bg-border mx-1" />
-                {TOOLS.map(({ id, icon: Icon, label }) => (
-                  <Button
-                    key={id}
-                    size="icon"
-                    variant={tool === id ? 'secondary' : 'ghost'}
-                    className={`h-8 w-8 ${tool === id && id !== 'select' ? 'text-primary' : ''}`}
-                    aria-label={label}
-                    aria-pressed={tool === id}
-                    onClick={() => setTool(id)}
-                  >
-                    <Icon className="w-4 h-4" />
-                  </Button>
-                ))}
               </div>
-              <div className="w-px bg-border my-1" />
-              <div className="flex gap-1 items-center px-1">
-                {COLORS.map(c => (
-                  <button
-                    key={c}
-                    className={`w-5 h-5 rounded-full border-2 transition-transform ${color === c ? 'scale-125 border-primary shadow-sm' : 'border-transparent hover:scale-110'}`}
-                    style={{ backgroundColor: c }}
-                    onClick={() => setColor(c)}
-                  />
-                ))}
-              </div>
+              <div className="w-px h-5 bg-border mx-1" />
+              <AnnotationToolbar
+                tool={isLockedViewer ? 'select' : tool}
+                onToolChange={setTool}
+                color={color}
+                onColorChange={setColor}
+                colors={COLORS}
+              />
               <div className="w-px h-6 bg-border mx-2" />
               <Button variant="ghost" size="icon" onClick={() => setAbWipe(!abWipe)} title="Toggle A/B Wipe" className={abWipe ? 'text-primary bg-primary/10' : ''}>
                 <SplitSquareHorizontal className="w-4 h-4" />
@@ -663,6 +961,7 @@ export default function Review() {
               <Button variant="ghost" size="icon" onClick={() => setOnionSkin(!onionSkin)} title="Toggle Onion Skinning" className={onionSkin ? 'text-primary bg-primary/10' : ''}>
                 <Layers className="w-4 h-4" />
               </Button>
+              <GhostingToggle active={ghosting} onToggle={() => setGhosting(!ghosting)} />
               <div className="w-px h-6 bg-border mx-2" />
               <Button 
                 variant="ghost" 
@@ -680,7 +979,7 @@ export default function Review() {
               <Button variant="ghost" size="icon" onClick={handleRender} title="Export & Render Composition">
                 <Film className="w-4 h-4" />
               </Button>
-            </div>
+            </motion.div>
           )}
 
           {isRendering && (
@@ -804,17 +1103,31 @@ export default function Review() {
 
               {/* Compare Scrubber */}
               <div className="h-12 bg-card/90 backdrop-blur border-t border-border flex items-center px-6 gap-4 shrink-0">
-                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { setIsPlaying(false); setFrame(f => Math.max(1, f - 1)); }}><SkipBack className="w-3.5 h-3.5" /></Button>
-                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setIsPlaying(!isPlaying)}>{isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}</Button>
-                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { setIsPlaying(false); setFrame(f => Math.min(maxFrames, f + 1)); }}><SkipForward className="w-3.5 h-3.5" /></Button>
-                <input type="range" min={1} max={maxFrames} value={frame} onChange={(e) => { setIsPlaying(false); setFrame(parseInt(e.target.value)); }} className="flex-1 h-1 accent-primary" />
+                <PlaybackControls
+                  isPlaying={isPlaying}
+                  disabled={isLockedViewer}
+                  onTogglePlay={() => setIsPlaying(!isPlaying)}
+                  onStepBack={() => { setIsPlaying(false); setFrame(f => Math.max(1, f - 1)); }}
+                  onStepForward={() => { setIsPlaying(false); setFrame(f => Math.min(maxFrames, f + 1)); }}
+                  frame={frame}
+                  maxFrames={maxFrames}
+                  buttonClassName="h-7 w-7"
+                  iconClassName="w-3.5 h-3.5"
+                />
+                <FrameScrubber
+                  frame={frame}
+                  maxFrames={maxFrames}
+                  disabled={isLockedViewer}
+                  onFrameChange={(f) => { setIsPlaying(false); setFrame(f); }}
+                  className="flex-1"
+                />
                 <span className="text-xs font-mono text-muted-foreground">{String(frame).padStart(3, '0')} / {maxFrames}</span>
               </div>
             </div>
           )}
 
           <div className="flex-1 relative flex items-center justify-center">
-            <div className="w-full aspect-video bg-muted/10 border border-border/20 shadow-2xl relative overflow-hidden">
+            <div ref={videoCanvasContainerRef} className="w-full aspect-video bg-muted/10 border border-border/20 shadow-2xl relative overflow-hidden">
               {videoClips.map(clip => {
                 const isActive = frame >= clip.startFrame && frame <= clip.endFrame;
                 return (
@@ -935,63 +1248,24 @@ export default function Review() {
                 </div>
               )}
 
-              {/* Render Annotations for this frame */}
-              <svg className="annotation-svg absolute inset-0 z-10 pointer-events-none w-full h-full">
-                <defs>
-                  <marker id="arrowhead-red" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-                    <polygon points="0 0, 10 3.5, 0 7" fill="#ef4444" />
-                  </marker>
-                  {COLORS.map(c => (
-                    <marker key={c} id={`arrowhead-${c.replace('#', '')}`} markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-                      <polygon points="0 0, 10 3.5, 0 7" fill={c} />
-                    </marker>
-                  ))}
-                </defs>
-                {annotations.filter(a => {
-                  if (a.type === 'text') return false;
-                  const start = a.startFrame ?? a.frame;
-                  const end = a.endFrame ?? a.frame + 60;
-                  return onionSkin ? (frame >= start - 3 && frame <= end + 3) : (frame >= start && frame <= end);
-                }).map(a => {
-                  const start = a.startFrame ?? a.frame;
-                  const end = a.endFrame ?? a.frame + 60;
-                  const isMainFrame = frame >= start && frame <= end;
-                  const opacity = isMainFrame ? 1 : 0.2;
-
-                  if (a.type === 'rectangle' && a.w && a.h) {
-                    return (
-                      <rect key={a.id} x={a.x} y={a.y} width={a.w} height={a.h} fill={`${a.color}20`} stroke={a.color} strokeWidth={2} style={{ opacity }} className="pointer-events-auto cursor-pointer" onClick={() => tool === 'select' && setAnnotations(prev => prev.filter(p => p.id !== a.id))} />
-                    );
-                  }
-                  if (a.type === 'pen' && a.points) {
-                    const d = `M ${a.points.map(p => `${p.x},${p.y}`).join(' L ')}`;
-                    return (
-                      <path key={a.id} d={d} fill="none" stroke={a.color} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" style={{ opacity }} className="pointer-events-auto cursor-pointer hover:stroke-opacity-70" onClick={() => tool === 'select' && setAnnotations(prev => prev.filter(p => p.id !== a.id))} />
-                    );
-                  }
-                  if (a.type === 'arrow' && a.points && a.points.length === 2) {
-                    return (
-                      <line key={a.id} x1={a.points[0].x} y1={a.points[0].y} x2={a.points[1].x} y2={a.points[1].y} stroke={a.color} strokeWidth={3} style={{ opacity }} markerEnd={`url(#arrowhead-${a.color.replace('#', '')})`} className="pointer-events-auto cursor-pointer" onClick={() => tool === 'select' && setAnnotations(prev => prev.filter(p => p.id !== a.id))} />
-                    );
-                  }
-                  return null;
-                })}
-
-                {/* Temp Drawing */}
-                {isDrawing && tool === 'pen' && currentPoints.length > 0 && (
-                   <path d={`M ${currentPoints.map(p => `${p.x},${p.y}`).join(' L ')}`} fill="none" stroke={color} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
-                )}
-                {isDrawing && tool === 'arrow' && currentDrawStart && currentPoints.length > 0 && (
-                   <line x1={currentDrawStart.x} y1={currentDrawStart.y} x2={currentPoints[currentPoints.length - 1].x} y2={currentPoints[currentPoints.length - 1].y} stroke={color} strokeWidth={3} markerEnd={`url(#arrowhead-${color.replace('#', '')})`} />
-                )}
-                {tempRect && (
-                  <rect x={tempRect.x} y={tempRect.y} width={tempRect.w} height={tempRect.h} fill={`${color}20`} stroke={color} strokeWidth={2} />
-                )}
-              </svg>
+              <AnnotationCanvas
+                annotations={annotations}
+                onAnnotationsChange={setAnnotations}
+                frame={frame}
+                maxFrames={maxFrames}
+                tool={isLockedViewer ? 'select' : tool}
+                color={color}
+                colors={COLORS}
+                selectedAnnotationId={selectedAnnotationId}
+                onSelectedAnnotationIdChange={setSelectedAnnotationId}
+                onDraggingElementChange={setDraggingElement}
+                onionSkin={onionSkin}
+                ghosting={ghosting}
+              />
 
               {/* Mock Remote Cursors Overlay */}
               {remoteCursors.filter(c => c.active).map(cursor => (
-                <div 
+                <div
                   key={cursor.id}
                   className="absolute pointer-events-none z-[60] transition-all duration-300 ease-out"
                   style={{ left: cursor.x, top: cursor.y }}
@@ -1002,157 +1276,37 @@ export default function Review() {
                   </div>
                 </div>
               ))}
+            </div>
 
-              {drawMode && (
-                <div 
-                  className="absolute inset-0 cursor-crosshair z-20" 
-                  onMouseDown={(e) => {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const x = e.clientX - rect.left;
-                    const y = e.clientY - rect.top;
-                    
-                    if (tool === 'rectangle') {
-                      setIsDrawing(true);
-                      setCurrentDrawStart({ x, y });
-                      setTempRect({ x, y, w: 0, h: 0 });
-                    } else if (tool === 'pen' || tool === 'arrow') {
-                      setIsDrawing(true);
-                      setCurrentDrawStart({ x, y });
-                      setCurrentPoints([{ x, y }]);
-                    }
-                  }}
-                  onClick={(e) => {
-                    if (tool === 'text') {
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      const x = e.clientX - rect.left;
-                      const y = e.clientY - rect.top;
-                      setAnnotations(prev => [...prev, { 
-                        id: Date.now().toString(), 
-                        frame, 
-                        startFrame: frame, 
-                        endFrame: Math.min(frame + 60, maxFrames), 
-                        type: 'text', 
-                        color, 
-                        x, 
-                        y, 
-                        text: '',
-                        fontFamily: 'font-sans',
-                        fontSize: 14,
-                        backgroundColor: 'transparent'
-                      }]);
-                      setSelectedAnnotationId(Date.now().toString());
-                    }
-                  }}
-                  onMouseMove={(e) => {
-                    if (!isDrawing) return;
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const x = e.clientX - rect.left;
-                    const y = e.clientY - rect.top;
-                    
-                    if (tool === 'rectangle' && currentDrawStart) {
-                      const newX = Math.min(x, currentDrawStart.x);
-                      const newY = Math.min(y, currentDrawStart.y);
-                      const w = Math.abs(x - currentDrawStart.x);
-                      const h = Math.abs(y - currentDrawStart.y);
-                      setTempRect({ x: newX, y: newY, w, h });
-                    } else if (tool === 'pen' || tool === 'arrow') {
-                      setCurrentPoints(prev => [...prev, { x, y }]);
-                    }
-                  }}
-                  onMouseUp={(e) => {
-                    if (tool === 'rectangle' && tempRect && tempRect.w > 5) {
-                      setAnnotations(prev => [...prev, { id: Date.now().toString(), frame, startFrame: frame, endFrame: Math.min(frame + 60, maxFrames), type: 'rectangle', color, ...tempRect }]);
-                      setSelectedAnnotationId(Date.now().toString());
-                    } else if (tool === 'pen' && currentPoints.length > 1) {
-                      setAnnotations(prev => [...prev, { id: Date.now().toString(), frame, startFrame: frame, endFrame: Math.min(frame + 60, maxFrames), type: 'pen', color, x: 0, y: 0, points: currentPoints }]);
-                      setSelectedAnnotationId(Date.now().toString());
-                    } else if (tool === 'arrow' && currentDrawStart && currentPoints.length > 1) {
-                      setAnnotations(prev => [...prev, { id: Date.now().toString(), frame, startFrame: frame, endFrame: Math.min(frame + 60, maxFrames), type: 'arrow', color, x: 0, y: 0, points: [currentDrawStart, currentPoints[currentPoints.length - 1]] }]);
-                      setSelectedAnnotationId(Date.now().toString());
-                    }
-                    setIsDrawing(false);
-                    setCurrentDrawStart(null);
-                    setCurrentPoints([]);
-                    setTempRect(null);
-                  }}
-                  onMouseLeave={() => {
-                    setIsDrawing(false);
-                    setCurrentDrawStart(null);
-                    setCurrentPoints([]);
-                    setTempRect(null);
-                  }}
-                />
-              )}
-
-              {/* Text Annotations Overlay */}
-              <div className="absolute inset-0 z-30 pointer-events-none">
-                {annotations.filter(a => {
-                  if (a.type !== 'text') return false;
-                  const start = a.startFrame ?? a.frame;
-                  const end = a.endFrame ?? a.frame + 60;
-                  return onionSkin ? (frame >= start - 3 && frame <= end + 3) : (frame >= start && frame <= end);
-                }).map(a => {
-                  const start = a.startFrame ?? a.frame;
-                  const end = a.endFrame ?? a.frame + 60;
-                  const isMainFrame = frame >= start && frame <= end;
-                  const opacity = isMainFrame ? 1 : 0.2;
-
-                  return (
-                  <div 
-                    key={a.id} 
-                    className={`absolute pointer-events-auto rounded border-2 transition-colors ${selectedAnnotationId === a.id ? 'border-primary ring-2 ring-primary/50' : 'border-transparent'} ${tool === 'select' ? 'cursor-move' : ''}`} 
-                    style={{ left: a.x, top: a.y, opacity, backgroundColor: a.backgroundColor !== 'transparent' ? a.backgroundColor : undefined }}
-                    onMouseDown={(e) => {
-                      if (tool === 'select') {
-                        e.stopPropagation();
-                        setSelectedAnnotationId(a.id);
-                        setDraggingElement({ id: a.id, type: 'annotation', startX: e.clientX, startY: e.clientY, initialX: a.x, initialY: a.y });
-                      }
-                    }}
-                    onClick={() => setSelectedAnnotationId(a.id)}
-                  >
-                    <input
-                      type="text"
-                      className={`text-annotation-input bg-transparent text-white font-medium focus:outline-none min-w-[120px] px-2 py-1 ${a.backgroundColor !== 'transparent' ? 'drop-shadow-none' : 'drop-shadow-md'}`}
-                      style={{ color: a.color, fontFamily: a.fontFamily === 'font-sans' ? 'Inter, sans-serif' : a.fontFamily === 'font-serif' ? 'Georgia, serif' : 'monospace', fontSize: `${a.fontSize}px` }}
-                      autoFocus
-                      defaultValue={a.text}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') e.currentTarget.blur();
-                      }}
-                      onBlur={(e) => {
-                        const val = e.target.value.trim();
-                        if (!val) {
-                          setAnnotations(prev => prev.filter(p => p.id !== a.id));
-                          if (selectedAnnotationId === a.id) setSelectedAnnotationId(null);
-                        } else {
-                          setAnnotations(prev => prev.map(p => p.id === a.id ? { ...p, text: val } : p));
-                        }
-                      }}
-                    />
-                  </div>
-                )})}
-              </div>
+            {/* Presentation Mode lock indicator */}
+            <div className="absolute top-4 left-4 z-40">
+              <PresentationLockBanner
+                show={isLockedViewer}
+                presenterName={presentation.presenterName}
+                frame={presentation.frame}
+                maxFrames={maxFrames}
+              />
             </div>
           </div>
 
           <div className="h-48 bg-card border-t border-border flex flex-col shrink-0">
             {/* Timeline Tools */}
             <div className="h-10 border-b border-border flex items-center px-4 gap-4">
-              <Button size="icon" variant="ghost" className="h-6 w-6" aria-label="Previous Frame" onClick={() => { setIsPlaying(false); setFrame(f => Math.max(1, f - 1)); }}>
-                <SkipBack className="w-4 h-4" />
-              </Button>
-              <Button size="icon" variant="ghost" className="h-6 w-6" aria-label={isPlaying ? 'Pause' : 'Play'} onClick={() => setIsPlaying(!isPlaying)}>
-                {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-              </Button>
-              <Button size="icon" variant="ghost" className="h-6 w-6" aria-label="Next Frame" onClick={() => { setIsPlaying(false); setFrame(f => Math.min(maxFrames, f + 1)); }}>
-                <SkipForward className="w-4 h-4" />
-              </Button>
+              <PlaybackControls
+                isPlaying={isPlaying}
+                disabled={isLockedViewer}
+                onTogglePlay={() => setIsPlaying(!isPlaying)}
+                onStepBack={() => { setIsPlaying(false); setFrame(f => Math.max(1, f - 1)); }}
+                onStepForward={() => { setIsPlaying(false); setFrame(f => Math.min(maxFrames, f + 1)); }}
+                frame={frame}
+                maxFrames={maxFrames}
+                buttonClassName="h-6 w-6"
+              />
               <span className="text-xs font-mono">{String(frame).padStart(3, '0')} / {maxFrames}</span>
             </div>
             {/* Timeline Tracks */}
-            <div ref={timelineRef} className="flex-1 overflow-y-auto relative p-2 space-y-1 bg-muted/10 cursor-pointer" onMouseDown={(e) => {
-                 if (resizing) return;
+            <div ref={timelineRef} className={`flex-1 overflow-y-auto relative p-2 space-y-1 bg-muted/10 ${isLockedViewer ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`} onMouseDown={(e) => {
+                 if (resizing || isLockedViewer) return;
                  const rect = e.currentTarget.getBoundingClientRect();
                  const x = e.clientX - rect.left;
                  const newFrame = Math.max(1, Math.min(maxFrames, Math.floor((x / rect.width) * maxFrames)));
@@ -1164,7 +1318,7 @@ export default function Review() {
                    <ContextMenu>
                      <ContextMenuTrigger asChild>
                        <div 
-                         className={`absolute h-full ${selectedAnnotationId === clip.id ? 'border-2 border-primary ring-2 ring-primary/50' : 'border border-blue-500/50 hover:bg-blue-500/30'} bg-blue-500/20 rounded flex items-center px-2 text-[10px] text-blue-500 font-medium overflow-hidden group cursor-pointer`}
+                         className={`absolute h-full transition-colors ${selectedAnnotationId === clip.id ? 'border-2 border-primary ring-2 ring-primary/50 hover:bg-blue-500/30' : 'border border-blue-500/50 hover:bg-blue-500/30'} bg-blue-500/20 rounded flex items-center px-2 text-[10px] text-blue-500 font-medium overflow-hidden group cursor-pointer`}
                          style={{ left: `${(clip.startFrame / maxFrames) * 100}%`, width: `${((clip.endFrame - clip.startFrame) / maxFrames) * 100}%` }}
                          onClick={(e) => { e.stopPropagation(); setSelectedAnnotationId(clip.id); }}
                        >
@@ -1199,7 +1353,7 @@ export default function Review() {
                         <ContextMenu key={a.id}>
                           <ContextMenuTrigger asChild>
                             <div 
-                              className={`absolute h-full rounded cursor-pointer transition-colors overflow-hidden flex items-center group ${selectedAnnotationId === a.id ? 'bg-primary/50 border-2' : 'bg-primary/30 border hover:bg-primary/40'}`} 
+                              className={`absolute h-full rounded cursor-pointer transition-colors overflow-hidden flex items-center group ${selectedAnnotationId === a.id ? 'bg-primary/50 border-2 hover:bg-primary/60' : 'bg-primary/30 border hover:bg-primary/40'}`}
                               style={{ left: `${left}%`, width: `${width}%`, borderColor: a.color }} 
                               onClick={(e) => { e.stopPropagation(); setSelectedAnnotationId(a.id); }}
                             >
@@ -1237,10 +1391,27 @@ export default function Review() {
             <div className="p-4 border-b border-border bg-muted/10 shrink-0">
               <TabsList className="w-full">
                 <TabsTrigger value="comments" className="flex-1">Comments</TabsTrigger>
+                <TabsTrigger value="client" className="flex-1 gap-1.5">
+                  Client
+                  <AnimatePresence mode="popLayout">
+                    {pendingClientNotes.length > 0 && (
+                      <motion.span
+                        key={pendingClientNotes.length}
+                        initial={{ scale: 0.5, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        exit={{ scale: 0.5, opacity: 0 }}
+                        transition={{ type: 'spring', stiffness: 500, damping: 25 }}
+                        className="inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-amber-500 text-[10px] font-semibold text-black"
+                      >
+                        {pendingClientNotes.length}
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
+                </TabsTrigger>
                 <TabsTrigger value="properties" className="flex-1">Properties</TabsTrigger>
               </TabsList>
             </div>
-            
+
             <TabsContent value="comments" className="flex-1 flex flex-col m-0 h-full overflow-hidden data-[state=inactive]:hidden">
               <div className="p-4 border-b border-border bg-muted/20 shrink-0">
                 <div className="flex items-center justify-between mb-2">
@@ -1256,7 +1427,7 @@ export default function Review() {
                       </div>
                       <div className="flex items-center gap-2 text-sm">
                         {reviewWorkflowStatus === 'lead-review' ? (
-                          <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/50 border-t-primary animate-spin" /> 
+                          <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/50 border-t-primary animate-spin" />
                         ) : (
                           <CheckCircle2 className="w-4 h-4 text-[#1E7A34]" />
                         )}
@@ -1265,7 +1436,7 @@ export default function Review() {
                       {(reviewWorkflowStatus === 'manager-review' || reviewWorkflowStatus === 'approved') && (
                         <div className="flex items-center gap-2 text-sm">
                           {reviewWorkflowStatus === 'manager-review' ? (
-                            <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/50 border-t-primary animate-spin" /> 
+                            <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/50 border-t-primary animate-spin" />
                           ) : (
                             <CheckCircle2 className="w-4 h-4 text-[#1E7A34]" />
                           )}
@@ -1275,41 +1446,65 @@ export default function Review() {
                     </>
                   )}
                 </div>
+
+                {reviewedTask && reviewedTask.approvalHistory.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-border/60 space-y-1.5">
+                    <div className="text-[10px] font-semibold text-muted-foreground/70 tracking-wide mb-1.5">HISTORY</div>
+                    <AnimatePresence initial={false}>
+                      {[...reviewedTask.approvalHistory].reverse().map((ev) => (
+                        <motion.div
+                          key={ev.id}
+                          layout
+                          initial={{ opacity: 0, x: -8 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="flex items-start gap-2 text-xs"
+                        >
+                          <ApprovalActionIcon action={ev.action} />
+                          <div className="flex-1 min-w-0">
+                            <span className="text-foreground font-medium">{ev.byUserName}</span>{' '}
+                            <span className="text-muted-foreground">{APPROVAL_ACTION_LABEL[ev.action]}</span>
+                            <div className="text-[10px] text-muted-foreground/70">{new Date(ev.timestamp).toLocaleString()}</div>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
+                  </div>
+                )}
               </div>
-              
+
               <div className="flex-1 overflow-y-auto p-4 space-y-4">
                 {comments.map(comment => {
-                  const user = USERS[comment.userIndex];
+                  const user = comment.fromClient ? null : USERS[comment.userIndex];
+                  const displayName = comment.fromClient ? comment.fromClient.authorName : user?.name ?? 'Unknown';
                   return (
                     <div className="flex gap-3" key={comment.id}>
-                      <Avatar className="w-8 h-8"><AvatarImage src={user.avatar} /><AvatarFallback>{user.name.charAt(0)}</AvatarFallback></Avatar>
+                      <Avatar className="w-8 h-8">
+                        {user && <AvatarImage src={user.avatar} />}
+                        <AvatarFallback className={comment.fromClient ? 'bg-emerald-500/15 text-emerald-500' : undefined}>
+                          {displayName.charAt(0)}
+                        </AvatarFallback>
+                      </Avatar>
                       <div className="flex-1">
-                        <div className="flex items-baseline gap-2 mb-1">
-                          <span className="font-medium text-sm">{user.name}</span>
+                        <div className="flex items-baseline gap-2 mb-1 flex-wrap">
+                          <span className="font-medium text-sm">{displayName}</span>
+                          {comment.fromClient && (
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded">
+                              Client · transferred by {comment.fromClient.transferredByUserName}
+                            </span>
+                          )}
                           <button
                             type="button"
-                            className="text-xs font-mono bg-primary/10 text-primary px-1 rounded hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            disabled={isLockedViewer}
+                            className="text-xs font-mono bg-primary/10 text-primary px-1 rounded hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
                             aria-label={`Jump to frame ${comment.frame}`}
-                            onClick={() => setFrame(comment.frame)}
+                            onClick={() => !isLockedViewer && setFrame(comment.frame)}
                           >
                             {String(comment.frame).padStart(3, '0')}
                           </button>
                         </div>
                         {comment.text && <p className="text-sm text-muted-foreground">{comment.text}</p>}
-                        {comment.audioUrl && (
-                          <div className="mt-2 bg-primary/10 rounded-full h-8 flex items-center px-3 gap-2 w-48">
-                            <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full hover:bg-primary/20 shrink-0 text-primary">
-                              <Play className="w-3 h-3" />
-                            </Button>
-                            <div className="flex-1 flex items-center gap-0.5 h-3">
-                              {/* Fake audio waveform */}
-                              {[1, 2, 4, 3, 5, 2, 4, 1, 3, 2, 1, 4, 2].map((v, i) => (
-                                <div key={i} className="w-1 bg-primary/60 rounded-full" style={{ height: `${v * 20}%` }} />
-                              ))}
-                            </div>
-                            <span className="text-[10px] text-primary font-mono shrink-0">0:04</span>
-                          </div>
-                        )}
+                        <VoiceNotePlayer comment={comment} />
                       </div>
                     </div>
                   );
@@ -1331,23 +1526,93 @@ export default function Review() {
                       }
                     }}
                   />
+                  {micError && (
+                    <div className="flex items-start gap-1.5 text-xs text-destructive mb-2">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                      <span>{micError}</span>
+                    </div>
+                  )}
                   <div className="flex gap-2 relative">
-                    <Button 
-                      variant={isRecording ? 'destructive' : 'outline'} 
-                      size="icon" 
+                    <Button
+                      variant={isRecording ? 'destructive' : 'outline'}
+                      size="icon"
                       className={`shrink-0 ${isRecording ? 'animate-pulse' : ''}`}
                       onClick={toggleRecording}
-                      aria-label="Record Voice Note"
+                      aria-label={isRecording ? 'Stop Recording' : 'Record Voice Note'}
                     >
                       {isRecording ? <SquareIcon className="w-4 h-4 fill-current" /> : <Mic className="w-4 h-4" />}
                     </Button>
-                    <Button variant="outline" size="sm" className="flex-1" onClick={() => toast({ description: `Frame ${frame} stamped.` })}>
+                    <Button variant="outline" size="sm" className="flex-1" onClick={() => {
+                      // A "stamp" is a real, persisted marker comment at the
+                      // current frame — not just a toast — so it actually
+                      // shows up in the Comments stream (and survives
+                      // reload) like any other note left on the timeline.
+                      addComment({ userIndex: currentUserIndex, frame, text: 'Frame stamped for reference.' });
+                      toast({ description: `Frame ${frame} stamped.` });
+                    }}>
                       Stamp F{frame}
                     </Button>
                     <Button size="sm" className="flex-1" disabled={!commentDraft.trim() && !isRecording} onClick={() => handleSubmitComment()}>Submit</Button>
                   </div>
                 </div>
               )}
+            </TabsContent>
+
+            <TabsContent value="client" className="flex-1 flex flex-col m-0 h-full overflow-hidden data-[state=inactive]:hidden">
+              <div className="p-4 border-b border-border bg-muted/20 shrink-0 flex items-start gap-2">
+                <Inbox className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Notes clients leave in the review portal land here first. Transfer a note to publish it into the Comments stream where the whole team can see it.
+                </p>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {clientNotes.length === 0 ? (
+                  <div className="text-sm text-muted-foreground italic text-center mt-10">No client feedback yet.</div>
+                ) : (
+                  <AnimatePresence initial={false}>
+                    {[...clientNotes].reverse().map((note) => (
+                      <motion.div
+                        layout
+                        key={note.id}
+                        initial={{ opacity: 0, y: -8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.96 }}
+                        transition={{ duration: 0.2 }}
+                        className={cn(
+                          'rounded-lg border p-3 text-sm',
+                          note.transferred ? 'border-border/50 bg-muted/10 opacity-70' : 'border-amber-500/30 bg-amber-500/5'
+                        )}
+                      >
+                        <div className="flex items-baseline justify-between gap-2 mb-1">
+                          <span className="font-medium text-xs">{note.authorName}</span>
+                          <span className="text-[10px] font-mono text-muted-foreground">F{String(note.frame).padStart(3, '0')} · {note.shotName}</span>
+                        </div>
+                        <p className="text-muted-foreground text-sm mb-2">{note.text}</p>
+                        {note.transferred ? (
+                          <div className="flex items-center gap-1.5 text-[11px] text-[#1E7A34]">
+                            <CheckCircle2 className="w-3 h-3" />
+                            Transferred by {note.transferredByUserName} · {note.transferredAt ? new Date(note.transferredAt).toLocaleString() : ''}
+                          </div>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="w-full h-7 text-xs border-amber-500/40 text-amber-500 hover:bg-amber-500/10"
+                            disabled={!currentUser}
+                            onClick={() => {
+                              if (!currentUser) return;
+                              transferClientNote(note.id, currentUser.name);
+                              toast({ title: 'Feedback Transferred', description: 'The client note is now visible in the team comment stream.' });
+                            }}
+                          >
+                            <Send className="w-3 h-3 mr-1.5" /> Transfer to Team
+                          </Button>
+                        )}
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                )}
+              </div>
             </TabsContent>
 
             <TabsContent value="properties" className="flex-1 overflow-y-auto p-4 m-0 space-y-6 data-[state=inactive]:hidden">
@@ -1437,7 +1702,7 @@ export default function Review() {
                         <Label className="text-xs font-semibold text-muted-foreground mb-1 block">Color</Label>
                         <div className="flex gap-2 mt-1">
                           {COLORS.map(c => (
-                            <button key={c} className={`w-6 h-6 rounded-full border-2 ${ann.color === c ? 'border-primary' : 'border-transparent'}`} style={{ backgroundColor: c }} onClick={() => setAnnotations(prev => prev.map(p => p.id === ann.id ? { ...p, color: c } : p))} />
+                            <button key={c} className={`w-6 h-6 rounded-full border-2 transition-transform hover:scale-110 ${ann.color === c ? 'border-primary' : 'border-transparent'}`} style={{ backgroundColor: c }} onClick={() => setAnnotations(prev => prev.map(p => p.id === ann.id ? { ...p, color: c } : p))} />
                           ))}
                         </div>
                       </div>
@@ -1446,9 +1711,9 @@ export default function Review() {
                         <div>
                           <Label className="text-xs font-semibold text-muted-foreground mb-1 block">Background</Label>
                           <div className="flex gap-2 mt-1">
-                             <button className={`w-6 h-6 rounded border-2 ${ann.backgroundColor === 'transparent' ? 'border-primary' : 'border-border'}`} style={{ backgroundImage: 'linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)', backgroundSize: '10px 10px', backgroundPosition: '0 0, 0 5px, 5px -5px, -5px 0' }} onClick={() => setAnnotations(prev => prev.map(p => p.id === ann.id ? { ...p, backgroundColor: 'transparent' } : p))} title="Transparent" />
+                             <button className={`w-6 h-6 rounded border-2 transition-transform hover:scale-110 ${ann.backgroundColor === 'transparent' ? 'border-primary' : 'border-border'}`} style={{ backgroundImage: 'linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)', backgroundSize: '10px 10px', backgroundPosition: '0 0, 0 5px, 5px -5px, -5px 0' }} onClick={() => setAnnotations(prev => prev.map(p => p.id === ann.id ? { ...p, backgroundColor: 'transparent' } : p))} title="Transparent" />
                             {['#00000080', '#ffffff80', '#ef444480', '#3b82f680'].map(c => (
-                              <button key={c} className={`w-6 h-6 rounded border-2 ${ann.backgroundColor === c ? 'border-primary' : 'border-transparent'}`} style={{ backgroundColor: c }} onClick={() => setAnnotations(prev => prev.map(p => p.id === ann.id ? { ...p, backgroundColor: c } : p))} />
+                              <button key={c} className={`w-6 h-6 rounded border-2 transition-transform hover:scale-110 ${ann.backgroundColor === c ? 'border-primary' : 'border-transparent'}`} style={{ backgroundColor: c }} onClick={() => setAnnotations(prev => prev.map(p => p.id === ann.id ? { ...p, backgroundColor: c } : p))} />
                             ))}
                           </div>
                         </div>

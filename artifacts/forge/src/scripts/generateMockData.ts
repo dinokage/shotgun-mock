@@ -248,5 +248,6 @@ export const USER_STATUS = USERS.reduce((acc, u) => {
 
 `;
 
-fs.writeFileSync('/Users/k2a/Desktop/Forge/shotgun-mock/artifacts/forge/src/data/mockData.ts', content);
-console.log('Done');
+const targetPath = path.resolve(process.cwd(), 'src/data/mockData.ts');
+fs.writeFileSync(targetPath, content);
+console.log(`Done writing to ${targetPath}`);

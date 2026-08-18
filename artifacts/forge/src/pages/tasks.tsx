@@ -137,8 +137,8 @@ export default function Tasks() {
             key={s}
             onClick={() => setStatusFilter(s)}
             className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
-              statusFilter === s 
-                ? 'bg-primary text-primary-foreground shadow-sm' 
+              statusFilter === s
+                ? 'bg-primary text-primary-foreground shadow-sm hover:bg-primary/90'
                 : 'bg-muted/50 text-muted-foreground hover:bg-muted'
             }`}
           >

@@ -8,17 +8,19 @@ interface State {
   hasError: boolean;
   error: Error | null;
   errorInfo: ErrorInfo | null;
+  reloadHovered: boolean;
 }
 
 export class ErrorBoundary extends Component<Props, State> {
   public state: State = {
     hasError: false,
     error: null,
-    errorInfo: null
+    errorInfo: null,
+    reloadHovered: false,
   };
 
   public static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error, errorInfo: null };
+    return { hasError: true, error, errorInfo: null, reloadHovered: false };
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
@@ -41,9 +43,20 @@ export class ErrorBoundary extends Component<Props, State> {
             <h2 style={{ fontWeight: 'bold' }}>Component Stack:</h2>
             <pre>{this.state.errorInfo?.componentStack}</pre>
           </div>
-          <button 
+          <button
             onClick={() => window.location.reload()}
-            style={{ marginTop: '1rem', padding: '0.5rem 1rem', backgroundColor: '#ef4444', color: 'white', borderRadius: '4px', border: 'none', cursor: 'pointer' }}
+            onMouseEnter={() => this.setState({ reloadHovered: true })}
+            onMouseLeave={() => this.setState({ reloadHovered: false })}
+            style={{
+              marginTop: '1rem',
+              padding: '0.5rem 1rem',
+              backgroundColor: this.state.reloadHovered ? '#dc2626' : '#ef4444',
+              color: 'white',
+              borderRadius: '4px',
+              border: 'none',
+              cursor: 'pointer',
+              transition: 'background-color 0.15s ease',
+            }}
           >
             Reload Application
           </button>
