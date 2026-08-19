@@ -1500,7 +1500,7 @@ export default function Review() {
                   )}
                 </div>
 
-                {reviewedTask && reviewedTask.approvalHistory.length > 0 && (
+                {reviewedTask && (reviewedTask.approvalHistory?.length ?? 0) > 0 && (
                   <div className="mt-3 pt-3 border-t border-border/60 space-y-1.5">
                     <div className="text-[10px] font-semibold text-muted-foreground/70 tracking-wide mb-1.5">HISTORY</div>
                     <AnimatePresence initial={false}>

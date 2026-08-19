@@ -112,7 +112,7 @@ export const useTasksStore = create<TaskState>()(
                     status,
                     lastStatusUpdate: timestamp,
                     approvalHistory: [
-                      ...t.approvalHistory,
+                      ...(t.approvalHistory ?? []),
                       { ...event, id: `ae-${Date.now()}`, timestamp },
                     ],
                   }
@@ -166,6 +166,25 @@ export const useTasksStore = create<TaskState>()(
     }),
     {
       name: 'forge-task-storage',
+      version: 2,
+      // Migrate tasks persisted before approvalHistory / checklist / comments /
+      // dailyLogs were added — those fields will be undefined on old records,
+      // causing .length crashes everywhere they're accessed.
+      migrate(persistedState: unknown, fromVersion: number) {
+        if (fromVersion < 2) {
+          const state = persistedState as { tasks?: Task[] };
+          if (Array.isArray(state?.tasks)) {
+            state.tasks = state.tasks.map((t) => ({
+              ...t,
+              approvalHistory: t.approvalHistory ?? [],
+              checklist: t.checklist ?? [],
+              comments: t.comments ?? [],
+              dailyLogs: t.dailyLogs ?? [],
+            }));
+          }
+        }
+        return persistedState as TaskState;
+      },
     }
   )
 );
