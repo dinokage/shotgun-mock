@@ -16,7 +16,9 @@ export default function ProjectDetail() {
   const [, params] = useRoute('/projects/:id');
   const projectId = params?.id;
   const projects = useProjectStore((state) => state.projects);
-  const project = projects.find(p => p.id === projectId) || projects[0];
+  const project = projects.find(p => p.id === projectId);
+
+  if (!project) return <div className="p-6 text-center text-muted-foreground">Project not found.</div>;
 
   return (
     <div className="flex flex-col h-full">

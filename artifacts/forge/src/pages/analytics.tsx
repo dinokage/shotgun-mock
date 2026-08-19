@@ -2,25 +2,29 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PROJECTS, TASKS, REVIEWS, PUBLISH_LOGS, DEPARTMENTS, USERS, TIME_LOGS, SHOTS, Project } from '@/data/mockData';
-import { BarChart3, TrendingUp, Clock, CheckCircle2, AlertTriangle, Users, Download, ArrowUpRight, ArrowDownRight, Flame } from 'lucide-react';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
+import { PROJECTS, TASKS, REVIEWS, PUBLISH_LOGS, DEPARTMENTS, USERS, TIME_LOGS, SHOTS, Project, isTaskDone } from '@/data/mockData';
+import { BarChart3, TrendingUp, Clock, CheckCircle2, AlertTriangle, Users, Download, ArrowUpRight, ArrowDownRight, Flame, Lock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Link } from 'wouter';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuthStore } from '@/store/auth';
+import { useCapability } from '@/hooks/use-capability';
+import { hashString, seededFraction } from '@/lib/seededMock';
 
-/** Stable string hash, used to seed deterministic mock figures below (no Math.random). */
-function hashString(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) hash = Math.imul(31, hash) + str.charCodeAt(i) | 0;
-  return Math.abs(hash);
-}
+// Fictional "today" this studio's books are closed against - matches the
+// anchor financials.tsx uses. The mock dataset (task/review/publish
+// timestamps) lives in and around mid-2024, so the date-range filter below
+// is anchored there too instead of drifting with the real-world calendar.
+const MOCK_TODAY = new Date('2024-10-15');
 
-/** Deterministic pseudo-random float in [0, 1), seeded by two integers. */
-function seededFraction(a: number, b: number): number {
-  const x = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453;
-  return x - Math.floor(x);
+const DATE_RANGE_DAYS = { '7d': 7, '30d': 30, '90d': 90 } as const;
+type DateRangeKey = keyof typeof DATE_RANGE_DAYS;
+
+function withinRange(iso: string, start: Date, end: Date): boolean {
+  const t = new Date(iso).getTime();
+  return t >= start.getTime() && t <= end.getTime();
 }
 
 /**
@@ -29,6 +33,8 @@ function seededFraction(a: number, b: number): number {
  * a stable per-project hash seeds an hour estimate, and a risk/progress-driven
  * ratio (with a small per-project jitter) decides how actuals diverge from the
  * bid - so every project lands on its own curve instead of a shared placeholder.
+ * hashString/seededFraction live in src/lib/seededMock.ts, shared with
+ * financials.tsx so the two pages' bid-vs-actual math can't drift apart.
  */
 function getProjectBidMargin(p: Project): { bids: number; actuals: number; rate: number } {
   const seed = hashString(p.id);
@@ -50,17 +56,21 @@ function getProjectBidMargin(p: Project): { bids: number; actuals: number; rate:
 }
 
 /**
- * Mirrors the header clock's punched-in state (TimeClockWidget reads/writes the
- * same 'forge-punch-in-time' localStorage key the moment the app loads) so the
- * logged-in user's own Timecards row never contradicts the header's live
- * PUNCHED IN indicator.
+ * Mirrors the header clock's punched-in state (TimeClockWidget reads/writes a
+ * per-user 'forge-punch-in-time-<userId>' localStorage key - see STORAGE_PREFIX
+ * in TimeClockWidget.tsx) so the logged-in user's own Timecards row never
+ * contradicts the header's live PUNCHED IN indicator.
  */
-function usePunchedInSession(): { hours: number; since: string | null } {
+function usePunchedInSession(userId: string | undefined): { hours: number; since: string | null } {
   const [session, setSession] = useState<{ hours: number; since: string | null }>({ hours: 0, since: null });
 
   useEffect(() => {
+    if (!userId) {
+      setSession({ hours: 0, since: null });
+      return;
+    }
     const compute = () => {
-      const startTime = localStorage.getItem('forge-punch-in-time');
+      const startTime = localStorage.getItem(`forge-punch-in-time-${userId}`);
       if (!startTime) {
         setSession({ hours: 0, since: null });
         return;
@@ -71,7 +81,7 @@ function usePunchedInSession(): { hours: number; since: string | null } {
     compute();
     const interval = setInterval(compute, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [userId]);
 
   return session;
 }
@@ -79,20 +89,145 @@ function usePunchedInSession(): { hours: number; since: string | null } {
 export default function Analytics() {
   const { toast } = useToast();
   const { currentUser } = useAuthStore();
-  const punchedInSession = usePunchedInSession();
-  const totalTasks = TASKS.length;
-  const completedTasks = TASKS.filter(t => t.status === 'approved').length;
-  const avgReviewTime = 2.4; // hours mock
-  const approvalRate = Math.round((REVIEWS.filter(r => r.status === 'approved').length / REVIEWS.length) * 100);
-  const publishSuccess = Math.round((PUBLISH_LOGS.filter(p => p.status === 'success').length / PUBLISH_LOGS.length) * 100);
-  const velocity = Math.round((completedTasks / totalTasks) * 100);
+  const punchedInSession = usePunchedInSession(currentUser?.id);
+  const canViewFinancials = useCapability('view_financials');
+
+  const [dateRange, setDateRange] = useState<DateRangeKey>('30d');
+
+  // Current period is [MOCK_TODAY - N days, MOCK_TODAY]; previous period is
+  // the N days immediately before that, so every KPI's trend arrow is a real
+  // comparison against the prior period of equal length instead of a
+  // hardcoded string.
+  const { currentStart, previousStart, previousEnd } = useMemo(() => {
+    const days = DATE_RANGE_DAYS[dateRange];
+    const curStart = new Date(MOCK_TODAY);
+    curStart.setDate(curStart.getDate() - days);
+    // 1ms before curStart, not curStart itself - withinRange is inclusive on
+    // both ends, so an end equal to the current period's start would let any
+    // record landing exactly on that boundary instant count in both periods.
+    const prevEnd = new Date(curStart.getTime() - 1);
+    const prevStart = new Date(curStart);
+    prevStart.setDate(prevStart.getDate() - days);
+    return { currentStart: curStart, previousStart: prevStart, previousEnd: prevEnd };
+  }, [dateRange]);
+
+  const filteredTasks = useMemo(
+    () => TASKS.filter(t => withinRange(t.createdAt, currentStart, MOCK_TODAY)),
+    [currentStart]
+  );
+  const filteredReviews = useMemo(
+    () => REVIEWS.filter(r => withinRange(r.createdAt, currentStart, MOCK_TODAY)),
+    [currentStart]
+  );
+  const filteredPublishLogs = useMemo(
+    () => PUBLISH_LOGS.filter(p => withinRange(p.publishedAt, currentStart, MOCK_TODAY)),
+    [currentStart]
+  );
+
+  const previousTasks = useMemo(
+    () => TASKS.filter(t => withinRange(t.createdAt, previousStart, previousEnd)),
+    [previousStart, previousEnd]
+  );
+  const previousReviews = useMemo(
+    () => REVIEWS.filter(r => withinRange(r.createdAt, previousStart, previousEnd)),
+    [previousStart, previousEnd]
+  );
+  const previousPublishLogs = useMemo(
+    () => PUBLISH_LOGS.filter(p => withinRange(p.publishedAt, previousStart, previousEnd)),
+    [previousStart, previousEnd]
+  );
+
+  function periodStats(tasks: typeof TASKS, reviews: typeof REVIEWS, publishLogs: typeof PUBLISH_LOGS) {
+    const total = tasks.length;
+    const done = tasks.filter(t => isTaskDone(t.status)).length;
+    const velocity = total > 0 ? (done / total) * 100 : 0;
+    const approvalRate = reviews.length > 0 ? (reviews.filter(r => r.status === 'approved').length / reviews.length) * 100 : 0;
+    const avgReviewTime = reviews.length > 0
+      ? reviews.reduce((acc, r) => acc + (new Date(r.updatedAt).getTime() - new Date(r.createdAt).getTime()) / 3600000, 0) / reviews.length
+      : 0;
+    const publishSuccess = publishLogs.length > 0 ? (publishLogs.filter(p => p.status === 'success').length / publishLogs.length) * 100 : 0;
+    return { total, done, velocity, approvalRate, avgReviewTime, publishSuccess };
+  }
+
+  const current = useMemo(
+    () => periodStats(filteredTasks, filteredReviews, filteredPublishLogs),
+    [filteredTasks, filteredReviews, filteredPublishLogs]
+  );
+  const previous = useMemo(
+    () => periodStats(previousTasks, previousReviews, previousPublishLogs),
+    [previousTasks, previousReviews, previousPublishLogs]
+  );
+
+  const avgReviewTime = current.avgReviewTime;
+  const approvalRate = Math.round(current.approvalRate);
+  const publishSuccess = Math.round(current.publishSuccess);
+  const velocity = Math.round(current.velocity);
+
+  // A KPI's arrow points in whatever direction the raw number actually
+  // moved; whether that movement is colored green ("good") depends on the
+  // metric - a shrinking Avg Review Time is an improvement, so unlike the
+  // other three (where up = good), it needs up = bad / down = good.
+  function trend(currentValue: number, previousValue: number, lowerIsBetter = false) {
+    const delta = currentValue - previousValue;
+    const dir: 'up' | 'down' = delta >= 0 ? 'up' : 'down';
+    const good = lowerIsBetter ? delta <= 0 : delta >= 0;
+    return { delta, dir, good };
+  }
+
+  const velocityTrend = trend(current.velocity, previous.velocity);
+  const reviewTimeTrend = trend(current.avgReviewTime, previous.avgReviewTime, true);
+  const approvalTrend = trend(current.approvalRate, previous.approvalRate);
+  const publishTrend = trend(current.publishSuccess, previous.publishSuccess);
 
   const kpis = [
-    { label: 'Total Velocity', value: `${velocity}%`, change: '+5%', up: true, icon: TrendingUp, color: 'text-blue-500', bg: 'bg-blue-500/10' },
-    { label: 'Avg Review Time', value: `${avgReviewTime}h`, change: '-0.3h', up: false, icon: Clock, color: 'text-purple-500', bg: 'bg-purple-500/10' },
-    { label: 'Approval Rate', value: `${approvalRate}%`, change: '+2%', up: true, icon: CheckCircle2, color: 'text-green-500', bg: 'bg-green-500/10' },
-    { label: 'Publish Success', value: `${publishSuccess}%`, change: '-1%', up: false, icon: AlertTriangle, color: 'text-orange-500', bg: 'bg-orange-500/10' },
+    {
+      label: 'Total Velocity', value: `${velocity}%`,
+      change: `${velocityTrend.delta >= 0 ? '+' : ''}${Math.round(velocityTrend.delta)}%`,
+      dir: velocityTrend.dir, good: velocityTrend.good,
+      icon: TrendingUp, color: 'text-blue-500', bg: 'bg-blue-500/10',
+    },
+    {
+      label: 'Avg Review Time', value: `${avgReviewTime.toFixed(1)}h`,
+      change: `${reviewTimeTrend.delta >= 0 ? '+' : ''}${reviewTimeTrend.delta.toFixed(1)}h`,
+      dir: reviewTimeTrend.dir, good: reviewTimeTrend.good,
+      icon: Clock, color: 'text-purple-500', bg: 'bg-purple-500/10',
+    },
+    {
+      label: 'Approval Rate', value: `${approvalRate}%`,
+      change: `${approvalTrend.delta >= 0 ? '+' : ''}${Math.round(approvalTrend.delta)}%`,
+      dir: approvalTrend.dir, good: approvalTrend.good,
+      icon: CheckCircle2, color: 'text-green-500', bg: 'bg-green-500/10',
+    },
+    {
+      label: 'Publish Success', value: `${publishSuccess}%`,
+      change: `${publishTrend.delta >= 0 ? '+' : ''}${Math.round(publishTrend.delta)}%`,
+      dir: publishTrend.dir, good: publishTrend.good,
+      icon: AlertTriangle, color: 'text-orange-500', bg: 'bg-orange-500/10',
+    },
   ];
+
+  // Real ranking from actual completion data in the selected range - a
+  // completed/approved task credits its assignee, an approved review
+  // credits its reviewer - instead of a hardcoded [47,42,38,35,31] zipped
+  // onto USERS by array index.
+  const contributorCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    filteredTasks.forEach(t => {
+      if (isTaskDone(t.status)) counts.set(t.assigneeId, (counts.get(t.assigneeId) || 0) + 1);
+    });
+    filteredReviews.forEach(r => {
+      if (r.status === 'approved') counts.set(r.reviewerId, (counts.get(r.reviewerId) || 0) + 1);
+    });
+    return counts;
+  }, [filteredTasks, filteredReviews]);
+
+  const topContributors = useMemo(
+    () => USERS
+      .map(u => ({ user: u, count: contributorCounts.get(u.id) || 0 }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5),
+    [contributorCounts]
+  );
 
   // Generate mock chart data
   const deliveryData = [
@@ -104,6 +239,42 @@ export default function Analytics() {
 
   const maxDelivery = Math.max(...deliveryData.flatMap(d => [d.planned, d.actual]));
 
+  function toCSV(rows: (string | number)[][]): string {
+    return rows
+      .map(row => row.map(cell => {
+        const s = String(cell);
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      }).join(','))
+      .join('\n');
+  }
+
+  // Real CSV export of the data currently on screen (respects the selected
+  // date range), not a window.print() call disguised as "Export".
+  function handleExport() {
+    const rows: (string | number)[][] = [
+      ['Forge Analytics Export', `Range: ${dateRange === '7d' ? 'Last 7 Days' : dateRange === '30d' ? 'Last 30 Days' : 'Last 90 Days'}`],
+      [],
+      ['KPI', 'Value', 'Change vs. prior period'],
+      ...kpis.map(k => [k.label, k.value, k.change]),
+      [],
+      ['Top Contributors', 'Role', 'Completed (tasks + approved reviews)'],
+      ...topContributors.map(c => [c.user.name, c.user.role, c.count]),
+      [],
+      ['Task', 'Department', 'Status', 'Bid (hrs)', 'Actual (hrs)'],
+      ...filteredTasks.map(t => [t.title, t.department, t.status, t.estimatedHours || 0, t.actualHours || 0]),
+    ];
+    const blob = new Blob([toCSV(rows)], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `forge-analytics-${dateRange}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast({ description: `Exported ${filteredTasks.length} tasks and ${topContributors.length} contributor rows as CSV.` });
+  }
+
   return (
     <div className="p-6 max-w-[1600px] mx-auto space-y-6">
       <div className="flex items-center justify-between">
@@ -112,7 +283,7 @@ export default function Analytics() {
           <p className="text-muted-foreground mt-1">Executive production dashboard</p>
         </div>
         <div className="flex gap-2">
-          <Select defaultValue="30d">
+          <Select value={dateRange} onValueChange={(v) => setDateRange(v as DateRangeKey)}>
             <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="7d">Last 7 Days</SelectItem>
@@ -120,7 +291,7 @@ export default function Analytics() {
               <SelectItem value="90d">Last 90 Days</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" className="gap-2" onClick={() => window.print()}><Download className="w-4 h-4" /> Export</Button>
+          <Button variant="outline" className="gap-2" onClick={handleExport}><Download className="w-4 h-4" /> Export</Button>
         </div>
       </div>
 
@@ -133,8 +304,8 @@ export default function Analytics() {
                 <div className={`w-10 h-10 rounded-xl ${kpi.bg} flex items-center justify-center`}>
                   <kpi.icon className={`w-5 h-5 ${kpi.color}`} />
                 </div>
-                <div className={`flex items-center gap-1 text-xs font-medium ${kpi.up ? 'text-green-500' : 'text-red-500'}`}>
-                  {kpi.up ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+                <div className={`flex items-center gap-1 text-xs font-medium ${kpi.good ? 'text-green-500' : 'text-red-500'}`}>
+                  {kpi.dir === 'up' ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
                   {kpi.change}
                 </div>
               </div>
@@ -148,7 +319,13 @@ export default function Analytics() {
       <Tabs defaultValue="production" className="w-full">
         <TabsList className="mb-4">
           <TabsTrigger value="production">Production Metrics</TabsTrigger>
-          <TabsTrigger value="financials">Bid Margins</TabsTrigger>
+          <TabsTrigger
+            value="financials"
+            disabled={!canViewFinancials}
+            title={canViewFinancials ? undefined : "Your role doesn't include View Financials"}
+          >
+            {!canViewFinancials && <Lock className="w-3 h-3 mr-1.5" />} Bid Margins
+          </TabsTrigger>
           <TabsTrigger value="timecards">Timecards & Tracking</TabsTrigger>
         </TabsList>
 
@@ -161,7 +338,17 @@ export default function Analytics() {
               <CardTitle className="text-lg flex items-center gap-2 text-orange-500"><Flame className="w-5 h-5" /> Bidding vs Actuals (Burn Rate)</CardTitle>
             </CardHeader>
             <CardContent className="pt-4 space-y-5">
-              {TASKS.slice(0, 5).map(task => {
+              {filteredTasks.length === 0 ? (
+                <Empty className="border-0 py-4">
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <Flame />
+                    </EmptyMedia>
+                    <EmptyTitle>No tasks in this range</EmptyTitle>
+                    <EmptyDescription>Try a wider date range.</EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              ) : filteredTasks.slice(0, 5).map(task => {
                 const bids = task.estimatedHours || 40;
                 const actuals = task.actualHours || ((hashString(task.id) % 40) + 10); // Deterministic fallback if undefined
                 const burnRate = Math.round((actuals / bids) * 100);
@@ -354,8 +541,8 @@ export default function Analytics() {
             <CardContent>
               <div className="space-y-3">
                 {[
-                  { label: 'Total Published', value: PUBLISH_LOGS.filter(p => p.status === 'success').length, color: 'text-green-500' },
-                  { label: 'Failed', value: PUBLISH_LOGS.filter(p => p.status === 'failed').length, color: 'text-red-500' },
+                  { label: 'Total Published', value: filteredPublishLogs.filter(p => p.status === 'success').length, color: 'text-green-500' },
+                  { label: 'Failed', value: filteredPublishLogs.filter(p => p.status === 'failed').length, color: 'text-red-500' },
                   { label: 'Avg Duration', value: '3m 45s', color: 'text-blue-500' },
                   { label: 'Validation Pass Rate', value: `${publishSuccess}%`, color: publishSuccess > 90 ? 'text-green-500' : 'text-yellow-500' },
                 ].map((s, i) => (
@@ -374,17 +561,27 @@ export default function Analytics() {
               <CardTitle className="text-lg flex items-center gap-2"><Users className="w-5 h-5" /> Top Contributors</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {USERS.slice(0, 5).map((user, i) => (
-                <div key={user.id} className="flex items-center gap-3">
+              {topContributors.every(c => c.count === 0) ? (
+                <Empty className="border-0 py-4">
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <Users />
+                    </EmptyMedia>
+                    <EmptyTitle>No completions in this range</EmptyTitle>
+                    <EmptyDescription>Try a wider date range.</EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              ) : topContributors.map((c, i) => (
+                <div key={c.user.id} className="flex items-center gap-3">
                   <span className="text-xs text-muted-foreground w-4">#{i + 1}</span>
                   <div className="w-7 h-7 rounded-full overflow-hidden">
-                    <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
+                    <img src={c.user.avatar} alt={c.user.name} className="w-full h-full object-cover" />
                   </div>
                   <div className="flex-1">
-                    <div className="text-sm font-medium">{user.name}</div>
-                    <div className="text-[10px] text-muted-foreground">{user.role}</div>
+                    <div className="text-sm font-medium">{c.user.name}</div>
+                    <div className="text-[10px] text-muted-foreground">{c.user.role}</div>
                   </div>
-                  <span className="text-sm font-bold">{[47, 42, 38, 35, 31][i]} tasks</span>
+                  <span className="text-sm font-bold">{c.count} tasks</span>
                 </div>
               ))}
             </CardContent>
@@ -394,6 +591,24 @@ export default function Analytics() {
         </TabsContent>
 
         <TabsContent value="financials" className="space-y-6 mt-0">
+          {!canViewFinancials ? (
+            <Card>
+              <CardContent className="py-10">
+                <Empty>
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <Lock />
+                    </EmptyMedia>
+                    <EmptyTitle>Bid margins access restricted</EmptyTitle>
+                    <EmptyDescription>
+                      Your role doesn't include View Financials in the current Roles &amp; Permissions scheme. Ask a
+                      producer or manager to grant access under Settings &gt; Roles.
+                    </EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              </CardContent>
+            </Card>
+          ) : (
           <div className="grid grid-cols-1 gap-6">
             <Card>
               <CardHeader>
@@ -448,6 +663,7 @@ export default function Analytics() {
               </CardContent>
             </Card>
           </div>
+          )}
         </TabsContent>
 
         <TabsContent value="timecards" className="space-y-6 mt-0">
@@ -479,10 +695,14 @@ export default function Analytics() {
                       // Mock additional status since our TimeLog interface is very simple.
                       // The logged-in user's own row instead mirrors the header clock's
                       // punched-in state (usePunchedInSession above) so the two live
-                      // status indicators never contradict each other.
-                      const mockStatus = isCurrentUser ? 'punched-in' : (i % 3 === 0 ? 'punched-in' : 'offline');
+                      // status indicators never contradict each other - which means this
+                      // row must actually check punchedInSession.since, not just identity,
+                      // or a currentUser who is punched OUT would still show PUNCHED IN here.
+                      const mockStatus = isCurrentUser
+                        ? (punchedInSession.since ? 'punched-in' : 'offline')
+                        : (i % 3 === 0 ? 'punched-in' : 'offline');
                       const punchedInAt = mockStatus === 'punched-in'
-                        ? (isCurrentUser ? punchedInSession.since ?? new Date().toISOString() : new Date().toISOString())
+                        ? (isCurrentUser ? punchedInSession.since! : new Date().toISOString())
                         : undefined;
                       const baseHoursToday = actualHours > 0 ? actualHours : (i % 2 === 0 ? 6.5 : 0);
                       const baseHoursWeek = actualHours > 0 ? actualHours * 5 : (i % 2 === 0 ? 32.5 : 0);

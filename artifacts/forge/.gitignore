@@ -9,3 +9,8 @@ node_modules/
 dist/
 .DS_Store
 *.swp
+
+# Tauri desktop build output (android/ and ios/ have their own .gitignore
+# from `cap add`, covering their respective native build artifacts).
+src-tauri/target/
+src-tauri/gen/

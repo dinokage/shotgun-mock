@@ -6,6 +6,7 @@ import { ThemeProvider } from '@/components/theme-provider';
 import { useEffect, useRef } from 'react';
 import { useAuthStore } from '@/store/auth';
 import { useToast } from '@/hooks/use-toast';
+import { useIsLeadership } from '@/hooks/use-capability';
 
 // Components
 import { AppShell } from '@/components/shell/AppShell';
@@ -37,7 +38,8 @@ import ClientReview from '@/pages/client-review';
 
 import Audit from '@/pages/audit';
 import NotFound from '@/pages/not-found';
-import Delivery from '@/pages/delivery';
+import Deliveries from '@/pages/deliveries';
+import DeliveryDetail from '@/pages/delivery-detail';
 import Departments from '@/pages/departments';
 import DepartmentDetail from '@/pages/department-detail';
 import People from '@/pages/people';
@@ -66,25 +68,24 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-const LEADERSHIP_ROLES = ['vfx_producer', 'production_manager', 'coordinator', 'supervisor', 'lead'];
-
 function LeadershipGuard({ children }: { children: React.ReactNode }) {
   const { currentUser } = useAuthStore();
+  const isLeadership = useIsLeadership();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const hasWarnedRef = useRef(false);
 
   useEffect(() => {
-    if (currentUser && !LEADERSHIP_ROLES.includes(currentUser.role)) {
+    if (currentUser && !isLeadership) {
       if (!hasWarnedRef.current) {
         hasWarnedRef.current = true;
         toast({ description: "You don't have access to that page.", variant: 'destructive' });
       }
       setLocation('/');
     }
-  }, [currentUser, setLocation, toast]);
+  }, [currentUser, isLeadership, setLocation, toast]);
 
-  if (!currentUser || !LEADERSHIP_ROLES.includes(currentUser.role)) return null;
+  if (!currentUser || !isLeadership) return null;
   return <>{children}</>;
 }
 
@@ -93,6 +94,9 @@ function Router() {
     <Switch>
       <Route path="/login" component={Login} />
       <Route path="/client-review" component={ClientReview} />
+      {/* Public, outside AuthGuard — external recipients reach a specific
+          delivery via its access code, with no Forge login at all. */}
+      <Route path="/delivery/:id" component={DeliveryDetail} />
       
       {/* Protected Routes wrapped in AppShell */}
       <Route path="/.*">
@@ -166,12 +170,12 @@ function Router() {
               <Route path="/settings">
                 <LeadershipGuard><Settings /></LeadershipGuard>
               </Route>
-              <Route path="/delivery" component={Delivery} />
+              <Route path="/delivery">
+                <LeadershipGuard><Deliveries /></LeadershipGuard>
+              </Route>
               <Route path="/chat" component={Chat} />
               <Route path="/tracking" component={TrackingGrid} />
-              <Route path="/review" component={Review} />
               <Route path="/timesheets" component={Timesheets} />
-              <Route path="/daily-standup" component={DailyStandup} />
               <Route path="/notifications" component={Notifications} />
               <Route component={NotFound} />
             </Switch>

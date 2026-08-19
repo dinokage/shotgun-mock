@@ -1,6 +1,6 @@
 // ============================================================================
 // FORGE — Mock Data v2.0
-// 14 Departments · 65+ Artists · 10 Projects · 150 Assets · 100 Shots · 300 Tasks
+// 18 Departments · 81 Artists · 10 Projects · 150 Assets · 100 Shots · 300 Tasks
 // Real VFX Studio Hierarchy: Producer → PM → Supervisor → Lead → Artist
 // ============================================================================
 
@@ -167,6 +167,8 @@ export interface Asset {
   dependencies: string[];
   publishStatus: 'published' | 'draft' | 'queued' | 'validating' | 'failed';
   description: string;
+  /** Freeform notes a team member has attached to this asset, editable from the Assets tab. */
+  notes?: string;
 }
 
 export interface DailyLog {
@@ -354,7 +356,7 @@ export interface Milestone {
 export interface AuditEvent {
   id: string;
   entityId: string;
-  entityType: string;
+  entityType: 'asset' | 'shot';
   timestamp: string;
   userId: string;
   eventType: string;
@@ -443,11 +445,19 @@ const getName = () => `${firstNames[nameCounter++ % firstNames.length]} ${lastNa
 
 
 
-// --- Users (65 with realistic VFX titles) ----------------------------------
+// --- Users (81: 65 hand-authored + 16 auto-filled for the departments with no
+// hand-authored team, each getting a supervisor/lead/artist/junior_artist) ---
 
 const USER_DEFS: { name: string; role: Role; deptIdx: number; title: string; skills: string[] }[] = [
   // === Clients ===
-  { name: 'External Client', role: 'coordinator', deptIdx: 0, title: 'Client Reviewer', skills: ['Feedback', 'Review'] },
+  // This was previously seeded as role: 'coordinator' — meaning the app's
+  // ENTIRE "client experience" was actually running with full internal
+  // coordinator/leadership permissions, and separately, no user anywhere in
+  // this dataset had role: 'client' at all, so login.tsx's Client Portal
+  // quick-login (USERS.find(u => u.role === 'client')) silently matched
+  // nothing and did nothing when clicked. Both bugs trace back to this one
+  // line — role must actually be 'client' for either to work correctly.
+  { name: 'External Client', role: 'client', deptIdx: 0, title: 'Client Reviewer', skills: ['Feedback', 'Review'] },
   
   // === Production Management (dept 0) ===
   { name: 'Maya Chen', role: 'vfx_producer', deptIdx: 0, title: 'VFX Producer', skills: ['Budgeting', 'Client Relations', 'Scheduling'] },
@@ -616,13 +626,20 @@ export const DEPARTMENTS: Department[] = DEPT_DEFINITIONS.map((d, i) => {
   const supervisor = USERS.find(u => u.departmentId === deptId && u.role === 'supervisor');
   const lead = USERS.find(u => u.departmentId === deptId && u.role === 'lead');
 
+  // Production Management (dept 0) is staffed by producers/PMs/coordinators, not a
+  // 'supervisor'/'lead' role, so both lookups above miss for it — same as every other
+  // department would if it somehow had no one in those roles. That used to fall back to
+  // USERS[0].id, which was a harmless placeholder while index 0 held a coordinator, but
+  // now holds the External Client (see the USER_DEFS comment above), so this fallback was
+  // making the client the "head" of Production Management. Fall back to the VFX Producer —
+  // the real top of the reporting chain — instead of a hardcoded index.
   return {
     id: deptId,
     name: d.name,
     abbreviation: d.abbr,
     color: d.color,
-    supervisorId: supervisor?.id || USERS[0].id,
-    leadId: lead?.id || supervisor?.id || USERS[0].id,
+    supervisorId: supervisor?.id || vfxProducerId,
+    leadId: lead?.id || supervisor?.id || vfxProducerId,
     studioId: 'studio1',
     description: d.desc,
     icon: d.icon,
@@ -926,11 +943,21 @@ for (let i = 0; i < 300; i++) {
   // Supervisor or lead assigns the task
   const deptSupervisor = USERS.find(u => u.departmentId === dept.id && u.role === 'supervisor');
   const deptLead = USERS.find(u => u.departmentId === dept.id && u.role === 'lead');
-  const assigner = i % 2 === 0 ? (deptSupervisor || USERS[0]) : (deptLead || deptSupervisor || USERS[0]);
+  // Production Management (dept 0) has no 'supervisor'/'lead' role — it's producers, PMs
+  // and coordinators — so both lookups above miss for its Review/QC check/Prep delivery
+  // tasks. That used to fall back to USERS[0], which was harmless while index 0 held a
+  // coordinator, but now holds the External Client, so every one of those tasks ended up
+  // "assigned by" the client. Fall back to a production manager in the department, then
+  // the VFX Producer, so admin tasks are always assigned by a real internal user.
+  const deptProductionManager = USERS.find(u => u.departmentId === dept.id && u.role === 'production_manager');
+  const internalAssignerFallback = deptProductionManager || USERS.find(u => u.id === vfxProducerId)!;
+  const assigner = i % 2 === 0 ? (deptSupervisor || internalAssignerFallback) : (deptLead || deptSupervisor || internalAssignerFallback);
 
-  // Generate daily logs
+  // Generate daily logs. An unassigned task (self-serve pool, assigneeId '') can't have
+  // logged hours yet — same reasoning as checklistDoneCount() zeroing out an unassigned
+  // task's checklist above — so it gets none regardless of the i%3 sampling below.
   const dailyLogs: DailyLog[] = [];
-  if (i % 3 !== 2) { // Not all tasks have logs
+  if (!isUnassigned && i % 3 !== 2) { // Not all tasks have logs
     for (let d = 0; d < Math.min(i % 5 + 1, 5); d++) {
       dailyLogs.push({
         date: `2024-09-${String((d + 20) % 28 + 1).padStart(2, '0')}`,
@@ -959,7 +986,13 @@ for (let i = 0; i < 300; i++) {
       dept.abbreviation.toLowerCase(),
       i % 4 === 0 ? 'urgent' : i % 4 === 1 ? 'bottleneck' : i % 4 === 2 ? 'ready' : 'waiting',
     ],
-    dependencies: i > 5 && i % 3 === 0 ? [{
+    // t${i-1} is only a same-project task except right at a project boundary (e.g. i=120 is
+    // Nova Burst's first task while t119 is Iron Veil's last) — without the projectId guard
+    // that boundary task would get wired to a "blocking" dependency from an entirely
+    // different production, the same cross-project mismatch already fixed for asset/shot
+    // linking above. TASKS is 0-indexed but ids are `t${index+1}`, so the task with id
+    // `t${i-1}` lives at array index i-2, not i-1.
+    dependencies: i > 5 && i % 3 === 0 && TASKS[i - 2]?.projectId === projId ? [{
       taskId: `t${i - 1}`,
       type: DEPENDENCY_TYPES[i % DEPENDENCY_TYPES.length],
       ...(i % 4 === 0 ? { lagDays: (i % 5) + 1 } : {}),
@@ -1139,7 +1172,12 @@ const eventTypes = ['created', 'status_changed', 'assignee_set', 'version_submit
 for (let i = 0; i < 100; i++) {
   const isAsset = i % 2 === 0;
   const num = (i % 40) + 1;
-  const entityId = isAsset ? `ast_${String(num).padStart(3, '0')}` : `sh_${String(num).padStart(3, '0')}`;
+  const eventType = eventTypes[i % eventTypes.length];
+  // Must match the real ASSETS/SHOTS id format ("asset1", "sh1", ...) —
+  // this previously generated a disjoint "ast_001"/"sh_001" namespace, so
+  // any user-driven entity selection on the Audit page returned an empty
+  // timeline (see product review §4/§6).
+  const entityId = isAsset ? `asset${num}` : `sh${num}`;
 
   AUDIT_EVENTS.push({
     id: `e${i + 1}`,
@@ -1147,7 +1185,7 @@ for (let i = 0; i < 100; i++) {
     entityType: isAsset ? 'asset' : 'shot',
     timestamp: `2024-${String(7 + (i % 5)).padStart(2, '0')}-${String((i % 28) + 1).padStart(2, '0')} ${String(8 + (i % 14)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}:00`,
     userId: `u${(i % USERS.length) + 1}`,
-    eventType: eventTypes[i % eventTypes.length],
+    eventType,
     description: [
       `Created ${i % 2 === 0 ? 'asset' : 'shot'} entity`,
       `Status changed to ${['in-progress', 'review', 'complete', 'bottleneck'][i % 4]}`,
@@ -1162,7 +1200,27 @@ for (let i = 0; i < 100; i++) {
       `Priority changed to ${['critical', 'high', 'medium', 'low'][i % 4]}`,
       `Dependency added: ${i % 2 === 0 ? `asset${(i % 20) + 1}` : `sh${(i % 30) + 1}`}`,
     ][i % eventTypes.length],
-    changedFields: {},
+    // Previously always {} regardless of eventType, which left the built
+    // diff/changed-fields UI in audit.tsx permanently unreachable, AND (once
+    // populated) Time Travel's rollback was purely cosmetic — it only
+    // struck through later events in this page's timeline without touching
+    // the real entity anywhere (see product review §4/§9). Populated for
+    // the event types that represent a real field on Asset/Shot, using
+    // real status values and real user ids (not display names) so
+    // store/audit.ts's rollbackEntity() can apply these values directly to
+    // useAssetStore/useShotStore. `priority_changed` is deliberately left
+    // as {} — neither Asset nor Shot has a priority field, so there's
+    // nothing on the entity itself to roll back for that event type.
+    changedFields:
+      eventType === 'status_changed'
+        ? {
+            status: isAsset
+              ? `${['not-started', 'in-progress', 'review'][i % 3]} → ${['in-progress', 'review', 'complete', 'bottleneck', 'at-risk'][i % 5]}`
+              : `${['not-started', 'in-progress', 'review'][i % 3]} → ${['in-progress', 'review', 'complete', 'bottleneck', 'approved'][i % 5]}`,
+          }
+        : eventType === 'assignee_set'
+          ? { assigneeId: `${USERS[i % USERS.length].id} → ${USERS[(i + 3) % USERS.length].id}` }
+          : {},
   });
 }
 
@@ -1349,27 +1407,35 @@ export const PLUGINS: Plugin[] = [
 
 // --- Chat Messages -----------------------------------------------------------
 
+// dept2 is Modeling, not Animation (DEPT_DEFINITIONS[0] Production Management -> dept1,
+// [1] Modeling -> dept2, ... [5] Animation -> dept6) — these messages about a chase
+// sequence and a playblast were showing up in the Modeling chat channel instead of
+// Animation's. u2 and u8 aren't the Animation Supervisor/Lead either: u2 is Maya Chen
+// (VFX Producer) and u8 is Isla MacLeod (Previs Lead) — there is no "Jada Williams" in
+// USERS at all, so chat.tsx's `USERS.find(u => u.id === msg.userId)` was silently
+// misattributing every one of these messages to the wrong real person. Corrected to
+// dept6 and to the actual Animation Supervisor/Lead (u33 Akira Suzuki, u34 Nia Okafor).
 export const MESSAGES: ChatMessage[] = [
   {
     id: 'm1',
-    departmentId: 'dept2', // Animation
-    userId: 'u2', // Akira Suzuki (Animation Supervisor)
+    departmentId: 'dept6', // Animation
+    userId: 'u33', // Akira Suzuki (Animation Supervisor)
     text: 'Hey team, let\'s make sure we review the pacing on the chase sequence before the client review tomorrow.',
     attachments: [],
     timestamp: new Date(Date.now() - 3600000 * 24).toISOString()
   },
   {
     id: 'm2',
-    departmentId: 'dept2',
-    userId: 'u8', // Jada Williams (Lead Animator)
+    departmentId: 'dept6',
+    userId: 'u34', // Nia Okafor (Animation Lead)
     text: 'I\'ll upload the latest playblast here in a few minutes. I think the weight on the landing still feels a bit floaty.',
     attachments: [],
     timestamp: new Date(Date.now() - 3600000 * 23).toISOString()
   },
   {
     id: 'm3',
-    departmentId: 'dept2',
-    userId: 'u8',
+    departmentId: 'dept6',
+    userId: 'u34',
     text: 'Here is the current pass:',
     attachments: [{ id: 'a1', type: 'video', url: 'https://test-videos.co.uk/vids/jellyfish/mp4/h264/1080/Jellyfish_1080_10s_5MB.mp4', name: 'chase_seq_v12_playblast.mp4' }],
     timestamp: new Date(Date.now() - 3600000 * 22).toISOString()
@@ -1390,6 +1456,15 @@ export interface TimeLog {
   note: string;
 }
 
+// USERS[0].id used to be a harmless positional reference (the seed's first coordinator);
+// after the client-role fix it resolves to the External Client, which put a client on an
+// internal artist timecard with logged hours. It also pointed at t1, an unassigned
+// "Model ..." task that has nothing to do with the "Worked on rigging" note. Derive a real
+// rigging artist and one of their actual rigging tasks instead, so both the user and the
+// task genuinely match the note.
+const timeLogArtist = USERS.find(u => u.title === 'Rigger') ?? USERS.find(u => u.role === 'artist')!;
+const timeLogTask = TASKS.find(t => t.assigneeId === timeLogArtist.id && t.title.startsWith('Rig ')) ?? TASKS[0];
+
 export const TIME_LOGS: TimeLog[] = [
-  { id: 'l1', userId: USERS[0].id, taskId: 't1', date: '2026-08-07', hours: 8, note: 'Worked on rigging' }
+  { id: 'l1', userId: timeLogArtist.id, taskId: timeLogTask.id, date: '2026-08-07', hours: 8, note: 'Worked on rigging' }
 ];

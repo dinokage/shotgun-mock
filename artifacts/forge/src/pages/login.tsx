@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useLocation } from 'wouter';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/components/ui/button';
@@ -8,7 +8,7 @@ import {
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
-} from "@/components/ui/accordion";
+} from '@/components/ui/accordion';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
@@ -21,34 +21,50 @@ export default function Login() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [showQuickPick, setShowQuickPick] = useState(false);
-  
+
   const [empId, setEmpId] = useState('');
   const [password, setPassword] = useState('');
 
-  // Group users by department (Supervisor, Lead, Artist)
+  // This is a mock with no real users to protect, so a full studio
+  // directory quick-login is genuinely useful for demoing/testing every
+  // role's portal — unlike the login screen's own hardcoded password, this
+  // doesn't bypass anything a real deployment would rely on. Grouped by
+  // department (Supervisor, Lead, Artist), plus studio-wide leadership.
   const groupedUsers = useMemo(() => {
     const groups: Record<string, typeof USERS> = {};
-    
-    // Add Leadership / Studio wide group first
+
     groups['Studio Leadership'] = [
       USERS.find(u => u.role === 'vfx_producer'),
       USERS.find(u => u.role === 'production_manager'),
     ].filter(Boolean) as typeof USERS;
 
-    // Add 3 users for each department (Supervisor, Lead, Artist)
     DEPARTMENTS.forEach(dept => {
       const deptUsers = USERS.filter(u => u.departmentId === dept.id);
       if (deptUsers.length === 0) return;
-      
+
       const supervisor = deptUsers.find(u => u.role === 'supervisor');
       const lead = deptUsers.find(u => u.role === 'lead');
       const artist = deptUsers.find(u => u.role === 'artist' || u.role === 'senior_artist');
-      
-      groups[dept.name] = [supervisor, lead, artist].filter(Boolean) as typeof USERS;
+
+      const members = [supervisor, lead, artist].filter(Boolean) as typeof USERS;
+      // Production Management has no supervisor/lead/artist (its members are
+      // vfx_producer/production_manager/coordinator/client, already surfaced
+      // under "Studio Leadership" above) — skip it rather than rendering an
+      // accordion section that expands to an empty list.
+      if (members.length === 0) return;
+
+      groups[dept.name] = members;
     });
 
     return groups;
   }, []);
+
+  const handleQuickLoginKeyDown = (e: React.KeyboardEvent, role: string) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      quickLogin(role);
+    }
+  };
 
   const quickLogin = (role: string, customUserId?: string) => {
     setIsLoading(true);
@@ -56,7 +72,7 @@ export default function Login() {
     if (customUserId) {
       user = USERS.find(u => u.id === customUserId);
     } else if (role === 'client') {
-      user = USERS.find(u => u.name === 'External Client');
+      user = USERS.find(u => u.role === 'client');
     } else if (role === 'artist') {
       user = USERS.find(u => u.role === 'artist');
     } else if (role === 'lead') {
@@ -86,11 +102,10 @@ export default function Login() {
   const handleManualLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    const user = USERS.find(u => u.empId === empId && u.password === password);
-    
+
     setTimeout(() => {
-      if (user) {
-        login(empId, password);
+      const success = login(empId, password);
+      if (success) {
         // Every role lands on Home ('/'), which already renders the
         // role-appropriate dashboard variant (ProducerDashboard,
         // SupervisorDashboard, or ArtistDashboard) via home.tsx's role
@@ -127,7 +142,13 @@ export default function Login() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 w-full animate-in fade-in slide-in-from-bottom-8 duration-700">
           
           {/* Client Portal */}
-          <Card className="hover:border-primary/50 hover:shadow-lg transition-all cursor-pointer group bg-card/80 backdrop-blur-sm" onClick={() => quickLogin('client')}>
+          <Card
+            className="hover:border-primary/50 hover:shadow-lg transition-all cursor-pointer group bg-card/80 backdrop-blur-sm"
+            onClick={() => quickLogin('client')}
+            role="button"
+            tabIndex={0}
+            onKeyDown={e => handleQuickLoginKeyDown(e, 'client')}
+          >
             <CardContent className="p-8 flex flex-col items-center text-center gap-4">
               <div className="w-16 h-16 rounded-full bg-emerald-500/10 flex items-center justify-center group-hover:scale-110 transition-transform">
                 <MonitorPlay className="w-8 h-8 text-emerald-500" />
@@ -140,7 +161,13 @@ export default function Login() {
           </Card>
 
           {/* Artist Portal */}
-          <Card className="hover:border-primary/50 hover:shadow-lg transition-all cursor-pointer group bg-card/80 backdrop-blur-sm" onClick={() => quickLogin('artist')}>
+          <Card
+            className="hover:border-primary/50 hover:shadow-lg transition-all cursor-pointer group bg-card/80 backdrop-blur-sm"
+            onClick={() => quickLogin('artist')}
+            role="button"
+            tabIndex={0}
+            onKeyDown={e => handleQuickLoginKeyDown(e, 'artist')}
+          >
             <CardContent className="p-8 flex flex-col items-center text-center gap-4">
               <div className="w-16 h-16 rounded-full bg-blue-500/10 flex items-center justify-center group-hover:scale-110 transition-transform">
                 <Video className="w-8 h-8 text-blue-500" />
@@ -153,7 +180,13 @@ export default function Login() {
           </Card>
 
           {/* Lead Portal */}
-          <Card className="hover:border-primary/50 hover:shadow-lg transition-all cursor-pointer group bg-card/80 backdrop-blur-sm" onClick={() => quickLogin('lead')}>
+          <Card
+            className="hover:border-primary/50 hover:shadow-lg transition-all cursor-pointer group bg-card/80 backdrop-blur-sm"
+            onClick={() => quickLogin('lead')}
+            role="button"
+            tabIndex={0}
+            onKeyDown={e => handleQuickLoginKeyDown(e, 'lead')}
+          >
             <CardContent className="p-8 flex flex-col items-center text-center gap-4">
               <div className="w-16 h-16 rounded-full bg-purple-500/10 flex items-center justify-center group-hover:scale-110 transition-transform">
                 <Crown className="w-8 h-8 text-purple-500" />
@@ -166,7 +199,13 @@ export default function Login() {
           </Card>
 
           {/* Production Portal */}
-          <Card className="hover:border-primary/50 hover:shadow-lg transition-all cursor-pointer group bg-card/80 backdrop-blur-sm" onClick={() => quickLogin('manager')}>
+          <Card
+            className="hover:border-primary/50 hover:shadow-lg transition-all cursor-pointer group bg-card/80 backdrop-blur-sm"
+            onClick={() => quickLogin('manager')}
+            role="button"
+            tabIndex={0}
+            onKeyDown={e => handleQuickLoginKeyDown(e, 'manager')}
+          >
             <CardContent className="p-8 flex flex-col items-center text-center gap-4">
               <div className="w-16 h-16 rounded-full bg-orange-500/10 flex items-center justify-center group-hover:scale-110 transition-transform">
                 <Briefcase className="w-8 h-8 text-orange-500" />
@@ -240,7 +279,6 @@ export default function Login() {
                     <AccordionContent className="space-y-2 pb-3">
                       {users.map(user => {
                         if (!user) return null;
-                        const dept = DEPARTMENTS.find(d => d.id === user.departmentId);
                         return (
                           <button
                             key={user.id}

@@ -8,28 +8,24 @@ import { DEPARTMENTS, USERS, TASKS, isTaskActive, isTaskDone } from '@/data/mock
 import { Users, ListTodo, CheckCircle2, ArrowRight, Settings, Check, ChevronLeft, ChevronRight, Workflow } from 'lucide-react';
 
 import { useAuthStore } from '@/store/auth';
+import { useDepartmentPipelineStore } from '@/store/departments';
+import { useCapability } from '@/hooks/use-capability';
 
 export default function Departments() {
   const { currentUser } = useAuthStore();
   const isGlobalManager = currentUser && ['vfx_producer', 'production_manager'].includes(currentUser.role);
+  const canManagePipeline = useCapability('manage_pipeline');
 
   const [isEditing, setIsEditing] = useState(false);
-  const [pipelineDepts, setPipelineDepts] = useState(
-    DEPARTMENTS
-      .filter(d => d.pipelineOrder > 0)
-      .filter(d => isGlobalManager || d.id === currentUser?.departmentId)
-      .sort((a, b) => a.pipelineOrder - b.pipelineOrder)
-  );
+  const pipelineOrder = useDepartmentPipelineStore((s) => s.pipelineOrder);
+  const moveInPipeline = useDepartmentPipelineStore((s) => s.moveInPipeline);
 
-  const moveItem = (index: number, direction: 'left' | 'right') => {
-    const newItems = [...pipelineDepts];
-    if (direction === 'left' && index > 0) {
-      [newItems[index - 1], newItems[index]] = [newItems[index], newItems[index - 1]];
-    } else if (direction === 'right' && index < newItems.length - 1) {
-      [newItems[index], newItems[index + 1]] = [newItems[index + 1], newItems[index]];
-    }
-    setPipelineDepts(newItems);
-  };
+  // Resolve the persisted id order back to department records, scoped to what
+  // this user is allowed to see, same as before.
+  const pipelineDepts = pipelineOrder
+    .map((id) => DEPARTMENTS.find((d) => d.id === id))
+    .filter((d): d is (typeof DEPARTMENTS)[number] => !!d)
+    .filter((d) => isGlobalManager || d.id === currentUser?.departmentId);
 
   return (
     <div className="p-6 max-w-[1400px] mx-auto space-y-6">
@@ -52,15 +48,17 @@ export default function Departments() {
                   <Workflow className="w-3.5 h-3.5 mr-1.5" /> Advanced Builder
                 </Link>
               </Button>
-              <Button 
-                variant={isEditing ? "default" : "outline"} 
-                size="sm" 
-                className="h-7 text-xs" 
-                onClick={() => setIsEditing(!isEditing)}
-              >
-                {isEditing ? <Check className="w-3.5 h-3.5 mr-1.5" /> : <Settings className="w-3.5 h-3.5 mr-1.5" />}
-                {isEditing ? 'Done Editing' : 'Customize Here'}
-              </Button>
+              {canManagePipeline && (
+                <Button
+                  variant={isEditing ? "default" : "outline"}
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => setIsEditing(!isEditing)}
+                >
+                  {isEditing ? <Check className="w-3.5 h-3.5 mr-1.5" /> : <Settings className="w-3.5 h-3.5 mr-1.5" />}
+                  {isEditing ? 'Done Editing' : 'Customize Here'}
+                </Button>
+              )}
             </div>
           </div>
           
@@ -77,17 +75,17 @@ export default function Departments() {
                     </div>
                   </Link>
                   
-                  {isEditing && (
+                  {isEditing && canManagePipeline && (
                     <div className="absolute right-0.5 top-0.5 flex flex-col gap-0.5">
-                      <button 
-                        onClick={(e) => { e.preventDefault(); moveItem(i, 'right'); }}
+                      <button
+                        onClick={(e) => { e.preventDefault(); moveInPipeline(dept.id, 'right'); }}
                         disabled={i === arr.length - 1}
                         className="bg-black/30 hover:bg-black/50 text-white rounded p-0.5 disabled:opacity-30 transition-colors"
                       >
                         <ChevronRight className="w-2.5 h-2.5" />
                       </button>
-                      <button 
-                        onClick={(e) => { e.preventDefault(); moveItem(i, 'left'); }}
+                      <button
+                        onClick={(e) => { e.preventDefault(); moveInPipeline(dept.id, 'left'); }}
                         disabled={i === 0}
                         className="bg-black/30 hover:bg-black/50 text-white rounded p-0.5 disabled:opacity-30 transition-colors"
                       >

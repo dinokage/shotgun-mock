@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   DndContext, DragOverlay, closestCorners, KeyboardSensor, PointerSensor,
@@ -18,6 +19,7 @@ import { useTasksStore } from '@/store/tasks';
 import { useUIStore } from '@/store/ui';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { REFERENCE_DATE } from './utils';
 
 const UNASSIGNED = '__unassigned__';
 
@@ -38,7 +40,7 @@ function BoardTaskCard({ task }: { task: Task }) {
     opacity: isDragging ? 0.4 : 1,
   };
 
-  const isOverdue = new Date(task.dueDate) < new Date('2025-06-01');
+  const isOverdue = new Date(task.dueDate) < REFERENCE_DATE;
 
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="mb-2 cursor-grab active:cursor-grabbing outline-none">
@@ -159,9 +161,18 @@ export default function TeamBoard() {
 
   const filteredTasks = useMemo(() => tasks.filter((t) => {
     if (projectFilter !== 'all' && t.projectId !== projectFilter) return false;
+    // Department filter needs to narrow the tasks themselves, not just which
+    // people columns are visible — otherwise the Unassigned pool keeps
+    // showing every unassigned task studio-wide while the board only shows
+    // e.g. Lighting's people, which reads as "Lighting has a huge backlog"
+    // when most of it isn't Lighting work at all.
+    if (departmentFilter !== 'all') {
+      const dept = DEPARTMENTS.find((d) => d.id === departmentFilter);
+      if (!dept || t.department !== dept.name) return false;
+    }
     if (search && !t.title.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
-  }), [tasks, projectFilter, search]);
+  }), [tasks, projectFilter, departmentFilter, search]);
 
   const unassignedTasks = useMemo(() => filteredTasks.filter((t) => !t.assigneeId), [filteredTasks]);
 
@@ -267,16 +278,19 @@ export default function TeamBoard() {
           )}
         </div>
 
-        <DragOverlay>
-          {activeTask ? (
-            <div className="opacity-90 rotate-2">
-              <Card className="p-3 shadow-xl border-primary w-60">
-                <div className="text-sm font-medium leading-tight mb-2">{activeTask.title}</div>
-                <PriorityChip priority={activeTask.priority} />
-              </Card>
-            </div>
-          ) : null}
-        </DragOverlay>
+        {createPortal(
+          <DragOverlay>
+            {activeTask ? (
+              <div className="opacity-90 rotate-2">
+                <Card className="p-3 shadow-xl border-primary w-60">
+                  <div className="text-sm font-medium leading-tight mb-2">{activeTask.title}</div>
+                  <PriorityChip priority={activeTask.priority} />
+                </Card>
+              </div>
+            ) : null}
+          </DragOverlay>,
+          document.body
+        )}
       </DndContext>
     </div>
   );

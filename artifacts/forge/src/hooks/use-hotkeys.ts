@@ -34,12 +34,18 @@ export function useHotkeys(shortcuts: ShortcutMap, deps: any[] = []) {
     
     const combo = parts.join('+');
     
-    // Try exact match first, then just the key
+    // Try exact match first, then just the key. The fallback intentionally
+    // ignores Shift alone: for printable keys (e.g. '?' is Shift+/) the
+    // Shift is already baked into `e.key`, so gating the fallback on
+    // `!e.shiftKey` made it unreachable — `combo` only differs from `key` by
+    // holding some modifier, and the fallback required holding none, i.e.
+    // combo === key already, which the first branch had already handled.
+    // Ctrl/Meta/Alt still gate the fallback since those don't change `key`.
     if (shortcuts[combo]) {
       e.preventDefault();
       e.stopPropagation();
       shortcuts[combo](e);
-    } else if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey && shortcuts[key]) {
+    } else if (!e.ctrlKey && !e.metaKey && !e.altKey && shortcuts[key]) {
       e.preventDefault();
       e.stopPropagation();
       shortcuts[key](e);

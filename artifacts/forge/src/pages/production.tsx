@@ -1,40 +1,47 @@
 import { useState, useMemo } from 'react';
-import { useAuthStore } from '@/store/auth';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { SHOTS, DEPARTMENTS, PROJECTS, TASKS, USERS } from '@/data/mockData';
-import { TableProperties, PlayCircle, MoreVertical, CheckCircle2, Clock, AlertTriangle, Users, BarChart3, Filter } from 'lucide-react';
+import { DEPARTMENTS, PROJECTS, TASKS, USERS } from '@/data/mockData';
+import { TableProperties, PlayCircle, MoreVertical, CheckCircle2, Clock, AlertTriangle, BarChart3, Filter } from 'lucide-react';
 import { StatusBadge } from '@/components/shared/StatusBadge';
-import { useUIStore } from '@/store/ui';
+import { useShotStore } from '@/store/shots';
+import { useCapability, useIsLeadership } from '@/hooks/use-capability';
+import { useToast } from '@/hooks/use-toast';
 import { Link, useLocation } from 'wouter';
-import { Progress } from '@/components/ui/progress';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger,
+} from '@/components/ui/dropdown-menu';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent } from '@/components/ui/empty';
 
 export default function ProductionDashboard() {
-  const { currentUser } = useAuthStore();
   const [, setLocation] = useLocation();
   const [filter, setFilter] = useState<'all' | 'review' | 'at-risk'>('all');
+  const { shots, updateShot } = useShotStore();
+  const { toast } = useToast();
+  const canAssignTasks = useCapability('assign_tasks');
+  const canEditTasks = useCapability('edit_tasks');
 
-  const isManager = currentUser && ['vfx_producer', 'production_manager', 'coordinator', 'supervisor', 'lead'].includes(currentUser.role);
+  const isManager = useIsLeadership();
 
   const globalStats = useMemo(() => {
     return {
-      total: SHOTS.length,
-      review: SHOTS.filter(s => s.status === 'review' || s.status === 'client-review' || s.clientReviewStatus === 'pending').length,
-      atRisk: SHOTS.filter(s => s.status === 'at-risk' || s.status === 'bottleneck').length,
-      complete: SHOTS.filter(s => s.status === 'complete').length,
+      total: shots.length,
+      review: shots.filter(s => s.status === 'review' || s.status === 'client-review' || s.clientReviewStatus === 'pending').length,
+      atRisk: shots.filter(s => s.status === 'at-risk' || s.status === 'bottleneck').length,
+      complete: shots.filter(s => s.status === 'complete').length,
     };
-  }, []);
+  }, [shots]);
 
   const filteredShots = useMemo(() => {
-    if (filter === 'all') return SHOTS;
-    if (filter === 'review') return SHOTS.filter(s => s.status === 'review' || s.status === 'client-review' || s.clientReviewStatus === 'pending');
-    if (filter === 'at-risk') return SHOTS.filter(s => s.status === 'at-risk' || s.status === 'bottleneck');
-    return SHOTS;
-  }, [filter]);
+    if (filter === 'all') return shots;
+    if (filter === 'review') return shots.filter(s => s.status === 'review' || s.status === 'client-review' || s.clientReviewStatus === 'pending');
+    if (filter === 'at-risk') return shots.filter(s => s.status === 'at-risk' || s.status === 'bottleneck');
+    return shots;
+  }, [filter, shots]);
 
   if (!isManager) {
     return (
@@ -98,13 +105,8 @@ export default function ProductionDashboard() {
 
       {/* Department Wise Previews */}
       <div className="space-y-8">
-        {['Layout', 'Animation', 'Lighting', 'FX', 'Rendering', 'Compositing'].map((deptName, i) => {
+        {['Layout', 'Animation', 'Lighting', 'FX', 'Rendering', 'Compositing'].map((deptName) => {
           const dept = DEPARTMENTS.find(d => d.name.toLowerCase().includes(deptName.toLowerCase())) || { id: deptName, name: deptName, color: 'hsl(var(--primary))' };
-          
-          // Deterministic mock generation based on index, but filtered
-          const deptShots = [...filteredShots].sort((a, b) => a.id.localeCompare(b.id)).slice(i * 4, (i * 4) + 4);
-          
-          if (deptShots.length === 0) return null; // Don't show empty departments when filtering
 
           // Real completion percentage: share of this department's tasks (across all
           // shots, not just the ones previewed below) that are complete/approved.
@@ -112,6 +114,20 @@ export default function ProductionDashboard() {
           const deptProgress = deptAllTasks.length > 0
             ? Math.round((deptAllTasks.filter(t => t.status === 'complete' || t.status === 'approved').length / deptAllTasks.length) * 100)
             : 0;
+
+          // Shots actually belonging to this department: shots that have at least one
+          // task tracked under this department name (Shot has no direct department
+          // field, so membership is derived from its tasks — the same source the
+          // progress bar above is computed from, so the two never contradict).
+          const deptShots = filteredShots
+            .filter(shot => TASKS.some(t => t.shotId === shot.id && t.department === dept.name))
+            .sort((a, b) => parseInt(a.id.replace(/\D/g, ''), 10) - parseInt(b.id.replace(/\D/g, ''), 10))
+            .slice(0, 4);
+
+          if (deptShots.length === 0) return null; // Don't show empty departments when filtering
+
+          // Department-scoped artists, for the "Assign Artists" quick action below.
+          const deptArtists = USERS.filter(u => u.departmentId === dept.id && (u.role === 'artist' || u.role === 'junior_artist'));
 
           return (
             <Card key={dept.id} className="border-border shadow-sm overflow-hidden">
@@ -125,7 +141,7 @@ export default function ProductionDashboard() {
                   </CardTitle>
                   <Badge variant="secondary" className="font-mono text-xs">{deptProgress}% Complete</Badge>
                 </div>
-                <Link href="/tracking" className="text-sm text-primary hover:underline font-medium">View Pipeline</Link>
+                <Link href={`/tracking?dept=${dept.id}`} className="text-sm text-primary hover:underline font-medium">View Pipeline</Link>
               </CardHeader>
               <CardContent className="p-6">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -137,7 +153,18 @@ export default function ProductionDashboard() {
                       <div key={shot.id} className="group relative flex flex-col gap-3">
                         <HoverCard openDelay={200}>
                           <HoverCardTrigger asChild>
-                            <div className="cursor-pointer" onClick={() => setLocation('/review')}>
+                            <div
+                              className="cursor-pointer"
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => setLocation(`/review?shot=${shot.id}`)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  setLocation(`/review?shot=${shot.id}`);
+                                }
+                              }}
+                            >
                               <div className="relative aspect-video bg-card rounded-lg overflow-hidden border border-border group-hover:border-primary/50 group-hover:shadow-md transition-all">
                                 {shot.thumbnail ? (
                                   <img src={shot.thumbnail} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt={shot.name} />
@@ -206,11 +233,47 @@ export default function ProductionDashboard() {
                             <DropdownMenuContent align="end">
                               <DropdownMenuLabel>Quick Actions</DropdownMenuLabel>
                               <DropdownMenuSeparator />
-                              <DropdownMenuItem onClick={() => setLocation('/review')}>Review in Player</DropdownMenuItem>
-                              <DropdownMenuItem>View in Pipeline</DropdownMenuItem>
-                              <DropdownMenuItem>Assign Artists</DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem className="text-orange-500">Flag as Bottleneck</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setLocation(`/review?shot=${shot.id}`)}>Review in Player</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setLocation(`/tracking?dept=${dept.id}`)}>View in Pipeline</DropdownMenuItem>
+                              {canAssignTasks && (
+                                <DropdownMenuSub>
+                                  <DropdownMenuSubTrigger disabled={deptArtists.length === 0}>Assign Artists</DropdownMenuSubTrigger>
+                                  <DropdownMenuSubContent>
+                                    {deptArtists.map(u => (
+                                      <DropdownMenuItem
+                                        key={u.id}
+                                        onSelect={() => {
+                                          updateShot(shot.id, { assigneeId: u.id });
+                                          toast({ title: 'Artist assigned', description: `${u.name} assigned to "${shot.name}".` });
+                                        }}
+                                      >
+                                        {u.name}{shot.assigneeId === u.id ? ' (current)' : ''}
+                                      </DropdownMenuItem>
+                                    ))}
+                                    {deptArtists.length === 0 && (
+                                      <DropdownMenuItem disabled>No {dept.name} artists found</DropdownMenuItem>
+                                    )}
+                                  </DropdownMenuSubContent>
+                                </DropdownMenuSub>
+                              )}
+                              {canEditTasks && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    className="text-orange-500"
+                                    onClick={() => {
+                                      const flagging = shot.status !== 'bottleneck';
+                                      updateShot(shot.id, { status: flagging ? 'bottleneck' : 'in-progress' });
+                                      toast({
+                                        title: flagging ? 'Shot flagged as bottleneck' : 'Bottleneck flag cleared',
+                                        description: `"${shot.name}" ${flagging ? 'marked as blocked' : 'returned to in-progress'}.`,
+                                      });
+                                    }}
+                                  >
+                                    {shot.status === 'bottleneck' ? 'Clear Bottleneck Flag' : 'Flag as Bottleneck'}
+                                  </DropdownMenuItem>
+                                </>
+                              )}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </div>
@@ -223,12 +286,18 @@ export default function ProductionDashboard() {
           );
         })}
         {filteredShots.length === 0 && (
-          <div className="py-20 text-center text-muted-foreground border-2 border-dashed border-border rounded-lg">
-            <Filter className="w-12 h-12 mx-auto mb-4 opacity-20" />
-            <h3 className="text-lg font-medium text-foreground">No shots found</h3>
-            <p className="text-sm">No departments have shots matching your current filters.</p>
-            <Button variant="outline" className="mt-4" onClick={() => setFilter('all')}>Clear Filters</Button>
-          </div>
+          <Empty className="border-2 border-dashed border-border rounded-lg py-20">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Filter />
+              </EmptyMedia>
+              <EmptyTitle>No shots found</EmptyTitle>
+              <EmptyDescription>No departments have shots matching your current filters.</EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button variant="outline" onClick={() => setFilter('all')}>Clear Filters</Button>
+            </EmptyContent>
+          </Empty>
         )}
       </div>
     </div>

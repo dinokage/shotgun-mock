@@ -88,6 +88,14 @@ const newFieldId = () => `fld-${Date.now().toString(36)}-${(fieldCounter++).toSt
 const newTemplateId = () => `tmpl-${Date.now().toString(36)}-${(templateCounter++).toString(36)}`;
 const newTemplateTaskId = () => `tmpltask-${Date.now().toString(36)}-${(templateTaskCounter++).toString(36)}`;
 
+// 'true' and 'false' are literals in the computed-expression grammar
+// (lib/expressionEvaluator.ts resolves them before ever consulting the
+// scope), so a field whose key is exactly one of these can never be
+// referenced by value in an expression — it always evaluates to the
+// literal instead of the field's actual data. Treat them as taken so
+// auto-generated keys never collide with the expression language.
+export const RESERVED_KEYS = ['true', 'false'];
+
 export function slugifyKey(label: string, taken: string[] = []): string {
   const base = label
     .trim()
@@ -97,7 +105,7 @@ export function slugifyKey(label: string, taken: string[] = []): string {
   const startsWithDigit = /^[0-9]/.test(base);
   let key = startsWithDigit ? `f_${base}` : base;
   let suffix = 2;
-  while (taken.includes(key)) {
+  while (taken.includes(key) || RESERVED_KEYS.includes(key)) {
     key = `${startsWithDigit ? `f_${base}` : base}_${suffix++}`;
   }
   return key;

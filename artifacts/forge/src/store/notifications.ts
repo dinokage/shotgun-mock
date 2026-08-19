@@ -47,10 +47,10 @@ interface NotificationState {
   preferences: NotificationPreferences;
   /**
    * Adds a notification, gated on the category's `push` preference — this is the
-   * "generation-time" enforcement of preferences for any future/dynamic notification
-   * source. Today nothing in the app calls this yet (notifications are static mock
-   * seed data), so `notifications.tsx` also filters by preference at render time —
-   * that's what actually hides muted categories from the seeded list right now.
+   * "generation-time" enforcement of preferences for dynamic notification sources
+   * (e.g. the review approval chain in review.tsx). `notifications.tsx` and the
+   * TopBar bell also filter by preference at render time, which covers the static
+   * mock seed data and acts as a second guard for anything added dynamically.
    */
   addNotification: (notification: Omit<Notification, 'id' | 'timestamp' | 'read'>) => void;
   markAsRead: (id: string) => void;
@@ -73,8 +73,13 @@ export const useNotificationStore = create<NotificationState>()(
             notifications: [
               {
                 ...notification,
-                id: `notif-${Date.now()}`,
-                timestamp: new Date().toISOString(),
+                id: `notif-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                // `timestamp` is a display string, not a parseable date — every
+                // renderer (this page, TopBar's bell dropdown) prints it as-is
+                // with no date formatting, and the seed data uses relative-time
+                // strings like "2 mins ago". An ISO instant here would render
+                // as a raw timestamp instead of matching that convention.
+                timestamp: 'Just now',
                 read: false,
               },
               ...state.notifications,

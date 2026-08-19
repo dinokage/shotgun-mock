@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/store/auth';
 import { useUIStore } from '@/store/ui';
 import { useTasksStore } from '@/store/tasks';
@@ -8,12 +8,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { USERS, PROJECTS, DEPARTMENTS, TASKS, Task, TaskStatus } from '@/data/mockData';
+import { USERS, PROJECTS, DEPARTMENTS, Task, TaskStatus } from '@/data/mockData';
+import { STUDIO_LEADERSHIP_ROLES } from '@/store/permissions';
 import { UploadCloud } from 'lucide-react';
 
 export function CreateTaskModal() {
-  const { createTaskModalOpen, setCreateTaskModalOpen } = useUIStore();
-  const { addTask } = useTasksStore();
+  const { createTaskModalOpen, setCreateTaskModalOpen, createTaskDefaultAssigneeId, setCreateTaskDefaultAssigneeId } = useUIStore();
+  const { addTask, tasks } = useTasksStore();
   const { currentUser } = useAuthStore();
   const { toast } = useToast();
 
@@ -23,14 +24,29 @@ export function CreateTaskModal() {
   const [assigneeId, setAssigneeId] = useState('');
   const [priority, setPriority] = useState<'low' | 'medium' | 'high' | 'critical'>('medium');
 
+  // Pre-fill the assignee when the modal is opened with a default (e.g. from
+  // a person's profile page via "Assign Task").
+  useEffect(() => {
+    if (createTaskModalOpen && createTaskDefaultAssigneeId) {
+      setAssigneeId(createTaskDefaultAssigneeId);
+    }
+  }, [createTaskModalOpen, createTaskDefaultAssigneeId]);
+
+  const handleOpenChange = (open: boolean) => {
+    setCreateTaskModalOpen(open);
+    if (!open) {
+      setCreateTaskDefaultAssigneeId(null);
+    }
+  };
+
   if (!currentUser) return null;
 
-  // Managers and Leads can only assign to their own department
-  const isLeadership = ['vfx_producer', 'production_manager', 'coordinator', 'supervisor', 'lead'].includes(currentUser.role);
-  
-  // VFX Producers / PMs can assign across studio, but Supervisors/Leads can only assign within their dept.
-  const isStudioLeadership = ['vfx_producer', 'production_manager', 'coordinator'].includes(currentUser.role);
-  
+  // VFX Producers / PMs / Coordinators can assign across the whole studio;
+  // everyone else (including Supervisors/Leads) can only assign within their
+  // own department. Uses the shared STUDIO_LEADERSHIP_ROLES list from
+  // store/permissions.ts (also used by home.tsx) instead of a local copy.
+  const isStudioLeadership = STUDIO_LEADERSHIP_ROLES.includes(currentUser.role);
+
   const availableUsers = USERS.filter(u => 
     isStudioLeadership || u.departmentId === currentUser.departmentId
   );
@@ -46,8 +62,17 @@ export function CreateTaskModal() {
     const dept = USERS.find(u => u.id === assigneeId)?.departmentId;
     const departmentName = DEPARTMENTS.find(d => d.id === dept)?.name || 'General';
 
+    // Derived from the live store, not the frozen TASKS import — using
+    // TASKS.length here meant every task created after the first in a
+    // session got the same id, a real duplicate-key bug once persistence
+    // exists (see product review §6).
+    const nextNumericId = tasks.reduce((max, t) => {
+      const n = parseInt(t.id.replace(/\D/g, ''), 10);
+      return Number.isFinite(n) ? Math.max(max, n) : max;
+    }, 100);
+
     const newTask: Task = {
-      id: `t${TASKS.length + 100}`, // Mock ID generation
+      id: `t${nextNumericId + 1}`,
       title,
       description,
       projectId,
@@ -85,11 +110,12 @@ export function CreateTaskModal() {
     setProjectId('');
     setAssigneeId('');
     setPriority('medium');
+    setCreateTaskDefaultAssigneeId(null);
     setCreateTaskModalOpen(false);
   };
 
   return (
-    <Dialog open={createTaskModalOpen} onOpenChange={setCreateTaskModalOpen}>
+    <Dialog open={createTaskModalOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>Assign New Task</DialogTitle>
@@ -162,7 +188,7 @@ export function CreateTaskModal() {
           </div>
 
           <DialogFooter className="mt-6">
-            <Button type="button" variant="outline" onClick={() => setCreateTaskModalOpen(false)}>Cancel</Button>
+            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>Cancel</Button>
             <Button type="submit">Assign Task</Button>
           </DialogFooter>
         </form>

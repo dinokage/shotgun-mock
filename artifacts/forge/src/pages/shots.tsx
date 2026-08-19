@@ -2,12 +2,15 @@ import { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { SHOTS, PROJECTS, USERS, SEQUENCES } from '@/data/mockData';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent } from '@/components/ui/empty';
+import { PROJECTS, USERS, SEQUENCES, Shot } from '@/data/mockData';
 import { Search, Film, Grid3X3, List, X, ChevronDown } from 'lucide-react';
 import { Link, useSearchParams } from 'wouter';
 import { useAuthStore } from '@/store/auth';
+import { useShotStore } from '@/store/shots';
 
 const STATUS_COLORS: Record<string, string> = {
   complete: 'bg-green-500/10 text-green-500',
@@ -16,6 +19,9 @@ const STATUS_COLORS: Record<string, string> = {
   review: 'bg-purple-500/10 text-purple-500',
   'not-started': 'bg-muted text-muted-foreground',
   'at-risk': 'bg-orange-500/10 text-orange-500',
+  'client-review': 'bg-purple-500/10 text-purple-500',
+  approved: 'bg-green-500/10 text-green-500',
+  published: 'bg-green-500/10 text-green-500',
 };
 
 const SEQUENCE_PAGE_SIZE = 8;
@@ -28,23 +34,24 @@ export default function Shots() {
   const [projectFilter, setProjectFilter] = useState('all');
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const { currentUser } = useAuthStore();
+  const shots = useShotStore(state => state.shots);
   const [searchParams] = useSearchParams();
   // Artist sidebar links to /shots?mine=1 — scope the catalog down to the
   // current user's own assignments instead of showing the whole studio.
   const mineOnly = searchParams.get('mine') === '1';
 
   const filtered = useMemo(() => {
-    return SHOTS.filter(s => {
+    return shots.filter(s => {
       if (mineOnly && s.assigneeId !== currentUser?.id) return false;
       if (search && !s.name.toLowerCase().includes(search.toLowerCase())) return false;
       if (statusFilter !== 'all' && s.status !== statusFilter) return false;
       if (projectFilter !== 'all' && s.projectId !== projectFilter) return false;
       return true;
     });
-  }, [search, statusFilter, projectFilter, mineOnly, currentUser?.id]);
+  }, [shots, search, statusFilter, projectFilter, mineOnly, currentUser?.id]);
 
   const grouped = useMemo(() => {
-    const groups: Record<string, typeof SHOTS> = {};
+    const groups: Record<string, Shot[]> = {};
     filtered.forEach(s => {
       const key = s.sequence || 'Other';
       if (!groups[key]) groups[key] = [];
@@ -95,7 +102,7 @@ export default function Shots() {
           <SelectTrigger className="w-36 h-9"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Status</SelectItem>
-            {['complete', 'in-progress', 'bottleneck', 'review', 'at-risk', 'not-started'].map(s => (
+            {['complete', 'in-progress', 'bottleneck', 'review', 'at-risk', 'not-started', 'client-review', 'approved', 'published'].map(s => (
               <SelectItem key={s} value={s}>{s.replace('-', ' ')}</SelectItem>
             ))}
           </SelectContent>
@@ -149,6 +156,12 @@ export default function Shots() {
                               <span className="font-mono">{shot.currentVersion}</span>
                               <span>{shot.duration}f</span>
                             </div>
+                            {assignee && (
+                              <div className="flex items-center gap-1 mt-1.5">
+                                <Avatar className="w-4 h-4"><AvatarImage src={assignee.avatar} /><AvatarFallback className="text-[8px]">{assignee.name.charAt(0)}</AvatarFallback></Avatar>
+                                <span className="text-[10px] text-muted-foreground truncate">{assignee.name}</span>
+                              </div>
+                            )}
                           </CardContent>
                         </Card>
                       </Link>
@@ -212,7 +225,7 @@ export default function Shots() {
                     <td className="p-4 text-muted-foreground">{assignee?.name}</td>
                     <td className="p-4 font-mono text-muted-foreground">{shot.currentVersion}</td>
                     <td className="p-4 text-muted-foreground">{shot.duration}f</td>
-                    <td className="p-4"><Badge variant="outline" className="text-[10px]">{shot.reviewStatus}</Badge></td>
+                    <td className="p-4"><Badge variant="outline" className="text-[10px]">{shot.internalReviewStatus}</Badge></td>
                   </tr>
                 );
               })}
@@ -232,6 +245,23 @@ export default function Shots() {
           </div>
         )}
         </div>
+      )}
+
+      {filtered.length === 0 && (
+        <Empty className="border-2 border-dashed border-border rounded-lg py-20">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <Film />
+            </EmptyMedia>
+            <EmptyTitle>No shots found</EmptyTitle>
+            <EmptyDescription>No shots match your current search and filters.</EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <Button variant="outline" onClick={() => { setSearch(''); setStatusFilter('all'); setProjectFilter('all'); }}>
+              Clear Filters
+            </Button>
+          </EmptyContent>
+        </Empty>
       )}
     </div>
   );

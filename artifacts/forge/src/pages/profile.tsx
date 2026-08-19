@@ -4,17 +4,20 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { USERS, TASKS, PROJECTS, DEPARTMENTS, ROLE_LABELS } from '@/data/mockData';
+import { USERS, TASKS, PROJECTS, DEPARTMENTS, ROLE_LABELS, isTaskActive } from '@/data/mockData';
 import { ListTodo, FolderOpen, Clock, Mail, MapPin, Building2, ArrowLeft, ArrowUpRight } from 'lucide-react';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { PriorityChip } from '@/components/shared/PriorityChip';
 import { useUIStore } from '@/store/ui';
 import { useAuthStore } from '@/store/auth';
+import { useCapability } from '@/hooks/use-capability';
+import { STUDIO_LEADERSHIP_ROLES } from '@/store/permissions';
 
 export default function Profile() {
   const { id } = useParams<{ id?: string }>();
   const { currentUser } = useAuthStore();
-  const { setActiveTaskDrawer, setCreateTaskModalOpen } = useUIStore();
+  const { setActiveTaskDrawer, setCreateTaskModalOpen, setCreateTaskDefaultAssigneeId } = useUIStore();
+  const canAssignTasks = useCapability('assign_tasks');
 
   const userId = id || currentUser?.id;
   const user = USERS.find(u => u.id === userId);
@@ -23,12 +26,51 @@ export default function Profile() {
     return <div className="p-6 text-center text-muted-foreground">User not found</div>;
   }
 
+  const isMe = currentUser?.id === user.id;
+
+  // Mirror the roster visibility rule from people.tsx: a profile shouldn't
+  // be reachable by direct URL if the viewer wouldn't see this person in
+  // their Studio Roster in the first place.
+  const canView = !!currentUser && (isMe || (() => {
+    const isArtist = ['senior_artist', 'artist', 'junior_artist'].includes(currentUser.role);
+    const isDeptLeadership = ['supervisor', 'lead'].includes(currentUser.role);
+
+    if (isArtist) {
+      return user.departmentId === currentUser.departmentId;
+    }
+    if (isDeptLeadership) {
+      const targetIsLeadership = ['vfx_producer', 'production_manager', 'supervisor', 'lead'].includes(user.role);
+      return user.departmentId === currentUser.departmentId || targetIsLeadership;
+    }
+    if (currentUser.role === 'client') {
+      // Clients only see their studio points of contact, not the internal roster.
+      return STUDIO_LEADERSHIP_ROLES.includes(user.role);
+    }
+    // Studio leadership (vfx_producer, production_manager, coordinator) sees everyone.
+    return true;
+  })());
+
+  if (!canView) {
+    return (
+      <div className="p-6 text-center text-muted-foreground">
+        <p>You don't have access to view this profile.</p>
+        <Link href="/people" className="inline-flex items-center gap-2 text-sm text-primary hover:underline mt-2">
+          <ArrowLeft className="w-4 h-4" />
+          Back to Directory
+        </Link>
+      </div>
+    );
+  }
+
   const dept = DEPARTMENTS.find(d => d.id === user.departmentId);
   const supervisor = user.supervisorId ? USERS.find(u => u.id === user.supervisorId) : null;
-  const isMe = currentUser?.id === user.id;
 
   const myTasks = TASKS.filter(t => t.assigneeId === user.id);
   const myProjects = [...new Set(myTasks.map(t => t.projectId))].map(pid => PROJECTS.find(p => p.id === pid)).filter(Boolean);
+  // Shared isTaskActive classification (see data/mockData.ts) so this stat and the
+  // "Active Tasks" list below always agree with each other and with every other
+  // page's active/done rollups for the same underlying task data.
+  const activeTasks = myTasks.filter(t => isTaskActive(t.status));
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
@@ -72,11 +114,11 @@ export default function Profile() {
               <Button variant="outline" className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"><Mail className="w-4 h-4 mr-2" /> Message</Button>
             </Link>
           )}
-          {currentUser && !isMe && (
-            (['vfx_producer', 'production_manager', 'coordinator'].includes(currentUser.role) || 
-            (['supervisor', 'lead'].includes(currentUser.role) && currentUser.departmentId === user.departmentId))
-          ) && (
-            <Button onClick={() => setCreateTaskModalOpen(true)}>Assign Task</Button>
+          {currentUser && !isMe && canAssignTasks && user.role !== 'client' && (
+            <Button onClick={() => {
+              setCreateTaskDefaultAssigneeId(user.id);
+              setCreateTaskModalOpen(true);
+            }}>Assign Task</Button>
           )}
         </div>
       </div>
@@ -116,7 +158,7 @@ export default function Profile() {
             <CardContent className="space-y-4">
               <div className="flex justify-between items-center">
                 <div className="flex items-center gap-2 text-sm"><ListTodo className="w-4 h-4 text-blue-500" /> Active Tasks</div>
-                <div className="font-semibold">{myTasks.filter(t => t.status === 'in-progress' || t.status === 'todo').length}</div>
+                <div className="font-semibold">{activeTasks.length}</div>
               </div>
               <div className="flex justify-between items-center">
                 <div className="flex items-center gap-2 text-sm"><FolderOpen className="w-4 h-4 text-purple-500" /> Projects</div>
@@ -160,7 +202,7 @@ export default function Profile() {
               <Card className="border-border/50">
                 <CardContent className="p-0">
                   <div className="divide-y divide-border">
-                    {myTasks.filter(t => t.status !== 'approved').slice(0, 10).map(task => (
+                    {activeTasks.slice(0, 10).map(task => (
                       <div key={task.id} className="p-4 hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => setActiveTaskDrawer(task.id)}>
                         <div className="flex items-start justify-between mb-2">
                           <div className="flex items-center gap-3">
@@ -176,7 +218,7 @@ export default function Profile() {
                         </div>
                       </div>
                     ))}
-                    {myTasks.filter(t => t.status !== 'approved').length === 0 && (
+                    {activeTasks.length === 0 && (
                       <div className="p-8 text-center text-muted-foreground">
                         No active tasks.
                       </div>

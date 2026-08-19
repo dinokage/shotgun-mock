@@ -13,9 +13,12 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { CheckCircle2, AlertTriangle, Settings, RefreshCw, UploadCloud, Link as LinkIcon, Puzzle } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Settings, RefreshCw, UploadCloud, Link as LinkIcon, Puzzle, Search } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useIntegrationsStore } from '@/store/integrations';
+import { useCapability } from '@/hooks/use-capability';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 
 const INTEGRATIONS = [
   { id: 'maya', name: 'Autodesk Maya', category: '3D/Animation', status: 'connected', version: 'v2.4.1', lastSync: '2 mins ago', icon: 'M' },
@@ -34,20 +37,32 @@ export default function IntegrationsHub() {
   const toggleAutoSync = useIntegrationsStore((s) => s.toggleAutoSync);
   const pathConfig = useIntegrationsStore((s) => s.pathConfig);
   const savePathConfig = useIntegrationsStore((s) => s.savePathConfig);
+  const canManageIntegrations = useCapability('manage_integrations');
 
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [formConfig, setFormConfig] = useState(pathConfig);
+  const [search, setSearch] = useState('');
 
   // Merge static seed data with any persisted runtime overrides (status/lastSync).
-  const integrations = INTEGRATIONS.map((integration) => ({
+  const allIntegrations = INTEGRATIONS.map((integration) => ({
     ...integration,
     ...runtime[integration.id],
   }));
-  const settingsIntegration = integrations.find((i) => i.id === settingsId) ?? null;
+  const integrations = allIntegrations.filter((integration) => {
+    const q = search.trim().toLowerCase();
+    if (q === '') return true;
+    return integration.name.toLowerCase().includes(q) || integration.category.toLowerCase().includes(q);
+  });
+  const settingsIntegration = allIntegrations.find((i) => i.id === settingsId) ?? null;
 
   const handleSync = (id: string, name: string) => {
-    const wasDisconnected = INTEGRATIONS.find((i) => i.id === id)?.status === 'disconnected' && !runtime[id];
-    syncIntegration(id);
+    if (!canManageIntegrations) return;
+    const current = allIntegrations.find((i) => i.id === id);
+    const wasDisconnected = current?.status === 'disconnected';
+    // Syncing pipeline data only resolves a "disconnected" state (that's what
+    // "Connect" means here). A "warning" (plugin update required) status must
+    // survive a data sync — pulling data doesn't update the installed plugin.
+    syncIntegration(id, wasDisconnected ? 'connected' : (current?.status as 'connected' | 'warning'));
     toast({
       title: wasDisconnected ? 'Connected' : 'Sync Initiated',
       description: wasDisconnected
@@ -57,14 +72,20 @@ export default function IntegrationsHub() {
   };
 
   const handleSyncAll = () => {
-    integrations.forEach((integration) => syncIntegration(integration.id));
+    if (!canManageIntegrations) return;
+    // Only re-sync integrations that are already connected (or need an
+    // update) — this must not silently provision/connect anything that's
+    // currently disconnected. Use "Connect" on the card for that.
+    const syncable = allIntegrations.filter((integration) => integration.status !== 'disconnected');
+    syncable.forEach((integration) => syncIntegration(integration.id, integration.status as 'connected' | 'warning'));
     toast({
       title: 'Sync All Initiated',
-      description: `Synchronizing pipeline data with all ${integrations.length} integrations...`,
+      description: `Synchronizing pipeline data with ${syncable.length} connected integrations...`,
     });
   };
 
   const handleSaveConfig = () => {
+    if (!canManageIntegrations) return;
     savePathConfig(formConfig);
     toast({
       title: 'Configuration Saved',
@@ -80,12 +101,45 @@ export default function IntegrationsHub() {
       </div>
 
       <div className="flex items-center gap-4">
-        <Input placeholder="Search integrations..." className="max-w-md" />
-        <Button variant="outline" onClick={handleSyncAll}><RefreshCw className="w-4 h-4 mr-2" /> Sync All</Button>
+        <Input
+          placeholder="Search integrations..."
+          className="max-w-md"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        {!canManageIntegrations && (
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span tabIndex={0}>
+                  <Button variant="outline" disabled><RefreshCw className="w-4 h-4 mr-2" /> Sync All</Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-[220px] text-xs">
+                You don't have permission to manage integrations.
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+        {canManageIntegrations && (
+          <Button variant="outline" onClick={handleSyncAll}><RefreshCw className="w-4 h-4 mr-2" /> Sync All</Button>
+        )}
         <Button asChild>
           <Link href="/marketplace"><Puzzle className="w-4 h-4 mr-2" /> Install Plugin</Link>
         </Button>
       </div>
+
+      {integrations.length === 0 && (
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <Search />
+            </EmptyMedia>
+            <EmptyTitle>No integrations match your search</EmptyTitle>
+            <EmptyDescription>Try a different name or category.</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {integrations.map(integration => (
@@ -129,6 +183,7 @@ export default function IntegrationsHub() {
                   <Button
                     variant={integration.status === 'disconnected' ? 'default' : 'outline'}
                     className="flex-1"
+                    disabled={!canManageIntegrations}
                     onClick={() => handleSync(integration.id, integration.name)}
                   >
                     {integration.status === 'disconnected' ? 'Connect' : 'Sync Data'}
@@ -187,9 +242,26 @@ export default function IntegrationsHub() {
               />
             </div>
           </div>
-          <Button className="mt-4" onClick={handleSaveConfig}>
-            <UploadCloud className="w-4 h-4 mr-2" /> Save Configuration
-          </Button>
+          {canManageIntegrations ? (
+            <Button className="mt-4" onClick={handleSaveConfig}>
+              <UploadCloud className="w-4 h-4 mr-2" /> Save Configuration
+            </Button>
+          ) : (
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span tabIndex={0} className="inline-block">
+                    <Button className="mt-4" disabled>
+                      <UploadCloud className="w-4 h-4 mr-2" /> Save Configuration
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-[220px] text-xs">
+                  You don't have permission to manage integrations.
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </CardContent>
       </Card>
 
@@ -232,13 +304,15 @@ export default function IntegrationsHub() {
                   </div>
                   <Switch
                     checked={autoSync[settingsIntegration.id] ?? false}
-                    onCheckedChange={(checked) => toggleAutoSync(settingsIntegration.id, checked)}
+                    disabled={!canManageIntegrations}
+                    onCheckedChange={(checked) => canManageIntegrations && toggleAutoSync(settingsIntegration.id, checked)}
                   />
                 </div>
               </div>
               <DialogFooter>
                 <Button
                   variant="outline"
+                  disabled={!canManageIntegrations}
                   onClick={() => {
                     handleSync(settingsIntegration.id, settingsIntegration.name);
                     setSettingsId(null);

@@ -6,16 +6,14 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent } from '@/components/ui/empty';
 import { useToast } from '@/hooks/use-toast';
-import { ASSETS, PROJECTS, USERS } from '@/data/mockData';
+import { PROJECTS, USERS, Asset } from '@/data/mockData';
 import { Search, Grid3X3, List, Filter, Package, Eye, ArrowUpDown, X, ChevronDown } from 'lucide-react';
 import { Link, useSearchParams } from 'wouter';
 import { useAuthStore } from '@/store/auth';
-
-// Leadership-tier roles allowed to create top-level pipeline assets — matches
-// the gating convention used for task creation (CreateTaskModal) and command
-// palette actions elsewhere in the app.
-const LEADERSHIP_ROLES = ['vfx_producer', 'production_manager', 'coordinator', 'supervisor', 'lead'];
+import { useAssetStore } from '@/store/assets';
+import { useCapability } from '@/hooks/use-capability';
 
 const TYPE_COLORS: Record<string, string> = {
   Character: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
@@ -41,6 +39,8 @@ const STATUS_COLORS: Record<string, string> = {
 const GRID_PAGE_SIZE = 40;
 const LIST_PAGE_SIZE = 50;
 
+const ASSET_TYPE_OPTIONS: Asset['type'][] = ['Character', 'Environment', 'Prop', 'Rig', 'Effects', 'Vehicle', 'Texture', 'Material', 'Audio'];
+
 export default function Assets() {
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [search, setSearch] = useState('');
@@ -48,22 +48,66 @@ export default function Assets() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [projectFilter, setProjectFilter] = useState('all');
   const [newAssetOpen, setNewAssetOpen] = useState(false);
+  const [newAssetName, setNewAssetName] = useState('');
+  const [newAssetType, setNewAssetType] = useState<Asset['type']>('Character');
+  const [newAssetProjectId, setNewAssetProjectId] = useState(PROJECTS[0]?.id ?? '');
   const { toast } = useToast();
   const { currentUser } = useAuthStore();
-  const canCreateAsset = !!currentUser && LEADERSHIP_ROLES.includes(currentUser.role);
+  const assets = useAssetStore(s => s.assets);
+  const setAssets = useAssetStore(s => s.setAssets);
+  // Studio Ops: creating a top-level pipeline asset is gated the same way as
+  // adding/reordering pipeline stages, rather than a hardcoded role list.
+  const canCreateAsset = useCapability('manage_pipeline');
   const [searchParams] = useSearchParams();
   // Artist sidebar links to /assets?mine=1 — scope the catalog down to the
   // current user's own assignments instead of showing the whole studio.
   const mineOnly = searchParams.get('mine') === '1';
 
+  const resetCreateForm = () => {
+    setNewAssetName('');
+    setNewAssetType('Character');
+    setNewAssetProjectId(PROJECTS[0]?.id ?? '');
+  };
+
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!newAssetName.trim() || !newAssetProjectId || !currentUser) {
+      toast({ title: 'Missing fields', description: 'Please fill out all required fields.', variant: 'destructive' });
+      return;
+    }
+
+    // Derived from the live store, not a frozen import, so ids stay unique
+    // across a session even after multiple assets are created.
+    const nextNumericId = assets.reduce((max, a) => {
+      const n = parseInt(a.id.replace(/\D/g, ''), 10);
+      return Number.isFinite(n) ? Math.max(max, n) : max;
+    }, 0);
+
+    const newAsset: Asset = {
+      id: `asset${nextNumericId + 1}`,
+      name: newAssetName.trim(),
+      projectId: newAssetProjectId,
+      type: newAssetType,
+      status: 'not-started',
+      assigneeId: currentUser.id,
+      updatedAt: new Date().toISOString().split('T')[0],
+      version: 'v001',
+      tags: [],
+      thumbnailSeed: 2000 + nextNumericId + 1,
+      fileSize: '0 MB',
+      dependencies: [],
+      publishStatus: 'draft',
+      description: '',
+    };
+
+    setAssets([newAsset, ...assets]);
     setNewAssetOpen(false);
-    toast({ title: 'Asset Created', description: 'New asset added to the project successfully.' });
+    resetCreateForm();
+    toast({ title: 'Asset Created', description: `"${newAsset.name}" was added to the project.` });
   };
 
   const filtered = useMemo(() => {
-    return ASSETS.filter(a => {
+    return assets.filter(a => {
       if (mineOnly && a.assigneeId !== currentUser?.id) return false;
       if (search && !a.name.toLowerCase().includes(search.toLowerCase()) && !a.id.toLowerCase().includes(search.toLowerCase())) return false;
       if (typeFilter !== 'all' && a.type !== typeFilter) return false;
@@ -71,7 +115,7 @@ export default function Assets() {
       if (projectFilter !== 'all' && a.projectId !== projectFilter) return false;
       return true;
     });
-  }, [search, typeFilter, statusFilter, projectFilter, mineOnly, currentUser?.id]);
+  }, [assets, search, typeFilter, statusFilter, projectFilter, mineOnly, currentUser?.id]);
 
   // How many results are currently visible per view — reset back to the
   // first page whenever the filter set (or the active view) changes, so
@@ -114,15 +158,26 @@ export default function Assets() {
                   <div className="space-y-4 py-4">
                     <div className="space-y-2">
                       <Label>Asset Name</Label>
-                      <Input required placeholder="e.g. Hero Character" />
+                      <Input required placeholder="e.g. Hero Character" value={newAssetName} onChange={e => setNewAssetName(e.target.value)} />
                     </div>
                     <div className="space-y-2">
                       <Label>Asset Type</Label>
-                      <Select required defaultValue="Character">
+                      <Select required value={newAssetType} onValueChange={(v) => setNewAssetType(v as Asset['type'])}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          {['Character', 'Environment', 'Prop', 'Rig', 'Effects'].map(t => (
+                          {ASSET_TYPE_OPTIONS.map(t => (
                             <SelectItem key={t} value={t}>{t}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Project</Label>
+                      <Select required value={newAssetProjectId} onValueChange={setNewAssetProjectId}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {PROJECTS.map(p => (
+                            <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -274,10 +329,20 @@ export default function Assets() {
       )}
 
       {filtered.length === 0 && (
-        <div className="text-center py-16 text-muted-foreground">
-          <Package className="w-12 h-12 mx-auto mb-3 opacity-30" />
-          <p>No assets match your filters</p>
-        </div>
+        <Empty className="border-2 border-dashed border-border rounded-lg py-20">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <Package />
+            </EmptyMedia>
+            <EmptyTitle>No assets found</EmptyTitle>
+            <EmptyDescription>No assets match your current search and filters.</EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <Button variant="outline" onClick={() => { setSearch(''); setTypeFilter('all'); setStatusFilter('all'); setProjectFilter('all'); }}>
+              Clear Filters
+            </Button>
+          </EmptyContent>
+        </Empty>
       )}
     </div>
   );

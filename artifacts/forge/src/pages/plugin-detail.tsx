@@ -6,12 +6,15 @@ import { ChevronLeft, Star, ShieldCheck, Download, CheckCircle2, ShieldAlert } f
 import { usePluginsStore } from '@/store/plugins';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useCapability } from '@/hooks/use-capability';
 
 export default function PluginDetail() {
   const [, params] = useRoute('/marketplace/:id');
   const plugin = PLUGINS.find(p => p.id === params?.id);
   const { installedPlugins, enabledPlugins, installPlugin, uninstallPlugin, togglePlugin } = usePluginsStore();
   const { toast } = useToast();
+  const canManageIntegrations = useCapability('manage_integrations');
 
   if (!plugin) return <div>Plugin not found</div>;
 
@@ -19,11 +22,13 @@ export default function PluginDetail() {
   const isEnabled = enabledPlugins[plugin.id];
 
   const handleInstall = () => {
+    if (!canManageIntegrations) return;
     installPlugin(plugin.id);
     toast({ title: 'Plugin installed', description: `${plugin.name} is now active.` });
   };
 
   const handleUninstall = () => {
+    if (!canManageIntegrations) return;
     uninstallPlugin(plugin.id);
     toast({ description: `${plugin.name} removed.` });
   };
@@ -55,14 +60,14 @@ export default function PluginDetail() {
                 </div>
               )}
             </div>
-            <div className="text-muted-foreground mb-6">By Nebula Systems • Version 2.4.1</div>
-            
+            <div className="text-muted-foreground mb-6">By {plugin.author} • Version {plugin.version}</div>
+
             <div className="flex items-center gap-6 mb-8">
               <div className="flex flex-col">
                 <div className="flex items-center gap-1 font-bold text-xl">
                   {plugin.rating} <Star className="w-5 h-5 fill-yellow-500 text-yellow-500 mb-0.5" />
                 </div>
-                <span className="text-xs text-muted-foreground">124 Reviews</span>
+                <span className="text-xs text-muted-foreground">Rating</span>
               </div>
               <div className="w-px h-10 bg-border" />
               <div className="flex flex-col">
@@ -78,14 +83,31 @@ export default function PluginDetail() {
                 <>
                   <div className="flex-1 flex items-center justify-between border-r border-border pr-4">
                     <span className="font-medium text-sm">{isEnabled ? 'Active' : 'Disabled'}</span>
-                    <Switch checked={isEnabled} onCheckedChange={() => togglePlugin(plugin.id)} />
+                    <Switch
+                      checked={isEnabled}
+                      disabled={!canManageIntegrations}
+                      onCheckedChange={() => canManageIntegrations && togglePlugin(plugin.id)}
+                    />
                   </div>
-                  <Button variant="destructive" onClick={handleUninstall} className="w-24">Uninstall</Button>
+                  <Button variant="destructive" onClick={handleUninstall} disabled={!canManageIntegrations} className="w-24">Uninstall</Button>
                 </>
-              ) : (
+              ) : canManageIntegrations ? (
                 <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground" onClick={handleInstall}>
                   Install Plugin
                 </Button>
+              ) : (
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="w-full" tabIndex={0}>
+                        <Button className="w-full" disabled>Install Plugin</Button>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="max-w-[220px] text-xs">
+                      You don't have permission to manage integrations.
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               )}
             </div>
           </div>
@@ -95,7 +117,7 @@ export default function PluginDetail() {
           <div className="col-span-2 space-y-6">
             <h2 className="text-xl font-semibold border-b border-border pb-2">Overview</h2>
             <p className="text-muted-foreground leading-relaxed">
-              Provides automated syncing and deep integration for the production pipeline. This tool dramatically reduces manual data entry by automatically pushing asset metadata, render states, and daily quicktimes directly to your review sessions.
+              {plugin.description} Compatible with {plugin.compatibility}. Last updated {plugin.lastUpdated}.
             </p>
             <div className="flex gap-4 pt-4">
               <div className="w-1/2 aspect-video bg-muted rounded-lg border border-border flex items-center justify-center text-muted-foreground/30 font-medium">Screenshot 1</div>

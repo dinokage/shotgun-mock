@@ -2,6 +2,7 @@ import { useUIStore } from '@/store/ui';
 import { cn } from '@/lib/utils';
 import { USERS, PROJECTS, ASSETS, SHOTS, DEPARTMENTS, PIPELINE_ORDER, getNextDepartment, DEPENDENCY_TYPE_LABELS, type DailyLog, type TaskDependency } from '@/data/mockData';
 import { useTasksStore } from '@/store/tasks';
+import { useShotStore } from '@/store/shots';
 import { X, CheckCircle2, Circle, Clock, Tag, Paperclip, MessageSquare, GitBranch, Sparkles, AlertTriangle, CalendarDays, ArrowRight, Play, UserCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -47,13 +48,15 @@ export function TaskDrawer() {
   const { toast } = useToast();
   
   const tasks = useTasksStore(state => state.tasks);
-  const submitForReview = useTasksStore(state => state.submitForReview);
   const updateTask = useTasksStore(state => state.updateTask);
   const updateTaskStatus = useTasksStore(state => state.updateTaskStatus);
   const reassignTask = useTasksStore(state => state.reassignTask);
   const revokeAssignment = useTasksStore(state => state.revokeAssignment);
   const addComment = useTasksStore(state => state.addComment);
   const toggleChecklistItem = useTasksStore(state => state.toggleChecklistItem);
+  const logTime = useTasksStore(state => state.logTime);
+  const recordApprovalEvent = useTasksStore(state => state.recordApprovalEvent);
+  const updateShotStatus = useShotStore(state => state.updateShot);
 
   const [commentText, setCommentText] = useState('');
   const [showMentions, setShowMentions] = useState(false);
@@ -119,20 +122,6 @@ export function TaskDrawer() {
             <Badge className={`${STATUS_COLORS[task.status]} text-xs`}>
               {task.status.replace('-', ' ').toUpperCase()}
             </Badge>
-            
-            {isAssignee && task.status === 'in-progress' && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-6 text-[10px] bg-accent-tally/10 text-accent-tally border-accent-tally/20 hover:bg-accent-tally/20"
-                onClick={() => {
-                  submitForReview(task.id);
-                  toast({ title: 'Submitted for Review', description: `Your work on ${task.title} has been submitted for review. Your lead will be notified.` });
-                }}
-              >
-                <Play className="w-3 h-3 mr-1" /> Submit for Review
-              </Button>
-            )}
 
             {task.status === 'approved' && nextDept && isLeadership && (
               <Button
@@ -253,7 +242,15 @@ export function TaskDrawer() {
                   variant={task.status === 'in-progress' ? 'default' : 'outline'}
                   onClick={() => {
                   if (task.status === 'in-progress') {
-                    submitForReview(task.id);
+                    // recordApprovalEvent both sets status and appends the
+                    // audit-trail entry in one step (submitForReview only
+                    // did the former).
+                    recordApprovalEvent(task.id, 'review', {
+                      action: 'submitted-for-lead-review',
+                      byUserId: currentUser.id,
+                      byUserName: currentUser.name,
+                      byRole: currentUser.role,
+                    });
                     toast({ title: 'Submitted for Lead Review' });
                   } else {
                     updateTaskStatus(task.id, 'in-progress');
@@ -265,22 +262,35 @@ export function TaskDrawer() {
                 </Button>
               )}
 
-              {/* Lead Actions: only once the task has actually been submitted for
-                  lead review. Assignees reach that queue two ways in this app -
-                  the quick "Submit for Review" actions in this drawer (which set
-                  status to 'review'), and the formal chain driven from the
-                  review player (which sets 'lead-review' directly) - so both
-                  values are treated as "awaiting lead review" here. */}
-              {currentUser.role === 'lead' && currentUser.departmentId === currentDept?.id && ['review', 'lead-review'].includes(task.status) && (
+              {/* Lead/Supervisor Actions: only once the task has actually been
+                  submitted for review. Assignees reach that queue two ways in
+                  this app - the quick "Submit for Review" actions in this
+                  drawer (which set status to 'review'), and the formal chain
+                  driven from the review player (which sets 'lead-review'
+                  directly) - so both values are treated as "awaiting
+                  lead/supervisor review" here. Supervisor is included
+                  alongside Lead (previously Lead-only, which didn't match
+                  how the studio's approval chain actually runs). */}
+              {['lead', 'supervisor'].includes(currentUser.role) && currentUser.departmentId === currentDept?.id && ['review', 'lead-review'].includes(task.status) && (
                 <div className="flex w-full gap-2">
                   <Button className="flex-1 bg-purple-600 hover:bg-purple-700 text-white" onClick={() => {
-                    updateTaskStatus(task.id, 'manager-review');
-                    toast({ title: "Approved for Manager", description: `Sent to Production.` });
+                    recordApprovalEvent(task.id, 'manager-review', {
+                      action: 'approved',
+                      byUserId: currentUser.id,
+                      byUserName: currentUser.name,
+                      byRole: currentUser.role,
+                    });
+                    toast({ title: "Approved for Manager", description: `Sent to the department manager for sign-off.` });
                   }}>
                     <CheckCircle2 className="w-4 h-4 mr-2" /> Approve
                   </Button>
                   <Button variant="outline" className="flex-1 text-red-500 hover:bg-red-500/10" onClick={() => {
-                    updateTaskStatus(task.id, 'in-progress');
+                    recordApprovalEvent(task.id, 'in-progress', {
+                      action: 'rejected',
+                      byUserId: currentUser.id,
+                      byUserName: currentUser.name,
+                      byRole: currentUser.role,
+                    });
                     toast({ title: "Review Rejected", description: `Sent back to artist.` });
                   }}>
                     <X className="w-4 h-4 mr-2" /> Reject
@@ -288,19 +298,40 @@ export function TaskDrawer() {
                 </div>
               )}
 
-              {/* Manager Actions: only once a lead has approved and moved the task
-                  into manager review - not for tasks still in progress or already
-                  submitted-but-unreviewed. */}
+              {/* Manager Actions: only once a lead/supervisor has approved and
+                  moved the task into manager review. This is the department
+                  manager's sanity check on the lead-approved work; approving
+                  here is the final internal sign-off. If the task is linked
+                  to a shot, approving also forwards that shot into the
+                  client-facing review queue (client-review.tsx filters shots
+                  on exactly this status) - previously this chain dead-ended
+                  at an internal 'approved' status with no path to the client
+                  portal at all. */}
               {['vfx_producer', 'production_manager', 'coordinator'].includes(currentUser.role) && task.status === 'manager-review' && (
                 <div className="flex w-full gap-2">
                   <Button className="flex-1 bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white" onClick={() => {
-                    updateTaskStatus(task.id, 'approved');
-                    toast({ title: "Published", description: `Published to production dashboard.` });
+                    recordApprovalEvent(task.id, 'approved', {
+                      action: 'published',
+                      byUserId: currentUser.id,
+                      byUserName: currentUser.name,
+                      byRole: currentUser.role,
+                    });
+                    if (task.shotId) {
+                      updateShotStatus(task.shotId, { status: 'client-review' });
+                      toast({ title: "Sent to Client Review", description: `${task.title} approved and forwarded to the client portal.` });
+                    } else {
+                      toast({ title: "Approved", description: `Published to production dashboard.` });
+                    }
                   }}>
-                    <CheckCircle2 className="w-4 h-4 mr-2" /> Approve & Publish
+                    <CheckCircle2 className="w-4 h-4 mr-2" /> Approve & Send to Client
                   </Button>
                   <Button variant="outline" className="flex-1 text-red-500 hover:bg-red-500/10" onClick={() => {
-                    updateTaskStatus(task.id, 'in-progress');
+                    recordApprovalEvent(task.id, 'in-progress', {
+                      action: 'rejected',
+                      byUserId: currentUser.id,
+                      byUserName: currentUser.name,
+                      byRole: currentUser.role,
+                    });
                     toast({ title: "Review Rejected", description: `Sent back to team.` });
                   }}>
                     <X className="w-4 h-4 mr-2" /> Reject
@@ -371,10 +402,7 @@ export function TaskDrawer() {
                             note: logNote.trim() || 'No notes provided.',
                             userId: currentUser.id,
                           };
-                          updateTask(task.id, {
-                            dailyLogs: [...task.dailyLogs, newLog],
-                            actualHours: task.actualHours + hoursNum,
-                          });
+                          logTime(task.id, newLog);
                           toast({ title: 'Time Logged', description: `Logged ${hoursNum}h on ${task.title}.` });
                           setLogFormOpen(false);
                           setLogHours('');
@@ -409,7 +437,10 @@ export function TaskDrawer() {
 
             <Separator />
 
-            {/* Checklist */}
+            {/* Checklist (guarded on checklistTotal > 0 — with no items,
+                checklistDone / checklistTotal is 0/0 = NaN, which Progress
+                can't render meaningfully) */}
+            {checklistTotal > 0 && (
             <div>
               <div className="flex items-center justify-between mb-3">
                 <div className="text-sm font-semibold">Checklist</div>
@@ -456,6 +487,7 @@ export function TaskDrawer() {
                 ))}
               </div>
             </div>
+            )}
 
             <Separator />
 

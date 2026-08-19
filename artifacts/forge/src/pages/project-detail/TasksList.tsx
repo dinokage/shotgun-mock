@@ -3,7 +3,7 @@ import { useTasksStore } from '@/store/tasks';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { PriorityChip } from '@/components/shared/PriorityChip';
 import { UserAvatar } from '@/components/shared/UserAvatar';
-import { USERS } from '@/data/mockData';
+import { USERS, TaskStatus } from '@/data/mockData';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import {
@@ -18,8 +18,12 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import { useToast } from '@/hooks/use-toast';
-import { ChevronDown, ChevronUp, ChevronsUpDown, ChevronRight, Layers } from 'lucide-react';
+import { ChevronDown, ChevronUp, ChevronsUpDown, ChevronRight, Layers, ListTodo } from 'lucide-react';
+
+const BULK_STATUS_OPTIONS: TaskStatus[] = ['todo', 'in-progress', 'lead-review', 'manager-review', 'approved'];
 
 type SortKey = 'title' | 'assignee' | 'status' | 'priority' | 'dueDate' | 'estimatedHours';
 type GroupKey = 'none' | 'assignee' | 'status' | 'priority' | 'department';
@@ -45,7 +49,7 @@ const DEPARTMENT_MAP: Record<string, string> = {
 };
 
 export default function TasksListView({ projectId }: { projectId: string }) {
-  const { tasks: allTasks, updateTask } = useTasksStore();
+  const { tasks: allTasks, updateTask, updateTaskStatus, setTasks } = useTasksStore();
   const tasks = allTasks.filter(t => t.projectId === projectId);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
@@ -134,8 +138,25 @@ export default function TasksListView({ projectId }: { projectId: string }) {
     setCollapsedGroups(next);
   };
 
-  const handleBulkAction = (action: string) => {
-    toast({ title: 'Bulk action applied', description: `${action} applied to ${selectedIds.size} tasks.` });
+  const handleBulkStatusChange = (status: TaskStatus) => {
+    const count = selectedIds.size;
+    selectedIds.forEach(id => updateTaskStatus(id, status));
+    toast({ title: 'Status updated', description: `${count} task${count === 1 ? '' : 's'} moved to ${status.replace(/-/g, ' ')}.` });
+    setSelectedIds(new Set());
+  };
+
+  const handleBulkReassign = (assigneeId: string) => {
+    const count = selectedIds.size;
+    const user = USERS.find(u => u.id === assigneeId);
+    selectedIds.forEach(id => updateTask(id, { assigneeId }));
+    toast({ title: 'Tasks reassigned', description: `${count} task${count === 1 ? '' : 's'} reassigned to ${user?.name ?? 'selected user'}.` });
+    setSelectedIds(new Set());
+  };
+
+  const handleBulkDelete = () => {
+    const count = selectedIds.size;
+    setTasks(allTasks.filter(t => !selectedIds.has(t.id)));
+    toast({ title: 'Tasks deleted', description: `${count} task${count === 1 ? '' : 's'} permanently removed.` });
     setSelectedIds(new Set());
   };
 
@@ -166,8 +187,30 @@ export default function TasksListView({ projectId }: { projectId: string }) {
             {selectedIds.size} tasks selected
           </div>
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => handleBulkAction('Change Status')}>Change Status</Button>
-            <Button size="sm" variant="outline" onClick={() => handleBulkAction('Reassign')}>Reassign</Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="outline">Change Status</Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {BULK_STATUS_OPTIONS.map(status => (
+                  <DropdownMenuItem key={status} onSelect={() => handleBulkStatusChange(status)}>
+                    <StatusBadge status={status} />
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="outline">Reassign</Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="max-h-64 overflow-y-auto">
+                {USERS.map(u => (
+                  <DropdownMenuItem key={u.id} onSelect={() => handleBulkReassign(u.id)}>
+                    <div className="flex items-center gap-2"><UserAvatar userId={u.id} className="w-5 h-5" /> {u.name}</div>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button size="sm" variant="destructive">Delete</Button>
@@ -181,7 +224,7 @@ export default function TasksListView({ projectId }: { projectId: string }) {
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={() => handleBulkAction('Delete')}>Delete</AlertDialogAction>
+                  <AlertDialogAction onClick={handleBulkDelete}>Delete</AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
@@ -189,6 +232,17 @@ export default function TasksListView({ projectId }: { projectId: string }) {
         </div>
       )}
       
+      {tasks.length === 0 ? (
+        <Empty className="flex-1">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <ListTodo />
+            </EmptyMedia>
+            <EmptyTitle>No tasks yet</EmptyTitle>
+            <EmptyDescription>This project doesn't have any tasks yet.</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      ) : (
       <div className="flex-1 overflow-auto">
         <table className="w-full text-sm text-left">
           <thead className="sticky top-0 bg-muted/80 backdrop-blur z-0 shadow-sm">
@@ -322,7 +376,8 @@ export default function TasksListView({ projectId }: { projectId: string }) {
                             >
                               <SelectTrigger className="h-8 w-full min-w-[100px]"><SelectValue placeholder="Select Priority" /></SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="normal"><PriorityChip priority="normal" /></SelectItem>
+                                <SelectItem value="low"><PriorityChip priority="low" /></SelectItem>
+                                <SelectItem value="medium"><PriorityChip priority="medium" /></SelectItem>
                                 <SelectItem value="high"><PriorityChip priority="high" /></SelectItem>
                                 <SelectItem value="critical"><PriorityChip priority="critical" /></SelectItem>
                               </SelectContent>
@@ -345,6 +400,7 @@ export default function TasksListView({ projectId }: { projectId: string }) {
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 }

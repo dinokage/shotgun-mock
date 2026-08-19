@@ -61,6 +61,25 @@ export const ROLES_ORDER: Role[] = [
   'client',
 ];
 
+// Single source of truth for "leadership" routes/UI (previously redeclared
+// independently in ~12 files, which let them drift out of sync with each
+// other and with the capability scheme below). Prefer useCapability() from
+// src/hooks/use-capability.ts for gating a specific action; reach for
+// LEADERSHIP_ROLES / useIsLeadership() only for coarse "is this person
+// studio leadership" checks that aren't really about one capability.
+export const LEADERSHIP_ROLES: Role[] = ['vfx_producer', 'production_manager', 'coordinator', 'supervisor', 'lead'];
+
+// Finer-grained subsets of LEADERSHIP_ROLES for the handful of places that
+// need to distinguish "studio-wide" leadership (can act across every
+// department) from "department-scoped" leadership (supervisor/lead, act
+// within their own department only) — e.g. who a task can be assigned to,
+// or which dashboard variant renders. Derived from ROLES_ORDER so they stay
+// in sync with LEADERSHIP_ROLES automatically.
+export const STUDIO_LEADERSHIP_ROLES: Role[] = ROLES_ORDER.slice(0, ROLES_ORDER.indexOf('supervisor'));
+export const DEPARTMENT_LEADERSHIP_ROLES: Role[] = LEADERSHIP_ROLES.filter(
+  (role) => !STUDIO_LEADERSHIP_ROLES.includes(role)
+);
+
 export type PermissionScheme = Record<Role, Record<CapabilityId, boolean>>;
 
 function caps(overrides: Partial<Record<CapabilityId, boolean>>): Record<CapabilityId, boolean> {

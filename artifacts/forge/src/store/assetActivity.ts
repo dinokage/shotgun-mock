@@ -14,10 +14,26 @@ export interface DccOpenRecord {
   timestamp: string;
 }
 
+/**
+ * A record of a manual "Publish" action taken on an asset from the asset
+ * detail page. The actual `publishStatus` field on the Asset lives in
+ * useAssetStore (store/assets.ts) — that's the single shared source of truth
+ * other pages (e.g. the project Assets tab) also read/write, so publishing
+ * updates it there via `updateAsset`. This store only holds the "who/when"
+ * attribution trace, which isn't part of the Asset schema.
+ */
+export interface AssetPublishRecord {
+  userName: string;
+  timestamp: string;
+}
+
 interface AssetActivityState {
   /** assetId -> most recent DCC launch. */
   lastOpenedInDCC: Record<string, DccOpenRecord>;
   recordDccOpen: (assetId: string, record: DccOpenRecord) => void;
+  /** assetId -> most recent manual publish action. */
+  publishOverrides: Record<string, AssetPublishRecord>;
+  publishAsset: (assetId: string, record: AssetPublishRecord) => void;
 }
 
 export const useAssetActivityStore = create<AssetActivityState>()(
@@ -27,6 +43,11 @@ export const useAssetActivityStore = create<AssetActivityState>()(
       recordDccOpen: (assetId, record) =>
         set((state) => ({
           lastOpenedInDCC: { ...state.lastOpenedInDCC, [assetId]: record },
+        })),
+      publishOverrides: {},
+      publishAsset: (assetId, record) =>
+        set((state) => ({
+          publishOverrides: { ...state.publishOverrides, [assetId]: record },
         })),
     }),
     {

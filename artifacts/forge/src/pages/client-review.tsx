@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { Play, ThumbsUp, ThumbsDown, MessageSquare, ChevronLeft, LogOut, CheckCircle2, Send, Clock, Building2, User } from 'lucide-react';
+import { Play, ThumbsUp, ThumbsDown, MessageSquare, ChevronLeft, LogOut, CheckCircle2, Send, Clock, Building2, User, PenTool } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { PROJECTS, STUDIOS, VERSIONS } from '@/data/mockData';
@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input';
 import { useReviewStore, PRESENTED_VERSION_ID } from '@/store/reviews';
 import { useShotStore } from '@/store/shots';
 import { cn } from '@/lib/utils';
-import { getPlaceholderThumbnail } from '@/lib/placeholderArt';
+import { getPlaceholderThumbnail, getPlaceholderVideoSrc } from '@/lib/placeholderArt';
 import {
   AnnotationToolbar,
   AnnotationCanvas,
@@ -40,6 +40,10 @@ function resolveThumbnailSeed(shot: { id: string; currentVersion: string; thumbn
     (v) => v.entityType === 'shot' && v.entityId === shot.id && v.versionNumber === shot.currentVersion
   );
   return currentVersionRecord?.thumbnailSeed ?? shot.thumbnailSeed;
+}
+
+function resolveShotVideoSrc(shot: { id: string; currentVersion: string; thumbnailSeed: number }): string {
+  return getPlaceholderVideoSrc(resolveThumbnailSeed(shot));
 }
 
 export default function ClientReview() {
@@ -99,6 +103,13 @@ export default function ClientReview() {
   // always something on screen before playback starts (or if it never does).
   const activeVersionPoster = useMemo(
     () => (activeShot ? getPlaceholderThumbnail(resolveThumbnailSeed(activeShot), 1280, 720) : undefined),
+    [activeShot]
+  );
+
+  // Real per-shot media reference for playback, instead of one hardcoded
+  // clip shared by every shot regardless of which one was clicked.
+  const activeVideoSrc = useMemo(
+    () => (activeShot ? resolveShotVideoSrc(activeShot) : undefined),
     [activeShot]
   );
 
@@ -260,10 +271,10 @@ export default function ClientReview() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Input 
+              <Input
                 type="password"
-                placeholder="Access Code (try: demo)" 
-                value={accessCode} 
+                placeholder="Enter access code"
+                value={accessCode}
                 onChange={e => setAccessCode(e.target.value)}
                 onKeyDown={e => {
                   if (e.key === 'Enter') handleAccessSubmit();
@@ -279,6 +290,14 @@ export default function ClientReview() {
             </Button>
             <p className="text-xs text-center text-muted-foreground mt-4">
               Protected by Forge Secure Share
+            </p>
+            {/* This is a mock with no real email-delivery system behind the
+                access code, so unlike a real product there is no other way
+                to learn it. Stated plainly here instead of disguised inside
+                the input's placeholder (which read the code out to anyone
+                who focused the field, without even needing to submit). */}
+            <p className="text-xs text-center text-muted-foreground/70 border-t border-border/50 pt-3 mt-2">
+              Demo mode — access code is <span className="font-mono text-foreground/80">demo</span>
             </p>
           </CardContent>
         </Card>
@@ -392,8 +411,9 @@ export default function ClientReview() {
             style={{ backgroundImage: `url(${activeVersionPoster})` }}
           >
             <video
+              key={activeShot?.id}
               ref={videoRef}
-              src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4"
+              src={activeVideoSrc}
               poster={activeVersionPoster}
               className="absolute inset-0 w-full h-full object-contain pointer-events-none"
               muted
@@ -514,7 +534,15 @@ export default function ClientReview() {
                     frame,
                     text: feedback.trim(),
                     authorName: currentUser?.name || 'Client Reviewer',
+                    // Persist whatever markup is currently drawn on the frame
+                    // alongside the note — otherwise the drawing vanishes and
+                    // only the typed text survives into the review pipeline.
+                    annotations: annotations.length > 0 ? annotations : undefined,
                   });
+                  // Clear the canvas now that this markup has been captured
+                  // with the note, so the next note starts from a blank frame.
+                  setAnnotations([]);
+                  setSelectedAnnotationId(null);
                   setFeedback('');
                   toast({ title: 'Note Added', description: 'Sent to the studio for review — they’ll transfer it to the team once seen.' });
                 }}
@@ -545,7 +573,15 @@ export default function ClientReview() {
                         <span className="text-[10px] text-zinc-500">{new Date(note.createdAt).toLocaleString()}</span>
                       </div>
                       <p className="text-sm text-zinc-200 mb-2">{note.text}</p>
-                      <div className="text-[10px] font-mono text-zinc-500 mb-2">Frame {String(note.frame).padStart(3, '0')}</div>
+                      <div className="flex items-center gap-2 text-[10px] font-mono text-zinc-500 mb-2">
+                        <span>Frame {String(note.frame).padStart(3, '0')}</span>
+                        {note.annotations && note.annotations.length > 0 && (
+                          <span className="inline-flex items-center gap-1 text-emerald-400/80 font-sans">
+                            <PenTool className="w-3 h-3" />
+                            {note.annotations.length} {note.annotations.length === 1 ? 'mark' : 'marks'}
+                          </span>
+                        )}
+                      </div>
                       <div className={cn(
                         'inline-flex items-center gap-1.5 text-[11px] px-1.5 py-0.5 rounded',
                         note.transferred ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'

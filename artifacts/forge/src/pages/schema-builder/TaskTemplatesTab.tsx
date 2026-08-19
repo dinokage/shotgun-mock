@@ -25,6 +25,16 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   DropdownMenu,
@@ -71,6 +81,7 @@ export function TaskTemplatesTab() {
   const [, navigate] = useLocation();
 
   const [selectedId, setSelectedId] = useState<string | null>(templates[0]?.id ?? null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [applyOpen, setApplyOpen] = useState(false);
   const [applyProjectId, setApplyProjectId] = useState('');
   const [justApplied, setJustApplied] = useState(false);
@@ -227,7 +238,7 @@ export function TaskTemplatesTab() {
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
-                              onSelect={() => handleDelete(tmpl.id)}
+                              onSelect={() => setDeleteTarget({ id: tmpl.id, name: tmpl.name || 'Untitled' })}
                               className="gap-2 text-red-500 focus:text-red-500"
                             >
                               <Trash2 className="w-3.5 h-3.5" /> Delete
@@ -418,6 +429,29 @@ export function TaskTemplatesTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete template confirmation */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete "{deleteTarget?.name}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently deletes this task template and all of its task definitions. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (deleteTarget) handleDelete(deleteTarget.id);
+                setDeleteTarget(null);
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

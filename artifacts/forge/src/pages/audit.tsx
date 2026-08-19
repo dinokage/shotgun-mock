@@ -21,7 +21,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuditStore } from '@/store/audit';
 
 export default function AuditLog() {
-  const [selectedEntity, setSelectedEntity] = useState('ast_001');
+  const [selectedEntity, setSelectedEntity] = useState('asset1');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const { toast } = useToast();
 
@@ -31,14 +31,18 @@ export default function AuditLog() {
   const rollbackPoint = rollbackPoints[selectedEntity];
 
   const events = AUDIT_EVENTS.filter(e => e.entityId === selectedEntity).reverse();
+  // Every event for a given entityId shares the same entityType, so any
+  // event tells us which real store (assets vs shots) rollback should hit —
+  // fall back to the id's own prefix for an entity with no events yet.
+  const entityType = events[0]?.entityType ?? (selectedEntity.startsWith('asset') ? 'asset' : 'shot');
 
   const handleRollback = (timestamp: string) => {
-    rollbackEntity(selectedEntity, timestamp);
-    toast({ title: 'Rollback complete', description: `${selectedEntity} restored to state at ${timestamp}. Later events are now marked reverted.` });
+    rollbackEntity(selectedEntity, entityType, timestamp);
+    toast({ title: 'Rollback complete', description: `${selectedEntity} restored to state at ${timestamp} — real fields updated, not just this timeline view.` });
   };
 
   const handleRestoreLatest = () => {
-    clearRollback(selectedEntity);
+    clearRollback(selectedEntity, entityType);
     toast({ title: 'Restored to latest', description: `${selectedEntity} is back to its current state.` });
   };
 
@@ -176,12 +180,19 @@ export default function AuditLog() {
                       <div key={field} className="grid grid-cols-[120px_1fr] gap-4">
                         <div className="text-muted-foreground">{field}:</div>
                         <div>
-                          {(change as string).split('→').map((part: string, i: number) => (
-                            <span key={i}>
-                              <span className={i === 0 ? "text-red-400/80 line-through" : "text-status-green"}>{part.trim()}</span>
-                              {i === 0 && <span className="text-muted-foreground mx-2">→</span>}
-                            </span>
-                          ))}
+                          {(change as string).split('→').map((part: string, i: number) => {
+                            // assigneeId stores real user ids so rollback can
+                            // apply them directly to the entity — resolve to
+                            // a name here for readability, same idea as
+                            // UserAvatar does elsewhere on this page.
+                            const label = field === 'assigneeId' ? (USERS.find(u => u.id === part.trim())?.name ?? part.trim()) : part.trim();
+                            return (
+                              <span key={i}>
+                                <span className={i === 0 ? "text-red-400/80 line-through" : "text-status-green"}>{label}</span>
+                                {i === 0 && <span className="text-muted-foreground mx-2">→</span>}
+                              </span>
+                            );
+                          })}
                         </div>
                       </div>
                     ))}

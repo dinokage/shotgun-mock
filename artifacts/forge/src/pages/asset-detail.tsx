@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useRoute, Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,14 +8,23 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { Slider } from '@/components/ui/slider';
-import { ASSETS, PROJECTS, USERS, TASKS, SHOTS, AUDIT_EVENTS, type Version } from '@/data/mockData';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
+import { PROJECTS, USERS, TASKS, SHOTS, AUDIT_EVENTS, type Version } from '@/data/mockData';
 import { ChevronLeft, Package, Film, ListTodo, GitBranch, Clock, Upload, Sparkles, ArrowRight, CheckCircle2, XCircle, AlertTriangle, RotateCcw, Download } from 'lucide-react';
 import { PipelineVisualizer } from '@/components/shared/PipelineVisualizer';
 import { useToast } from '@/hooks/use-toast';
 import { useReviewStore } from '@/store/reviews';
 import { useAssetActivityStore } from '@/store/assetActivity';
+import { useAssetStore } from '@/store/assets';
 import { useAuthStore } from '@/store/auth';
+import { useUIStore } from '@/store/ui';
 import { fadeInUp, confirmPulse } from '@/lib/motion';
+
+/** USD (Universal Scene Description) is a scene/geometry interchange format —
+ * it applies to modeled/rigged/effects assets, not to flat media like
+ * textures or audio. The "USD Format" badge should only appear on versions
+ * of asset types that actually publish through the USD pipeline. */
+const USD_ASSET_TYPES = new Set(['Character', 'Environment', 'Prop', 'Rig', 'Effects', 'Vehicle']);
 
 /** Best-guess DCC app for an asset's type — there's no real desktop launch
  * behind this in a browser mock, but the mapping keeps the "Launching..."
@@ -77,11 +86,27 @@ export default function AssetDetail() {
   const allVersions = useReviewStore((s) => s.versions);
   const currentVersionOverrides = useReviewStore((s) => s.currentVersionOverrides);
   const rollbackToVersion = useReviewStore((s) => s.rollbackToVersion);
+  const assets = useAssetStore((s) => s.assets);
+  const updateAsset = useAssetStore((s) => s.updateAsset);
   const lastOpenedInDCC = useAssetActivityStore((s) => s.lastOpenedInDCC);
   const recordDccOpen = useAssetActivityStore((s) => s.recordDccOpen);
+  const publishOverrides = useAssetActivityStore((s) => s.publishOverrides);
+  const publishAsset = useAssetActivityStore((s) => s.publishAsset);
   const currentUser = useAuthStore((s) => s.currentUser);
+  const setActiveTaskDrawer = useUIStore((s) => s.setActiveTaskDrawer);
 
-  const asset = ASSETS.find(a => a.id === params?.id);
+  const asset = assets.find(a => a.id === params?.id);
+
+  // In-page links (e.g. a Dependency card below) can route from one asset's
+  // detail page straight to another's without unmounting this component, so
+  // compare-mode selections from the previous asset would otherwise leak
+  // into the next one (stale version ids that don't belong to it).
+  useEffect(() => {
+    setCompareMode(false);
+    setWipePos(50);
+    setV1(null);
+    setV2(null);
+  }, [params?.id]);
 
   if (!asset) return <div className="p-6 text-center text-muted-foreground">Asset not found.</div>;
 
@@ -92,12 +117,15 @@ export default function AssetDetail() {
   const versions = allVersions.filter(v => v.entityId === asset.id).slice(0, 8);
   const events = AUDIT_EVENTS.filter(e => e.entityId === asset.id).slice(0, 10);
 
-  const deps = asset.dependencies.map(d => ASSETS.find(a => a.id === d)).filter(Boolean);
+  const deps = asset.dependencies.map(d => assets.find(a => a.id === d)).filter(Boolean);
 
   const currentVersionId = currentVersionOverrides[asset.id];
   const currentVersion = versions.find(v => v.id === currentVersionId);
   const displayVersionNumber = currentVersion?.versionNumber ?? asset.version;
   const dccOpen = lastOpenedInDCC[asset.id];
+  const isUsdAsset = USD_ASSET_TYPES.has(asset.type);
+  const publishRecord = publishOverrides[asset.id];
+  const isPublished = asset.publishStatus === 'published';
 
   const handleOpenInDCC = () => {
     const app = dccAppForAssetType(asset.type);
@@ -113,6 +141,12 @@ export default function AssetDetail() {
   const handleDownloadUSD = (v: Version) => {
     downloadVersionAsUSD(asset, v);
     toast({ title: 'Download Started', description: `${asset.name} ${v.versionNumber} (.usda) downloaded.`, duration: 2000 });
+  };
+
+  const handlePublish = () => {
+    updateAsset(asset.id, { publishStatus: 'published' });
+    publishAsset(asset.id, { userName: currentUser?.name ?? 'You', timestamp: new Date().toISOString() });
+    toast({ title: 'Asset Published', description: `${asset.name} (${displayVersionNumber}) is now published.`, duration: 2000 });
   };
 
   return (
@@ -152,9 +186,16 @@ export default function AssetDetail() {
               Last opened in {dccOpen.app} by {dccOpen.userName} · {new Date(dccOpen.timestamp).toLocaleString()}
             </motion.p>
           )}
+          {publishRecord && (
+            <motion.p key={publishRecord.timestamp} {...fadeInUp} className="text-xs text-muted-foreground mt-1">
+              Published by {publishRecord.userName} · {new Date(publishRecord.timestamp).toLocaleString()}
+            </motion.p>
+          )}
         </div>
         <div className="flex gap-2 shrink-0">
-          <Button variant="outline" size="sm" className="hidden"><Upload className="w-4 h-4 mr-1" /> Publish</Button>
+          <Button variant="outline" size="sm" onClick={handlePublish} disabled={isPublished}>
+            <Upload className="w-4 h-4 mr-1" /> {isPublished ? 'Published' : 'Publish'}
+          </Button>
           <Button size="sm" onClick={handleOpenInDCC}>Open in DCC</Button>
         </div>
       </div>
@@ -271,7 +312,9 @@ export default function AssetDetail() {
                           <div className="flex items-center gap-2 mb-1">
                             <span className="font-medium text-sm">{v.notes}</span>
                             <Badge className={`text-[10px] ${v.status === 'approved' ? 'bg-green-500/10 text-green-500' : v.status === 'rejected' ? 'bg-red-500/10 text-red-500' : 'bg-yellow-500/10 text-yellow-500'}`}>{v.status}</Badge>
-                            <Badge variant="outline" className="text-[9px] uppercase border-indigo-500/30 text-indigo-400">USD Format</Badge>
+                            {isUsdAsset && (
+                              <Badge variant="outline" className="text-[9px] uppercase border-indigo-500/30 text-indigo-400">USD Format</Badge>
+                            )}
                             {isCurrent && (
                               <motion.span key={`${v.id}-current`} {...confirmPulse}>
                                 <Badge className="text-[10px] bg-primary/10 text-primary border border-primary/30">Current</Badge>
@@ -358,7 +401,19 @@ export default function AssetDetail() {
         <TabsContent value="tasks" className="mt-4">
           <div className="space-y-2">
             {relatedTasks.map(t => (
-              <Card key={t.id} className="hover:bg-muted/20 transition-colors cursor-pointer">
+              <Card
+                key={t.id}
+                className="hover:bg-muted/20 transition-colors cursor-pointer"
+                role="button"
+                tabIndex={0}
+                onClick={() => setActiveTaskDrawer(t.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setActiveTaskDrawer(t.id);
+                  }
+                }}
+              >
                 <CardContent className="p-4 flex items-center gap-4">
                   <ListTodo className="w-4 h-4 text-muted-foreground" />
                   <div className="flex-1">
@@ -370,6 +425,17 @@ export default function AssetDetail() {
                 </CardContent>
               </Card>
             ))}
+            {relatedTasks.length === 0 && (
+              <Empty className="border-2 border-dashed border-border rounded-lg py-12">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <ListTodo />
+                  </EmptyMedia>
+                  <EmptyTitle>No tasks yet</EmptyTitle>
+                  <EmptyDescription>No tasks are linked to this asset.</EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            )}
           </div>
         </TabsContent>
 

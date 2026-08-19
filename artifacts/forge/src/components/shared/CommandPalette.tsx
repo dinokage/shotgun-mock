@@ -3,12 +3,12 @@ import { useLocation } from 'wouter';
 import { motion } from 'framer-motion';
 import { useTheme } from 'next-themes';
 import { useUIStore } from '@/store/ui';
-import { useAuthStore } from '@/store/auth';
+import { useCapability } from '@/hooks/use-capability';
 import { useProjectStore } from '@/store/projects';
 import { useShotStore } from '@/store/shots';
 import { useTasksStore } from '@/store/tasks';
-import { useToast } from '@/hooks/use-toast';
-import { USERS, ASSETS } from '@/data/mockData';
+import { useAssetStore } from '@/store/assets';
+import { USERS } from '@/data/mockData';
 import { stagger, fadeInUp } from '@/lib/motion';
 import {
   CommandDialog,
@@ -40,7 +40,6 @@ import {
   Clock,
 } from 'lucide-react';
 
-const LEADERSHIP_ROLES = ['vfx_producer', 'production_manager', 'coordinator', 'supervisor', 'lead'];
 const RESULT_LIMIT = 6;
 
 // Everyday destinations, filtered against the same query as everything else
@@ -60,13 +59,17 @@ const NAV_ITEMS = [
 ];
 
 export function CommandPalette() {
-  const { commandPaletteOpen, setCommandPaletteOpen, setShortcutsDialogOpen, setCreateTaskModalOpen, setActiveTaskDrawer } = useUIStore();
-  const { currentUser } = useAuthStore();
+  const { commandPaletteOpen, setCommandPaletteOpen, setShortcutsDialogOpen, setCreateTaskModalOpen, setCreateProjectModalOpen, setActiveTaskDrawer } = useUIStore();
+  const canCreateTasks = useCapability('create_tasks');
   const allProjects = useProjectStore((s) => s.projects);
   const allShots = useShotStore((s) => s.shots);
   const allTasks = useTasksStore((s) => s.tasks);
-  const { theme, setTheme } = useTheme();
-  const { toast } = useToast();
+  const allAssets = useAssetStore((s) => s.assets);
+  // `resolvedTheme` (not `theme`) so this reflects what's actually on screen —
+  // see TopBar's theme toggle for the same fix; `theme` stays 'system' by
+  // default and never equals 'dark', so the label/icon and the toggle target
+  // would be wrong for anyone on the system default.
+  const { resolvedTheme, setTheme } = useTheme();
   const [, setLocation] = useLocation();
   const [query, setQuery] = useState('');
 
@@ -76,7 +79,6 @@ export function CommandPalette() {
     if (!commandPaletteOpen) setQuery('');
   }, [commandPaletteOpen]);
 
-  const isLeadership = !!currentUser && LEADERSHIP_ROLES.includes(currentUser.role);
   const q = query.trim().toLowerCase();
 
   const nav = useMemo(
@@ -103,8 +105,8 @@ export function CommandPalette() {
     [q, allShots],
   );
   const assets = useMemo(
-    () => (q ? ASSETS.filter((a) => a.name.toLowerCase().includes(q)).slice(0, RESULT_LIMIT) : []),
-    [q],
+    () => (q ? allAssets.filter((a) => a.name.toLowerCase().includes(q)).slice(0, RESULT_LIMIT) : []),
+    [q, allAssets],
   );
   const people = useMemo(
     () =>
@@ -118,9 +120,9 @@ export function CommandPalette() {
     const list: { key: string; label: string; icon: typeof Plus; run: () => void }[] = [
       {
         key: 'toggle-theme',
-        label: theme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme',
-        icon: theme === 'dark' ? Sun : Moon,
-        run: () => setTheme(theme === 'dark' ? 'light' : 'dark'),
+        label: resolvedTheme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme',
+        icon: resolvedTheme === 'dark' ? Sun : Moon,
+        run: () => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark'),
       },
       {
         key: 'shortcuts',
@@ -134,11 +136,11 @@ export function CommandPalette() {
         icon: Plus,
         run: () => {
           setLocation('/projects');
-          toast({ title: 'New Project', description: 'Opening project creation wizard...' });
+          setCreateProjectModalOpen(true);
         },
       },
     ];
-    if (isLeadership) {
+    if (canCreateTasks) {
       list.unshift({
         key: 'new-task',
         label: 'New Task',
@@ -147,7 +149,7 @@ export function CommandPalette() {
       });
     }
     return q ? list.filter((a) => a.label.toLowerCase().includes(q)) : list;
-  }, [q, theme, isLeadership, setTheme, setShortcutsDialogOpen, setCreateTaskModalOpen, setLocation, toast]);
+  }, [q, resolvedTheme, canCreateTasks, setTheme, setShortcutsDialogOpen, setCreateTaskModalOpen, setCreateProjectModalOpen, setLocation]);
 
   const runAndClose = (fn: () => void) => {
     setCommandPaletteOpen(false);

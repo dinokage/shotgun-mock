@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { Review, REVIEWS, Version, VERSIONS, SHOTS } from '@/data/mockData';
+import type { Annotation } from '@/components/shared/review';
 
 /**
  * The single mock "version" both the internal review player and the client
@@ -54,6 +55,10 @@ export interface ReviewComment {
     transferredByUserName: string;
     transferredAt: string;
   };
+  /** Markup drawn on the frame at the time this comment/note was authored
+   * (pen/arrow/rectangle/text marks), carried over unchanged from the
+   * originating ClientNote when transferred in via `transferClientNote`. */
+  annotations?: Annotation[];
 }
 
 const INITIAL_COMMENTS: ReviewComment[] = [
@@ -79,6 +84,10 @@ export interface ClientNote {
   transferred: boolean;
   transferredAt: string | null;
   transferredByUserName: string | null;
+  /** Markup the client drew on the frame (pen/arrow/rectangle/text marks)
+   * at the moment this note was submitted, so it survives alongside the
+   * typed feedback instead of vanishing once the canvas is cleared. */
+  annotations?: Annotation[];
 }
 
 const seedClientShot = SHOTS.find((s) => s.status === 'client-review');
@@ -129,7 +138,7 @@ interface ReviewState {
 
   clientNotes: ClientNote[];
   /** A client leaves feedback in the portal — held in moderation, not yet visible internally. */
-  addClientNote: (note: Pick<ClientNote, 'shotId' | 'shotName' | 'frame' | 'text' | 'authorName'>) => void;
+  addClientNote: (note: Pick<ClientNote, 'shotId' | 'shotName' | 'frame' | 'text' | 'authorName' | 'annotations'>) => void;
   /** An internal reviewer explicitly publishes a client note into the shared `comments` stream. */
   transferClientNote: (id: string, transferredByUserName: string) => void;
 }
@@ -225,6 +234,7 @@ export const useReviewStore = create<ReviewState>()(
                 userIndex: -1,
                 frame: note.frame,
                 text: note.text,
+                annotations: note.annotations,
                 fromClient: {
                   authorName: note.authorName,
                   shotName: note.shotName,

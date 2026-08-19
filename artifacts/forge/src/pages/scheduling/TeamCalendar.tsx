@@ -13,6 +13,15 @@ import { addDays, getDaysDiff, getTaskWindow, REFERENCE_DATE, TIMELINE_DAYS } fr
 
 const LEAVE_LABEL: Record<string, string> = { vacation: 'PTO', sick: 'SICK', holiday: 'HOL' };
 
+// utils.getDaysDiff floors zero-length ranges up to 1 (so a same-day
+// *duration* never renders as a zero-width bar), which is wrong whenever the
+// same value is read as a day *offset* or as an inclusive same-day span —
+// an offset of exactly 0 (something starting on the timeline's first day)
+// and a single-day leave/task both legitimately hit that zero-length case.
+// Use an un-floored day count for those instead of getDaysDiff.
+const dayOffset = (from: string, to: string) =>
+  Math.round((new Date(to).getTime() - new Date(from).getTime()) / (1000 * 60 * 60 * 24));
+
 export default function TeamCalendar() {
   const { toast } = useToast();
   const { setActiveTaskDrawer } = useUIStore();
@@ -43,8 +52,8 @@ export default function TeamCalendar() {
       return t.dueDate >= timelineStartStr;
     }).slice(0, 50).map((t) => {
       const { startDate, duration } = getTaskWindow(t);
-      const startOffset = getDaysDiff(timelineStartStr, startDate);
-      const isBeforeStart = new Date(startDate) < new Date(timelineStartStr);
+      const startOffset = dayOffset(timelineStartStr, startDate);
+      const isBeforeStart = startOffset < 0;
 
       return {
         ...t,
@@ -273,9 +282,10 @@ export default function TeamCalendar() {
               return (
                 <div key={userId} className="relative border-b border-border hover:bg-muted/5 group transition-colors" style={{ height: `${rowHeight}px` }}>
                   {userLeave.map((leave) => {
-                    const isBeforeStart = new Date(leave.start) < new Date(timelineStartStr);
-                    const startOffset = isBeforeStart ? 0 : getDaysDiff(timelineStartStr, leave.start);
-                    const duration = getDaysDiff(leave.start, leave.end) + 1;
+                    const leaveOffset = dayOffset(timelineStartStr, leave.start);
+                    const isBeforeStart = leaveOffset < 0;
+                    const startOffset = isBeforeStart ? 0 : leaveOffset;
+                    const duration = dayOffset(leave.start, leave.end) + 1;
                     const width = duration * cellWidth;
                     const left = startOffset * cellWidth;
                     return (

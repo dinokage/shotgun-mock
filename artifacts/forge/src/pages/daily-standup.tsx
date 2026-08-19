@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,8 +9,9 @@ import { useAuthStore } from '@/store/auth';
 import { useTasksStore } from '@/store/tasks';
 import { useStandupsStore } from '@/store/standups';
 import { useUIStore } from '@/store/ui';
+import { useIsLeadership } from '@/hooks/use-capability';
 import { StatusBadge } from '@/components/shared/StatusBadge';
-import { AlertCircle, CheckCircle2, MonitorPlay, ListVideo, GripVertical, PlayCircle, Plus, Calendar, MessageSquare } from 'lucide-react';
+import { AlertCircle, CheckCircle2, MonitorPlay, ListVideo, GripVertical, PlayCircle, Plus, Calendar, MessageSquare, X, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
@@ -21,6 +22,80 @@ import { Textarea } from '@/components/ui/textarea';
 import { Image as ImageIcon, Video, Paperclip, Send } from 'lucide-react';
 import { apiClient } from '@/lib/apiClient';
 import { fadeInUp, DURATION } from '@/lib/motion';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+  sortableKeyboardCoordinates,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+// Stable id for the one hardcoded "mock" playblast feed card that has an
+// approvals affordance, so approvals can be attached to real, persisted
+// store state (store/standups.ts) instead of local-only component state.
+const PLAYBLAST_FEED_ID = 'feed-robot-walk-playblast';
+
+function PlaylistItem({
+  task,
+  index,
+  onRemove,
+}: {
+  task: any;
+  index: number;
+  onRemove: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: task.id,
+  });
+  const assignee = USERS.find((u) => u.id === task.assigneeId);
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex items-center gap-4 p-3 bg-card border border-border rounded-lg shadow-sm group"
+    >
+      <button
+        type="button"
+        className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-none"
+        aria-label={`Drag to reorder ${task.title}`}
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="w-5 h-5" />
+      </button>
+      <div className="w-8 h-8 rounded bg-muted flex items-center justify-center font-mono text-xs text-muted-foreground font-bold">
+        {String(index + 1).padStart(2, '0')}
+      </div>
+      <div className="flex-1">
+        <div className="font-semibold text-sm">{task.title}</div>
+        <div className="text-xs text-muted-foreground flex items-center gap-2 mt-1">
+          <Avatar className="w-4 h-4"><AvatarImage src={assignee?.avatar} /></Avatar>
+          {assignee?.name} • v001
+        </div>
+      </div>
+      <Button variant="ghost" size="sm" className="text-red-500 opacity-0 group-hover:opacity-100 transition-opacity" onClick={onRemove}>
+        Remove
+      </Button>
+    </div>
+  );
+}
 
 export default function DailyStandup() {
   const { currentUser } = useAuthStore();
@@ -29,9 +104,16 @@ export default function DailyStandup() {
   const updateTaskStatus = useTasksStore((s) => s.updateTaskStatus);
   const standupUpdates = useStandupsStore((s) => s.updates);
   const addStandupUpdate = useStandupsStore((s) => s.addUpdate);
+  const playlistIds = useStandupsStore((s) => s.playlist);
+  const addToPlaylistStore = useStandupsStore((s) => s.addToPlaylist);
+  const removeFromPlaylistStore = useStandupsStore((s) => s.removeFromPlaylist);
+  const setPlaylistStore = useStandupsStore((s) => s.setPlaylist);
+  const clearPlaylistStore = useStandupsStore((s) => s.clearPlaylist);
+  const feedApprovals = useStandupsStore((s) => s.feedApprovals);
+  const toggleFeedApproval = useStandupsStore((s) => s.toggleFeedApproval);
   const { setActiveTaskDrawer } = useUIStore();
+  const isLeadership = useIsLeadership();
   const [selectedDeptId, setSelectedDeptId] = useState<string>('ALL');
-  const [playlist, setPlaylist] = useState<any[]>([]);
   const [sessionActive, setSessionActive] = useState(false);
   const [approvedUsers, setApprovedUsers] = useState<Set<string>>(new Set());
   const [updateText, setUpdateText] = useState('');
@@ -43,10 +125,17 @@ export default function DailyStandup() {
   const [logTaskId, setLogTaskId] = useState('');
   const [logHours, setLogHours] = useState('8');
   const [logNote, setLogNote] = useState('');
-  const [feedApproved, setFeedApproved] = useState(false);
-  const [feedApprovalCount, setFeedApprovalCount] = useState(3);
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const [videoPreviewOpen, setVideoPreviewOpen] = useState(false);
   const [feedCommentsOpen, setFeedCommentsOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+
+  const playlistSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   // Tasks and standup updates now live in real, persisted Zustand stores
   // (see src/store/tasks.ts / src/store/standups.ts). This poll is a
@@ -72,10 +161,26 @@ export default function DailyStandup() {
   const isAllDepts = selectedDeptId === 'ALL';
   const dept = isAllDepts ? null : DEPARTMENTS.find(d => d.id === selectedDeptId);
   const team = isAllDepts ? USERS : USERS.filter(u => u.departmentId === selectedDeptId);
-  const isLeadership = currentUser?.role ? ['vfx_producer', 'production_manager', 'coordinator', 'supervisor', 'lead'].includes(currentUser.role) : false;
 
+  // Playlist entries derived live from the persisted id order + the current
+  // task list, so it always reflects real task data (title/status/assignee)
+  // instead of a stale snapshot captured at add-time.
+  const playlist = useMemo(
+    () => playlistIds.map((id) => tasks.find((t) => t.id === id)).filter((t): t is (typeof tasks)[number] => Boolean(t)),
+    [playlistIds, tasks]
+  );
+
+  const playblastApprovals = feedApprovals[PLAYBLAST_FEED_ID] ?? [];
+  const hasApprovedPlayblast = playblastApprovals.includes(currentUser?.id ?? '');
+
+  // A task is "awaiting lead/supervisor review" once it's either been
+  // quick-submitted (status 'review') or pushed through the formal review
+  // player chain (status 'lead-review' directly) - same two-status
+  // convention TaskDrawer.tsx uses for gating Approve/Reject actions.
+  // Filtering on 'review' alone silently dropped every lead-review task
+  // from the Dailies Playlist Builder's "Ready for Review" queue.
   const pendingReviewTasks = tasks.filter(t =>
-    (isAllDepts || t.department === dept?.name) && t.status === 'review'
+    (isAllDepts || t.department === dept?.name) && ['review', 'lead-review'].includes(t.status)
   );
 
   // Updates posted from the "My Updates" form, mapped with the full user
@@ -107,7 +212,7 @@ export default function DailyStandup() {
     const today = new Date().toISOString().split('T')[0];
     let totalHoursToday = 0;
     tasksWithLogs.forEach(task => {
-      const todaysLogs = task.dailyLogs.filter(log => log.date.startsWith(today) || true); // Defaulting to true for mock data visibility
+      const todaysLogs = task.dailyLogs.filter(log => log.date.startsWith(today));
       totalHoursToday += todaysLogs.reduce((acc, log) => acc + log.hours, 0);
     });
     const memberDept = DEPARTMENTS.find(d => d.id === member.departmentId);
@@ -125,10 +230,29 @@ export default function DailyStandup() {
   const myTasks = tasks.filter(t => t.assigneeId === currentUser.id);
 
   const addToPlaylist = (task: any) => {
-    if (!playlist.find(p => p.id === task.id)) {
-      setPlaylist([...playlist, task]);
+    if (!playlistIds.includes(task.id)) {
+      addToPlaylistStore(task.id);
       toast({ title: 'Added to Playlist', description: `${task.title} queued for dailies.` });
     }
+  };
+
+  const handlePlaylistDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = playlistIds.indexOf(active.id as string);
+    const newIndex = playlistIds.indexOf(over.id as string);
+    if (oldIndex === -1 || newIndex === -1) return;
+    setPlaylistStore(arrayMove(playlistIds, oldIndex, newIndex));
+  };
+
+  const handleFilesSelected = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setAttachedFiles((prev) => [...prev, ...Array.from(files)]);
+    toast({ title: 'Attachment Added', description: `${files.length} file(s) staged for this update.` });
+  };
+
+  const handleRemoveAttachment = (index: number) => {
+    setAttachedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleUnblock = (taskId: string) => {
@@ -152,6 +276,7 @@ export default function DailyStandup() {
       });
       toast({ title: 'Update Posted!', description: 'Your daily progress has been shared.' });
       setUpdateText('');
+      setAttachedFiles([]);
       setIsPosting(false);
     }, DURATION.fast * 1000);
   };
@@ -507,7 +632,7 @@ export default function DailyStandup() {
                   onClick={() => {
                     if (sessionActive) {
                       setSessionActive(false);
-                      setPlaylist([]);
+                      clearPlaylistStore();
                       toast({ title: 'Session Ended', description: 'Playlist cleared.' });
                     } else {
                       setSessionActive(true);
@@ -518,42 +643,38 @@ export default function DailyStandup() {
                   <PlayCircle className="w-4 h-4 mr-2" /> {sessionActive ? 'End Session' : 'Start Dailies Session'}
                 </Button>
               </div>
-              
+
               <Card className="border-purple-500/20 bg-purple-500/5 h-[600px]">
                 <CardContent className="p-6">
                   {playlist.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center text-muted-foreground space-y-4 border-2 border-dashed border-purple-500/20 rounded-xl bg-card/50">
-                      <div className="w-16 h-16 rounded-full bg-purple-500/10 flex items-center justify-center">
-                        <ListVideo className="w-8 h-8 text-purple-500" />
-                      </div>
-                      <p>Click the '+' on a task to add it to today's playlist</p>
-                    </div>
+                    <Empty className="h-full border-2 border-purple-500/20 rounded-xl bg-card/50">
+                      <EmptyHeader>
+                        <EmptyMedia variant="icon" className="bg-purple-500/10 text-purple-500">
+                          <ListVideo className="w-8 h-8" />
+                        </EmptyMedia>
+                        <EmptyTitle>No shots queued</EmptyTitle>
+                        <EmptyDescription>Click the '+' on a task to add it to today's playlist</EmptyDescription>
+                      </EmptyHeader>
+                    </Empty>
                   ) : (
-                    <div className="space-y-3">
-                      {playlist.map((task, idx) => {
-                        const assignee = USERS.find(u => u.id === task.assigneeId);
-                        return (
-                          <div key={task.id} className="flex items-center gap-4 p-3 bg-card border border-border rounded-lg shadow-sm group">
-                            <div className="cursor-grab text-muted-foreground hover:text-foreground">
-                              <GripVertical className="w-5 h-5" />
-                            </div>
-                            <div className="w-8 h-8 rounded bg-muted flex items-center justify-center font-mono text-xs text-muted-foreground font-bold">
-                              {String(idx + 1).padStart(2, '0')}
-                            </div>
-                            <div className="flex-1">
-                              <div className="font-semibold text-sm">{task.title}</div>
-                              <div className="text-xs text-muted-foreground flex items-center gap-2 mt-1">
-                                <Avatar className="w-4 h-4"><AvatarImage src={assignee?.avatar} /></Avatar>
-                                {assignee?.name} • v001
-                              </div>
-                            </div>
-                            <Button variant="ghost" size="sm" className="text-red-500 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => setPlaylist(playlist.filter(p => p.id !== task.id))}>
-                              Remove
-                            </Button>
-                          </div>
-                        )
-                      })}
-                    </div>
+                    <DndContext
+                      sensors={playlistSensors}
+                      collisionDetection={closestCenter}
+                      onDragEnd={handlePlaylistDragEnd}
+                    >
+                      <SortableContext items={playlistIds} strategy={verticalListSortingStrategy}>
+                        <div className="space-y-3">
+                          {playlist.map((task, idx) => (
+                            <PlaylistItem
+                              key={task.id}
+                              task={task}
+                              index={idx}
+                              onRemove={() => removeFromPlaylistStore(task.id)}
+                            />
+                          ))}
+                        </div>
+                      </SortableContext>
+                    </DndContext>
                   )}
                 </CardContent>
               </Card>
@@ -608,15 +729,71 @@ export default function DailyStandup() {
                   {/* Media Upload Area */}
                   <div className="space-y-2">
                     <Label>Attachments (Optional)</Label>
-                    <div className="border-2 border-dashed border-border/50 rounded-lg p-4 text-center hover:bg-muted/30 transition-colors cursor-pointer group">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      accept="video/mp4,video/quicktime,image/jpeg,image/png"
+                      className="hidden"
+                      onChange={(e) => {
+                        handleFilesSelected(e.target.files);
+                        e.target.value = '';
+                      }}
+                    />
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      className={cn(
+                        'border-2 border-dashed rounded-lg p-4 text-center hover:bg-muted/30 transition-colors cursor-pointer group',
+                        isDraggingFile ? 'border-primary bg-primary/5' : 'border-border/50',
+                      )}
+                      onClick={() => fileInputRef.current?.click()}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          fileInputRef.current?.click();
+                        }
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setIsDraggingFile(true);
+                      }}
+                      onDragLeave={() => setIsDraggingFile(false)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setIsDraggingFile(false);
+                        handleFilesSelected(e.dataTransfer.files);
+                      }}
+                    >
                       <div className="flex justify-center gap-4 mb-2 text-muted-foreground group-hover:text-primary transition-colors">
                         <ImageIcon className="w-6 h-6" />
                         <Video className="w-6 h-6" />
                         <Paperclip className="w-6 h-6" />
                       </div>
-                      <p className="text-xs text-muted-foreground">Drag & drop images, shorts, or videos here</p>
+                      <p className="text-xs text-muted-foreground">Drag & drop images, shorts, or videos here, or click to browse</p>
                       <p className="text-[10px] text-muted-foreground mt-1">Supports MP4, MOV, JPG, PNG (Max 50MB)</p>
                     </div>
+                    {attachedFiles.length > 0 && (
+                      <div className="space-y-1.5 pt-1">
+                        {attachedFiles.map((file, i) => (
+                          <div key={`${file.name}-${i}`} className="flex items-center justify-between gap-2 rounded-md border border-border/50 bg-muted/30 px-2.5 py-1.5 text-xs">
+                            <span className="flex items-center gap-1.5 min-w-0 text-foreground/90">
+                              <FileText className="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground" />
+                              <span className="truncate">{file.name}</span>
+                              <span className="text-muted-foreground flex-shrink-0">({Math.max(1, Math.round(file.size / 1024))} KB)</span>
+                            </span>
+                            <button
+                              type="button"
+                              className="text-muted-foreground hover:text-red-500 flex-shrink-0"
+                              onClick={() => handleRemoveAttachment(i)}
+                              aria-label={`Remove ${file.name}`}
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <Button className="w-full mt-2" onClick={handlePostUpdate} disabled={isPosting}>
@@ -686,10 +863,22 @@ export default function DailyStandup() {
                     </div>
                   </div>
                   {/* Media Attachment */}
-                  <div className="bg-black relative aspect-video group cursor-pointer">
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Open playblast preview"
+                    className="bg-black relative aspect-video group cursor-pointer"
+                    onClick={() => setVideoPreviewOpen(true)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setVideoPreviewOpen(true);
+                      }
+                    }}
+                  >
                     {/* Placeholder image from artifact */}
                     <img src="/src/assets/daily_update_video_thumbnail.png" alt="Playblast Thumbnail" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
-                    
+
                     {/* Play Button Overlay */}
                     <div className="absolute inset-0 flex items-center justify-center">
                       <div className="w-12 h-12 bg-primary/90 text-primary-foreground rounded-full flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
@@ -700,20 +889,30 @@ export default function DailyStandup() {
                       0:12
                     </div>
                   </div>
-                  
+                  <Dialog open={videoPreviewOpen} onOpenChange={setVideoPreviewOpen}>
+                    <DialogContent className="sm:max-w-2xl">
+                      <DialogHeader>
+                        <DialogTitle>Anim: Robot Walk Cycle — Playblast</DialogTitle>
+                      </DialogHeader>
+                      <div className="bg-black rounded-md overflow-hidden aspect-video">
+                        <img src="/src/assets/daily_update_video_thumbnail.png" alt="Playblast Thumbnail" className="w-full h-full object-contain" />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Full video playback isn't available in this environment yet — this is the review thumbnail. Once the media server is connected, this will stream the actual playblast.
+                      </p>
+                    </DialogContent>
+                  </Dialog>
+
                   {/* Feed Item Footer / Interactions */}
                   <div className="p-3 bg-muted/20 flex gap-4 text-xs font-medium text-muted-foreground">
                     <button
                       className={cn(
                         'flex items-center gap-1.5 hover:text-primary transition-colors',
-                        feedApproved && 'text-primary',
+                        hasApprovedPlayblast && 'text-primary',
                       )}
-                      onClick={() => {
-                        setFeedApproved((prev) => !prev);
-                        setFeedApprovalCount((prev) => (feedApproved ? prev - 1 : prev + 1));
-                      }}
+                      onClick={() => toggleFeedApproval(PLAYBLAST_FEED_ID, currentUser.id)}
                     >
-                      <CheckCircle2 className={cn('w-4 h-4', feedApproved && 'fill-primary/20')} /> {feedApprovalCount} Approval{feedApprovalCount === 1 ? '' : 's'}
+                      <CheckCircle2 className={cn('w-4 h-4', hasApprovedPlayblast && 'fill-primary/20')} /> {playblastApprovals.length} Approval{playblastApprovals.length === 1 ? '' : 's'}
                     </button>
                     <button
                       className={cn(

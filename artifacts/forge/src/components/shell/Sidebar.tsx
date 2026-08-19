@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Link, useLocation } from 'wouter';
 import { cn } from '@/lib/utils';
 import {
@@ -5,11 +6,17 @@ import {
   GitFork, Workflow, Store, Database,
   History, Bot, Settings2, Package, Film, ListTodo,
   Upload, BarChart3, ChevronLeft, ChevronRight,
-  Building2, ChevronDown, Users, MonitorPlay, MessageSquare, Grid3X3, Puzzle, Clock, Boxes
+  Building2, ChevronDown, Users, MonitorPlay, MessageSquare, Grid3X3, Puzzle, Clock, Boxes,
+  DollarSign, Truck
 } from 'lucide-react';
 import { useUIStore } from '@/store/ui';
 import { useWorkspaceStore } from '@/store/workspace';
 import { useAuthStore } from '@/store/auth';
+import { useTasksStore } from '@/store/tasks';
+import { useReviewStore } from '@/store/reviews';
+import { useChatGroupsStore } from '@/store/chatGroups';
+import { useCapability, useIsLeadership } from '@/hooks/use-capability';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { STUDIOS } from '@/data/mockData';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -30,7 +37,7 @@ type NavItem = {
 const BASE_NAV: NavItem[] = [
   { label: 'Dashboard', icon: LayoutDashboard, href: '/' },
   { label: 'My Tasks', icon: ListTodo, href: '/tasks' },
-  { label: 'Team Chat', icon: MessageSquare, href: '/chat', badge: 3 },
+  { label: 'Team Chat', icon: MessageSquare, href: '/chat' },
   { label: 'Daily Standup', icon: MonitorPlay, href: '/daily-standup' },
 ];
 
@@ -42,7 +49,10 @@ const PROD_NAV: NavItem[] = [
   { label: 'Scheduling', icon: Calendar, href: '/scheduling' },
   { label: 'Timesheets', icon: Clock, href: '/timesheets' },
   { label: 'Analytics', icon: BarChart3, href: '/analytics' },
-  { label: 'Reviews', icon: PlayCircle, href: '/review', badge: 5 },
+  { label: 'Reviews', icon: PlayCircle, href: '/review' },
+  { label: 'Publishing', icon: Upload, href: '/publishing' },
+  { label: 'Deliveries', icon: Truck, href: '/delivery' },
+  { label: 'Financials', icon: DollarSign, href: '/financials' },
 ];
 
 // Artists get specific focus areas
@@ -50,7 +60,7 @@ const ARTIST_NAV: NavItem[] = [
   { label: 'My Shots', icon: Film, href: '/shots?mine=1' },
   { label: 'My Assets', icon: Package, href: '/assets?mine=1' },
   { label: 'Timesheets', icon: Clock, href: '/timesheets' },
-  { label: 'Reviews', icon: PlayCircle, href: '/review', badge: 2 },
+  { label: 'Reviews', icon: PlayCircle, href: '/review' },
 ];
 
 // Global directories
@@ -71,21 +81,196 @@ const SYSTEM_NAV: NavItem[] = [
 
 export function Sidebar() {
   const [location] = useLocation();
-  const { sidebarCollapsed, toggleSidebar, toggleAiAssistant } = useUIStore();
+  const { sidebarCollapsed, toggleSidebar, mobileNavOpen, setMobileNavOpen } = useUIStore();
+  const isMobile = useIsMobile();
   const { currentStudioId, setStudio } = useWorkspaceStore();
   const { currentUser } = useAuthStore();
+  const isLeadership = useIsLeadership();
+  const canViewFinancials = useCapability('view_financials');
+  const tasks = useTasksStore((s) => s.tasks);
+  const reviews = useReviewStore((s) => s.reviews);
+  const chatGroups = useChatGroupsStore((s) => s.groups);
   const currentStudio = STUDIOS.find(s => s.id === currentStudioId);
+
+  // The drawer's open/closed flag lives in the global UI store, not local
+  // state, so it survives a viewport resize. Without this, opening the
+  // drawer on mobile then widening past the breakpoint (desktop layout, no
+  // drawer rendered) leaves mobileNavOpen stuck true — narrowing back down
+  // would then show the drawer already open, with no tap on the hamburger.
+  useEffect(() => {
+    if (!isMobile && mobileNavOpen) {
+      setMobileNavOpen(false);
+    }
+  }, [isMobile, mobileNavOpen, setMobileNavOpen]);
 
   if (!currentUser) return null;
 
-  const isLeadership = ['vfx_producer', 'production_manager', 'coordinator', 'supervisor', 'lead'].includes(currentUser.role);
-  
+  // Real, store-derived counts — computed the same way the notifications
+  // badge in TopBar is: filter live state, don't hand-write a number.
+  const teamChatBadge = chatGroups.filter(g => g.memberIds.includes(currentUser.id)).length;
+  const reviewsBadge = isLeadership
+    // Items awaiting a Lead/Manager sign-off across the studio (same
+    // statuses SupervisorDashboard treats as its department review queue).
+    ? tasks.filter(t => t.status === 'lead-review' || t.status === 'manager-review').length
+    // Reviews this artist is waiting on (same query ArtistDashboard uses
+    // for its "Reviews Requested" stat).
+    : reviews.filter(r => r.reviewerId === currentUser.id && r.status === 'pending').length;
+
+  const withBadges = (items: NavItem[]): NavItem[] =>
+    items.map(item => {
+      if (item.href === '/chat') return { ...item, badge: teamChatBadge || undefined };
+      if (item.href === '/review') return { ...item, badge: reviewsBadge || undefined };
+      return item;
+    });
+
   const navItems = [
-    ...BASE_NAV,
-    ...(isLeadership ? PROD_NAV : ARTIST_NAV),
+    ...withBadges(BASE_NAV),
+    ...withBadges(isLeadership ? PROD_NAV : ARTIST_NAV),
     ...(isLeadership ? DIRECTORY_NAV : [{ label: 'Studio Roster', icon: Users, href: '/people' }]),
     ...(isLeadership ? SYSTEM_NAV : []),
-  ];
+  ].filter(item => item.href !== '/financials' || canViewFinancials);
+
+  // Shared body for both the permanent desktop column and the mobile
+  // off-canvas drawer. `collapsed` only ever applies on desktop — the
+  // mobile drawer is always full-width, since the icon-only collapsed mode
+  // exists purely to reclaim desktop screen width, which isn't a concern
+  // for an overlay drawer. `onNavigate` closes the drawer after a link
+  // click on mobile; it's a no-op on desktop.
+  function renderBody(collapsed: boolean, onNavigate: () => void) {
+    return (
+      <>
+        {/* Workspace Switcher */}
+        <div className={cn("p-3 border-b border-sidebar-border", collapsed && "px-2")}>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className={cn(
+                "w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-sidebar-accent/50 transition-colors text-left",
+                collapsed && "justify-center px-0"
+              )}>
+                <div className="w-7 h-7 rounded-md bg-primary/20 flex items-center justify-center shrink-0">
+                  <Building2 className="w-4 h-4 text-primary" />
+                </div>
+                {!collapsed && (
+                  <>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold truncate">{currentStudio?.name || 'Studio'}</div>
+                      <div className="text-[10px] text-muted-foreground truncate">{currentStudio?.region || 'Global'}</div>
+                    </div>
+                    <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
+                  </>
+                )}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-56" align="start">
+              {STUDIOS.map(s => (
+                <DropdownMenuItem key={s.id} onClick={() => setStudio(s.id)}>
+                  <Building2 className="w-4 h-4 mr-2 text-muted-foreground" />
+                  {s.name}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        {/* Navigation Links */}
+        <div className="flex-1 overflow-y-auto py-4 px-3 space-y-1 scrollbar-thin">
+          {navItems.map((item) => {
+            // Compare against the path only — item.href may carry a query string
+            // (e.g. artist "My Shots" -> /shots?mine=1) which `location` never includes.
+            const itemPath = item.href.split('?')[0];
+            const isActive = location === itemPath || (itemPath !== '/' && location.startsWith(itemPath));
+            return (
+              <Link key={item.label} href={item.href} onClick={onNavigate}>
+                <div
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-2 rounded-md transition-colors cursor-pointer relative group",
+                    isActive
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-[inset_2px_0_0_0_hsl(var(--accent-tally))] hover:bg-sidebar-accent/80"
+                      : "text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
+                    collapsed && "justify-center px-2"
+                  )}
+                  title={collapsed ? item.label : undefined}
+                >
+                  <item.icon className={cn(
+                    "w-4 h-4 shrink-0 transition-colors",
+                    isActive ? "text-accent-tally" : "text-muted-foreground group-hover:text-sidebar-foreground"
+                  )} />
+                  {!collapsed && (
+                    <span className="flex-1 truncate text-sm">{item.label}</span>
+                  )}
+                  {!collapsed && item.badge && (
+                    <Badge variant="secondary" className="px-1.5 py-0 text-[10px] h-4 bg-accent-tally/10 text-accent-tally hover:bg-accent-tally/20">
+                      {item.badge}
+                    </Badge>
+                  )}
+                  {/* Tooltip for collapsed state */}
+                  {collapsed && (
+                    <div className="absolute left-full ml-2 px-2 py-1 bg-popover text-popover-foreground text-xs rounded-md opacity-0 group-hover:opacity-100 pointer-events-none z-50 shadow-md">
+                      {item.label}
+                    </div>
+                  )}
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+
+        {/* Bottom Actions */}
+        <div className={cn("p-2 border-t border-sidebar-border space-y-0.5", collapsed && "px-1")}>
+          {isLeadership && (
+            <Link href="/settings" className="block" onClick={onNavigate}>
+              <div className={cn(
+                "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",
+                collapsed && "justify-center px-2",
+                location.startsWith('/settings')
+                  ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-[inset_2px_0_0_0_hsl(var(--accent-tally))] hover:bg-sidebar-accent/80"
+                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+              )}>
+                <Settings2 className={cn("w-4 h-4 shrink-0 transition-colors", location.startsWith('/settings') && "text-accent-tally")} />
+                {!collapsed && <span>Settings</span>}
+              </div>
+            </Link>
+          )}
+
+          {/* Collapse Button — desktop only; the mobile drawer closes via
+              the backdrop or TopBar's menu button instead. */}
+          {!isMobile && (
+            <button
+              onClick={toggleSidebar}
+              className={cn(
+                "w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-sidebar-foreground/50 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors",
+                collapsed && "justify-center px-2"
+              )}
+            >
+              {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+              {!collapsed && <span>Collapse</span>}
+            </button>
+          )}
+        </div>
+      </>
+    );
+  }
+
+  if (isMobile) {
+    return (
+      <>
+        {mobileNavOpen && (
+          <div
+            className="fixed inset-0 bg-black/50 z-40 animate-in fade-in duration-200"
+            onClick={() => setMobileNavOpen(false)}
+          />
+        )}
+        <div
+          className={cn(
+            "fixed inset-y-0 left-0 z-50 w-72 bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex flex-col transition-transform duration-300 ease-in-out",
+            mobileNavOpen ? "translate-x-0" : "-translate-x-full"
+          )}
+        >
+          {renderBody(false, () => setMobileNavOpen(false))}
+        </div>
+      </>
+    );
+  }
 
   return (
     <div
@@ -94,111 +279,7 @@ export function Sidebar() {
         sidebarCollapsed ? "w-16" : "w-64"
       )}
     >
-      {/* Workspace Switcher */}
-      <div className={cn("p-3 border-b border-sidebar-border", sidebarCollapsed && "px-2")}>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button className={cn(
-              "w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-sidebar-accent/50 transition-colors text-left",
-              sidebarCollapsed && "justify-center px-0"
-            )}>
-              <div className="w-7 h-7 rounded-md bg-primary/20 flex items-center justify-center shrink-0">
-                <Building2 className="w-4 h-4 text-primary" />
-              </div>
-              {!sidebarCollapsed && (
-                <>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold truncate">{currentStudio?.name || 'Studio'}</div>
-                    <div className="text-[10px] text-muted-foreground truncate">{currentStudio?.region || 'Global'}</div>
-                  </div>
-                  <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
-                </>
-              )}
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-56" align="start">
-            {STUDIOS.map(s => (
-              <DropdownMenuItem key={s.id} onClick={() => setStudio(s.id)}>
-                <Building2 className="w-4 h-4 mr-2 text-muted-foreground" />
-                {s.name}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-
-      {/* Navigation Links */}
-      <div className="flex-1 overflow-y-auto py-4 px-3 space-y-1 scrollbar-thin">
-        {navItems.map((item) => {
-          // Compare against the path only — item.href may carry a query string
-          // (e.g. artist "My Shots" -> /shots?mine=1) which `location` never includes.
-          const itemPath = item.href.split('?')[0];
-          const isActive = location === itemPath || (itemPath !== '/' && location.startsWith(itemPath));
-          return (
-            <Link key={item.label} href={item.href}>
-              <div
-                className={cn(
-                  "flex items-center gap-3 px-3 py-2 rounded-md transition-colors cursor-pointer relative group",
-                  isActive
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-[inset_2px_0_0_0_hsl(var(--accent-tally))] hover:bg-sidebar-accent/80"
-                    : "text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
-                  sidebarCollapsed && "justify-center px-2"
-                )}
-                title={sidebarCollapsed ? item.label : undefined}
-              >
-                <item.icon className={cn(
-                  "w-4 h-4 shrink-0 transition-colors",
-                  isActive ? "text-accent-tally" : "text-muted-foreground group-hover:text-sidebar-foreground"
-                )} />
-                {!sidebarCollapsed && (
-                  <span className="flex-1 truncate text-sm">{item.label}</span>
-                )}
-                {!sidebarCollapsed && item.badge && (
-                  <Badge variant="secondary" className="px-1.5 py-0 text-[10px] h-4 bg-accent-tally/10 text-accent-tally hover:bg-accent-tally/20">
-                    {item.badge}
-                  </Badge>
-                )}
-                {/* Tooltip for collapsed state */}
-                {sidebarCollapsed && (
-                  <div className="absolute left-full ml-2 px-2 py-1 bg-popover text-popover-foreground text-xs rounded-md opacity-0 group-hover:opacity-100 pointer-events-none z-50 shadow-md">
-                    {item.label}
-                  </div>
-                )}
-              </div>
-            </Link>
-          );
-        })}
-      </div>
-
-      {/* Bottom Actions */}
-      <div className={cn("p-2 border-t border-sidebar-border space-y-0.5", sidebarCollapsed && "px-1")}>
-        {isLeadership && (
-          <Link href="/settings" className="block">
-            <div className={cn(
-              "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",
-              sidebarCollapsed && "justify-center px-2",
-              location.startsWith('/settings')
-                ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-[inset_2px_0_0_0_hsl(var(--accent-tally))] hover:bg-sidebar-accent/80"
-                : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-            )}>
-              <Settings2 className={cn("w-4 h-4 shrink-0 transition-colors", location.startsWith('/settings') && "text-accent-tally")} />
-              {!sidebarCollapsed && <span>Settings</span>}
-            </div>
-          </Link>
-        )}
-
-        {/* Collapse Button */}
-        <button
-          onClick={toggleSidebar}
-          className={cn(
-            "w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-sidebar-foreground/50 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors",
-            sidebarCollapsed && "justify-center px-2"
-          )}
-        >
-          {sidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-          {!sidebarCollapsed && <span>Collapse</span>}
-        </button>
-      </div>
+      {renderBody(sidebarCollapsed, () => {})}
     </div>
   );
 }

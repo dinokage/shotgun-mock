@@ -6,8 +6,10 @@ import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { USERS, DEPARTMENTS, ROLE_LABELS } from '@/data/mockData';
-import { Search, Filter, Mail, Building2, ExternalLink, Clock } from 'lucide-react';
+import { Search, Filter, Mail, Building2, ExternalLink, Users2 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
+import { STUDIO_LEADERSHIP_ROLES } from '@/store/permissions';
 
 export default function People() {
   const { currentUser } = useAuthStore();
@@ -19,9 +21,9 @@ export default function People() {
     if (!currentUser) return [];
     
     // RBAC Rules for Roster Visibility
-    const isStudioLeadership = ['vfx_producer', 'production_manager', 'coordinator'].includes(currentUser.role);
     const isDeptLeadership = ['supervisor', 'lead'].includes(currentUser.role);
     const isArtist = ['senior_artist', 'artist', 'junior_artist'].includes(currentUser.role);
+    const isClient = currentUser.role === 'client';
 
     return USERS.filter(u => {
       // 1. Enforce RBAC visibility
@@ -34,7 +36,10 @@ export default function People() {
           return false; // Dept Leads see their dept + all other leads/producers
         }
       }
-      
+      if (isClient && !STUDIO_LEADERSHIP_ROLES.includes(u.role)) {
+        return false; // Clients only see their studio points of contact, not the internal roster
+      }
+
       // 2. Apply UI search/filters
       if (search && !u.name.toLowerCase().includes(search.toLowerCase()) && !u.title.toLowerCase().includes(search.toLowerCase())) return false;
       if (deptFilter !== 'all' && u.departmentId !== deptFilter) return false;
@@ -77,6 +82,22 @@ export default function People() {
         </div>
       </div>
 
+      {filteredUsers.length === 0 && (
+        <Empty className="flex-1">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <Users2 />
+            </EmptyMedia>
+            <EmptyTitle>No people found</EmptyTitle>
+            <EmptyDescription>
+              {search || deptFilter !== 'all'
+                ? 'Try adjusting your search or department filter.'
+                : "There's no one visible in your roster yet."}
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 overflow-y-auto pb-6">
         {filteredUsers.map(user => {
           const dept = DEPARTMENTS.find(d => d.id === user.departmentId);
@@ -103,18 +124,9 @@ export default function People() {
                   </div>
 
                   <div className="space-y-2 text-xs text-muted-foreground">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Building2 className="w-3.5 h-3.5" />
-                        <span className="font-medium" style={{ color: dept?.color }}>{dept?.name}</span>
-                      </div>
-                      {/* Simulated time tracking */}
-                      {user.status === 'active' && (
-                        <div className="flex items-center gap-1 text-[10px] bg-muted/50 px-1.5 py-0.5 rounded border border-border/50">
-                          <Clock className="w-3 h-3 text-primary" />
-                          <span className="font-mono">{Math.floor((user.id.charCodeAt(user.id.length - 1) % 8) + 1)}h {(user.id.charCodeAt(user.id.length - 2) % 60).toString().padStart(2, '0')}m</span>
-                        </div>
-                      )}
+                    <div className="flex items-center gap-2">
+                      <Building2 className="w-3.5 h-3.5" />
+                      <span className="font-medium" style={{ color: dept?.color }}>{dept?.name}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Mail className="w-3.5 h-3.5" />

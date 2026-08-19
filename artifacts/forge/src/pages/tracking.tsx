@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Search, Filter, Download, Save, TableProperties, List, LayoutGrid,
   ChevronDown, ChevronRight, Layers, ArrowUpDown, Bookmark, BookmarkPlus,
@@ -62,6 +62,29 @@ const TASK_BUCKET_COLOR: Record<string, string> = {
   complete: '#10b981', 'in-progress': '#f59e0b', bottleneck: '#ef4444', review: '#a855f7', todo: '#71717a', other: '#3f3f46',
 };
 const TASK_BUCKET_ORDER = ['complete', 'in-progress', 'review', 'bottleneck', 'todo', 'other'] as const;
+
+// Full Shot.status vocabulary (9 values) so every shot renders a valid, non-empty
+// selection regardless of what state it's currently in.
+const SHOT_STATUS_OPTIONS: { value: string; label: string }[] = [
+  { value: 'not-started', label: 'Not Started' },
+  { value: 'in-progress', label: 'In Progress' },
+  { value: 'bottleneck', label: 'Bottleneck' },
+  { value: 'review', label: 'Review' },
+  { value: 'client-review', label: 'Client Review' },
+  { value: 'at-risk', label: 'At Risk' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'complete', label: 'Complete' },
+  { value: 'published', label: 'Published' },
+];
+
+// Full review-status vocabulary (5 values) shared by internal & client review columns.
+const REVIEW_STATUS_OPTIONS: { value: string; label: string }[] = [
+  { value: 'not-submitted', label: 'Not Submitted' },
+  { value: 'pending', label: 'Pending' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'changes-requested', label: 'Changes Req' },
+  { value: 'rejected', label: 'Rejected' },
+];
 
 function humanize(s: string) {
   return s.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -326,7 +349,12 @@ export default function TrackingGrid() {
   const setView = (v: 'list' | 'card') => { setViewState(v); markDirty(); };
   const setGroupBy1 = (v: TrackingGroupKey) => {
     setGroupBy1State(v);
-    if (v === 'none') setGroupBy2State('none');
+    // The "Then by" dropdown excludes whatever groupBy1 currently is, but that
+    // filtering only runs on groupBy2's own render — if the user now picks a
+    // primary group that happens to match the *existing* secondary group,
+    // groupBy2 is left pointing at a value its own option list no longer
+    // offers (and buildGroups would nest a key under itself). Reset it too.
+    if (v === 'none' || v === groupBy2) setGroupBy2State('none');
     setCollapsedKeys(new Set());
     markDirty();
   };
@@ -334,6 +362,37 @@ export default function TrackingGrid() {
   const setSortBy = (v: TrackingSortKey) => { setSortByState(v); markDirty(); };
 
   const activeView = useMemo(() => savedViews.find((v) => v.id === activeViewId) || null, [savedViews, activeViewId]);
+
+  const isDirty = Object.keys(localOverrides).length > 0;
+
+  // Warn on tab close / reload / browser back-forward so staged edits aren't silently lost.
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty]);
+
+  // Warn on in-app navigation (sidebar / any <a> link) while edits are staged but not saved.
+  useEffect(() => {
+    if (!isDirty) return;
+    const handleClick = (e: MouseEvent) => {
+      const anchor = (e.target as HTMLElement | null)?.closest?.('a[href]') as HTMLAnchorElement | null;
+      if (!anchor) return;
+      const href = anchor.getAttribute('href') || '';
+      if (!href.startsWith('/') || href === window.location.pathname) return;
+      const confirmed = window.confirm('You have unsaved tracking grid changes that haven\'t been saved. Leave this page and discard them?');
+      if (!confirmed) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    document.addEventListener('click', handleClick, true);
+    return () => document.removeEventListener('click', handleClick, true);
+  }, [isDirty]);
 
   const trackingData = useMemo(() => {
     // Filter by project
@@ -507,6 +566,11 @@ export default function TrackingGrid() {
       case 'in-progress': return 'text-amber-500';
       case 'bottleneck': return 'text-red-500';
       case 'review': return 'text-purple-500';
+      case 'client-review': return 'text-violet-400';
+      case 'at-risk': return 'text-orange-500';
+      case 'approved': return 'text-green-500';
+      case 'published': return 'text-cyan-500';
+      case 'not-started': return 'text-[#888]';
       default: return 'text-muted-foreground';
     }
   };
@@ -517,6 +581,7 @@ export default function TrackingGrid() {
       case 'rejected': return 'text-red-500 bg-red-500/10';
       case 'changes-requested': return 'text-orange-500 bg-orange-500/10';
       case 'pending': return 'text-blue-500 bg-blue-500/10';
+      case 'not-submitted': return 'text-[#888] bg-[#333]/40';
       default: return 'text-muted-foreground bg-muted/20';
     }
   };
@@ -535,11 +600,9 @@ export default function TrackingGrid() {
           value={row.status}
           onChange={(e) => updateCell(row.id, 'status', e.target.value)}
         >
-          <option value="todo" className="bg-[#1a1a1a]">Todo</option>
-          <option value="in-progress" className="bg-[#1a1a1a]">In Progress</option>
-          <option value="bottleneck" className="bg-[#1a1a1a]">Bottleneck</option>
-          <option value="review" className="bg-[#1a1a1a]">Review</option>
-          <option value="complete" className="bg-[#1a1a1a]">Complete</option>
+          {SHOT_STATUS_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value} className="bg-[#1a1a1a]">{o.label}</option>
+          ))}
         </select>
       </div>
       <div className={`${CELL_CENTER} text-xs text-[#00cec9] font-mono`}>{row.usdVersion}</div>
@@ -549,10 +612,9 @@ export default function TrackingGrid() {
           value={row.internalReview}
           onChange={(e) => updateCell(row.id, 'internalReview', e.target.value)}
         >
-          <option value="pending" className="bg-[#1a1a1a]">Pending</option>
-          <option value="approved" className="bg-[#1a1a1a]">Approved</option>
-          <option value="changes-requested" className="bg-[#1a1a1a]">Changes Req</option>
-          <option value="rejected" className="bg-[#1a1a1a]">Rejected</option>
+          {REVIEW_STATUS_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value} className="bg-[#1a1a1a]">{o.label}</option>
+          ))}
         </select>
       </div>
       <div className="border-r border-b border-[#333] p-0 text-center relative">
@@ -561,10 +623,9 @@ export default function TrackingGrid() {
           value={row.clientReview}
           onChange={(e) => updateCell(row.id, 'clientReview', e.target.value)}
         >
-          <option value="pending" className="bg-[#1a1a1a]">Pending</option>
-          <option value="approved" className="bg-[#1a1a1a]">Approved</option>
-          <option value="changes-requested" className="bg-[#1a1a1a]">Changes Req</option>
-          <option value="rejected" className="bg-[#1a1a1a]">Rejected</option>
+          {REVIEW_STATUS_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value} className="bg-[#1a1a1a]">{o.label}</option>
+          ))}
         </select>
       </div>
       <div className="border-b border-[#333] p-0">
@@ -604,10 +665,9 @@ export default function TrackingGrid() {
             value={row.internalReview}
             onChange={(e) => updateCell(row.id, 'internalReview', e.target.value)}
           >
-            <option value="pending">Pending</option>
-            <option value="approved">Approved</option>
-            <option value="changes-requested">Changes Req</option>
-            <option value="rejected">Rejected</option>
+            {REVIEW_STATUS_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
           </select>
         </div>
         <div className="bg-[#111] p-2 rounded-sm border border-[#222]">
@@ -617,10 +677,9 @@ export default function TrackingGrid() {
             value={row.clientReview}
             onChange={(e) => updateCell(row.id, 'clientReview', e.target.value)}
           >
-            <option value="pending">Pending</option>
-            <option value="approved">Approved</option>
-            <option value="changes-requested">Changes Req</option>
-            <option value="rejected">Rejected</option>
+            {REVIEW_STATUS_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
           </select>
         </div>
       </div>
@@ -640,7 +699,13 @@ export default function TrackingGrid() {
           <h1 className="text-2xl font-bold tracking-tight text-white">Global Tracking Grid</h1>
           <p className="text-[#888] text-sm mt-1">Hierarchical sequence & shot tracking with Review pipelines.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          {isDirty && (
+            <div className="flex items-center gap-1.5 text-[11px] text-amber-400 mr-1" title="You have staged edits that haven't been saved yet">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
+              Unsaved changes
+            </div>
+          )}
           <Button variant="outline" size="sm" onClick={handleExportCSV} className="border-[#333] text-[#ccc]">
             <Download className="w-4 h-4 mr-2" /> Export CSV
           </Button>

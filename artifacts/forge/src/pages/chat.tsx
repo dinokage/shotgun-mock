@@ -1,8 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { useSearchParams, useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '@/store/auth';
-import { useChatGroupsStore } from '@/store/chatGroups';
-import { DEPARTMENTS, USERS, MESSAGES as MOCK_MESSAGES, ChatMessage, Department } from '@/data/mockData';
+import { useChatGroupsStore, useChatMessagesStore, ChatGroup } from '@/store/chatGroups';
+import { DEPARTMENTS, USERS, ChatMessage, Department } from '@/data/mockData';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -16,11 +17,13 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
-import { Hash, Send, Paperclip, Image as ImageIcon, Video, Shield, User as UserIcon, Plus, Users } from 'lucide-react';
+import { Hash, Send, Paperclip, Image as ImageIcon, Video, Shield, User as UserIcon, Plus, Users, MessageCircle } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { fadeInUp } from '@/lib/motion';
+import { useIsLeadership } from '@/hooks/use-capability';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 
 // Synthetic "channel" representing all studio members. It isn't a real row in
 // DEPARTMENTS, so any lookup that resolves the active channel needs to check
@@ -42,38 +45,74 @@ const EVERYONE_DEPT: Department = {
 export default function Chat() {
   const { currentUser } = useAuthStore();
   const { toast } = useToast();
-  const { groups, addGroup } = useChatGroupsStore();
-  const [messages, setMessages] = useState<ChatMessage[]>(MOCK_MESSAGES);
+  const { groups, addGroup, getOrCreateDM } = useChatGroupsStore();
+  const { messages, addMessage } = useChatMessagesStore();
   const [inputText, setInputText] = useState('');
+  const [searchParams] = useSearchParams();
+  const [, setLocation] = useLocation();
+
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupMemberIds, setNewGroupMemberIds] = useState<Set<string>>(new Set());
 
-  // A user can see all departments if they are top leadership, otherwise just their own.
-  const isTopLeadership = currentUser && ['vfx_producer', 'production_manager', 'coordinator'].includes(currentUser.role);
+  // A user can see all departments if they are studio leadership, otherwise just their own.
+  const isLeadership = useIsLeadership();
 
   const visibleDepartments = useMemo(() => {
-    if (isTopLeadership) return [EVERYONE_DEPT, ...DEPARTMENTS];
+    if (isLeadership) return [EVERYONE_DEPT, ...DEPARTMENTS];
     return [EVERYONE_DEPT, ...DEPARTMENTS.filter(d => d.id === currentUser?.departmentId)];
-  }, [currentUser, isTopLeadership]);
+  }, [currentUser, isLeadership]);
 
   const myGroups = useMemo(() => {
     if (!currentUser) return [];
     return groups.filter(g => g.memberIds.includes(currentUser.id));
   }, [groups, currentUser]);
 
+  const myDMs = useMemo(() => myGroups.filter(g => g.isDM), [myGroups]);
+  const myTeamGroups = useMemo(() => myGroups.filter(g => !g.isDM), [myGroups]);
+
   const [activeDeptId, setActiveDeptId] = useState<string>(visibleDepartments[0]?.id || '');
 
   const activeGroup = useMemo(() => groups.find(g => g.id === activeDeptId), [groups, activeDeptId]);
+
+  // A DM channel is shared by two people but stores a generic name — show
+  // the other participant's name instead of the raw group name.
+  const groupDisplayName = (group: ChatGroup) => {
+    if (group.isDM && currentUser) {
+      const otherId = group.memberIds.find(id => id !== currentUser.id);
+      const other = otherId ? USERS.find(u => u.id === otherId) : undefined;
+      return other?.name || group.name;
+    }
+    return group.name;
+  };
 
   const activeDept = useMemo(() => {
     if (activeDeptId === 'everyone') return EVERYONE_DEPT;
     const dept = DEPARTMENTS.find(d => d.id === activeDeptId);
     if (dept) return dept;
-    if (activeGroup) return { ...EVERYONE_DEPT, id: activeGroup.id, name: activeGroup.name };
+    if (activeGroup) return { ...EVERYONE_DEPT, id: activeGroup.id, name: groupDisplayName(activeGroup) };
     return undefined;
-  }, [activeDeptId, activeGroup]);
+  }, [activeDeptId, activeGroup, currentUser]);
+
+  // Open the requested person's DM when arriving via /chat?user=<id> (e.g.
+  // the "Message" button on a profile page).
+  const targetUserId = searchParams.get('user');
+  useEffect(() => {
+    if (!currentUser || !targetUserId || targetUserId === currentUser.id) return;
+    const targetUser = USERS.find(u => u.id === targetUserId);
+    if (!targetUser) return;
+    const id = getOrCreateDM(currentUser.id, targetUser.id);
+    setActiveDeptId(id);
+  }, [targetUserId, currentUser?.id, getOrCreateDM]);
+
+  const openDMWithUser = (userId: string) => {
+    if (!currentUser || userId === currentUser.id) return;
+    setLocation(`/chat?user=${userId}`);
+  };
 
   const deptUsers = useMemo(() => {
     let source;
@@ -108,19 +147,15 @@ export default function Chat() {
       attachments: [],
       timestamp: new Date().toISOString()
     };
-    setMessages([...messages, newMsg]);
+    addMessage(newMsg);
     setInputText('');
   };
 
-  const handleSimulateAttachment = (type: 'image' | 'video' | 'file') => {
+  // Reads the real file the user picked and attaches it to the channel.
+  // No AI analysis or "logging" happens here — none exists in this app.
+  const handleAttachmentSelected = (file: File, type: 'image' | 'video' | 'file') => {
     if (!currentUser) return;
-    
-    // Simulate AI scanning the file for production review
-    toast({
-      title: "File Uploaded & Scanned",
-      description: "AI has successfully analyzed the attachment and logged it for Main Production review.",
-    });
-
+    const url = URL.createObjectURL(file);
     const newMsg: ChatMessage = {
       id: `m_${Date.now()}`,
       departmentId: activeDeptId,
@@ -128,13 +163,23 @@ export default function Chat() {
       text: '',
       attachments: [{
         id: `att_${Date.now()}`,
-        name: type === 'image' ? 'concept_v4.png' : type === 'video' ? 'anim_playblast.mp4' : 'scene_v01.usd',
-        type: type,
-        url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564&auto=format&fit=crop'
+        name: file.name,
+        type,
+        url,
       }],
       timestamp: new Date().toISOString()
     };
-    setMessages([...messages, newMsg]);
+    addMessage(newMsg);
+    toast({
+      title: "Attachment added",
+      description: `${file.name} was shared in #${activeDept?.name ?? 'this channel'}.`,
+    });
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video' | 'file') => {
+    const file = e.target.files?.[0];
+    if (file) handleAttachmentSelected(file, type);
+    e.target.value = '';
   };
 
   const openGroupDialog = () => {
@@ -201,11 +246,35 @@ export default function Chat() {
               </button>
             ))}
 
-            {myGroups.length > 0 && (
+            {myDMs.length > 0 && (
+              <>
+                <div className="text-xs font-semibold text-muted-foreground mb-2 mt-4 px-2 uppercase tracking-wider">Direct Messages</div>
+                <AnimatePresence initial={false}>
+                  {myDMs.map((group, i) => (
+                    <motion.button
+                      key={group.id}
+                      {...fadeInUp}
+                      transition={{ ...fadeInUp.transition, delay: i * 0.03 }}
+                      onClick={() => setActiveDeptId(group.id)}
+                      className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
+                        activeDeptId === group.id
+                          ? 'bg-primary/10 text-primary font-medium hover:bg-primary/15'
+                          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                      }`}
+                    >
+                      <MessageCircle className="w-4 h-4 opacity-70" />
+                      {groupDisplayName(group)}
+                    </motion.button>
+                  ))}
+                </AnimatePresence>
+              </>
+            )}
+
+            {myTeamGroups.length > 0 && (
               <>
                 <div className="text-xs font-semibold text-muted-foreground mb-2 mt-4 px-2 uppercase tracking-wider">Groups</div>
                 <AnimatePresence initial={false}>
-                  {myGroups.map((group, i) => (
+                  {myTeamGroups.map((group, i) => (
                     <motion.button
                       key={group.id}
                       {...fadeInUp}
@@ -294,11 +363,15 @@ export default function Chat() {
         <ScrollArea className="flex-1 p-6">
           <div className="space-y-6">
             {deptMessages.length === 0 ? (
-              <div className="text-center text-muted-foreground py-10">
-                <Hash className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                <p>Welcome to the {activeDept?.name} channel!</p>
-                <p className="text-sm">This is the start of the conversation.</p>
-              </div>
+              <Empty className="py-10 border-none">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    {activeGroup?.isDM ? <MessageCircle className="w-6 h-6" /> : <Hash className="w-6 h-6" />}
+                  </EmptyMedia>
+                  <EmptyTitle>Welcome to {activeDept?.name}!</EmptyTitle>
+                  <EmptyDescription>This is the start of the conversation.</EmptyDescription>
+                </EmptyHeader>
+              </Empty>
             ) : (
               deptMessages.map((msg, i) => {
                 const user = USERS.find(u => u.id === msg.userId);
@@ -333,19 +406,31 @@ export default function Chat() {
                       {msg.attachments.length > 0 && (
                         <div className="mt-2 flex flex-wrap gap-2">
                           {msg.attachments.map((att, idx) => (
-                            <div key={idx} className="relative rounded-lg overflow-hidden border border-border group cursor-pointer max-w-sm">
-                              {att.type === 'image' ? (
-                                <img src={att.url} alt={att.name} className="w-full h-auto max-h-64 object-cover" />
-                              ) : (
-                                <div className="bg-black/90 w-full aspect-video flex items-center justify-center relative">
-                                  <Video className="w-12 h-12 text-white/50 absolute" />
-                                  <video src={att.url} className="w-full h-full opacity-50 object-cover" />
+                            att.type === 'file' ? (
+                              <a
+                                key={idx}
+                                href={att.url}
+                                download={att.name}
+                                className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm hover:bg-muted/60 transition-colors max-w-sm"
+                              >
+                                <Paperclip className="w-4 h-4 shrink-0 text-muted-foreground" />
+                                <span className="truncate">{att.name}</span>
+                              </a>
+                            ) : (
+                              <div key={idx} className="relative rounded-lg overflow-hidden border border-border group cursor-pointer max-w-sm">
+                                {att.type === 'image' ? (
+                                  <img src={att.url} alt={att.name} className="w-full h-auto max-h-64 object-cover" />
+                                ) : (
+                                  <div className="bg-black/90 w-full aspect-video flex items-center justify-center relative">
+                                    <Video className="w-12 h-12 text-white/50 absolute" />
+                                    <video src={att.url} className="w-full h-full opacity-50 object-cover" />
+                                  </div>
+                                )}
+                                <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 to-transparent p-3 pt-8 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <span className="text-xs text-white truncate block">{att.name}</span>
                                 </div>
-                              )}
-                              <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 to-transparent p-3 pt-8 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <span className="text-xs text-white truncate block">{att.name}</span>
                               </div>
-                            </div>
+                            )
                           ))}
                         </div>
                       )}
@@ -361,14 +446,20 @@ export default function Chat() {
         <div className="p-4 bg-card/50 backdrop-blur-sm shrink-0">
           <div className="relative flex items-end gap-2 bg-muted/30 border border-border rounded-xl p-2 focus-within:ring-1 focus-within:ring-primary focus-within:border-primary transition-all shadow-sm">
             <div className="flex gap-1 pb-1">
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0" title="Attach Image" onClick={() => handleSimulateAttachment('image')}>
+              <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleFileInputChange(e, 'image')} />
+              <input ref={videoInputRef} type="file" accept="video/*" className="hidden" onChange={(e) => handleFileInputChange(e, 'video')} />
+              <input ref={fileInputRef} type="file" className="hidden" onChange={(e) => handleFileInputChange(e, 'file')} />
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0" title="Attach Image" onClick={() => imageInputRef.current?.click()}>
                 <ImageIcon className="w-4 h-4" />
               </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0" title="Attach Video" onClick={() => handleSimulateAttachment('video')}>
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0" title="Attach Video" onClick={() => videoInputRef.current?.click()}>
                 <Video className="w-4 h-4" />
               </Button>
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0" title="Attach File" onClick={() => fileInputRef.current?.click()}>
+                <Paperclip className="w-4 h-4" />
+              </Button>
             </div>
-            
+
             <textarea
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
@@ -393,7 +484,7 @@ export default function Chat() {
             </Button>
           </div>
           <div className="text-[10px] text-muted-foreground text-center mt-2">
-            <strong>Pro Tip:</strong> Click the image/video icons to test media attachments.
+            Attach an image, video, or file to share it in this channel.
           </div>
         </div>
       </div>
@@ -412,7 +503,19 @@ export default function Chat() {
               </div>
               <div className="space-y-1">
                 {deptUsers.filter(u => ['supervisor', 'lead'].includes(u.role)).map(u => (
-                  <div key={u.id} className="flex items-center gap-2.5 p-1.5 rounded hover:bg-muted/50 cursor-pointer">
+                  <div
+                    key={u.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openDMWithUser(u.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        openDMWithUser(u.id);
+                      }
+                    }}
+                    className="flex items-center gap-2.5 p-1.5 rounded hover:bg-muted/50 cursor-pointer"
+                  >
                     <Avatar className="w-7 h-7 border shadow-sm relative">
                       <AvatarImage src={u.avatar} />
                       <AvatarFallback>{u.name.charAt(0)}</AvatarFallback>
@@ -434,7 +537,19 @@ export default function Chat() {
               </div>
               <div className="space-y-1">
                 {deptUsers.filter(u => !['supervisor', 'lead'].includes(u.role)).map(u => (
-                  <div key={u.id} className="flex items-center gap-2.5 p-1.5 rounded hover:bg-muted/50 cursor-pointer opacity-80 hover:opacity-100">
+                  <div
+                    key={u.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openDMWithUser(u.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        openDMWithUser(u.id);
+                      }
+                    }}
+                    className="flex items-center gap-2.5 p-1.5 rounded hover:bg-muted/50 cursor-pointer opacity-80 hover:opacity-100"
+                  >
                     <Avatar className="w-7 h-7">
                       <AvatarImage src={u.avatar} />
                       <AvatarFallback>{u.name.charAt(0)}</AvatarFallback>

@@ -1,10 +1,13 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import { PROJECTS, DEPARTMENTS, Project } from '@/data/mockData';
 import { useTasksStore } from '@/store/tasks';
-import { DollarSign, TrendingUp, TrendingDown, Users, Briefcase } from 'lucide-react';
+import { DollarSign, TrendingUp, TrendingDown, Users, Briefcase, Lock } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { motion, animate } from 'framer-motion';
 import { ScopeTrace } from '@/components/shared/ScopeTrace';
+import { hashString, seededFraction } from '@/lib/seededMock';
+import { useCapability } from '@/hooks/use-capability';
 
 // ============================================================================
 // Deterministic mock financial model
@@ -13,21 +16,10 @@ import { ScopeTrace } from '@/components/shared/ScopeTrace';
 // mock fields (budget, progress, riskScore, status, startDate) plus a stable
 // per-project seed derived from a hash of the project id. The same project
 // always produces the same spent/remaining/burn numbers on every render -
-// nothing here is reshuffled by Math.random().
+// nothing here is reshuffled by Math.random(). hashString/seededFraction
+// live in src/lib/seededMock.ts, shared with analytics.tsx's bid-margin math
+// so the two pages can't silently drift out of sync with each other.
 // ============================================================================
-
-/** Stable string hash - same algorithm used elsewhere in the app for seeded mock data. */
-function hashString(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) hash = Math.imul(31, hash) + str.charCodeAt(i) | 0;
-  return Math.abs(hash);
-}
-
-/** Deterministic pseudo-random float in [0, 1), seeded by a hash + a salt. */
-function seededFraction(seed: number, salt: number): number {
-  const x = Math.sin(seed * 12.9898 + salt * 78.233) * 43758.5453;
-  return x - Math.floor(x);
-}
 
 // Fictional "today" this studio's books are closed against. The rest of the
 // mock dataset (task logs, activity feeds, status updates) lives in and
@@ -144,6 +136,7 @@ function CountUp({ value, format, duration }: { value: number; format: (n: numbe
 
 export default function FinancialDashboard() {
   const tasks = useTasksStore(state => state.tasks);
+  const canViewFinancials = useCapability('view_financials');
 
   const projectFinancials = useMemo(() => {
     const map = new Map<string, ProjectFinancials>();
@@ -183,22 +176,45 @@ export default function FinancialDashboard() {
     });
   }, [tasks]);
 
+  // Leadership passes the coarse route-level LeadershipGuard, but not every
+  // leadership role carries view_financials in the real, editable Roles &
+  // Permissions matrix (e.g. supervisor/lead can lead a show without seeing
+  // its budget) - gate the dashboard itself on the specific capability.
+  if (!canViewFinancials) {
+    return (
+      <div className="p-8 h-[calc(100vh-3.5rem)] overflow-auto bg-background text-foreground flex items-center justify-center">
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <Lock />
+            </EmptyMedia>
+            <EmptyTitle>Financials access restricted</EmptyTitle>
+            <EmptyDescription>
+              Your role doesn't include View Financials in the current Roles &amp; Permissions scheme. Ask a producer or
+              manager to grant access under Settings &gt; Roles.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      </div>
+    );
+  }
+
   return (
-    <div className="p-8 h-[calc(100vh-3.5rem)] overflow-auto bg-[#0a0a0a] text-foreground">
+    <div className="p-8 h-[calc(100vh-3.5rem)] overflow-auto bg-background text-foreground">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight text-white">Financial Overview</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Financial Overview</h1>
         <p className="text-muted-foreground mt-2">Studio budget and cost tracking, derived from each project's real progress and risk profile.</p>
       </div>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
         <motion.div whileHover={{ y: -3 }} transition={{ type: 'spring', stiffness: 350, damping: 22 }}>
-          <Card className="bg-[#111] border-[#333] transition-colors hover:border-[#3a3a3a] h-full">
+          <Card className="bg-card border-border transition-colors hover:border-primary/40 h-full">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-[#ccc]">Total Budget</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Total Budget</CardTitle>
               <DollarSign className="h-4 w-4 text-emerald-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-white tabular-nums">
+              <div className="text-2xl font-bold text-foreground tabular-nums">
                 <CountUp value={totalBudget} format={n => `$${(n / 1000000).toFixed(1)}M`} />
               </div>
               <p className="text-xs text-muted-foreground mt-1 flex items-center">
@@ -209,13 +225,13 @@ export default function FinancialDashboard() {
         </motion.div>
 
         <motion.div whileHover={{ y: -3 }} transition={{ type: 'spring', stiffness: 350, damping: 22 }}>
-          <Card className="bg-[#111] border-[#333] transition-colors hover:border-[#3a3a3a] h-full">
+          <Card className="bg-card border-border transition-colors hover:border-primary/40 h-full">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-[#ccc]">Total Spent</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Total Spent</CardTitle>
               <TrendingDown className="h-4 w-4 text-red-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-white tabular-nums">
+              <div className="text-2xl font-bold text-foreground tabular-nums">
                 <CountUp value={totalSpent} format={n => `$${(n / 1000000).toFixed(1)}M`} />
               </div>
               <div className="h-7 w-full mt-2">
@@ -227,13 +243,13 @@ export default function FinancialDashboard() {
         </motion.div>
 
         <motion.div whileHover={{ y: -3 }} transition={{ type: 'spring', stiffness: 350, damping: 22 }}>
-          <Card className="bg-[#111] border-[#333] transition-colors hover:border-[#3a3a3a] h-full">
+          <Card className="bg-card border-border transition-colors hover:border-primary/40 h-full">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-[#ccc]">Active Projects</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Active Projects</CardTitle>
               <Briefcase className="h-4 w-4 text-blue-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-white tabular-nums">
+              <div className="text-2xl font-bold text-foreground tabular-nums">
                 <CountUp value={activeProjects.length} format={n => Math.round(n).toString()} duration={0.6} />
               </div>
               <p className="text-xs text-muted-foreground mt-1">Across 3 studios &middot; {PROJECTS.length} total</p>
@@ -242,13 +258,13 @@ export default function FinancialDashboard() {
         </motion.div>
 
         <motion.div whileHover={{ y: -3 }} transition={{ type: 'spring', stiffness: 350, damping: 22 }}>
-          <Card className="bg-[#111] border-[#333] transition-colors hover:border-[#3a3a3a] h-full">
+          <Card className="bg-card border-border transition-colors hover:border-primary/40 h-full">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-[#ccc]">Burn Rate</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Burn Rate</CardTitle>
               <Users className="h-4 w-4 text-orange-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-white tabular-nums">
+              <div className="text-2xl font-bold text-foreground tabular-nums">
                 <CountUp value={totalMonthlyBurn} format={n => `$${Math.round(n / 1000)}k/mo`} />
               </div>
               <div className="h-6 w-full mt-2">
@@ -263,9 +279,9 @@ export default function FinancialDashboard() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
-        <Card className="bg-[#111] border-[#333]">
+        <Card className="bg-card border-border">
           <CardHeader>
-            <CardTitle className="text-white">Budget by Project</CardTitle>
+            <CardTitle>Budget by Project</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
@@ -280,12 +296,12 @@ export default function FinancialDashboard() {
                     transition={{ duration: 0.4, delay: i * 0.04, ease: 'easeOut' }}
                   >
                     <div className="flex items-center justify-between text-sm mb-1">
-                      <span className="font-medium text-white">{p.name}</span>
+                      <span className="font-medium text-foreground">{p.name}</span>
                       <span className={`font-mono text-xs ${pf.isOverBudget ? 'text-red-400' : 'text-muted-foreground'}`}>
                         ${(pf.spent / 1000000).toFixed(1)}M / ${((p.budget || 0) / 1000000).toFixed(1)}M
                       </span>
                     </div>
-                    <div className="w-full bg-[#222] h-2 rounded-full overflow-hidden">
+                    <div className="w-full bg-muted h-2 rounded-full overflow-hidden">
                       <motion.div
                         className={`h-full ${pf.percentSpent > 90 ? 'bg-red-500' : pf.percentSpent > 75 ? 'bg-orange-500' : 'bg-emerald-500'}`}
                         initial={{ width: 0 }}
@@ -303,9 +319,9 @@ export default function FinancialDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="bg-[#111] border-[#333]">
+        <Card className="bg-card border-border">
           <CardHeader>
-            <CardTitle className="text-white">Department Spend</CardTitle>
+            <CardTitle>Department Spend</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
@@ -317,8 +333,8 @@ export default function FinancialDashboard() {
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ duration: 0.4, delay: i * 0.05, ease: 'easeOut' }}
                 >
-                  <div className="w-24 text-sm font-medium text-[#ccc] truncate">{d.name}</div>
-                  <div className="flex-1 bg-[#222] h-4 rounded overflow-hidden" title={`${d.actualHours}h logged / ${d.estimatedHours}h bid`}>
+                  <div className="w-24 text-sm font-medium text-muted-foreground truncate">{d.name}</div>
+                  <div className="flex-1 bg-muted h-4 rounded overflow-hidden" title={`${d.actualHours}h logged / ${d.estimatedHours}h bid`}>
                     <motion.div
                       className={`h-full ${d.percent > 100 ? 'bg-red-500/80' : d.percent > 80 ? 'bg-orange-500/80' : 'bg-blue-500/80'}`}
                       initial={{ width: 0 }}
@@ -337,15 +353,26 @@ export default function FinancialDashboard() {
       </div>
 
       <div className="mt-8">
-        <Card className="bg-[#111] border-[#333]">
+        <Card className="bg-card border-border">
           <CardHeader>
-            <CardTitle className="text-white">Bidding vs Actual (Task-wise)</CardTitle>
+            <CardTitle>Bidding vs Actual (Task-wise)</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="rounded-md border border-[#333] overflow-hidden">
+            {tasks.length === 0 ? (
+              <Empty className="border-0 py-6">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <DollarSign />
+                  </EmptyMedia>
+                  <EmptyTitle>No task cost data yet</EmptyTitle>
+                  <EmptyDescription>Bid vs. actual figures will appear here once tasks exist.</EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            ) : (
+            <div className="rounded-md border border-border overflow-hidden">
               <table className="w-full text-sm">
-                <thead className="bg-[#1a1a1a]">
-                  <tr className="border-b border-[#333] text-[#888]">
+                <thead className="bg-muted/50">
+                  <tr className="border-b border-border text-muted-foreground">
                     <th className="h-10 px-4 text-left font-medium w-[40%]">Task</th>
                     <th className="h-10 px-4 text-left font-medium">Department</th>
                     <th className="h-10 px-4 text-left font-medium">Status</th>
@@ -354,7 +381,7 @@ export default function FinancialDashboard() {
                     <th className="h-10 px-4 text-right font-medium">Variance</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#222]">
+                <tbody className="divide-y divide-border">
                   {tasks.slice(0, 10).map((task, i) => {
                     // Consistent mock bid/actual data, seeded from real task fields.
                     const bidDays = (hashString(task.id) % 10) + 2;
@@ -380,25 +407,25 @@ export default function FinancialDashboard() {
                         initial={{ opacity: 0, y: 6 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.3, delay: i * 0.03, ease: 'easeOut' }}
-                        className="hover:bg-[#1a1a1a] transition-colors"
+                        className="hover:bg-muted/50 transition-colors"
                       >
                         <td className="p-4">
-                          <div className="font-medium text-white">{task.title}</div>
+                          <div className="font-medium text-foreground">{task.title}</div>
                         </td>
-                        <td className="p-4 text-[#aaa]">{task.department}</td>
+                        <td className="p-4 text-muted-foreground">{task.department}</td>
                         <td className="p-4">
                           <span className={`px-2 py-1 rounded text-[10px] uppercase font-semibold ${
                             task.status === 'complete' ? 'bg-emerald-500/10 text-emerald-500' :
                             task.status === 'in-progress' ? 'bg-amber-500/10 text-amber-500' :
                             task.status === 'bottleneck' ? 'bg-red-500/10 text-red-500' :
-                            'bg-[#333] text-[#888]'
+                            'bg-muted text-muted-foreground'
                           }`}>
                             {task.status.replace('-', ' ')}
                           </span>
                         </td>
-                        <td className="p-4 text-right text-[#aaa]">{bidDays}d</td>
-                        <td className="p-4 text-right text-white font-medium">{actualDays > 0 ? `${actualDays}d` : '-'}</td>
-                        <td className={`p-4 text-right font-medium ${isOverBudget ? 'text-red-500' : variance > 0 ? 'text-emerald-500' : 'text-[#888]'}`}>
+                        <td className="p-4 text-right text-muted-foreground">{bidDays}d</td>
+                        <td className="p-4 text-right text-foreground font-medium">{actualDays > 0 ? `${actualDays}d` : '-'}</td>
+                        <td className={`p-4 text-right font-medium ${isOverBudget ? 'text-red-500' : variance > 0 ? 'text-emerald-500' : 'text-muted-foreground'}`}>
                           {actualDays === 0 ? '-' : (variance > 0 ? `+${variance}d` : `${variance}d`)}
                         </td>
                       </motion.tr>
@@ -407,6 +434,7 @@ export default function FinancialDashboard() {
                 </tbody>
               </table>
             </div>
+            )}
           </CardContent>
         </Card>
       </div>

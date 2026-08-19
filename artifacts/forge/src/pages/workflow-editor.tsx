@@ -57,6 +57,8 @@ import {
   type WorkflowNodeData,
   type WorkflowNodeKind,
 } from '@/store/workflows';
+import { useCapability } from '@/hooks/use-capability';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 // Icon names are persisted as strings (component references aren't
 // serializable to localStorage), and resolved back to components here.
@@ -253,14 +255,27 @@ function simulateTestRun(nodes: StoredWorkflowNode[], edges: Edge[]): TestRunRes
 
 function WorkflowEditorInner() {
   const [, routeParams] = useRoute('/workflows/:id');
+  const isNewWorkflowRoute = routeParams?.id === 'new';
   const routeWorkflowId =
     routeParams?.id && WORKFLOWS.some((wf) => wf.id === routeParams.id) ? routeParams.id : undefined;
 
-  const [workflowId, setWorkflowId] = useState<string>(routeWorkflowId ?? WORKFLOWS[0]?.id ?? 'wf1');
+  // /workflows/new must never resolve to an existing workflow's id. It
+  // previously fell through to WORKFLOWS[0] ('wf1' - a real, live,
+  // 342-run production graph) because 'new' doesn't match anything in
+  // WORKFLOWS, and any edit here autosaves - silently corrupting wf1. Give
+  // "new" its own throwaway id instead, generated once per mount so every
+  // visit to /workflows/new starts a genuinely blank workflow.
+  const [workflowId, setWorkflowId] = useState<string>(() =>
+    isNewWorkflowRoute ? `wf-new-${Math.random().toString(36).slice(2, 9)}` : routeWorkflowId ?? WORKFLOWS[0]?.id ?? 'wf1'
+  );
 
   const getGraph = useWorkflowsStore((s) => s.getGraph);
   const saveGraph = useWorkflowsStore((s) => s.saveGraph);
   const resetGraphAction = useWorkflowsStore((s) => s.resetGraph);
+  // Editing pipeline graphs (adding/moving/deleting nodes, wiring edges,
+  // saving, resetting) is gated on manage_pipeline rather than left open to
+  // anyone who can reach this (already leadership-only) route.
+  const canManagePipeline = useCapability('manage_pipeline');
 
   // Seed React Flow's local state synchronously from the store so there's
   // no empty-canvas flash on first paint.
@@ -283,6 +298,10 @@ function WorkflowEditorInner() {
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const currentWorkflow = WORKFLOWS.find((wf) => wf.id === workflowId);
+  // Not one of the seeded WORKFLOWS - either the /workflows/new draft, or a
+  // workflow whose id no longer resolves. Drives the "Untitled Workflow"
+  // label and its virtual entry in the workflow switcher below.
+  const isNewWorkflow = !currentWorkflow;
 
   // Switch workflows: load its persisted (or freshly-seeded) graph.
   useEffect(() => {
@@ -300,11 +319,21 @@ function WorkflowEditorInner() {
   }, [workflowId]);
 
   // Debounced autosave whenever the graph actually changes.
+  //
+  // Must stay gated on canManagePipeline: clicking a node to view it (always
+  // allowed, even read-only - it's how the read-only sidebar gets populated)
+  // runs a 'select' NodeChange through onNodesChange, which produces a new
+  // `nodes` array reference even though nothing about the graph actually
+  // changed. Without this guard that alone was enough to fire a real
+  // saveGraph() - and bump "Saved just now" - for a viewer with no edit
+  // rights, directly contradicting the "changes here won't be saved"
+  // read-only notice shown in the header.
   useEffect(() => {
     if (skipNextAutosaveRef.current) {
       skipNextAutosaveRef.current = false;
       return;
     }
+    if (!canManagePipeline) return;
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(() => {
       saveGraph(workflowId, nodes, edges);
@@ -314,7 +343,7 @@ function WorkflowEditorInner() {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes, edges]);
+  }, [nodes, edges, canManagePipeline]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange<StoredWorkflowNode>[]) => {
@@ -328,7 +357,8 @@ function WorkflowEditorInner() {
   );
 
   const onConnect = useCallback(
-    (params: Connection) =>
+    (params: Connection) => {
+      if (!canManagePipeline) return;
       setEdges((eds) =>
         addEdge(
           {
@@ -340,24 +370,34 @@ function WorkflowEditorInner() {
           },
           eds
         )
-      ),
-    [setEdges]
+      );
+    },
+    [canManagePipeline, setEdges]
   );
 
   // Shared by both the click-to-add and drag-and-drop placement paths, so
   // collision avoidance applies no matter how the node was placed.
+  //
+  // Also marks the new node `selected: true` (and clears any other node's
+  // selection) so React Flow's own selection ring - which it manages
+  // independently of our sidebar's selectedNode state, and normally keeps in
+  // sync via its built-in click handling - actually points at the node the
+  // sidebar is now showing settings for, instead of staying on whatever was
+  // last clicked (or showing no ring at all).
   const addNodeAt = useCallback(
     (item: PaletteItem, flowPosition: { x: number; y: number }) => {
+      if (!canManagePipeline) return;
       const position = resolveNonCollidingPosition(flowPosition, nodes);
-      const node = createNodeFromPaletteItem(item, position);
-      setNodes((nds) => nds.concat(node));
+      const node: StoredWorkflowNode = { ...createNodeFromPaletteItem(item, position), selected: true };
+      setNodes((nds) => nds.map((n) => (n.selected ? { ...n, selected: false } : n)).concat(node));
       setSelectedNode(node);
     },
-    [nodes, setNodes]
+    [canManagePipeline, nodes, setNodes]
   );
 
   const handlePaletteClick = useCallback(
     (item: PaletteItem) => {
+      if (!canManagePipeline) return;
       const bounds = canvasRef.current?.getBoundingClientRect();
       const cascade = nodes.length % 6;
       const screenPoint = bounds
@@ -366,22 +406,28 @@ function WorkflowEditorInner() {
       const flowPosition = reactFlowInstance.screenToFlowPosition(screenPoint);
       addNodeAt(item, flowPosition);
     },
-    [nodes.length, reactFlowInstance, addNodeAt]
+    [canManagePipeline, nodes.length, reactFlowInstance, addNodeAt]
   );
 
   const handleDragStart = useCallback((e: React.DragEvent, item: PaletteItem) => {
+    if (!canManagePipeline) {
+      e.preventDefault();
+      return;
+    }
     e.dataTransfer.setData(DRAG_MIME, JSON.stringify(item));
     e.dataTransfer.effectAllowed = 'move';
-  }, []);
+  }, [canManagePipeline]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (!canManagePipeline) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-  }, []);
+  }, [canManagePipeline]);
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
+      if (!canManagePipeline) return;
       const raw = e.dataTransfer.getData(DRAG_MIME);
       if (!raw) return;
       let item: PaletteItem;
@@ -394,11 +440,12 @@ function WorkflowEditorInner() {
       const flowPosition = reactFlowInstance.screenToFlowPosition({ x: e.clientX, y: e.clientY });
       addNodeAt(item, flowPosition);
     },
-    [reactFlowInstance, addNodeAt]
+    [canManagePipeline, reactFlowInstance, addNodeAt]
   );
 
   const updateSelectedNodeData = useCallback(
     (patch: Partial<WorkflowNodeData> | ((prev: WorkflowNodeData) => Partial<WorkflowNodeData>)) => {
+      if (!canManagePipeline) return;
       setSelectedNode((prevSelected) => {
         if (!prevSelected) return prevSelected;
         const nextPatch = typeof patch === 'function' ? patch(prevSelected.data) : patch;
@@ -407,7 +454,7 @@ function WorkflowEditorInner() {
         return { ...prevSelected, data: nextData };
       });
     },
-    [setNodes]
+    [canManagePipeline, setNodes]
   );
 
   const updateSelectedNodeConfig = useCallback(
@@ -418,30 +465,41 @@ function WorkflowEditorInner() {
   );
 
   const handleDeleteSelected = useCallback(() => {
-    if (!selectedNode) return;
+    if (!canManagePipeline || !selectedNode) return;
     reactFlowInstance.deleteElements({ nodes: [{ id: selectedNode.id }] });
-  }, [selectedNode, reactFlowInstance]);
+  }, [canManagePipeline, selectedNode, reactFlowInstance]);
 
   const handleDuplicateSelected = useCallback(() => {
-    if (!selectedNode) return;
+    if (!canManagePipeline || !selectedNode) return;
+    // selectedNode is a snapshot taken when the node was clicked - it goes
+    // stale on drag, since dragging updates the node's position in `nodes`
+    // via onNodesChange without ever re-firing onNodeClick. Duplicating off
+    // selectedNode.position directly would offset the clone from where the
+    // node used to be, not where it actually is now. Read the live node's
+    // position out of `nodes` instead.
+    const liveNode = nodes.find((n) => n.id === selectedNode.id) ?? selectedNode;
     const clone: StoredWorkflowNode = {
-      ...selectedNode,
-      id: `${selectedNode.data.kind}-${Math.random().toString(36).slice(2, 9)}`,
-      position: { x: selectedNode.position.x + 40, y: selectedNode.position.y + 40 },
-      selected: false,
+      ...liveNode,
+      id: `${liveNode.data.kind}-${Math.random().toString(36).slice(2, 9)}`,
+      position: { x: liveNode.position.x + 40, y: liveNode.position.y + 40 },
+      // The clone, not the original, is what the sidebar is about to show -
+      // select it (and deselect the original) so React Flow's selection ring
+      // agrees with the sidebar instead of staying on the original node.
+      selected: true,
     };
-    setNodes((nds) => nds.concat(clone));
+    setNodes((nds) => nds.map((n) => (n.id === selectedNode.id ? { ...n, selected: false } : n)).concat(clone));
     setSelectedNode(clone);
-  }, [selectedNode, setNodes]);
+  }, [canManagePipeline, selectedNode, nodes, setNodes]);
 
   const handleSaveClick = useCallback(() => {
+    if (!canManagePipeline) return;
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveGraph(workflowId, nodes, edges);
     const now = new Date();
     setLastSavedAt(now);
     setJustSaved(true);
     setTimeout(() => setJustSaved(false), 1400);
-  }, [saveGraph, workflowId, nodes, edges]);
+  }, [canManagePipeline, saveGraph, workflowId, nodes, edges]);
 
   const handleTestRun = useCallback(() => {
     setTestRunResult(simulateTestRun(nodes, edges));
@@ -449,6 +507,7 @@ function WorkflowEditorInner() {
   }, [nodes, edges]);
 
   const handleReset = useCallback(() => {
+    if (!canManagePipeline) return;
     resetGraphAction(workflowId);
     const graph = getGraph(workflowId);
     skipNextAutosaveRef.current = true;
@@ -456,7 +515,7 @@ function WorkflowEditorInner() {
     setEdges(graph.edges);
     setSelectedNode(null);
     setLastSavedAt(new Date());
-  }, [resetGraphAction, getGraph, workflowId, setNodes, setEdges]);
+  }, [canManagePipeline, resetGraphAction, getGraph, workflowId, setNodes, setEdges]);
 
   return (
     <div className="h-[calc(100vh-3.5rem)] flex flex-col">
@@ -471,6 +530,7 @@ function WorkflowEditorInner() {
                 value={workflowId}
                 onChange={(e) => setWorkflowId(e.target.value)}
               >
+                {isNewWorkflow && <option value={workflowId}>Untitled Workflow (unsaved)</option>}
                 {WORKFLOWS.map((wf) => (
                   <option key={wf.id} value={wf.id}>{wf.name}</option>
                 ))}
@@ -494,9 +554,23 @@ function WorkflowEditorInner() {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="gap-2" onClick={handleReset}>Reset</Button>
+          {!canManagePipeline && (
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span tabIndex={0} className="inline-flex items-center text-[11px] text-muted-foreground mr-1">
+                    Read-only
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-[220px] text-xs">
+                  You don't have permission to manage pipelines - changes here won't be saved.
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          <Button variant="outline" size="sm" className="gap-2" onClick={handleReset} disabled={!canManagePipeline}>Reset</Button>
           <Button variant="outline" size="sm" className="gap-2" onClick={handleTestRun}><Play className="w-4 h-4" /> Test Run</Button>
-          <Button size="sm" className="gap-2 w-[136px] justify-center" onClick={handleSaveClick}>
+          <Button size="sm" className="gap-2 w-[136px] justify-center" onClick={handleSaveClick} disabled={!canManagePipeline}>
             <AnimatePresence mode="wait" initial={false}>
               <motion.span
                 key={justSaved ? 'saved' : 'save'}
@@ -528,6 +602,10 @@ function WorkflowEditorInner() {
             connectionLineType={ConnectionLineType.SmoothStep}
             connectionLineStyle={{ stroke: 'hsl(var(--primary))', strokeWidth: 2.5 }}
             defaultEdgeOptions={{ type: 'smoothstep', animated: true, style: { strokeWidth: 2 } }}
+            nodesDraggable={canManagePipeline}
+            nodesConnectable={canManagePipeline}
+            edgesReconnectable={canManagePipeline}
+            deleteKeyCode={canManagePipeline ? ['Backspace', 'Delete'] : []}
             fitView
             className="bg-dot-pattern"
           >
@@ -537,19 +615,22 @@ function WorkflowEditorInner() {
 
             <Panel position="top-left" className="bg-card/80 backdrop-blur-sm p-2 rounded-lg border border-border shadow-sm">
               <div className="text-xs font-medium mb-2 px-1">Pipeline Nodes</div>
-              <div className="text-[9px] text-muted-foreground mb-2 px-1">Drag onto canvas, or click to add</div>
+              <div className="text-[9px] text-muted-foreground mb-2 px-1">
+                {canManagePipeline ? 'Drag onto canvas, or click to add' : "You don't have permission to edit this pipeline"}
+              </div>
               <div className="flex flex-col gap-1">
                 {PALETTE_ITEMS.map((item) => {
                   const Icon = ICON_MAP[item.icon] ?? Cog;
                   return (
-                    <motion.div key={item.id} whileHover={{ x: 2 }} whileTap={{ scale: 0.96 }}>
+                    <motion.div key={item.id} whileHover={canManagePipeline ? { x: 2 } : undefined} whileTap={canManagePipeline ? { scale: 0.96 } : undefined}>
                       <Button
                         variant="ghost"
                         size="sm"
-                        draggable
+                        draggable={canManagePipeline}
+                        disabled={!canManagePipeline}
                         onDragStart={(e) => handleDragStart(e, item)}
                         onClick={() => handlePaletteClick(item)}
-                        className={`justify-start gap-2 h-8 text-xs font-normal w-full cursor-grab active:cursor-grabbing text-${item.color}-500`}
+                        className={`justify-start gap-2 h-8 text-xs font-normal w-full ${canManagePipeline ? 'cursor-grab active:cursor-grabbing' : ''} text-${item.color}-500`}
                       >
                         <Icon className="w-3.5 h-3.5" /> <span className="text-foreground">{item.label}</span>
                       </Button>
@@ -577,10 +658,10 @@ function WorkflowEditorInner() {
                   <div className="flex items-center justify-between">
                     <h3 className="font-semibold">Node Settings</h3>
                     <div className="flex items-center gap-1">
-                      <Button variant="ghost" size="icon" className="h-7 w-7" title="Duplicate node" onClick={handleDuplicateSelected}>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" title="Duplicate node" onClick={handleDuplicateSelected} disabled={!canManagePipeline}>
                         <Copy className="w-4 h-4" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" title="Delete node" onClick={handleDeleteSelected}>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" title="Delete node" onClick={handleDeleteSelected} disabled={!canManagePipeline}>
                         <Trash2 className="w-4 h-4" />
                       </Button>
                     </div>
@@ -592,7 +673,8 @@ function WorkflowEditorInner() {
                     <label className="text-xs font-medium text-muted-foreground mb-1 block">Node Name</label>
                     <input
                       type="text"
-                      className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-primary transition-shadow"
+                      disabled={!canManagePipeline}
+                      className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-primary transition-shadow disabled:opacity-60"
                       value={selectedNode.data.label}
                       onChange={(e) => updateSelectedNodeData({ label: e.target.value })}
                     />
@@ -600,7 +682,8 @@ function WorkflowEditorInner() {
                   <div>
                     <label className="text-xs font-medium text-muted-foreground mb-1 block">Description</label>
                     <textarea
-                      className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm h-20 resize-none outline-none focus:ring-1 focus:ring-primary transition-shadow"
+                      disabled={!canManagePipeline}
+                      className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm h-20 resize-none outline-none focus:ring-1 focus:ring-primary transition-shadow disabled:opacity-60"
                       value={selectedNode.data.description}
                       onChange={(e) => updateSelectedNodeData({ description: e.target.value })}
                     />
@@ -614,7 +697,8 @@ function WorkflowEditorInner() {
                           <div className="space-y-2">
                             <label className="text-xs text-muted-foreground block">Event Type</label>
                             <select
-                              className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm outline-none"
+                              disabled={!canManagePipeline}
+                              className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm outline-none disabled:opacity-60"
                               value={selectedNode.data.config.eventType ?? 'Entity Created'}
                               onChange={(e) => updateSelectedNodeConfig({ eventType: e.target.value })}
                             >
@@ -627,7 +711,8 @@ function WorkflowEditorInner() {
                             <label className="text-xs text-muted-foreground block">Discover Condition</label>
                             <input
                               type="text"
-                              className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm font-mono outline-none focus:ring-1 focus:ring-primary transition-shadow"
+                              disabled={!canManagePipeline}
+                              className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm font-mono outline-none focus:ring-1 focus:ring-primary transition-shadow disabled:opacity-60"
                               value={selectedNode.data.config.discover ?? ''}
                               onChange={(e) => updateSelectedNodeConfig({ discover: e.target.value })}
                               placeholder='entity.type == "Task"'
@@ -640,7 +725,8 @@ function WorkflowEditorInner() {
                           <label className="text-xs text-muted-foreground block">Condition Expression</label>
                           <input
                             type="text"
-                            className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm font-mono outline-none focus:ring-1 focus:ring-primary transition-shadow"
+                            disabled={!canManagePipeline}
+                            className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm font-mono outline-none focus:ring-1 focus:ring-primary transition-shadow disabled:opacity-60"
                             value={selectedNode.data.config.expression ?? ''}
                             onChange={(e) => updateSelectedNodeConfig({ expression: e.target.value })}
                             placeholder='asset.category == "character"'
@@ -652,7 +738,8 @@ function WorkflowEditorInner() {
                           <div className="space-y-2">
                             <label className="text-xs text-muted-foreground block">Action Type</label>
                             <select
-                              className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm outline-none"
+                              disabled={!canManagePipeline}
+                              className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm outline-none disabled:opacity-60"
                               value={selectedNode.data.config.actionType ?? 'Run Script'}
                               onChange={(e) => updateSelectedNodeConfig({ actionType: e.target.value })}
                             >
@@ -664,7 +751,8 @@ function WorkflowEditorInner() {
                           <div className="space-y-2">
                             <label className="text-xs text-muted-foreground block">Result Type</label>
                             <select
-                              className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm outline-none"
+                              disabled={!canManagePipeline}
+                              className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm outline-none disabled:opacity-60"
                               value={selectedNode.data.config.resultType ?? 'Message'}
                               onChange={(e) => updateSelectedNodeConfig({ resultType: e.target.value })}
                             >

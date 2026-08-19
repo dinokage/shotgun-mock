@@ -29,6 +29,16 @@ interface AnnotationCanvasProps {
    */
   ghosting?: boolean;
   selectionRingClassName?: string;
+  /**
+   * Makes the whole layer genuinely non-interactive: no pointer-driven
+   * drawing surface, no click-to-delete on shapes, no dragging/editing text
+   * annotations — regardless of what `tool` is currently set to. Callers
+   * that hide their own toolbar for a read-only viewer must also pass this
+   * (and normally also force `tool` to `'select'`) so a stale non-select
+   * tool value, or a direct click on an existing annotation, can't still
+   * mutate annotations once the toolbar controlling them is gone.
+   */
+  readOnly?: boolean;
 }
 
 /** Opacity for a ghost trail frame, indexed by (frame - annotation.endFrame) - 1. */
@@ -56,13 +66,14 @@ export function AnnotationCanvas({
   onionSkin = false,
   ghosting = false,
   selectionRingClassName = 'border-primary ring-2 ring-primary/50',
+  readOnly = false,
 }: AnnotationCanvasProps) {
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentDrawStart, setCurrentDrawStart] = useState<Point | null>(null);
   const [currentPoints, setCurrentPoints] = useState<Point[]>([]);
   const [tempRect, setTempRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
 
-  const drawMode = tool !== 'select';
+  const drawMode = !readOnly && tool !== 'select';
 
   const resetDrawState = () => {
     setIsDrawing(false);
@@ -84,8 +95,8 @@ export function AnnotationCanvas({
    * pass and the ghost-trail pass so both stay in sync visually. */
   const renderShape = (a: Annotation, opacity: number, interactive: boolean, keySuffix = '') => {
     const key = `${a.id}${keySuffix}`;
-    const handleDelete = () => tool === 'select' && onAnnotationsChange((prev) => prev.filter((p) => p.id !== a.id));
-    const pointerClassName = interactive ? 'pointer-events-auto cursor-pointer' : 'pointer-events-none';
+    const handleDelete = () => !readOnly && tool === 'select' && onAnnotationsChange((prev) => prev.filter((p) => p.id !== a.id));
+    const pointerClassName = interactive && !readOnly ? 'pointer-events-auto cursor-pointer' : 'pointer-events-none';
 
     if (a.type === 'rectangle' && a.w && a.h) {
       return (
@@ -285,19 +296,21 @@ export function AnnotationCanvas({
               <div
                 key={a.id}
                 className={cn(
-                  'absolute pointer-events-auto rounded border-2 transition-colors',
+                  'absolute rounded border-2 transition-colors',
+                  readOnly ? 'pointer-events-none' : 'pointer-events-auto',
                   selectedAnnotationId === a.id ? selectionRingClassName : 'border-transparent',
-                  tool === 'select' && 'cursor-move',
+                  tool === 'select' && !readOnly && 'cursor-move',
                 )}
                 style={{ left: a.x, top: a.y, opacity, backgroundColor: a.backgroundColor !== 'transparent' ? a.backgroundColor : undefined }}
                 onMouseDown={(e) => {
+                  if (readOnly) return;
                   if (tool === 'select') {
                     e.stopPropagation();
                     onSelectedAnnotationIdChange(a.id);
                     onDraggingElementChange({ id: a.id, type: 'annotation', startX: e.clientX, startY: e.clientY, initialX: a.x, initialY: a.y });
                   }
                 }}
-                onClick={() => onSelectedAnnotationIdChange(a.id)}
+                onClick={() => !readOnly && onSelectedAnnotationIdChange(a.id)}
               >
                 <input
                   type="text"
@@ -317,12 +330,14 @@ export function AnnotationCanvas({
                     fontFamily: a.fontFamily === 'font-sans' ? 'Inter, sans-serif' : a.fontFamily === 'font-serif' ? 'Georgia, serif' : 'monospace',
                     fontSize: `${a.fontSize}px`,
                   }}
-                  autoFocus
+                  readOnly={readOnly}
+                  autoFocus={!readOnly}
                   defaultValue={a.text}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') e.currentTarget.blur();
                   }}
                   onBlur={(e) => {
+                    if (readOnly) return;
                     const val = e.target.value.trim();
                     if (!val) {
                       onAnnotationsChange((prev) => prev.filter((p) => p.id !== a.id));

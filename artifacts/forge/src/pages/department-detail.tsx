@@ -4,17 +4,41 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { DEPARTMENTS, USERS, TASKS, ROLE_LABELS, isTaskActive, isTaskDone } from '@/data/mockData';
-import { Users, ListTodo, TrendingUp, ArrowLeft, MoreHorizontal, Settings2, ShieldCheck, User } from 'lucide-react';
+import { DEPARTMENTS, USERS, TASKS, ROLE_LABELS, isTaskActive, isTaskDone, TaskStatus } from '@/data/mockData';
+import { Users, ListTodo, TrendingUp, ArrowLeft, MoreHorizontal, ShieldCheck } from 'lucide-react';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { PriorityChip } from '@/components/shared/PriorityChip';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import { useAuthStore } from '@/store/auth';
+import { useUIStore } from '@/store/ui';
+import { useTasksStore } from '@/store/tasks';
+import { useCapability } from '@/hooks/use-capability';
+import { useToast } from '@/hooks/use-toast';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+
+const TASK_STATUS_OPTIONS: { value: TaskStatus; label: string }[] = [
+  { value: 'todo', label: 'To Do' },
+  { value: 'in-progress', label: 'In Progress' },
+  { value: 'bottleneck', label: 'Bottleneck' },
+  { value: 'review', label: 'Review' },
+  { value: 'complete', label: 'Complete' },
+  { value: 'cancelled', label: 'Cancelled' },
+];
 
 export default function DepartmentDetail() {
   const { id } = useParams<{ id: string }>();
   const dept = DEPARTMENTS.find(d => d.id === id);
   const { currentUser } = useAuthStore();
   const [activeTab, setActiveTab] = useState('overview');
+  const { setCreateTaskModalOpen } = useUIStore();
+  const { reassignTask, updateTaskStatus } = useTasksStore();
+  const { toast } = useToast();
+  const canAssignTasks = useCapability('assign_tasks');
+  const canEditTasks = useCapability('edit_tasks');
+  const canManagePipeline = useCapability('manage_pipeline');
 
   if (!dept) {
     return <div className="p-6 text-center text-muted-foreground">Department not found</div>;
@@ -51,8 +75,21 @@ export default function DepartmentDetail() {
   // and Tracking Grid pages) so a department's active/done counts agree everywhere it's shown.
   const activeTasks = deptTasks.filter(t => isTaskActive(t.status));
   const completedTasks = deptTasks.filter(t => isTaskDone(t.status));
-  
-  const isSupervisorOrLead = currentUser?.role === 'supervisor' || currentUser?.role === 'lead' || currentUser?.role === 'production_manager' || currentUser?.role === 'vfx_producer';
+
+  // Real "Avg Review Cycle" computed from the same underlying task data as the
+  // other stat tiles: for every task that has entered or passed review, the
+  // span from creation to its last recorded status change (createdAt →
+  // lastStatusUpdate), in days. Previously this tile was a hardcoded "1.2d"
+  // that never reflected the department's actual data.
+  const reviewCycleTasks = deptTasks.filter(t =>
+    ['review', 'lead-review', 'manager-review', 'approved', 'complete'].includes(t.status)
+  );
+  const avgReviewCycleDays = reviewCycleTasks.length > 0
+    ? reviewCycleTasks.reduce((sum, t) => {
+        const days = (new Date(t.lastStatusUpdate).getTime() - new Date(t.createdAt).getTime()) / 86_400_000;
+        return sum + Math.max(0, days);
+      }, 0) / reviewCycleTasks.length
+    : null;
 
   return (
     <div className="p-6 max-w-[1400px] mx-auto space-y-6">
@@ -78,8 +115,11 @@ export default function DepartmentDetail() {
           </div>
           
           <div className="flex gap-2">
-            {isSupervisorOrLead && (
-              <button className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-md hover:bg-primary/90 transition-colors">
+            {canAssignTasks && (
+              <button
+                onClick={() => setCreateTaskModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-md hover:bg-primary/90 transition-colors"
+              >
                 Assign Tasks
               </button>
             )}
@@ -94,7 +134,7 @@ export default function DepartmentDetail() {
           <TabsTrigger value="team">Team ({team.length})</TabsTrigger>
           <TabsTrigger value="tasks">Active Tasks ({activeTasks.length})</TabsTrigger>
           <TabsTrigger value="performance">Performance</TabsTrigger>
-          {isSupervisorOrLead && (
+          {canManagePipeline && (
              <TabsTrigger value="settings">Settings</TabsTrigger>
           )}
         </TabsList>
@@ -142,7 +182,7 @@ export default function DepartmentDetail() {
                   <ShieldCheck className="w-5 h-5" />
                 </div>
                 <div>
-                  <div className="text-2xl font-bold">1.2d</div>
+                  <div className="text-2xl font-bold">{avgReviewCycleDays !== null ? `${avgReviewCycleDays.toFixed(1)}d` : '—'}</div>
                   <div className="text-xs text-muted-foreground">Avg Review Cycle</div>
                 </div>
               </CardContent>
@@ -274,6 +314,17 @@ export default function DepartmentDetail() {
 
         {/* TASKS TAB (Simplified view for dept page) */}
         <TabsContent value="tasks" className="space-y-4 animate-in fade-in">
+          {activeTasks.length === 0 ? (
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <ListTodo />
+                </EmptyMedia>
+                <EmptyTitle>No active tasks</EmptyTitle>
+                <EmptyDescription>{dept.name} has no active tasks right now.</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          ) : (
           <Card>
             <CardContent className="p-0">
               <div className="divide-y divide-border">
@@ -298,9 +349,53 @@ export default function DepartmentDetail() {
                             </Avatar>
                           </div>
                         )}
-                        <button className="p-1.5 hover:bg-muted rounded-md text-muted-foreground">
-                          <MoreHorizontal className="w-4 h-4" />
-                        </button>
+                        {(canAssignTasks || canEditTasks) && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button className="p-1.5 hover:bg-muted rounded-md text-muted-foreground">
+                                <MoreHorizontal className="w-4 h-4" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48">
+                              {canAssignTasks && (
+                                <DropdownMenuSub>
+                                  <DropdownMenuSubTrigger>Reassign to…</DropdownMenuSubTrigger>
+                                  <DropdownMenuSubContent>
+                                    {team.filter(u => u.id !== task.assigneeId).map(u => (
+                                      <DropdownMenuItem
+                                        key={u.id}
+                                        onSelect={() => {
+                                          reassignTask(task.id, u.id);
+                                          toast({ title: 'Task reassigned', description: `"${task.title}" reassigned to ${u.name}.` });
+                                        }}
+                                      >
+                                        {u.name}
+                                      </DropdownMenuItem>
+                                    ))}
+                                  </DropdownMenuSubContent>
+                                </DropdownMenuSub>
+                              )}
+                              {canEditTasks && (
+                                <DropdownMenuSub>
+                                  <DropdownMenuSubTrigger>Change status</DropdownMenuSubTrigger>
+                                  <DropdownMenuSubContent>
+                                    {TASK_STATUS_OPTIONS.filter(o => o.value !== task.status).map(o => (
+                                      <DropdownMenuItem
+                                        key={o.value}
+                                        onSelect={() => {
+                                          updateTaskStatus(task.id, o.value);
+                                          toast({ title: 'Status updated', description: `"${task.title}" moved to ${o.label}.` });
+                                        }}
+                                      >
+                                        {o.label}
+                                      </DropdownMenuItem>
+                                    ))}
+                                  </DropdownMenuSubContent>
+                                </DropdownMenuSub>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
                       </div>
                     </div>
                   )
@@ -308,8 +403,9 @@ export default function DepartmentDetail() {
               </div>
             </CardContent>
           </Card>
+          )}
         </TabsContent>
-        
+
         {/* OTHER TABS */}
         <TabsContent value="performance" className="h-64 flex items-center justify-center border border-dashed border-border rounded-lg text-muted-foreground bg-muted/10">
           Performance metrics visualization (Burndown, Velocity, Quality)

@@ -5,13 +5,16 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { usePluginsStore } from '@/store/plugins';
-import { Search, Star, ShieldCheck, Download, Package, Zap, Link as LinkIcon, Activity, PenTool, Palette, Link2, Camera } from 'lucide-react';
+import { Search, Star, ShieldCheck, Download, Package, Zap, Link as LinkIcon, Activity, PenTool, Palette, Link2, Camera, GitFork, Globe, DollarSign, Plug } from 'lucide-react';
 import { Link } from 'wouter';
 import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useCapability } from '@/hooks/use-capability';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 
 const ICON_MAP: Record<string, any> = {
-  Package, Zap, Link: LinkIcon, Activity, PenTool, Palette, Link2, Camera
+  Package, Zap, Link: LinkIcon, Activity, PenTool, Palette, Link2, Camera, GitFork, Globe, DollarSign, Plug
 };
 
 const CATEGORIES = ['All', 'Pipeline', 'Render', 'Integration', 'Monitoring', 'Annotation'];
@@ -19,6 +22,7 @@ const CATEGORIES = ['All', 'Pipeline', 'Render', 'Integration', 'Monitoring', 'A
 export default function Marketplace() {
   const { installedPlugins, installPlugin, uninstallPlugin, enabledPlugins, togglePlugin } = usePluginsStore();
   const { toast } = useToast();
+  const canManageIntegrations = useCapability('manage_integrations');
   const [activeCategory, setActiveCategory] = useState('All');
   const [search, setSearch] = useState('');
 
@@ -30,6 +34,7 @@ export default function Marketplace() {
 
   const handleInstallToggle = (e: React.MouseEvent, id: string) => {
     e.preventDefault(); // Prevent link click
+    if (!canManageIntegrations) return;
     if (installedPlugins[id]) {
       uninstallPlugin(id);
       toast({ description: 'Plugin removed' });
@@ -41,6 +46,7 @@ export default function Marketplace() {
 
   const handleEnableToggle = (e: React.MouseEvent, id: string) => {
     e.preventDefault();
+    if (!canManageIntegrations) return;
     togglePlugin(id);
   };
 
@@ -76,8 +82,16 @@ export default function Marketplace() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 pt-4">
         {visiblePlugins.length === 0 && (
-          <div className="col-span-full text-center text-sm text-muted-foreground py-12">
-            No plugins match your filters.
+          <div className="col-span-full">
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <Search />
+                </EmptyMedia>
+                <EmptyTitle>No plugins match your filters</EmptyTitle>
+                <EmptyDescription>Try a different category or search term.</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
           </div>
         )}
         {visiblePlugins.map(plugin => {
@@ -116,17 +130,40 @@ export default function Marketplace() {
                     {isInstalled ? (
                       <div className="flex items-center justify-between w-full">
                         <div className="flex items-center gap-2">
-                          <Switch checked={isEnabled} onCheckedChange={() => togglePlugin(plugin.id)} />
+                          <Switch
+                            checked={isEnabled}
+                            disabled={!canManageIntegrations}
+                            onCheckedChange={() => canManageIntegrations && togglePlugin(plugin.id)}
+                          />
                           <span className="text-xs font-medium text-muted-foreground">{isEnabled ? 'Enabled' : 'Disabled'}</span>
                         </div>
-                        <Button variant="outline" size="sm" onClick={(e) => handleInstallToggle(e, plugin.id)} className="text-destructive hover:bg-destructive hover:text-white border-transparent">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={!canManageIntegrations}
+                          onClick={(e) => handleInstallToggle(e, plugin.id)}
+                          className="text-destructive hover:bg-destructive hover:text-white border-transparent disabled:opacity-50"
+                        >
                           Remove
                         </Button>
                       </div>
-                    ) : (
+                    ) : canManageIntegrations ? (
                       <Button className="w-full bg-primary text-primary-foreground hover:bg-primary/90" onClick={(e) => handleInstallToggle(e, plugin.id)}>
                         Install
                       </Button>
+                    ) : (
+                      <TooltipProvider delayDuration={200}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="w-full" tabIndex={0}>
+                              <Button className="w-full" disabled>Install</Button>
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-[220px] text-xs">
+                            You don't have permission to manage integrations.
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     )}
                   </div>
                 </CardContent>

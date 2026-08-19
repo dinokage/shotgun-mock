@@ -36,7 +36,7 @@ export default function Tasks() {
   const [view, setView] = useState<ViewMode>('list');
   const [myTasksOnly, setMyTasksOnly] = useState(false);
   const liveTasks = useTasksStore(state => state.tasks);
-  const submitForReview = useTasksStore(state => state.submitForReview);
+  const recordApprovalEvent = useTasksStore(state => state.recordApprovalEvent);
   const completeTask = useTasksStore(state => state.completeTask);
   const liveUsers = USERS;
   const liveProjects = PROJECTS;
@@ -240,7 +240,20 @@ export default function Tasks() {
                             className="h-7 text-[10px] bg-blue-500/10 text-blue-500 border-blue-500/20 hover:bg-blue-500/20 mr-2"
                             onClick={(e) => {
                               e.stopPropagation();
-                              submitForReview(task.id);
+                              if (!currentUser) return;
+                              // Route through recordApprovalEvent (not the old
+                              // submitForReview, which only set status without
+                              // appending an audit-trail entry) so this quick
+                              // action produces the same real, persisted
+                              // approval-chain history as TaskDrawer's
+                              // equivalent "Submit for Lead Review" action.
+                              recordApprovalEvent(task.id, 'review', {
+                                action: 'submitted-for-lead-review',
+                                byUserId: currentUser.id,
+                                byUserName: currentUser.name,
+                                byRole: currentUser.role,
+                              });
+                              toast({ title: 'Submitted for Lead Review' });
                             }}
                           >
                             <Play className="w-3 h-3 mr-1" /> Submit

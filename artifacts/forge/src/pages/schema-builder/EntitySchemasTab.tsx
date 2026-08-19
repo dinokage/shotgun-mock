@@ -24,6 +24,16 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   Plus,
   MoreVertical,
   Copy,
@@ -85,6 +95,7 @@ export function EntitySchemasTab() {
 
   const { toast } = useToast();
   const [selectedId, setSelectedId] = useState<string | null>(entityTypes[0]?.id ?? null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   const selected = useMemo(
     () => entityTypes.find((e) => e.id === selectedId) ?? null,
@@ -195,7 +206,7 @@ export function EntitySchemasTab() {
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
-                            onSelect={() => handleDelete(entity.id)}
+                            onSelect={() => setDeleteTarget({ id: entity.id, name: entity.name || 'Untitled' })}
                             className="gap-2 text-red-500 focus:text-red-500"
                           >
                             <Trash2 className="w-3.5 h-3.5" /> Delete
@@ -357,6 +368,28 @@ export function EntitySchemasTab() {
           </motion.div>
         )}
       </div>
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete "{deleteTarget?.name}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently deletes this entity type and all of its field definitions. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (deleteTarget) handleDelete(deleteTarget.id);
+                setDeleteTarget(null);
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -9,7 +9,7 @@ import { useProjectStore } from '@/store/projects';
 import { useTasksStore } from '@/store/tasks';
 import { useShotStore } from '@/store/shots';
 import { useReviewStore } from '@/store/reviews';
-import { USERS, ASSETS, PUBLISH_LOGS, DEPARTMENTS, Project } from '@/data/mockData';
+import { USERS, DEPARTMENTS, Project, User, isTaskDone } from '@/data/mockData';
 import { generateProducerInsights, type AIInsight } from '@/lib/aiInsights';
 import { useToast } from '@/hooks/use-toast';
 import { useMemo } from 'react';
@@ -17,13 +17,20 @@ import { motion } from 'framer-motion';
 import { stagger } from '@/lib/motion';
 import { ScopeTrace } from '@/components/shared/ScopeTrace';
 import {
-  FolderOpen, Users, ListTodo, PlayCircle, Upload, TrendingUp, AlertTriangle,
-  BarChart3, Workflow, ArrowRight, CheckCircle2, Clock, Plus,
-  Sparkles, Activity, Shield, Film, Package, Building2, AlertCircle
+  FolderOpen, Users, ListTodo, PlayCircle, TrendingUp, AlertTriangle,
+  ArrowRight, CheckCircle2, Clock, Plus,
+  Sparkles, Activity, AlertCircle, Inbox
 } from 'lucide-react';
 import { Link, useLocation } from 'wouter';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { PriorityChip } from '@/components/shared/PriorityChip';
+import { STUDIO_LEADERSHIP_ROLES, DEPARTMENT_LEADERSHIP_ROLES } from '@/store/permissions';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
+
+// Which dashboard a role sees, derived from the single shared
+// STUDIO_LEADERSHIP_ROLES / DEPARTMENT_LEADERSHIP_ROLES lists in
+// store/permissions.ts rather than a fresh local role array (this file
+// previously kept its own third copy of the mapping).
 
 const INSIGHT_SEVERITY_STYLES: Record<AIInsight['severity'], { icon: typeof AlertTriangle; iconColor: string; buttonColor: string }> = {
   critical: { icon: AlertTriangle, iconColor: 'text-orange-400', buttonColor: 'border-orange-500/50 text-orange-500' },
@@ -95,10 +102,8 @@ function ProducerDashboard() {
   // "New Project" modal (or a task added elsewhere) shows up here immediately,
   // for every user, with no reload. Same pattern as projects.tsx.
   const projects = useProjectStore((state) => state.projects);
-  const tasks = useTasksStore((state) => state.tasks);
   const shots = useShotStore((state) => state.shots);
   const activeProjects = projects.filter(p => p.status !== 'COMPLETE');
-  const activeTasks = tasks.filter(t => t.status === 'in-progress' || t.status === 'lead-review' || t.status === 'manager-review').length;
   // Recomputed from the current mock data on every mount — not hand-written copy.
   // See src/lib/aiInsights.ts for the rule-based logic behind each card.
   const insights = useMemo(() => generateProducerInsights(), []);
@@ -208,6 +213,17 @@ function ProducerDashboard() {
               </Link>
             </CardHeader>
             <CardContent>
+              {activeProjects.length === 0 ? (
+                <Empty>
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <FolderOpen />
+                    </EmptyMedia>
+                    <EmptyTitle>No active projects</EmptyTitle>
+                    <EmptyDescription>Projects will show up here once one is in progress.</EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              ) : (
               <div className="space-y-4">
                 {activeProjects.slice(0, 4).map(project => (
                   <Link key={project.id} href={`/projects/${project.id}`}>
@@ -239,10 +255,11 @@ function ProducerDashboard() {
                   </Link>
                 ))}
               </div>
+              )}
             </CardContent>
           </Card>
         </div>
-        
+
         {/* Right Column */}
         <div className="space-y-6 sticky top-0 self-start h-[calc(100vh-12rem)] overflow-y-auto pr-2 custom-scrollbar pb-10">
           {/* AI Insights Module — rule-based cards computed from live mock-data relationships (dependency fan-out, weeklyRating, riskScore). See src/lib/aiInsights.ts. */}
@@ -323,8 +340,16 @@ function ProducerDashboard() {
               {quickReviewShots.map((item) => (
                 <div
                   key={item.id}
+                  role="button"
+                  tabIndex={0}
                   className="flex justify-between items-center group cursor-pointer"
                   onClick={() => setLocation(`/shots/${item.id}`)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setLocation(`/shots/${item.id}`);
+                    }
+                  }}
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-7 rounded bg-muted flex items-center justify-center shrink-0 border border-border group-hover:border-primary/50 transition-colors">
@@ -360,14 +385,14 @@ function formatRoleLabel(role: string): string {
 }
 
 // --- Supervisor Dashboard (Department Focus) ---
-function SupervisorDashboard({ currentUser }: { currentUser: any }) {
+function SupervisorDashboard({ currentUser }: { currentUser: User }) {
   const tasks = useTasksStore((state) => state.tasks);
   const dept = DEPARTMENTS.find(d => d.id === currentUser.departmentId);
   const deptTeam = USERS.filter(u => u.departmentId === dept?.id);
   const deptTasks = tasks.filter(t => t.department === dept?.name);
   const activeTasks = deptTasks.filter(t => t.status === 'in-progress');
   const reviewTasks = deptTasks.filter(t => t.status === 'lead-review' || t.status === 'manager-review');
-  const { setActiveTaskDrawer } = useUIStore();
+  const { setActiveTaskDrawer, setCreateTaskModalOpen } = useUIStore();
 
   // Avg Velocity — real throughput: completed dept tasks divided by the
   // number of distinct calendar days the department actually logged work on
@@ -388,7 +413,7 @@ function SupervisorDashboard({ currentUser }: { currentUser: any }) {
           <p className="text-muted-foreground mt-1">{dept.name} • {formatRoleLabel(currentUser.role)}: {currentUser.name}</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline"><ListTodo className="w-4 h-4 mr-2" /> Assign Tasks</Button>
+          <Button variant="outline" onClick={() => setCreateTaskModalOpen(true)}><ListTodo className="w-4 h-4 mr-2" /> Assign Tasks</Button>
           <Link href="/daily-standup">
             <Button className="bg-accent-tally text-accent-tally-foreground hover:bg-accent-tally/90">Daily Standup</Button>
           </Link>
@@ -426,10 +451,23 @@ function SupervisorDashboard({ currentUser }: { currentUser: any }) {
               {reviewTasks.slice(0, 5).map(task => {
                 const assignee = USERS.find(u => u.id === task.assigneeId);
                 return (
-                  <div key={task.id} className="py-3 flex items-center justify-between hover:bg-muted/30 -mx-4 px-4 transition-colors cursor-pointer" onClick={() => setActiveTaskDrawer(task.id)}>
+                  <div
+                    key={task.id}
+                    role="button"
+                    tabIndex={0}
+                    className="py-3 flex items-center justify-between hover:bg-muted/30 -mx-4 px-4 transition-colors cursor-pointer"
+                    onClick={() => setActiveTaskDrawer(task.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setActiveTaskDrawer(task.id);
+                      }
+                    }}
+                  >
                     <div className="flex items-center gap-3">
                       <Avatar className="w-8 h-8">
                         <AvatarImage src={assignee?.avatar} />
+                        <AvatarFallback>{assignee?.name.charAt(0)}</AvatarFallback>
                       </Avatar>
                       <div>
                         <div className="font-medium text-sm">{task.title}</div>
@@ -450,6 +488,17 @@ function SupervisorDashboard({ currentUser }: { currentUser: any }) {
             <CardTitle className="text-lg">Team Capacity (Next 7 Days)</CardTitle>
           </CardHeader>
           <CardContent>
+            {deptTeam.length === 0 ? (
+              <Empty>
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <Users />
+                  </EmptyMedia>
+                  <EmptyTitle>No team members</EmptyTitle>
+                  <EmptyDescription>No one is assigned to this department yet.</EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            ) : (
             <div className="space-y-4">
               {deptTeam.slice(0, 6).map(member => (
                 <div key={member.id} className="space-y-1">
@@ -461,6 +510,7 @@ function SupervisorDashboard({ currentUser }: { currentUser: any }) {
                 </div>
               ))}
             </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -469,12 +519,22 @@ function SupervisorDashboard({ currentUser }: { currentUser: any }) {
 }
 
 // --- Artist Dashboard (Personal Tasks Focus) ---
-function ArtistDashboard({ currentUser }: { currentUser: any }) {
+function ArtistDashboard({ currentUser }: { currentUser: User }) {
   const tasks = useTasksStore((state) => state.tasks);
   const reviews = useReviewStore((state) => state.reviews);
+  const versions = useReviewStore((state) => state.versions);
   const myTasks = tasks.filter(t => t.assigneeId === currentUser.id);
   const activeTasks = myTasks.filter(t => t.status === 'in-progress' || t.status === 'todo');
   const myReviews = reviews.filter(r => r.reviewerId === currentUser.id && r.status === 'pending');
+  // Feedback *I received* — reviews left on versions that I (not the reviewer)
+  // actually submitted, i.e. the version's createdById is me. reviewerId is
+  // the person who wrote the review, so it's the wrong field for this.
+  const myReceivedFeedback = useMemo(() => {
+    const myVersionIds = new Set(versions.filter(v => v.createdById === currentUser.id).map(v => v.id));
+    return reviews
+      .filter(r => myVersionIds.has(r.versionId))
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  }, [reviews, versions, currentUser.id]);
   const { setActiveTaskDrawer } = useUIStore();
   const { toast } = useToast();
 
@@ -498,7 +558,7 @@ function ArtistDashboard({ currentUser }: { currentUser: any }) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: 'My Active Tasks', value: activeTasks.length, icon: ListTodo, color: 'text-orange-500', bg: 'bg-orange-500/10' },
-          { label: 'Completed (This Week)', value: myTasks.filter(t => t.status === 'approved').length, icon: CheckCircle2, color: 'text-green-500', bg: 'bg-green-500/10' },
+          { label: 'Completed (This Week)', value: myTasks.filter(t => isTaskDone(t.status)).length, icon: CheckCircle2, color: 'text-green-500', bg: 'bg-green-500/10' },
           { label: 'Reviews Requested', value: myReviews.length, icon: PlayCircle, color: 'text-purple-500', bg: 'bg-purple-500/10' },
           { label: 'Total Hours Logged', value: `${totalHoursLogged}h`, icon: Clock, color: 'text-blue-500', bg: 'bg-blue-500/10' },
         ].map((s, i) => (
@@ -525,7 +585,19 @@ function ArtistDashboard({ currentUser }: { currentUser: any }) {
             <CardContent>
               <div className="divide-y divide-border">
                 {activeTasks.slice(0, 6).map(task => (
-                  <div key={task.id} className="py-4 flex items-center justify-between hover:bg-muted/30 -mx-4 px-4 transition-colors cursor-pointer" onClick={() => setActiveTaskDrawer(task.id)}>
+                  <div
+                    key={task.id}
+                    role="button"
+                    tabIndex={0}
+                    className="py-4 flex items-center justify-between hover:bg-muted/30 -mx-4 px-4 transition-colors cursor-pointer"
+                    onClick={() => setActiveTaskDrawer(task.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setActiveTaskDrawer(task.id);
+                      }
+                    }}
+                  >
                     <div className="flex items-center gap-4">
                       <StatusBadge status={task.status} />
                       <div>
@@ -551,13 +623,17 @@ function ArtistDashboard({ currentUser }: { currentUser: any }) {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {myReviews.slice(0, 3).map(r => (
-                  <div key={r.id} className="p-3 bg-card border border-border rounded-md text-sm">
-                    <div className="font-medium text-foreground mb-1">Version {r.id.split('_')[1] || 'v001'}</div>
-                    <div className="text-muted-foreground line-clamp-2">"Please adjust the rim light intensity. It's blowing out the character's shoulder on frame 102." - Supervisor</div>
-                  </div>
-                ))}
-                {myReviews.length === 0 && <div className="text-sm text-muted-foreground">No recent feedback.</div>}
+                {myReceivedFeedback.slice(0, 3).map(r => {
+                  const version = versions.find(v => v.id === r.versionId);
+                  const reviewer = USERS.find(u => u.id === r.reviewerId);
+                  return (
+                    <div key={r.id} className="p-3 bg-card border border-border rounded-md text-sm">
+                      <div className="font-medium text-foreground mb-1">Version {version?.versionNumber || 'v001'}</div>
+                      <div className="text-muted-foreground line-clamp-2">"{r.comments}" - {reviewer?.name || 'Reviewer'}</div>
+                    </div>
+                  );
+                })}
+                {myReceivedFeedback.length === 0 && <div className="text-sm text-muted-foreground">No recent feedback.</div>}
               </div>
             </CardContent>
           </Card>
@@ -566,16 +642,148 @@ function ArtistDashboard({ currentUser }: { currentUser: any }) {
   );
 }
 
+// --- Client Dashboard (Deliveries & Approvals Focus) ---
+function ClientDashboard({ currentUser }: { currentUser: User }) {
+  const [, setLocation] = useLocation();
+  const projects = useProjectStore((state) => state.projects);
+  const shots = useShotStore((state) => state.shots);
+  const activeProjects = projects.filter(p => p.status !== 'COMPLETE');
+
+  // Deliveries awaiting this client's sign-off — same source of truth as the
+  // producer dashboard's review queue, not a hand-written placeholder list.
+  const pendingApprovals = useMemo(
+    () => shots.filter(s => s.status === 'client-review' || s.clientReviewStatus === 'pending'),
+    [shots]
+  );
+  const approvedDeliveries = useMemo(
+    () => shots.filter(s => s.clientReviewStatus === 'approved').length,
+    [shots]
+  );
+
+  return (
+    <div className="p-6 max-w-[1400px] mx-auto space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Project Status</h1>
+        <p className="text-muted-foreground mt-1">Welcome back, {currentUser.name}</p>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        {[
+          { label: 'Active Projects', value: activeProjects.length, icon: FolderOpen, color: 'text-blue-500', bg: 'bg-blue-500/10' },
+          { label: 'Pending Your Approval', value: pendingApprovals.length, icon: PlayCircle, color: 'text-purple-500', bg: 'bg-purple-500/10' },
+          { label: 'Approved Deliveries', value: approvedDeliveries, icon: CheckCircle2, color: 'text-green-500', bg: 'bg-green-500/10' },
+        ].map((s, i) => (
+          <Card key={i} className="border-border/50 bg-card hover:bg-muted/20 transition-colors">
+            <CardContent className="p-5 flex items-center gap-4">
+              <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${s.bg}`}>
+                <s.icon className={`w-6 h-6 ${s.color}`} />
+              </div>
+              <div>
+                <div className="text-2xl font-bold">{s.value}</div>
+                <div className="text-xs font-medium text-muted-foreground">{s.label}</div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <Card className="border-border/50">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-lg">Pending Your Approval</CardTitle>
+            <Link href="/client-review" className="text-sm text-accent-scope hover:underline flex items-center">
+              Review All <ArrowRight className="w-4 h-4 ml-1" />
+            </Link>
+          </CardHeader>
+          <CardContent>
+            {pendingApprovals.length === 0 ? (
+              <Empty>
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <Inbox />
+                  </EmptyMedia>
+                  <EmptyTitle>Nothing awaiting approval</EmptyTitle>
+                  <EmptyDescription>Deliveries will appear here once they're ready for your review.</EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            ) : (
+              <div className="divide-y divide-border">
+                {pendingApprovals.slice(0, 6).map(shot => {
+                  const project = projects.find(p => p.id === shot.projectId);
+                  return (
+                    <div
+                      key={shot.id}
+                      role="button"
+                      tabIndex={0}
+                      className="py-3 flex items-center justify-between hover:bg-muted/30 -mx-4 px-4 transition-colors cursor-pointer"
+                      onClick={() => setLocation('/client-review')}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setLocation('/client-review');
+                        }
+                      }}
+                    >
+                      <div>
+                        <div className="font-medium text-sm">{shot.name}</div>
+                        <div className="text-xs text-muted-foreground">{project?.name || 'Unknown project'}</div>
+                      </div>
+                      <Badge variant="outline" className="text-pink-500 border-pink-500/30 bg-pink-500/10">Awaiting Review</Badge>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border-border/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-lg">Project Status</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {activeProjects.length === 0 ? (
+              <Empty>
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <FolderOpen />
+                  </EmptyMedia>
+                  <EmptyTitle>No active projects</EmptyTitle>
+                  <EmptyDescription>Your projects will show up here once one is underway.</EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            ) : (
+              <div className="space-y-4">
+                {activeProjects.slice(0, 5).map(project => (
+                  <div key={project.id} className="space-y-1.5">
+                    <div className="flex justify-between text-xs">
+                      <span className="font-medium">{project.name}</span>
+                      <span className="text-muted-foreground">{project.progress}%</span>
+                    </div>
+                    <Progress value={project.progress} className="h-1.5" />
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 // --- Main Router ---
 export default function Home() {
   const { currentUser } = useAuthStore();
-  
+
   if (!currentUser) return null;
 
-  if (['vfx_producer', 'production_manager', 'coordinator'].includes(currentUser.role)) {
+  if (STUDIO_LEADERSHIP_ROLES.includes(currentUser.role)) {
     return <ProducerDashboard />;
-  } else if (['supervisor', 'lead'].includes(currentUser.role)) {
+  } else if (DEPARTMENT_LEADERSHIP_ROLES.includes(currentUser.role)) {
     return <SupervisorDashboard currentUser={currentUser} />;
+  } else if (currentUser.role === 'client') {
+    return <ClientDashboard currentUser={currentUser} />;
   } else {
     return <ArtistDashboard currentUser={currentUser} />;
   }

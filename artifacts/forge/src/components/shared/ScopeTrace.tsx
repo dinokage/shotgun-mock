@@ -28,13 +28,16 @@ export function ScopeTrace({ data, className = '', strokeWidth = 2, area = false
 
     const min = Math.min(...data);
     const max = Math.max(...data);
-    const range = max - min || 1;
+    const range = max - min;
     // Vertical padding so peaks/troughs don't clip against the stroke edge.
     const pad = 12;
 
     const points = data.map((v, i) => {
       const x = (i / (data.length - 1)) * 100;
-      const norm = (v - min) / range;
+      // A flat series (range 0) has no meaningful position to normalize
+      // against — draw it centered rather than letting `(v - min) / range`
+      // collapse to 0 and pin every point to the bottom of the viewBox.
+      const norm = range === 0 ? 0.5 : (v - min) / range;
       const y = pad + (1 - norm) * (100 - pad * 2);
       return [x, y] as const;
     });

@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/store/auth';
+import { useCapability } from '@/hooks/use-capability';
 import {
   usePermissionsStore,
   CAPABILITIES,
@@ -72,14 +73,6 @@ export default function Settings() {
   const addLicenseServer = useStudioSettingsStore((s) => s.addLicenseServer);
   const pendingInvites = useStudioSettingsStore((s) => s.pendingInvites);
   const inviteMember = useStudioSettingsStore((s) => s.inviteMember);
-
-  const handleSaveProfile = () => {
-    toast({ title: 'Settings saved', description: 'Your studio profile has been updated.' });
-  };
-
-  const handleSaveSecurity = () => {
-    toast({ title: 'Security settings saved', description: 'Your authentication and security policies have been updated.' });
-  };
 
   const [oktaDialogOpen, setOktaDialogOpen] = useState(false);
   const [oktaDomainDraft, setOktaDomainDraft] = useState('');
@@ -252,13 +245,14 @@ export default function Settings() {
 
   // Role-scoped tab visibility: derived from the current user's real capabilities
   // in the (editable) permission scheme, not a hardcoded role list. Notifications
-  // is a personal preference, so it's always visible to anyone who reaches this page.
-  const roleCapabilities = currentUser ? permissionScheme[currentUser.role] : undefined;
-  const canManageRoles = roleCapabilities?.manage_roles ?? false;
-  const canManageMembers = roleCapabilities?.manage_members ?? false;
-  const canManagePipeline = roleCapabilities?.manage_pipeline ?? false;
-  const canManageLicenses = roleCapabilities?.manage_licenses ?? false;
-  const canManageIntegrations = roleCapabilities?.manage_integrations ?? false;
+  // is a personal preference, so it's always visible to anyone who reaches this page
+  // (see App.tsx's route-level LeadershipGuard, which must not wrap /settings or
+  // non-leadership members can never reach this tab at all).
+  const canManageRoles = useCapability('manage_roles');
+  const canManageMembers = useCapability('manage_members');
+  const canManagePipeline = useCapability('manage_pipeline');
+  const canManageLicenses = useCapability('manage_licenses');
+  const canManageIntegrations = useCapability('manage_integrations');
 
   type TabId = 'profile' | 'security' | 'notifications' | 'developer' | 'pipelines' | 'members' | 'licenses' | 'deployment';
   const visibleTabs = useMemo<TabId[]>(() => {
@@ -352,9 +346,7 @@ export default function Settings() {
                 </Select>
               </div>
 
-              <div className="pt-4 flex justify-end">
-                <Button onClick={handleSaveProfile}>Save Changes</Button>
-              </div>
+              <p className="text-xs text-muted-foreground pt-2 border-t border-border">Changes save automatically.</p>
             </CardContent>
           </Card>
         </TabsContent>
@@ -415,9 +407,7 @@ export default function Settings() {
                 />
                 <p className="text-xs text-muted-foreground">Restrict access to Forge to specific office or VPN IP ranges.</p>
               </div>
-              <div className="pt-4 flex justify-end">
-                <Button onClick={handleSaveSecurity}>Save Security Settings</Button>
-              </div>
+              <p className="text-xs text-muted-foreground pt-2 border-t border-border">Changes save automatically.</p>
             </CardContent>
           </Card>
         </TabsContent>

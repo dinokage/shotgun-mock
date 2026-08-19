@@ -1,4 +1,4 @@
-import { Bell, Search, Sun, Moon, User, Shield, Eye, ChevronDown, Building2, LogOut } from 'lucide-react';
+import { Bell, Search, Sun, Moon, User, Shield, Eye, ChevronDown, Building2, LogOut, Menu } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -11,14 +11,18 @@ import { DEPARTMENTS, ROLE_LABELS } from '@/data/mockData';
 import { useUIStore } from '@/store/ui';
 import { useAuthStore } from '@/store/auth';
 import { useNotificationStore } from '@/store/notifications';
+import { useWorkspaceStore } from '@/store/workspace';
+import { useCapability } from '@/hooks/use-capability';
 import { Link, useLocation } from 'wouter';
 import { TimeClockWidget } from '@/components/shared/TimeClockWidget';
 import { USERS } from '@/data/mockData';
 
 export function TopBar() {
-  const { setTheme, theme } = useTheme();
-  const { setCommandPaletteOpen, notificationPanelOpen, setNotificationPanelOpen, setCreateTaskModalOpen } = useUIStore();
+  const { setTheme, resolvedTheme } = useTheme();
+  const { setCommandPaletteOpen, notificationPanelOpen, setNotificationPanelOpen, setCreateTaskModalOpen, toggleMobileNav } = useUIStore();
   const { currentUser, logout, switchUser } = useAuthStore();
+  const { activeDepartmentId, setActiveDepartment } = useWorkspaceStore();
+  const canAssignTasks = useCapability('assign_tasks');
   const [, setLocation] = useLocation();
   const notifications = useNotificationStore((s) => s.notifications);
   const notificationPreferences = useNotificationStore((s) => s.preferences);
@@ -30,7 +34,14 @@ export function TopBar() {
 
   if (!currentUser) return null;
 
-  const dept = DEPARTMENTS.find(d => d.id === currentUser.departmentId);
+  // Global roles can scope their view to a single department via the
+  // switcher below (persisted in the workspace store); everyone else always
+  // sees their own department. activeDepartmentId is a standalone store, not
+  // reset on switchUser, so it must stay gated on role here — otherwise a
+  // producer's department filter would leak into whichever department badge
+  // renders next after switching to a non-global-role demo user.
+  const isGlobalRole = ['vfx_producer', 'production_manager'].includes(currentUser.role);
+  const dept = DEPARTMENTS.find(d => d.id === (isGlobalRole ? (activeDepartmentId ?? currentUser.departmentId) : currentUser.departmentId));
 
   const handleLogout = () => {
     logout();
@@ -42,6 +53,16 @@ export function TopBar() {
       
       {/* Left: Brand + Role */}
       <div className="flex items-center gap-3 shrink-0">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="md:hidden h-8 w-8 -ml-1"
+          onClick={toggleMobileNav}
+          aria-label="Toggle navigation menu"
+        >
+          <Menu className="w-5 h-5" />
+        </Button>
+
         <Link href="/" className="flex items-center gap-2 group">
           <div className="w-7 h-7 bg-primary rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform">
             <div className="w-3.5 h-3.5 bg-card rounded-sm" />
@@ -52,7 +73,7 @@ export function TopBar() {
         <div className="h-5 w-px bg-border hidden md:block" />
 
         {/* Current User Role/Dept/Tenant Switcher */}
-        {['vfx_producer', 'production_manager'].includes(currentUser.role) ? (
+        {isGlobalRole ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full border border-amber-500/30 bg-gradient-to-r from-amber-500/10 to-orange-500/10 text-xs shadow-sm transition-all hover:shadow-md hover:border-amber-500/50 shrink-0 outline-none text-amber-700 dark:text-amber-400">
@@ -66,11 +87,18 @@ export function TopBar() {
             <DropdownMenuContent align="start" className="w-48">
               <DropdownMenuLabel>Switch Department</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="cursor-pointer font-medium">
+              <DropdownMenuItem
+                onClick={() => setActiveDepartment(null)}
+                className={`cursor-pointer font-medium ${activeDepartmentId === null ? 'bg-primary/10' : ''}`}
+              >
                 Global Overview
               </DropdownMenuItem>
               {DEPARTMENTS.map(d => (
-                <DropdownMenuItem key={d.id} className="cursor-pointer">
+                <DropdownMenuItem
+                  key={d.id}
+                  onClick={() => setActiveDepartment(d.id)}
+                  className={`cursor-pointer ${activeDepartmentId === d.id ? 'bg-primary/10' : ''}`}
+                >
                   {d.name} ({d.abbreviation})
                 </DropdownMenuItem>
               ))}
@@ -110,7 +138,7 @@ export function TopBar() {
 
       {/* Right: Actions */}
       <div className="flex items-center gap-2 shrink-0 ml-auto justify-end">
-        {['vfx_producer', 'production_manager', 'coordinator', 'supervisor', 'lead'].includes(currentUser.role) && (
+        {canAssignTasks && (
           <Button
             onClick={() => setCreateTaskModalOpen(true)}
             className="hidden md:flex bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-full px-5 text-xs h-8 mr-2 transition-all shadow-[0_0_15px_rgba(var(--primary),0.3)]"
@@ -121,15 +149,19 @@ export function TopBar() {
         
         <TimeClockWidget />
 
-        {/* Theme Toggle */}
+        {/* Theme Toggle. `resolvedTheme` (not `theme`) so this reflects what's
+            actually on screen — the provider now defaults to 'system', under
+            which `theme` stays the literal string 'system' until the user
+            overrides it, which would otherwise mismatch the icon/toggle
+            against a dark OS preference. */}
         <Button
           variant="ghost"
           size="icon"
           className="h-8 w-8"
-          aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          aria-label={resolvedTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+          onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
         >
-          {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          {resolvedTheme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
         </Button>
 
         {/* Notifications */}
@@ -209,7 +241,7 @@ export function TopBar() {
             {USERS.filter(u => ['vfx_producer', 'artist'].includes(u.role)).slice(0, 3).map(u => (
               <DropdownMenuItem 
                 key={u.id} 
-                onClick={() => { switchUser(u.id); window.location.reload(); }}
+                onClick={() => switchUser(u.id)}
                 className={`cursor-pointer ${currentUser.id === u.id ? 'bg-primary/10' : ''}`}
               >
                 {u.name} ({ROLE_LABELS[u.role] || u.role})

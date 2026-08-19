@@ -5,6 +5,7 @@ import { DndContext, DragOverlay, closestCorners, KeyboardSensor, PointerSensor,
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -15,12 +16,16 @@ import { Calendar, ChevronDown, Clock, Tag, Sparkles, HandMetal } from 'lucide-r
 import { useToast } from '@/hooks/use-toast';
 
 const COLUMNS: { id: TaskStatus; title: string }[] = [
+  { id: 'not-started', title: 'Not Started' },
   { id: 'todo', title: 'To Do' },
   { id: 'in-progress', title: 'In Progress' },
+  { id: 'bottleneck', title: 'Bottleneck' },
+  { id: 'review', title: 'Review' },
   { id: 'lead-review', title: 'Lead Review' },
   { id: 'manager-review', title: 'Manager Review' },
   { id: 'approved', title: 'Approved' },
-  { id: 'bottleneck', title: 'Bottleneck' }
+  { id: 'complete', title: 'Complete' },
+  { id: 'cancelled', title: 'Cancelled' },
 ];
 
 function SortableTaskCard({ task }: { task: any }) {
@@ -237,19 +242,22 @@ export default function KanbanView({ projectId, tasks }: { projectId?: string, t
           return <DroppableColumn key={col.id} col={col} tasks={columnTasks} />;
         })}
       </div>
-      <DragOverlay>
-        {activeTask ? (
-          <div className="opacity-80 rotate-2">
-            <Card className="p-3 shadow-xl border-primary w-72">
-              <div className="text-sm font-medium leading-tight mb-2">{activeTask.title}</div>
-              <div className="flex items-center justify-between mt-3">
-                <PriorityChip priority={activeTask.priority} />
-                <UserAvatar userId={activeTask.assigneeId} />
-              </div>
-            </Card>
-          </div>
-        ) : null}
-      </DragOverlay>
+      {createPortal(
+        <DragOverlay>
+          {activeTask ? (
+            <div className="opacity-80 rotate-2">
+              <Card className="p-3 shadow-xl border-primary w-72">
+                <div className="text-sm font-medium leading-tight mb-2">{activeTask.title}</div>
+                <div className="flex items-center justify-between mt-3">
+                  <PriorityChip priority={activeTask.priority} />
+                  <UserAvatar userId={activeTask.assigneeId} />
+                </div>
+              </Card>
+            </div>
+          ) : null}
+        </DragOverlay>,
+        document.body
+      )}
     </DndContext>
   );
 }

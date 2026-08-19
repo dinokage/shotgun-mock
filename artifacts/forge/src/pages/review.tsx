@@ -4,19 +4,22 @@ import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { USERS, SHOTS, REVIEWED_TASK_ID, type ApprovalEvent } from '@/data/mockData';
-import { Play, Pause, SkipBack, SkipForward, Volume2, MousePointer2, CheckCircle2, MessageSquare, XCircle, ChevronLeft, Circle, Upload, Camera, Film, Loader2, SplitSquareHorizontal, Layers, Mic, MicOff, Square as SquareIcon, Package, Columns2, GitCompareArrows, Link2, AlertTriangle, Send, Inbox } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, MousePointer2, CheckCircle2, MessageSquare, XCircle, ChevronLeft, Circle, Upload, Camera, Film, SplitSquareHorizontal, Layers, Mic, MicOff, Square as SquareIcon, Package, Columns2, GitCompareArrows, Link2, AlertTriangle, Send, Inbox } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useHotkeys } from '@/hooks/use-hotkeys';
+import { useCapability } from '@/hooks/use-capability';
 import { Link } from 'wouter';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Label } from '@/components/ui/label';
 import { cn, copyToClipboard } from '@/lib/utils';
 import { cut } from '@/lib/motion';
 import { useAuthStore } from '@/store/auth';
 import { useTasksStore } from '@/store/tasks';
 import { useReviewStore, PRESENTED_VERSION_ID, type ReviewComment } from '@/store/reviews';
+import { useNotificationStore, type NotificationCategory } from '@/store/notifications';
 import {
   AnnotationToolbar,
   AnnotationCanvas,
@@ -154,10 +157,15 @@ export default function Review() {
   const { currentUser } = useAuthStore();
   const isManager = currentUser && ['vfx_producer', 'production_manager', 'coordinator', 'supervisor', 'lead'].includes(currentUser.role);
   
-  const isArtist = currentUser && ['artist', 'senior_artist'].includes(currentUser.role);
   const isLead = currentUser && ['lead', 'supervisor'].includes(currentUser.role);
   const isProd = currentUser && ['vfx_producer', 'production_manager', 'coordinator'].includes(currentUser.role);
   const canPresent = Boolean(isLead || isProd);
+  // Submitting/approving a review is a specific, editable capability (Settings >
+  // Roles & Permissions) rather than a hardcoded role list — isLead/isProd above
+  // stay hardcoded only for the things that don't have a matching capability id
+  // (presenting, sharing the client link).
+  const canSubmitReview = useCapability('submit_reviews');
+  const canApproveReview = useCapability('approve_reviews');
   // Index into USERS for the logged-in user, used to attribute anything this
   // page writes into the shared comment stream (comments, stamps) to whoever
   // is actually signed in — not a hardcoded seed user. -1 (renders as
@@ -200,6 +208,13 @@ export default function Review() {
   ]);
   const [tool, setTool] = useState<AnnotationTool>('select');
   const [viewerMode, setViewerMode] = useState(false);
+  // Read-only Reviewer mode and being a locked Presentation Mode viewer both
+  // mean "you may look but not touch". `AnnotationCanvas` already enforces
+  // this for its own drawing surface via its `readOnly`/`tool` props, but the
+  // clip-drag handles below, the timeline resize handles, and the Properties
+  // panel are separate mutation paths on this page and need the same guard —
+  // otherwise "Read-only Reviewer" isn't actually read-only.
+  const canEdit = !viewerMode && !isLockedViewer;
   // Comments (including voice notes) live in the review store so they persist
   // across reloads/tabs like presentation state does, rather than being lost
   // local-only state.
@@ -217,8 +232,6 @@ export default function Review() {
   const [color, setColor] = useState('#ef4444');
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [resizing, setResizing] = useState<{ id: string, type: 'video' | 'annotation', edge: 'start' | 'end' } | null>(null);
-  const [isRendering, setIsRendering] = useState(false);
-  const [renderProgress, setRenderProgress] = useState(0);
   const [draggingElement, setDraggingElement] = useState<DraggingElement | null>(null);
   
   const [abWipe, setAbWipe] = useState(false);
@@ -256,6 +269,15 @@ export default function Review() {
     reviewedTask?.status === 'lead-review' || reviewedTask?.status === 'manager-review' || reviewedTask?.status === 'approved'
       ? reviewedTask.status
       : 'wip';
+  const addNotification = useNotificationStore((s) => s.addNotification);
+  const APPROVAL_NOTIFICATION_CATEGORY: Record<ApprovalEvent['action'], NotificationCategory> = {
+    'submitted-for-lead-review': 'review',
+    'submitted-for-manager-review': 'review',
+    'approved': 'approval',
+    'changes-requested': 'workflow',
+    'rejected': 'workflow',
+    'published': 'publishing',
+  };
   const submitApproval = (status: 'in-progress' | 'lead-review' | 'manager-review' | 'approved', action: ApprovalEvent['action']) => {
     if (!currentUser) return;
     recordApprovalEvent(REVIEWED_TASK_ID, status, {
@@ -263,6 +285,18 @@ export default function Review() {
       byUserId: currentUser.id,
       byUserName: currentUser.name,
       byRole: currentUser.role,
+    });
+    // A real event in the approval chain — surface it in the shared
+    // Notifications feed, not just as a toast that vanishes with this tab.
+    const shotLabel = reviewedShot ? `${reviewedShot.name} ${reviewedShot.currentVersion}` : 'this version';
+    addNotification({
+      title: `${shotLabel} ${APPROVAL_ACTION_LABEL[action]}`,
+      description: `${currentUser.name} ${APPROVAL_ACTION_LABEL[action]} on ${shotLabel}.`,
+      category: APPROVAL_NOTIFICATION_CATEGORY[action],
+      priority: action === 'rejected' ? 'high' : 'medium',
+      entityType: 'review',
+      entityId: REVIEWED_TASK_ID,
+      actionUrl: '/review',
     });
   };
 
@@ -328,7 +362,19 @@ export default function Review() {
     return () => clearInterval(interval);
   }, [frame, isPlaying, maxFrames]);
 
-  // Keyboard shortcuts
+  // Keyboard shortcuts. This is the single global key handler for the page —
+  // playback/scrub also used to be bound a second time by a raw
+  // window `keydown` listener further down, which double-fired every
+  // Space/Arrow press (toggled play twice, stepped the frame twice). That
+  // listener has been removed; this is now the only place Space/Arrow are
+  // bound.
+  //
+  // Tool-switching and delete are additionally gated on `viewerMode`
+  // ("Read-only Reviewer") so a read-only reviewer can't draw or delete
+  // annotations via hotkeys even though the toolbar itself is hidden — the
+  // drawing surface below is also forced to the 'select' tool and marked
+  // `readOnly` for the same reason, in case `tool` was already something
+  // else before Read-only mode was switched on.
   useHotkeys({
     'Space': () => !isLockedViewer && setIsPlaying(p => !p),
     'ArrowLeft': () => { if (isLockedViewer) return; setIsPlaying(false); setFrame(f => Math.max(1, f - 1)); },
@@ -340,6 +386,7 @@ export default function Review() {
     ']': () => { /* trim out point placeholder */ },
     'Escape': () => { setSelectedAnnotationId(null); setTool('select'); },
     'Delete': () => {
+      if (viewerMode || isLockedViewer) return;
       if (selectedAnnotationId) {
         setAnnotations(prev => prev.filter(a => a.id !== selectedAnnotationId));
         setVideoClips(prev => prev.filter(v => v.id !== selectedAnnotationId || v.id === 'base-v1'));
@@ -347,18 +394,19 @@ export default function Review() {
       }
     },
     'Backspace': () => {
+      if (viewerMode || isLockedViewer) return;
       if (selectedAnnotationId) {
         setAnnotations(prev => prev.filter(a => a.id !== selectedAnnotationId));
         setVideoClips(prev => prev.filter(v => v.id !== selectedAnnotationId || v.id === 'base-v1'));
         setSelectedAnnotationId(null);
       }
     },
-    '1': () => setTool('select'),
-    '2': () => setTool('pen'),
-    '3': () => setTool('arrow'),
-    '4': () => setTool('rectangle'),
-    '5': () => setTool('text'),
-  }, [selectedAnnotationId, maxFrames, isLockedViewer]);
+    '1': () => { if (!viewerMode && !isLockedViewer) setTool('select'); },
+    '2': () => { if (!viewerMode && !isLockedViewer) setTool('pen'); },
+    '3': () => { if (!viewerMode && !isLockedViewer) setTool('arrow'); },
+    '4': () => { if (!viewerMode && !isLockedViewer) setTool('rectangle'); },
+    '5': () => { if (!viewerMode && !isLockedViewer) setTool('text'); },
+  }, [selectedAnnotationId, maxFrames, isLockedViewer, viewerMode]);
 
   // Push our playhead out to locked viewers whenever we're presenting.
   useEffect(() => {
@@ -457,48 +505,11 @@ export default function Review() {
     }
   };
   
-  const handleRender = () => {
-    setIsRendering(true);
-    setRenderProgress(0);
-    
-    // Simulate render loop
-    let progress = 0;
-    const interval = setInterval(() => {
-      progress += Math.random() * 5 + 2;
-      if (progress >= 100) {
-        progress = 100;
-        clearInterval(interval);
-        setTimeout(() => {
-          setIsRendering(false);
-          toast({ title: 'Render Complete', description: 'Composite sequence exported successfully.' });
-        }, 500);
-      }
-      setRenderProgress(progress);
-    }, 100);
-  };
-  
-  // Global keydown for Spacebar play/pause and Arrow keys for scrubbing
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't trigger if user is typing in an input or textarea
-      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return;
-      if (isLockedViewer) return;
-      if (e.code === 'Space') {
-        e.preventDefault();
-        setIsPlaying(p => !p);
-      } else if (e.code === 'ArrowLeft') {
-        e.preventDefault();
-        setIsPlaying(false);
-        setFrame(f => Math.max(1, f - 1));
-      } else if (e.code === 'ArrowRight') {
-        e.preventDefault();
-        setIsPlaying(false);
-        setFrame(f => Math.min(maxFrames, f + 1));
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isLockedViewer]);
+  // Rendering a real composite export needs a backend render service that
+  // doesn't exist in this mock — the toolbar/context-menu entries below are
+  // disabled with a tooltip explaining why instead of faking a progress bar
+  // and a "Render Complete" toast for a file that was never produced.
+  const EXPORT_UNAVAILABLE_MESSAGE = "Composite export isn't available yet — it requires a backend render service that isn't connected in this preview.";
 
   // Handle global mouse move for timeline resizing
   useEffect(() => {
@@ -815,24 +826,60 @@ export default function Review() {
 
           {!viewerMode && reviewWorkflowStatus !== 'approved' && (
             isLockedViewer ? (
-              // Presentation Mode: locked viewers get a collapsed action set.
+              // Presentation Mode: locked viewers get a collapsed action set
+              // (no Reject, to keep it compact) — but it must still respect
+              // the same capability + workflow-stage gating as the full
+              // action bar below. This used to unconditionally call
+              // submitApproval('approved', 'approved') for *any* locked
+              // viewer regardless of role or review stage, which let anyone
+              // just watching a presentation jump the version straight to
+              // "approved" — skipping the Lead/Manager tiers entirely and
+              // bypassing the submit/approve capability checks below.
               <div className="flex items-center gap-2">
-                <Button size="sm" className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white" onClick={() => {
-                  submitApproval('approved', 'approved');
-                  toast({ title: 'Approved', description: 'Approved while following the presenter.' });
-                }}>
-                  <CheckCircle2 className="w-4 h-4 mr-2" /> Approve
-                </Button>
-                <Button size="sm" className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white" onClick={() => {
-                  submitApproval('in-progress', 'changes-requested');
-                  toast({ title: 'Changes Requested' });
-                }}>
-                  <MessageSquare className="w-4 h-4 mr-2" /> Request Changes
-                </Button>
+                {canSubmitReview && reviewWorkflowStatus === 'wip' && (
+                  <Button size="sm" className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white" onClick={() => {
+                    submitApproval('lead-review', 'submitted-for-lead-review');
+                    toast({ title: 'Submitted', description: 'Submitted for Lead Review' });
+                  }}>
+                    <Upload className="w-4 h-4 mr-2" /> Submit
+                  </Button>
+                )}
+                {canApproveReview && reviewWorkflowStatus === 'lead-review' && (
+                  <>
+                    <Button size="sm" className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white" onClick={() => {
+                      submitApproval('manager-review', 'submitted-for-manager-review');
+                      toast({ title: 'Submitted', description: 'Submitted to Manager' });
+                    }}>
+                      <CheckCircle2 className="w-4 h-4 mr-2" /> Approve
+                    </Button>
+                    <Button size="sm" className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white" onClick={() => {
+                      submitApproval('in-progress', 'changes-requested');
+                      toast({ title: 'Changes Requested' });
+                    }}>
+                      <MessageSquare className="w-4 h-4 mr-2" /> Request Changes
+                    </Button>
+                  </>
+                )}
+                {canApproveReview && reviewWorkflowStatus === 'manager-review' && (
+                  <>
+                    <Button size="sm" className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white" onClick={() => {
+                      submitApproval('approved', 'published');
+                      toast({ title: 'Published', description: 'Approved & Published to Production' });
+                    }}>
+                      <CheckCircle2 className="w-4 h-4 mr-2" /> Approve
+                    </Button>
+                    <Button size="sm" className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white" onClick={() => {
+                      submitApproval('in-progress', 'changes-requested');
+                      toast({ title: 'Changes Requested' });
+                    }}>
+                      <MessageSquare className="w-4 h-4 mr-2" /> Request Changes
+                    </Button>
+                  </>
+                )}
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                {isArtist && reviewWorkflowStatus === 'wip' && (
+                {canSubmitReview && reviewWorkflowStatus === 'wip' && (
                   <Button size="sm" className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white" onClick={() => {
                     submitApproval('lead-review', 'submitted-for-lead-review');
                     toast({ title: 'Submitted', description: 'Submitted for Lead Review' });
@@ -845,7 +892,7 @@ export default function Review() {
                     submitted for Lead review — mirrors the Artist button's
                     own 'wip' gate above so the UI can't fabricate an
                     approval step that never happened. */}
-                {isLead && reviewWorkflowStatus === 'lead-review' && (
+                {canApproveReview && reviewWorkflowStatus === 'lead-review' && (
                   <>
                     <Button size="sm" className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white" onClick={() => {
                       submitApproval('manager-review', 'submitted-for-manager-review');
@@ -870,7 +917,7 @@ export default function Review() {
 
                 {/* Producer/Manager can only act once the Lead has submitted
                     for Manager review — same discipline as above. */}
-                {isProd && reviewWorkflowStatus === 'manager-review' && (
+                {canApproveReview && reviewWorkflowStatus === 'manager-review' && (
                   <>
                     <Button size="sm" className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white" onClick={() => {
                       submitApproval('approved', 'published');
@@ -980,21 +1027,21 @@ export default function Review() {
               <Button variant="ghost" size="icon" onClick={handleScreenshot} title="Copy Screenshot to Clipboard">
                 <Camera className="w-4 h-4" />
               </Button>
-              <Button variant="ghost" size="icon" onClick={handleRender} title="Export & Render Composition">
-                <Film className="w-4 h-4" />
-              </Button>
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span tabIndex={0} className="inline-flex">
+                      <Button variant="ghost" size="icon" disabled className="text-muted-foreground/50">
+                        <Film className="w-4 h-4" />
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-[220px] text-xs">
+                    {EXPORT_UNAVAILABLE_MESSAGE}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </motion.div>
-          )}
-
-          {isRendering && (
-            <div className="absolute inset-0 z-50 bg-background/90 backdrop-blur-sm flex flex-col items-center justify-center">
-              <Loader2 className="w-12 h-12 text-primary animate-spin mb-4" />
-              <div className="text-lg font-medium mb-2">Rendering Composition...</div>
-              <div className="w-64 h-2 bg-muted rounded-full overflow-hidden">
-                <div className="h-full bg-primary transition-all duration-100 ease-linear" style={{ width: `${renderProgress}%` }} />
-              </div>
-              <div className="text-sm text-muted-foreground mt-2">{Math.round(renderProgress)}%</div>
-            </div>
           )}
 
           {/* Contextual Cut Management Overlay */}
@@ -1151,7 +1198,7 @@ export default function Review() {
                                 zIndex: selectedAnnotationId === clip.id ? 5 : 1,
                               }}
                               onMouseDown={(e) => {
-                                if (tool === 'select' && e.button !== 2) {
+                                if (canEdit && tool === 'select' && e.button !== 2) {
                                   e.stopPropagation();
                                   setSelectedAnnotationId(clip.id);
                                   setDraggingElement({ id: clip.id, type: 'video', startX: e.clientX, startY: e.clientY, initialX: clip.x || 0, initialY: clip.y || 0 });
@@ -1179,7 +1226,7 @@ export default function Review() {
                                 clipPath: (abWipe && clip.id !== 'base-v1') ? `polygon(0 0, ${abWipePosition}% 0, ${abWipePosition}% 100%, 0 100%)` : undefined
                               }}
                               onMouseDown={(e) => {
-                                if (tool === 'select' && e.button !== 2) {
+                                if (canEdit && tool === 'select' && e.button !== 2) {
                                   e.stopPropagation();
                                   setSelectedAnnotationId(clip.id);
                                   setDraggingElement({ id: clip.id, type: 'video', startX: e.clientX, startY: e.clientY, initialX: clip.x || 0, initialY: clip.y || 0 });
@@ -1206,7 +1253,7 @@ export default function Review() {
                               clipPath: (abWipe && clip.id !== 'base-v1') ? `polygon(0 0, ${abWipePosition}% 0, ${abWipePosition}% 100%, 0 100%)` : undefined
                             }}
                             onMouseDown={(e) => {
-                              if (tool === 'select' && e.button !== 2) {
+                              if (canEdit && tool === 'select' && e.button !== 2) {
                                 e.stopPropagation();
                                 setSelectedAnnotationId(clip.id);
                                 setDraggingElement({ id: clip.id, type: 'video', startX: e.clientX, startY: e.clientY, initialX: clip.x || 0, initialY: clip.y || 0 });
@@ -1219,8 +1266,8 @@ export default function Review() {
                       })()}
                     </ContextMenuTrigger>
                     <ContextMenuContent className="w-48 z-50">
-                      <ContextMenuItem 
-                        disabled={clip.id === 'base-v1'}
+                      <ContextMenuItem
+                        disabled={clip.id === 'base-v1' || !canEdit}
                         onClick={() => {
                           setVideoClips(prev => prev.filter(v => v.id !== clip.id));
                           if (selectedAnnotationId === clip.id) setSelectedAnnotationId(null);
@@ -1231,8 +1278,8 @@ export default function Review() {
                         Delete Video
                       </ContextMenuItem>
                       <ContextMenuSeparator />
-                      <ContextMenuItem onClick={handleRender}>
-                        Merge & Render Composite
+                      <ContextMenuItem disabled title={EXPORT_UNAVAILABLE_MESSAGE}>
+                        Merge & Render Composite (Unavailable)
                       </ContextMenuItem>
                     </ContextMenuContent>
                   </ContextMenu>
@@ -1257,7 +1304,7 @@ export default function Review() {
                 onAnnotationsChange={setAnnotations}
                 frame={frame}
                 maxFrames={maxFrames}
-                tool={isLockedViewer ? 'select' : tool}
+                tool={isLockedViewer || viewerMode ? 'select' : tool}
                 color={color}
                 colors={COLORS}
                 selectedAnnotationId={selectedAnnotationId}
@@ -1265,6 +1312,7 @@ export default function Review() {
                 onDraggingElementChange={setDraggingElement}
                 onionSkin={onionSkin}
                 ghosting={ghosting}
+                readOnly={viewerMode || isLockedViewer}
               />
 
               {/* Mock Remote Cursors Overlay */}
@@ -1327,20 +1375,20 @@ export default function Review() {
                          onClick={(e) => { e.stopPropagation(); setSelectedAnnotationId(clip.id); }}
                        >
                          {clip.name} (V{index + 1})
-                         <div className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize opacity-0 group-hover:opacity-100 bg-blue-500/50 hover:w-3 z-20" onMouseDown={(e) => { e.stopPropagation(); setResizing({ id: clip.id, type: 'video', edge: 'start' }); }} />
-                         <div className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize opacity-0 group-hover:opacity-100 bg-blue-500/50 hover:w-3 z-20" onMouseDown={(e) => { e.stopPropagation(); setResizing({ id: clip.id, type: 'video', edge: 'end' }); }} />
+                         <div className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize opacity-0 group-hover:opacity-100 bg-blue-500/50 hover:w-3 z-20" onMouseDown={(e) => { if (!canEdit) return; e.stopPropagation(); setResizing({ id: clip.id, type: 'video', edge: 'start' }); }} />
+                         <div className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize opacity-0 group-hover:opacity-100 bg-blue-500/50 hover:w-3 z-20" onMouseDown={(e) => { if (!canEdit) return; e.stopPropagation(); setResizing({ id: clip.id, type: 'video', edge: 'end' }); }} />
                        </div>
                      </ContextMenuTrigger>
                      <ContextMenuContent className="w-48 z-50">
-                       <ContextMenuItem 
-                         disabled={clip.id === 'base-v1'} 
-                         onClick={(e) => { e.stopPropagation(); setVideoClips(prev => prev.filter(v => v.id !== clip.id)); if (selectedAnnotationId === clip.id) setSelectedAnnotationId(null); toast({ title: 'Video Deleted', description: 'Clip removed.' }); }} 
+                       <ContextMenuItem
+                         disabled={clip.id === 'base-v1' || !canEdit}
+                         onClick={(e) => { e.stopPropagation(); setVideoClips(prev => prev.filter(v => v.id !== clip.id)); if (selectedAnnotationId === clip.id) setSelectedAnnotationId(null); toast({ title: 'Video Deleted', description: 'Clip removed.' }); }}
                          className="text-red-500 focus:bg-red-500/10 focus:text-red-500"
                        >
                          Delete Video
                        </ContextMenuItem>
                        <ContextMenuSeparator />
-                       <ContextMenuItem onClick={(e) => { e.stopPropagation(); handleRender(); }}>Merge & Render Composite</ContextMenuItem>
+                       <ContextMenuItem disabled title={EXPORT_UNAVAILABLE_MESSAGE}>Merge & Render Composite (Unavailable)</ContextMenuItem>
                      </ContextMenuContent>
                    </ContextMenu>
                  </div>
@@ -1362,13 +1410,14 @@ export default function Review() {
                               onClick={(e) => { e.stopPropagation(); setSelectedAnnotationId(a.id); }}
                             >
                                <span className={`text-[10px] font-medium px-1 truncate capitalize`} style={{ color: a.color }}>{a.text || a.type}</span>
-                               <div className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize opacity-0 group-hover:opacity-100 bg-black/40 hover:w-3 z-20" onMouseDown={(e) => { e.stopPropagation(); setResizing({ id: a.id, type: 'annotation', edge: 'start' }); }} />
-                               <div className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize opacity-0 group-hover:opacity-100 bg-black/40 hover:w-3 z-20" onMouseDown={(e) => { e.stopPropagation(); setResizing({ id: a.id, type: 'annotation', edge: 'end' }); }} />
+                               <div className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize opacity-0 group-hover:opacity-100 bg-black/40 hover:w-3 z-20" onMouseDown={(e) => { if (!canEdit) return; e.stopPropagation(); setResizing({ id: a.id, type: 'annotation', edge: 'start' }); }} />
+                               <div className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize opacity-0 group-hover:opacity-100 bg-black/40 hover:w-3 z-20" onMouseDown={(e) => { if (!canEdit) return; e.stopPropagation(); setResizing({ id: a.id, type: 'annotation', edge: 'end' }); }} />
                             </div>
                           </ContextMenuTrigger>
                           <ContextMenuContent className="w-48 z-50">
-                            <ContextMenuItem 
-                              onClick={(e) => { e.stopPropagation(); setAnnotations(prev => prev.filter(p => p.id !== a.id)); if (selectedAnnotationId === a.id) setSelectedAnnotationId(null); toast({ title: 'Annotation Deleted' }); }} 
+                            <ContextMenuItem
+                              disabled={!canEdit}
+                              onClick={(e) => { e.stopPropagation(); setAnnotations(prev => prev.filter(p => p.id !== a.id)); if (selectedAnnotationId === a.id) setSelectedAnnotationId(null); toast({ title: 'Annotation Deleted' }); }}
                               className="text-red-500 focus:bg-red-500/10 focus:text-red-500"
                             >
                               Delete Annotation
@@ -1632,25 +1681,25 @@ export default function Review() {
                       <div className="space-y-4">
                         <div>
                           <Label className="text-xs font-semibold text-muted-foreground mb-1 block">Track Name</Label>
-                          <input type="text" className="w-full bg-muted/50 border border-border rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary outline-none" value={clip.name} onChange={(e) => setVideoClips(prev => prev.map(p => p.id === clip.id ? { ...p, name: e.target.value } : p))} />
+                          <input type="text" disabled={!canEdit} className="w-full bg-muted/50 border border-border rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary outline-none disabled:opacity-50 disabled:cursor-not-allowed" value={clip.name} onChange={(e) => setVideoClips(prev => prev.map(p => p.id === clip.id ? { ...p, name: e.target.value } : p))} />
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                           <div>
                              <Label className="text-xs font-semibold text-muted-foreground mb-1 block">Start Frame</Label>
-                             <input type="number" min={1} max={maxFrames} className="w-full bg-muted/50 border border-border rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary outline-none" value={clip.startFrame} onChange={(e) => setVideoClips(prev => prev.map(p => p.id === clip.id ? { ...p, startFrame: parseInt(e.target.value) } : p))} />
+                             <input type="number" min={1} max={maxFrames} disabled={!canEdit} className="w-full bg-muted/50 border border-border rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary outline-none disabled:opacity-50 disabled:cursor-not-allowed" value={clip.startFrame} onChange={(e) => setVideoClips(prev => prev.map(p => p.id === clip.id ? { ...p, startFrame: parseInt(e.target.value) } : p))} />
                           </div>
                           <div>
                              <Label className="text-xs font-semibold text-muted-foreground mb-1 block">End Frame</Label>
-                             <input type="number" min={1} max={maxFrames} className="w-full bg-muted/50 border border-border rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary outline-none" value={clip.endFrame} onChange={(e) => setVideoClips(prev => prev.map(p => p.id === clip.id ? { ...p, endFrame: parseInt(e.target.value) } : p))} />
+                             <input type="number" min={1} max={maxFrames} disabled={!canEdit} className="w-full bg-muted/50 border border-border rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary outline-none disabled:opacity-50 disabled:cursor-not-allowed" value={clip.endFrame} onChange={(e) => setVideoClips(prev => prev.map(p => p.id === clip.id ? { ...p, endFrame: parseInt(e.target.value) } : p))} />
                           </div>
                         </div>
                         <div>
                           <Label className="text-xs font-semibold text-muted-foreground mb-1 block">Opacity ({clip.opacity}%)</Label>
-                          <input type="range" min="0" max="100" className="w-full accent-primary" value={clip.opacity} onChange={(e) => setVideoClips(prev => prev.map(p => p.id === clip.id ? { ...p, opacity: parseInt(e.target.value) } : p))} />
+                          <input type="range" min="0" max="100" disabled={!canEdit} className="w-full accent-primary disabled:opacity-50 disabled:cursor-not-allowed" value={clip.opacity} onChange={(e) => setVideoClips(prev => prev.map(p => p.id === clip.id ? { ...p, opacity: parseInt(e.target.value) } : p))} />
                         </div>
                         <div>
                           <Label className="text-xs font-semibold text-muted-foreground mb-1 block">Blend Mode</Label>
-                          <select className="w-full bg-muted/50 border border-border rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary outline-none" value={clip.blendMode} onChange={(e) => setVideoClips(prev => prev.map(p => p.id === clip.id ? { ...p, blendMode: e.target.value as any } : p))}>
+                          <select disabled={!canEdit} className="w-full bg-muted/50 border border-border rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary outline-none disabled:opacity-50 disabled:cursor-not-allowed" value={clip.blendMode} onChange={(e) => setVideoClips(prev => prev.map(p => p.id === clip.id ? { ...p, blendMode: e.target.value as any } : p))}>
                             <option value="normal">Normal</option>
                             <option value="multiply">Multiply</option>
                             <option value="screen">Screen</option>
@@ -1668,25 +1717,25 @@ export default function Review() {
                       {ann.type === 'text' && (
                         <div>
                           <Label className="text-xs font-semibold text-muted-foreground mb-1 block">Text Content</Label>
-                          <input type="text" className="w-full bg-muted/50 border border-border rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary outline-none" value={ann.text || ''} onChange={(e) => setAnnotations(prev => prev.map(p => p.id === ann.id ? { ...p, text: e.target.value } : p))} />
+                          <input type="text" disabled={!canEdit} className="w-full bg-muted/50 border border-border rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary outline-none disabled:opacity-50 disabled:cursor-not-allowed" value={ann.text || ''} onChange={(e) => setAnnotations(prev => prev.map(p => p.id === ann.id ? { ...p, text: e.target.value } : p))} />
                         </div>
                       )}
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                            <Label className="text-xs font-semibold text-muted-foreground mb-1 block">Start Frame</Label>
-                           <input type="number" min={1} max={maxFrames} className="w-full bg-muted/50 border border-border rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary outline-none" value={ann.startFrame ?? ann.frame} onChange={(e) => setAnnotations(prev => prev.map(p => p.id === ann.id ? { ...p, startFrame: parseInt(e.target.value) } : p))} />
+                           <input type="number" min={1} max={maxFrames} disabled={!canEdit} className="w-full bg-muted/50 border border-border rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary outline-none disabled:opacity-50 disabled:cursor-not-allowed" value={ann.startFrame ?? ann.frame} onChange={(e) => setAnnotations(prev => prev.map(p => p.id === ann.id ? { ...p, startFrame: parseInt(e.target.value) } : p))} />
                         </div>
                         <div>
                            <Label className="text-xs font-semibold text-muted-foreground mb-1 block">End Frame</Label>
-                           <input type="number" min={1} max={maxFrames} className="w-full bg-muted/50 border border-border rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary outline-none" value={ann.endFrame ?? Math.min(maxFrames, ann.frame + 60)} onChange={(e) => setAnnotations(prev => prev.map(p => p.id === ann.id ? { ...p, endFrame: parseInt(e.target.value) } : p))} />
+                           <input type="number" min={1} max={maxFrames} disabled={!canEdit} className="w-full bg-muted/50 border border-border rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary outline-none disabled:opacity-50 disabled:cursor-not-allowed" value={ann.endFrame ?? Math.min(maxFrames, ann.frame + 60)} onChange={(e) => setAnnotations(prev => prev.map(p => p.id === ann.id ? { ...p, endFrame: parseInt(e.target.value) } : p))} />
                         </div>
                       </div>
-                      
+
                       {ann.type === 'text' && (
                         <>
                           <div>
                             <Label className="text-xs font-semibold text-muted-foreground mb-1 block">Font Family</Label>
-                            <Select value={ann.fontFamily || 'font-sans'} onValueChange={(v) => setAnnotations(prev => prev.map(p => p.id === ann.id ? { ...p, fontFamily: v } : p))}>
+                            <Select disabled={!canEdit} value={ann.fontFamily || 'font-sans'} onValueChange={(v) => setAnnotations(prev => prev.map(p => p.id === ann.id ? { ...p, fontFamily: v } : p))}>
                               <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="font-sans">Sans-serif</SelectItem>
@@ -1697,7 +1746,7 @@ export default function Review() {
                           </div>
                           <div>
                             <Label className="text-xs font-semibold text-muted-foreground mb-1 block">Font Size</Label>
-                            <input type="number" className="w-full bg-muted/50 border border-border rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary outline-none" value={ann.fontSize || 14} onChange={(e) => setAnnotations(prev => prev.map(p => p.id === ann.id ? { ...p, fontSize: parseInt(e.target.value) } : p))} />
+                            <input type="number" disabled={!canEdit} className="w-full bg-muted/50 border border-border rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary outline-none disabled:opacity-50 disabled:cursor-not-allowed" value={ann.fontSize || 14} onChange={(e) => setAnnotations(prev => prev.map(p => p.id === ann.id ? { ...p, fontSize: parseInt(e.target.value) } : p))} />
                           </div>
                         </>
                       )}
@@ -1706,25 +1755,25 @@ export default function Review() {
                         <Label className="text-xs font-semibold text-muted-foreground mb-1 block">Color</Label>
                         <div className="flex gap-2 mt-1">
                           {COLORS.map(c => (
-                            <button key={c} className={`w-6 h-6 rounded-full border-2 transition-transform hover:scale-110 ${ann.color === c ? 'border-primary' : 'border-transparent'}`} style={{ backgroundColor: c }} onClick={() => setAnnotations(prev => prev.map(p => p.id === ann.id ? { ...p, color: c } : p))} />
+                            <button key={c} disabled={!canEdit} className={`w-6 h-6 rounded-full border-2 transition-transform hover:scale-110 disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed ${ann.color === c ? 'border-primary' : 'border-transparent'}`} style={{ backgroundColor: c }} onClick={() => setAnnotations(prev => prev.map(p => p.id === ann.id ? { ...p, color: c } : p))} />
                           ))}
                         </div>
                       </div>
-                      
+
                       {ann.type === 'text' && (
                         <div>
                           <Label className="text-xs font-semibold text-muted-foreground mb-1 block">Background</Label>
                           <div className="flex gap-2 mt-1">
-                             <button className={`w-6 h-6 rounded border-2 transition-transform hover:scale-110 ${ann.backgroundColor === 'transparent' ? 'border-primary' : 'border-border'}`} style={{ backgroundImage: 'linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)', backgroundSize: '10px 10px', backgroundPosition: '0 0, 0 5px, 5px -5px, -5px 0' }} onClick={() => setAnnotations(prev => prev.map(p => p.id === ann.id ? { ...p, backgroundColor: 'transparent' } : p))} title="Transparent" />
+                             <button disabled={!canEdit} className={`w-6 h-6 rounded border-2 transition-transform hover:scale-110 disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed ${ann.backgroundColor === 'transparent' ? 'border-primary' : 'border-border'}`} style={{ backgroundImage: 'linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)', backgroundSize: '10px 10px', backgroundPosition: '0 0, 0 5px, 5px -5px, -5px 0' }} onClick={() => setAnnotations(prev => prev.map(p => p.id === ann.id ? { ...p, backgroundColor: 'transparent' } : p))} title="Transparent" />
                             {['#00000080', '#ffffff80', '#ef444480', '#3b82f680'].map(c => (
-                              <button key={c} className={`w-6 h-6 rounded border-2 transition-transform hover:scale-110 ${ann.backgroundColor === c ? 'border-primary' : 'border-transparent'}`} style={{ backgroundColor: c }} onClick={() => setAnnotations(prev => prev.map(p => p.id === ann.id ? { ...p, backgroundColor: c } : p))} />
+                              <button key={c} disabled={!canEdit} className={`w-6 h-6 rounded border-2 transition-transform hover:scale-110 disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed ${ann.backgroundColor === c ? 'border-primary' : 'border-transparent'}`} style={{ backgroundColor: c }} onClick={() => setAnnotations(prev => prev.map(p => p.id === ann.id ? { ...p, backgroundColor: c } : p))} />
                             ))}
                           </div>
                         </div>
                       )}
 
                       <div className="pt-4 border-t border-border mt-4">
-                         <Button variant="destructive" size="sm" className="w-full" onClick={() => {
+                         <Button variant="destructive" size="sm" className="w-full" disabled={!canEdit} onClick={() => {
                            setAnnotations(prev => prev.filter(p => p.id !== ann.id));
                            setSelectedAnnotationId(null);
                          }}>Delete Annotation</Button>

@@ -4,6 +4,17 @@ import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, Trash2, Clock } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
 import { DEPARTMENTS, type Task } from '@/data/mockData';
 import type { TaskTemplateItem } from '@/store/schema';
@@ -109,16 +120,31 @@ export function TemplateTaskRow({
         </SelectContent>
       </Select>
 
-      <motion.button
-        type="button"
-        whileHover={{ scale: 1.08 }}
-        whileTap={{ scale: 0.9 }}
-        onClick={onRemove}
-        className="p-1.5 rounded-md text-muted-foreground/60 hover:text-red-500 hover:bg-red-500/10 transition-colors shrink-0"
-        aria-label="Remove task"
-      >
-        <Trash2 className="w-3.5 h-3.5" />
-      </motion.button>
+      <AlertDialog>
+        <AlertDialogTrigger asChild>
+          <motion.button
+            type="button"
+            whileHover={{ scale: 1.08 }}
+            whileTap={{ scale: 0.9 }}
+            className="p-1.5 rounded-md text-muted-foreground/60 hover:text-red-500 hover:bg-red-500/10 transition-colors shrink-0"
+            aria-label="Remove task"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </motion.button>
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove task "{task.title || 'Untitled task'}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the task from the template bundle. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={onRemove}>Remove</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </motion.div>
   );
 }

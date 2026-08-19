@@ -4,15 +4,18 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import { PROJECTS, USERS, TASKS, ASSETS, AUDIT_EVENTS } from '@/data/mockData';
 import { useShotStore } from '@/store/shots';
 import { useReviewStore } from '@/store/reviews';
+import { useUIStore } from '@/store/ui';
 import { ChevronLeft, Film, Package, ListTodo, GitBranch, Clock, CheckCircle2, XCircle, MessageSquare } from 'lucide-react';
 
 export default function ShotDetail() {
   const [, params] = useRoute('/shots/:id');
   const liveShots = useShotStore(state => state.shots);
   const liveVersions = useReviewStore(state => state.versions);
+  const setActiveTaskDrawer = useUIStore(state => state.setActiveTaskDrawer);
   
   const shot = liveShots.find(s => s.id === params?.id);
   if (!shot) return <div className="p-6 text-center text-muted-foreground">Shot not found.</div>;
@@ -53,13 +56,13 @@ export default function ShotDetail() {
             <span>Project: <Link href={`/projects/${project?.id}`} className="text-primary hover:underline">{project?.name}</Link></span>
           </div>
           <div className="flex items-center gap-3">
-            <Badge variant={shot.reviewStatus === 'approved' ? 'default' : 'secondary'} className="text-xs">
-              Review: {shot.reviewStatus}
+            <Badge variant={shot.internalReviewStatus === 'approved' ? 'default' : 'secondary'} className="text-xs">
+              Review: {shot.internalReviewStatus}
             </Badge>
           </div>
           {shot.notes && <p className="text-sm text-muted-foreground mt-3 italic">{shot.notes}</p>}
         </div>
-        <Button size="sm" asChild><Link href="/review">Open in Review</Link></Button>
+        <Button size="sm" asChild><Link href={`/review?shot=${shot.id}`}>Open in Review</Link></Button>
       </div>
 
       <Tabs defaultValue="overview">
@@ -96,9 +99,9 @@ export default function ShotDetail() {
                 <div className="h-32 bg-muted rounded-t-lg flex items-center justify-center relative overflow-hidden group">
                   <Film className="w-8 h-8 text-muted-foreground/30" />
                   <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                    <Button size="sm" asChild className="h-7 text-xs"><Link href="/review">View</Link></Button>
+                    <Button size="sm" asChild className="h-7 text-xs"><Link href={`/review?shot=${shot.id}&version=${v.id}`}>View</Link></Button>
                     {i < versions.length - 1 && (
-                      <Button size="sm" variant="secondary" asChild className="h-7 text-xs"><Link href="/review">Compare</Link></Button>
+                      <Button size="sm" variant="secondary" asChild className="h-7 text-xs"><Link href={`/review?shot=${shot.id}&version=${v.id}&compare=${versions[i + 1].id}`}>Compare</Link></Button>
                     )}
                   </div>
                 </div>
@@ -124,7 +127,19 @@ export default function ShotDetail() {
 
         <TabsContent value="tasks" className="mt-4 space-y-2">
           {relatedTasks.map(t => (
-            <Card key={t.id} className="hover:bg-muted/20 transition-colors cursor-pointer">
+            <Card
+              key={t.id}
+              className="hover:bg-muted/20 transition-colors cursor-pointer"
+              role="button"
+              tabIndex={0}
+              onClick={() => setActiveTaskDrawer(t.id)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setActiveTaskDrawer(t.id);
+                }
+              }}
+            >
               <CardContent className="p-4 flex items-center gap-4">
                 <ListTodo className="w-4 h-4 text-muted-foreground" />
                 <div className="flex-1">
@@ -135,6 +150,17 @@ export default function ShotDetail() {
               </CardContent>
             </Card>
           ))}
+          {relatedTasks.length === 0 && (
+            <Empty className="border-2 border-dashed border-border rounded-lg py-12">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <ListTodo />
+                </EmptyMedia>
+                <EmptyTitle>No tasks yet</EmptyTitle>
+                <EmptyDescription>No tasks are linked to this shot.</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          )}
         </TabsContent>
 
         <TabsContent value="activity" className="mt-4 space-y-3">

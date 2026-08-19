@@ -8,9 +8,20 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
 import { FieldTypePicker } from './FieldTypePicker';
-import { slugifyKey, type EntityField, type FieldType } from '@/store/schema';
+import { slugifyKey, RESERVED_KEYS, type EntityField, type FieldType } from '@/store/schema';
 import { evaluateExpression, formatExprValue } from '@/lib/expressionEvaluator';
 import { EASE_DISSOLVE, DURATION } from '@/lib/motion';
 
@@ -78,6 +89,14 @@ export function FieldRow({
     if (type === 'computed') {
       updates.expression = field.expression ?? '';
       updates.defaultValue = undefined;
+    } else if (type !== field.type) {
+      // Default values are type-specific (e.g. 'true'/'false' for boolean,
+      // an option string for single_select) — clear a stale default instead
+      // of carrying one over in a format the new type doesn't understand.
+      // Left alone, this silently broke computed-field previews elsewhere
+      // (e.g. Number('true') => NaN) and left invalid values sitting in the
+      // new type's control.
+      updates.defaultValue = undefined;
     }
     onUpdate(updates);
   };
@@ -89,8 +108,8 @@ export function FieldRow({
     setOptionDraft('');
   };
 
-  const removeOption = (opt: string) => {
-    onUpdate({ options: (field.options ?? []).filter((o) => o !== opt) });
+  const removeOption = (index: number) => {
+    onUpdate({ options: (field.options ?? []).filter((_, i) => i !== index) });
   };
 
   const insertRef = (key: string) => {
@@ -147,6 +166,11 @@ export function FieldRow({
                   <AlertCircle className="w-2.5 h-2.5" /> duplicate key
                 </span>
               )}
+              {!takenKeys.includes(field.key) && RESERVED_KEYS.includes(field.key) && (
+                <span className="text-[10px] text-red-500 flex items-center gap-0.5">
+                  <AlertCircle className="w-2.5 h-2.5" /> reserved word — unusable in expressions
+                </span>
+              )}
             </div>
           </div>
 
@@ -165,16 +189,32 @@ export function FieldRow({
               </TooltipTrigger>
               <TooltipContent>Require a value for this field</TooltipContent>
             </Tooltip>
-            <motion.button
-              type="button"
-              whileHover={{ scale: 1.08 }}
-              whileTap={{ scale: 0.9 }}
-              onClick={onRemove}
-              className="p-1.5 rounded-md text-muted-foreground/60 hover:text-red-500 hover:bg-red-500/10 transition-colors"
-              aria-label="Remove field"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </motion.button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <motion.button
+                  type="button"
+                  whileHover={{ scale: 1.08 }}
+                  whileTap={{ scale: 0.9 }}
+                  className="p-1.5 rounded-md text-muted-foreground/60 hover:text-red-500 hover:bg-red-500/10 transition-colors"
+                  aria-label="Remove field"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </motion.button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete field "{field.label || 'Untitled field'}"?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This removes the field from the entity type. Any computed fields referencing{' '}
+                    <span className="font-mono">{field.key}</span> will break. This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={onRemove}>Delete</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </div>
       </div>
@@ -208,16 +248,16 @@ export function FieldRow({
         {(field.type === 'single_select' || field.type === 'multi_select') && (
           <div className="space-y-1.5">
             <div className="flex items-center gap-2 flex-wrap">
-              {(field.options ?? []).map((opt) => (
+              {(field.options ?? []).map((opt, i) => (
                 <Badge
-                  key={opt}
+                  key={i}
                   variant="secondary"
                   className="gap-1 pr-1 text-[10px] font-normal"
                 >
                   {opt}
                   <button
                     type="button"
-                    onClick={() => removeOption(opt)}
+                    onClick={() => removeOption(i)}
                     className="hover:text-red-500 ml-0.5"
                     aria-label={`Remove option ${opt}`}
                   >

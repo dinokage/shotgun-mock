@@ -23,12 +23,21 @@ const COLORS = {
 };
 
 export default function DashboardTab({ project }: { project: any }) {
-  const pieData = [
+  // Scale the status breakdown proportionally to this project's real shot count so the
+  // donut segments always sum to the same total shown in the center label below. These
+  // were previously two independently-wired numbers (a fixed 247-shot breakdown vs. the
+  // project's actual shotsCount) that visibly disagreed on every project but the first.
+  const pieBase = [
     { name: 'Complete', value: 98, fill: COLORS.complete },
     { name: 'In Progress', value: 74, fill: COLORS['in-progress'] },
     { name: 'Bottleneck', value: 25, fill: COLORS.bottleneck },
     { name: 'To Do', value: 50, fill: COLORS.todo },
   ];
+  const pieBaseTotal = pieBase.reduce((sum, d) => sum + d.value, 0);
+  const pieTarget = project.shotsCount ?? pieBaseTotal;
+  const pieData = pieBase.map(d => ({ ...d, value: Math.round((d.value / pieBaseTotal) * pieTarget) }));
+  const pieRoundingDrift = pieTarget - pieData.reduce((sum, d) => sum + d.value, 0);
+  pieData[0].value += pieRoundingDrift; // absorb rounding drift into the largest bucket
 
   const shots = useShotStore((state) => state.shots);
   const projectShots = shots.filter(s => s.projectId === project.id).slice(0, 4);
@@ -36,7 +45,7 @@ export default function DashboardTab({ project }: { project: any }) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pb-8">
       <div className="lg:col-span-3 min-w-0">
-        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Latest Shorts Previews</h3>
+        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Latest Shots Previews</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {projectShots.map(shot => (
             <div key={shot.id} className="group relative aspect-video bg-muted rounded-lg overflow-hidden border border-border cursor-pointer hover:border-primary/50 transition-colors">

@@ -49,8 +49,14 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'forge-auth',
+      // Strip the plaintext `password` field before it round-trips through
+      // localStorage — the in-memory currentUser keeps the full User shape
+      // (other consumers type it as `User`), but persisted state never
+      // retains the credential.
       partialize: (state) => ({
-        currentUser: state.currentUser,
+        currentUser: state.currentUser
+          ? (({ password: _password, ...safeUser }) => safeUser)(state.currentUser)
+          : null,
         isAuthenticated: state.isAuthenticated,
       }),
     }

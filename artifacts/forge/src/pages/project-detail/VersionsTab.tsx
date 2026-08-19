@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import { useReviewStore } from '@/store/reviews';
 import { useAuthStore } from '@/store/auth';
 import { useToast } from '@/hooks/use-toast';
@@ -37,6 +38,20 @@ export default function VersionsTab({ project }: { project: any }) {
   const projectShots = SHOTS.filter(s => s.projectId === project.id);
   const projectEntityIds = new Set([...projectAssets.map(a => a.id), ...projectShots.map(s => s.id)]);
   const projectVersions = versions.filter(v => projectEntityIds.has(v.entityId));
+
+  const versionsById = new Map(versions.map(v => [v.id, v]));
+  const selected = selectedVersion ? versionsById.get(selectedVersion) : null;
+  /** Walk the real derivedFromId chain back from the selected version, oldest first. Capped to avoid a runaway/circular chain. */
+  const lineage: typeof versions = [];
+  if (selected) {
+    let node: typeof selected | undefined = selected;
+    const seen = new Set<string>();
+    while (node && !seen.has(node.id) && lineage.length < 6) {
+      lineage.unshift(node);
+      seen.add(node.id);
+      node = node.derivedFromId ? versionsById.get(node.derivedFromId) : undefined;
+    }
+  }
 
   const resetUploadForm = () => {
     setUploadTarget('');
@@ -76,15 +91,35 @@ export default function VersionsTab({ project }: { project: any }) {
             Upload New Version (Any Format)
           </Button>
         </div>
-        <div className="flex-1 overflow-y-auto p-4 grid grid-cols-2 gap-4 content-start">
+        <div className="flex-1 overflow-y-auto p-4">
+        {projectVersions.length === 0 ? (
+          <Empty className="h-full">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <GitCommit className="w-6 h-6" />
+              </EmptyMedia>
+              <EmptyTitle>No versions yet</EmptyTitle>
+              <EmptyDescription>Uploaded versions and publishes for this project will show up here.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+        <div className="grid grid-cols-2 gap-4 content-start">
           {projectVersions.map(v => {
             const user = USERS.find(u => u.id === v.createdById);
             const isSelected = selectedVersion === v.id;
             return (
-              <Card 
-                key={v.id} 
+              <Card
+                key={v.id}
+                role="button"
+                tabIndex={0}
                 className={cn("cursor-pointer hover:border-primary/50 transition-all", isSelected ? 'border-primary ring-1 ring-primary' : '')}
                 onClick={() => setSelectedVersion(v.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setSelectedVersion(v.id);
+                  }
+                }}
               >
                 <div className="h-32 bg-muted relative rounded-t-lg overflow-hidden">
                   <div className="absolute top-2 right-2">
@@ -109,34 +144,47 @@ export default function VersionsTab({ project }: { project: any }) {
             );
           })}
         </div>
+        )}
+        </div>
       </div>
 
       <div className="w-1/3 flex flex-col h-full border border-border rounded-lg bg-card overflow-hidden">
         <div className="p-4 border-b border-border font-semibold">
           Publish Lineage
         </div>
-        <div className="flex-1 p-6 relative overflow-hidden flex items-center justify-center bg-muted/10">
-          {selectedVersion ? (
+        <div className="flex-1 p-6 relative overflow-x-auto overflow-y-hidden flex items-center justify-center bg-muted/10">
+          {selected ? (
             <div className="flex items-center">
-              <div className="w-32 text-center">
-                <div className="w-12 h-12 bg-muted rounded-full mx-auto mb-2 flex items-center justify-center border-2 border-border">
-                  <GitCommit className="text-muted-foreground" />
-                </div>
-                <div className="font-mono text-xs text-muted-foreground">v001</div>
-                <div className="text-xs mt-1">Approved</div>
-              </div>
-              <div className="w-16 flex items-center justify-center">
-                <div className="h-px bg-border w-full relative">
-                  <ArrowRight className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 text-border" />
-                </div>
-              </div>
-              <div className="w-32 text-center">
-                <div className="w-12 h-12 bg-primary/20 rounded-full mx-auto mb-2 flex items-center justify-center border-2 border-primary text-primary shadow-[0_0_15px_rgba(var(--primary),0.3)]">
-                  <GitCommit />
-                </div>
-                <div className="font-mono text-xs font-bold text-primary">v002</div>
-                <div className="text-xs mt-1">Current</div>
-              </div>
+              {lineage.map((v, i) => {
+                const isCurrent = v.id === selected.id;
+                return (
+                  <div key={v.id} className="flex items-center">
+                    {i > 0 && (
+                      <div className="w-16 flex items-center justify-center shrink-0">
+                        <div className="h-px bg-border w-full relative">
+                          <ArrowRight className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 text-border" />
+                        </div>
+                      </div>
+                    )}
+                    <div className="w-32 text-center shrink-0">
+                      <div
+                        className={cn(
+                          "w-12 h-12 rounded-full mx-auto mb-2 flex items-center justify-center border-2",
+                          isCurrent
+                            ? "bg-primary/20 border-primary text-primary shadow-[0_0_15px_rgba(var(--primary),0.3)]"
+                            : "bg-muted border-border text-muted-foreground"
+                        )}
+                      >
+                        <GitCommit />
+                      </div>
+                      <div className={cn("font-mono text-xs", isCurrent ? "font-bold text-primary" : "text-muted-foreground")}>
+                        {v.versionNumber}
+                      </div>
+                      <div className="text-xs mt-1 capitalize">{isCurrent ? 'Current' : v.status.replace(/-/g, ' ')}</div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <div className="text-muted-foreground text-sm text-center">
@@ -187,7 +235,7 @@ export default function VersionsTab({ project }: { project: any }) {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setUploadOpen(false)}>Cancel</Button>
+            <Button variant="ghost" onClick={() => { setUploadOpen(false); resetUploadForm(); }}>Cancel</Button>
             <Button disabled={!uploadTarget || !uploadFile} onClick={handleUploadSubmit}>Upload Version</Button>
           </DialogFooter>
         </DialogContent>
