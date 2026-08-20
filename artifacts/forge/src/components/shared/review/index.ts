@@ -5,3 +5,4 @@ export { PlaybackControls } from './PlaybackControls';
 export { FrameScrubber } from './FrameScrubber';
 export { PresentationToggle, PresentationLockBanner } from './PresentationBanner';
 export { GhostingToggle } from './GhostingToggle';
+export { FeedbackList } from './FeedbackList';

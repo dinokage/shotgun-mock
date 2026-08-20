@@ -25,6 +25,8 @@ import { PROJECTS, USERS, DEPARTMENTS } from '@/data/mockData';
 import { Clock, Plus, CheckCircle2, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Save, Pencil, Trash2, X } from 'lucide-react';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { useToast } from '@/hooks/use-toast';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { cn } from '@/lib/utils';
 
 export default function Timesheets() {
   const { currentUser } = useAuthStore();
@@ -48,6 +50,7 @@ export default function Timesheets() {
 
   const isManager = useIsLeadership();
   const tasks = useTasksStore((state) => state.tasks);
+  const isMobile = useIsMobile();
 
   if (!currentUser) return null;
 
@@ -311,6 +314,109 @@ export default function Timesheets() {
                       const isOwn = log.userId === currentUser.id;
                       const isEditing = editingLogId === log.id;
 
+                      const dateBox = (
+                        <div className={cn('rounded-md bg-muted/50 border border-border flex flex-col items-center justify-center shrink-0', isMobile ? 'w-14 h-14' : 'w-16 h-16')}>
+                          <span className="text-xs text-muted-foreground uppercase">{new Date(log.date).toLocaleDateString('en-US', { weekday: 'short' })}</span>
+                          <span className={cn('font-bold', isMobile ? 'text-lg' : 'text-xl')}>{new Date(log.date).getDate()}</span>
+                        </div>
+                      );
+
+                      const titleAndMeta = (
+                        <div className="min-w-0">
+                          {task ? (
+                            <button
+                              type="button"
+                              className="font-semibold text-lg hover:text-primary cursor-pointer transition-colors text-left"
+                              onClick={() => setActiveTaskDrawer(task.id)}
+                            >
+                              {task.title}
+                            </button>
+                          ) : (
+                            <div className="font-semibold text-lg text-muted-foreground">Unknown Task</div>
+                          )}
+                          <div className="text-sm text-muted-foreground flex items-center gap-2 mt-0.5 flex-wrap">
+                            <span className="text-accent-scope font-medium">{project?.name}</span>
+                            {isManager && (
+                              <>
+                                <span className="opacity-50">•</span>
+                                <span>{user?.name}</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      );
+
+                      const notesArea = isEditing ? (
+                        <div className={cn('space-y-1.5', !isMobile && 'mt-2')}>
+                          <Input
+                            type="text"
+                            value={editNotes}
+                            onChange={(e) => setEditNotes(e.target.value)}
+                            placeholder="What did you work on?"
+                            className="h-8 text-sm"
+                          />
+                        </div>
+                      ) : (
+                        log.notes && <div className={cn('text-sm italic text-foreground/80', !isMobile && 'mt-2')}>"{log.notes}"</div>
+                      );
+
+                      const hoursDisplay = isEditing ? (
+                        <Input
+                          type="number"
+                          min="0.25"
+                          step="0.25"
+                          max="24"
+                          value={editHours}
+                          onChange={(e) => setEditHours(e.target.value)}
+                          className={cn('h-9 timecode', isMobile ? 'w-24' : 'w-24 text-right')}
+                          autoFocus
+                        />
+                      ) : (
+                        <div className="text-xl font-bold text-accent-tally bg-accent-tally/10 px-3 py-1 rounded-md border border-accent-tally/20 timecode">
+                          {log.hours} <span className="text-sm font-normal text-muted-foreground">hrs</span>
+                        </div>
+                      );
+
+                      const actions = isOwn && (
+                        <div className="flex items-center gap-1">
+                          {isEditing ? (
+                            <>
+                              <Button size="icon" variant="ghost" className={cn('h-7 w-7', isMobile && 'touch-target')} onClick={() => saveEditLog(log.id)} aria-label="Save changes">
+                                <Save className="w-3.5 h-3.5" />
+                              </Button>
+                              <Button size="icon" variant="ghost" className={cn('h-7 w-7', isMobile && 'touch-target')} onClick={cancelEditLog} aria-label="Cancel editing">
+                                <X className="w-3.5 h-3.5" />
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <Button size="icon" variant="ghost" className={cn('h-7 w-7', isMobile && 'touch-target')} onClick={() => startEditLog(log)} aria-label="Edit time log">
+                                <Pencil className="w-3.5 h-3.5" />
+                              </Button>
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button size="icon" variant="ghost" className={cn('h-7 w-7 text-red-500 hover:text-red-500 hover:bg-red-500/10', isMobile && 'touch-target')} aria-label="Delete time log">
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Delete this time log?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      This will remove the {log.hours}h entry on {task?.title || 'this task'} and reduce its logged hours. This action cannot be undone.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => handleDeleteLog(log)}>Delete</AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </>
+                          )}
+                        </div>
+                      );
+
                       return (
                         <motion.div
                           key={log.id}
@@ -324,107 +430,39 @@ export default function Timesheets() {
                           }}
                           exit={{ opacity: 0, scale: 0.98 }}
                           transition={{ duration: 0.3, ease: 'easeOut' }}
-                          className="p-4 flex items-start justify-between hover:bg-muted/20 transition-colors"
+                          className={cn('hover:bg-muted/20 transition-colors', isMobile ? 'p-4 space-y-3' : 'p-4 flex items-start justify-between')}
                         >
-                          <div className="flex gap-4">
-                            <div className="w-16 h-16 rounded-md bg-muted/50 border border-border flex flex-col items-center justify-center shrink-0">
-                              <span className="text-xs text-muted-foreground uppercase">{new Date(log.date).toLocaleDateString('en-US', { weekday: 'short' })}</span>
-                              <span className="text-xl font-bold">{new Date(log.date).getDate()}</span>
-                            </div>
-                            <div>
-                              {task ? (
-                                <button
-                                  type="button"
-                                  className="font-semibold text-lg hover:text-primary cursor-pointer transition-colors text-left"
-                                  onClick={() => setActiveTaskDrawer(task.id)}
-                                >
-                                  {task.title}
-                                </button>
-                              ) : (
-                                <div className="font-semibold text-lg text-muted-foreground">Unknown Task</div>
-                              )}
-                              <div className="text-sm text-muted-foreground flex items-center gap-2 mt-0.5">
-                                <span className="text-accent-scope font-medium">{project?.name}</span>
-                                {isManager && (
-                                  <>
-                                    <span className="opacity-50">•</span>
-                                    <span>{user?.name}</span>
-                                  </>
-                                )}
+                          {isMobile ? (
+                            <>
+                              <div className="flex gap-3">
+                                {dateBox}
+                                {titleAndMeta}
                               </div>
-                              {isEditing ? (
-                                <div className="mt-2 space-y-1.5">
-                                  <Input
-                                    type="text"
-                                    value={editNotes}
-                                    onChange={(e) => setEditNotes(e.target.value)}
-                                    placeholder="What did you work on?"
-                                    className="h-8 text-sm"
-                                  />
+                              {notesArea}
+                              <div className="flex items-center justify-between gap-2 flex-wrap pl-[68px]">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  {hoursDisplay}
+                                  {task && <StatusBadge status={task.status} />}
                                 </div>
-                              ) : (
-                                log.notes && <div className="text-sm mt-2 italic text-foreground/80">"{log.notes}"</div>
-                              )}
-                            </div>
-                          </div>
-                          <div className="text-right flex flex-col items-end gap-2">
-                            {isEditing ? (
-                              <Input
-                                type="number"
-                                min="0.25"
-                                step="0.25"
-                                max="24"
-                                value={editHours}
-                                onChange={(e) => setEditHours(e.target.value)}
-                                className="w-24 h-9 text-right timecode"
-                                autoFocus
-                              />
-                            ) : (
-                              <div className="text-xl font-bold text-accent-tally bg-accent-tally/10 px-3 py-1 rounded-md border border-accent-tally/20 timecode">
-                                {log.hours} <span className="text-sm font-normal text-muted-foreground">hrs</span>
+                                {actions}
                               </div>
-                            )}
-                            {task && <StatusBadge status={task.status} />}
-                            {isOwn && (
-                              <div className="flex items-center gap-1 mt-1">
-                                {isEditing ? (
-                                  <>
-                                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => saveEditLog(log.id)} aria-label="Save changes">
-                                      <Save className="w-3.5 h-3.5" />
-                                    </Button>
-                                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={cancelEditLog} aria-label="Cancel editing">
-                                      <X className="w-3.5 h-3.5" />
-                                    </Button>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => startEditLog(log)} aria-label="Edit time log">
-                                      <Pencil className="w-3.5 h-3.5" />
-                                    </Button>
-                                    <AlertDialog>
-                                      <AlertDialogTrigger asChild>
-                                        <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500 hover:text-red-500 hover:bg-red-500/10" aria-label="Delete time log">
-                                          <Trash2 className="w-3.5 h-3.5" />
-                                        </Button>
-                                      </AlertDialogTrigger>
-                                      <AlertDialogContent>
-                                        <AlertDialogHeader>
-                                          <AlertDialogTitle>Delete this time log?</AlertDialogTitle>
-                                          <AlertDialogDescription>
-                                            This will remove the {log.hours}h entry on {task?.title || 'this task'} and reduce its logged hours. This action cannot be undone.
-                                          </AlertDialogDescription>
-                                        </AlertDialogHeader>
-                                        <AlertDialogFooter>
-                                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                          <AlertDialogAction onClick={() => handleDeleteLog(log)}>Delete</AlertDialogAction>
-                                        </AlertDialogFooter>
-                                      </AlertDialogContent>
-                                    </AlertDialog>
-                                  </>
-                                )}
+                            </>
+                          ) : (
+                            <>
+                              <div className="flex gap-4">
+                                {dateBox}
+                                <div>
+                                  {titleAndMeta}
+                                  {notesArea}
+                                </div>
                               </div>
-                            )}
-                          </div>
+                              <div className="text-right flex flex-col items-end gap-2">
+                                {hoursDisplay}
+                                {task && <StatusBadge status={task.status} />}
+                                {isOwn && <div className="mt-1">{actions}</div>}
+                              </div>
+                            </>
+                          )}
                         </motion.div>
                       );
                     })}

@@ -17,7 +17,8 @@ import { useReviewStore } from '@/store/reviews';
 import { useChatGroupsStore } from '@/store/chatGroups';
 import { useCapability, useIsLeadership } from '@/hooks/use-capability';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { STUDIOS } from '@/data/mockData';
+import { STUDIOS, DEPARTMENTS } from '@/data/mockData';
+import { DEPARTMENT_LEADERSHIP_ROLES } from '@/store/permissions';
 import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
@@ -116,10 +117,26 @@ export function Sidebar() {
     // for its "Reviews Requested" stat).
     : reviews.filter(r => r.reviewerId === currentUser.id && r.status === 'pending').length;
 
+  // "Needs My Review" queue count for department leads/supervisors, scoped
+  // the same way tasks.tsx's own needsReviewCount is — so a lead sees the
+  // size of their queue on "My Tasks" before they even click into it,
+  // instead of discovering it only after filtering the shared task list.
+  const isDeptLeadership = !!currentUser && DEPARTMENT_LEADERSHIP_ROLES.includes(currentUser.role);
+  const myDepartmentName = currentUser
+    ? DEPARTMENTS.find(d => d.id === currentUser.departmentId)?.name
+    : undefined;
+  const tasksReviewBadge = isDeptLeadership
+    ? tasks.filter(t =>
+        (t.status === 'review' || t.status === 'lead-review') &&
+        (!myDepartmentName || t.department === myDepartmentName)
+      ).length
+    : 0;
+
   const withBadges = (items: NavItem[]): NavItem[] =>
     items.map(item => {
       if (item.href === '/chat') return { ...item, badge: teamChatBadge || undefined };
       if (item.href === '/review') return { ...item, badge: reviewsBadge || undefined };
+      if (item.href === '/tasks') return { ...item, badge: tasksReviewBadge || undefined };
       return item;
     });
 

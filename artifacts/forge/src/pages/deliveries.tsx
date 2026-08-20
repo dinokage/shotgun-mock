@@ -17,11 +17,12 @@ import {
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import { Truck, Plus, Copy, Ban, RotateCcw, ExternalLink, Package, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { copyToClipboard } from '@/lib/utils';
+import { copyToClipboard, cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth';
 import { useProjectStore } from '@/store/projects';
 import { useShotStore } from '@/store/shots';
 import { useDeliveryStore, isDeliveryActive, isDeliveryExpired, DELIVERY_ELIGIBLE_STATUSES, type DeliveryItem } from '@/store/deliveries';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 const EXPIRY_OPTIONS = [
   { label: '7 days', days: 7 },
@@ -44,6 +45,7 @@ export default function Deliveries() {
   const { currentUser } = useAuthStore();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const isMobile = useIsMobile();
 
   const projects = useProjectStore((s) => s.projects);
   const shots = useShotStore((s) => s.shots);
@@ -235,60 +237,107 @@ export default function Deliveries() {
           {deliveries.map((d) => {
             const project = projects.find((p) => p.id === d.projectId);
             const active = isDeliveryActive(d);
+            const revokeDialog = (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className={cn('gap-1.5 text-red-500 hover:bg-red-500/10 hover:text-red-500', isMobile && 'col-span-2 touch-target')}
+                  >
+                    <Ban className="w-3.5 h-3.5" /> Revoke
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Revoke this delivery link?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      The access code will stop working immediately. Anyone who currently has the link, including the client, will see it as revoked.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => revokeDelivery(d.id)}>Revoke</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            );
+
             return (
               <Card key={d.id}>
-                <CardContent className="p-4 flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
-                    <Package className="w-5 h-5 text-muted-foreground" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold truncate">{d.title}</span>
-                      {statusBadge(d)}
+                {isMobile ? (
+                  <CardContent className="p-4 space-y-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                        <Package className="w-5 h-5 text-muted-foreground" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold truncate">{d.title}</span>
+                          {statusBadge(d)}
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          {project?.name ?? 'Unknown project'} • {d.clientName} • {d.items.length} shot{d.items.length === 1 ? '' : 's'}
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-xs text-muted-foreground mt-0.5 truncate">
-                      {project?.name ?? 'Unknown project'} • {d.clientName} • {d.items.length} shot{d.items.length === 1 ? '' : 's'}
-                    </div>
-                    <div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-1.5 font-mono">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground font-mono pl-[52px]">
                       <span>code: {d.accessCode}</span>
                       <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {d.expiresAt ? `expires ${new Date(d.expiresAt).toLocaleDateString()}` : 'no expiry'}</span>
                       <span>{d.downloadCount} access{d.downloadCount === 1 ? '' : 'es'}</span>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <Button size="sm" variant="outline" className="gap-1.5" onClick={() => handleCopyLink(d.id, d.accessCode)}>
-                      <Copy className="w-3.5 h-3.5" /> Copy Link
-                    </Button>
-                    <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setLocation(`/delivery/${d.id}`)}>
-                      <ExternalLink className="w-3.5 h-3.5" /> View
-                    </Button>
-                    {active ? (
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button size="sm" variant="outline" className="gap-1.5 text-red-500 hover:bg-red-500/10 hover:text-red-500">
-                            <Ban className="w-3.5 h-3.5" /> Revoke
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Revoke this delivery link?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              The access code will stop working immediately. Anyone who currently has the link, including the client, will see it as revoked.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => revokeDelivery(d.id)}>Revoke</AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    ) : !isDeliveryExpired(d) ? (
-                      <Button size="sm" variant="outline" className="gap-1.5" onClick={() => reactivateDelivery(d.id)}>
-                        <RotateCcw className="w-3.5 h-3.5" /> Reactivate
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <Button size="sm" variant="outline" className="gap-1.5 touch-target" onClick={() => handleCopyLink(d.id, d.accessCode)}>
+                        <Copy className="w-3.5 h-3.5" /> Copy Link
                       </Button>
-                    ) : null}
-                  </div>
-                </CardContent>
+                      <Button size="sm" variant="outline" className="gap-1.5 touch-target" onClick={() => setLocation(`/delivery/${d.id}`)}>
+                        <ExternalLink className="w-3.5 h-3.5" /> View
+                      </Button>
+                      {active ? (
+                        revokeDialog
+                      ) : !isDeliveryExpired(d) ? (
+                        <Button size="sm" variant="outline" className="col-span-2 gap-1.5 touch-target" onClick={() => reactivateDelivery(d.id)}>
+                          <RotateCcw className="w-3.5 h-3.5" /> Reactivate
+                        </Button>
+                      ) : null}
+                    </div>
+                  </CardContent>
+                ) : (
+                  <CardContent className="p-4 flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                      <Package className="w-5 h-5 text-muted-foreground" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold truncate">{d.title}</span>
+                        {statusBadge(d)}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5 truncate">
+                        {project?.name ?? 'Unknown project'} • {d.clientName} • {d.items.length} shot{d.items.length === 1 ? '' : 's'}
+                      </div>
+                      <div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-1.5 font-mono">
+                        <span>code: {d.accessCode}</span>
+                        <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {d.expiresAt ? `expires ${new Date(d.expiresAt).toLocaleDateString()}` : 'no expiry'}</span>
+                        <span>{d.downloadCount} access{d.downloadCount === 1 ? '' : 'es'}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <Button size="sm" variant="outline" className="gap-1.5" onClick={() => handleCopyLink(d.id, d.accessCode)}>
+                        <Copy className="w-3.5 h-3.5" /> Copy Link
+                      </Button>
+                      <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setLocation(`/delivery/${d.id}`)}>
+                        <ExternalLink className="w-3.5 h-3.5" /> View
+                      </Button>
+                      {active ? (
+                        revokeDialog
+                      ) : !isDeliveryExpired(d) ? (
+                        <Button size="sm" variant="outline" className="gap-1.5" onClick={() => reactivateDelivery(d.id)}>
+                          <RotateCcw className="w-3.5 h-3.5" /> Reactivate
+                        </Button>
+                      ) : null}
+                    </div>
+                  </CardContent>
+                )}
               </Card>
             );
           })}

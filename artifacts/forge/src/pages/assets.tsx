@@ -1,4 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
+import { stagger } from '@/lib/motion';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -14,6 +16,7 @@ import { Link, useSearchParams } from 'wouter';
 import { useAuthStore } from '@/store/auth';
 import { useAssetStore } from '@/store/assets';
 import { useCapability } from '@/hooks/use-capability';
+import { StatusBadge } from '@/components/shared/StatusBadge';
 
 const TYPE_COLORS: Record<string, string> = {
   Character: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
@@ -42,6 +45,7 @@ const LIST_PAGE_SIZE = 50;
 const ASSET_TYPE_OPTIONS: Asset['type'][] = ['Character', 'Environment', 'Prop', 'Rig', 'Effects', 'Vehicle', 'Texture', 'Material', 'Audio'];
 
 export default function Assets() {
+  const prefersReducedMotion = useReducedMotion();
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
@@ -238,36 +242,46 @@ export default function Assets() {
       {view === 'grid' && (
         <div className="space-y-4">
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-          {filtered.slice(0, gridVisible).map(asset => {
+          {filtered.slice(0, gridVisible).map((asset, i) => {
             const project = PROJECTS.find(p => p.id === asset.projectId);
             return (
-              <Link key={asset.id} href={`/assets/${asset.id}`}>
-                <Card className="overflow-hidden hover:shadow-lg transition-all cursor-pointer group border-border hover:border-primary/40">
-                  <div className="aspect-video bg-gradient-to-br from-muted to-muted/50 flex items-center justify-center relative">
-                    <Package className="w-8 h-8 text-muted-foreground/30" />
-                    <div className="absolute top-2 right-2">
-                      <Badge className={`${STATUS_COLORS[asset.status]} text-[9px] border-0`}>
-                        {asset.status.replace('-', ' ')}
-                      </Badge>
+              <motion.div key={asset.id} {...(prefersReducedMotion ? {} : stagger(i))}>
+                <Link href={`/assets/${asset.id}`}>
+                  <Card className="overflow-hidden hover:shadow-lg transition-all cursor-pointer group border-border hover:border-primary/40">
+                    <div className="aspect-video bg-gradient-to-br from-muted to-muted/50 flex items-center justify-center relative">
+                      <Package className="w-8 h-8 text-muted-foreground/30" />
+                      <div className="absolute top-2 right-2">
+                        <Badge className={`${STATUS_COLORS[asset.status]} text-[9px] border-0`}>
+                          {asset.status.replace('-', ' ')}
+                        </Badge>
+                      </div>
+                      <div className="absolute bottom-2 left-2">
+                        <Badge className={`${TYPE_COLORS[asset.type] || ''} text-[9px] border`}>
+                          {asset.type}
+                        </Badge>
+                      </div>
                     </div>
-                    <div className="absolute bottom-2 left-2">
-                      <Badge className={`${TYPE_COLORS[asset.type] || ''} text-[9px] border`}>
-                        {asset.type}
-                      </Badge>
-                    </div>
-                  </div>
-                  <CardContent className="p-3">
-                    <div className="font-medium text-sm truncate group-hover:text-primary transition-colors">{asset.name}</div>
-                    <div className="text-xs text-muted-foreground mt-0.5">{project?.name} · {asset.version}</div>
-                    <div className="flex items-center gap-2 mt-2">
-                      {asset.tags.slice(0, 2).map(tag => (
-                        <Badge key={tag} variant="outline" className="text-[9px] h-4 px-1">{tag}</Badge>
-                      ))}
-                      <span className="text-[10px] text-muted-foreground ml-auto">{asset.fileSize}</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
+                    <CardContent className="p-3">
+                      <div className="font-medium text-sm truncate group-hover:text-primary transition-colors">{asset.name}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">{project?.name} · {asset.version}</div>
+                      {/* My Assets view: surface the publish stage right on the
+                          card, so a queued/validating/failed asset doesn't
+                          require opening it to spot. */}
+                      {mineOnly && (
+                        <div className="mt-1.5">
+                          <StatusBadge status={asset.publishStatus} className="text-[8px] px-1.5 py-0" />
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2 mt-2">
+                        {asset.tags.slice(0, 2).map(tag => (
+                          <Badge key={tag} variant="outline" className="text-[9px] h-4 px-1">{tag}</Badge>
+                        ))}
+                        <span className="text-[10px] text-muted-foreground ml-auto">{asset.fileSize}</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              </motion.div>
             );
           })}
         </div>

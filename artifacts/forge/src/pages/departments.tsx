@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
+import { stagger } from '@/lib/motion';
 import { Link } from 'wouter';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -12,6 +14,7 @@ import { useDepartmentPipelineStore } from '@/store/departments';
 import { useCapability } from '@/hooks/use-capability';
 
 export default function Departments() {
+  const prefersReducedMotion = useReducedMotion();
   const { currentUser } = useAuthStore();
   const isGlobalManager = currentUser && ['vfx_producer', 'production_manager'].includes(currentUser.role);
   const canManagePipeline = useCapability('manage_pipeline');
@@ -121,7 +124,7 @@ export default function Departments() {
                 {pipelineLabel}
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {depts.map(dept => {
+                {depts.map((dept, i) => {
                   const members = USERS.filter(u => u.departmentId === dept.id);
                   const supervisor = USERS.find(u => u.id === dept.supervisorId);
                   const lead = USERS.find(u => u.id === dept.leadId);
@@ -133,7 +136,8 @@ export default function Departments() {
                   const completionRate = deptTasks.length > 0 ? Math.round((completedTasks / deptTasks.length) * 100) : 0;
 
                   return (
-                    <Link key={dept.id} href={`/departments/${dept.id}`}>
+                    <motion.div key={dept.id} {...(prefersReducedMotion ? {} : stagger(i))}>
+                    <Link href={`/departments/${dept.id}`}>
                       <Card className="cursor-pointer hover:border-primary/40 transition-all hover:shadow-lg hover:shadow-primary/5 group h-full">
                         <CardContent className="p-5">
                           {/* Header */}
@@ -218,6 +222,7 @@ export default function Departments() {
                         </CardContent>
                       </Card>
                     </Link>
+                    </motion.div>
                   );
                 })}
               </div>

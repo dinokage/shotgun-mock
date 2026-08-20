@@ -76,8 +76,8 @@ export function TopBar() {
         {isGlobalRole ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full border border-amber-500/30 bg-gradient-to-r from-amber-500/10 to-orange-500/10 text-xs shadow-sm transition-all hover:shadow-md hover:border-amber-500/50 shrink-0 outline-none text-amber-700 dark:text-amber-400">
-                <Building2 className="w-3.5 h-3.5 shrink-0 text-amber-600 dark:text-amber-500" />
+              <button className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full border border-accent-tally/30 bg-accent-tally/10 text-xs shadow-sm transition-all hover:shadow-md hover:border-accent-tally/50 shrink-0 outline-none text-accent-tally">
+                <Building2 className="w-3.5 h-3.5 shrink-0 text-accent-tally" />
                 <span className="font-semibold truncate">{ROLE_LABELS[currentUser.role] || currentUser.title}</span>
                 <span className="opacity-50 shrink-0">•</span>
                 <span className="font-medium opacity-90 shrink-0">{dept ? dept.abbreviation : 'All Depts'}</span>
@@ -107,10 +107,10 @@ export function TopBar() {
         ) : (
           <div className={`hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs shadow-sm transition-all shrink-0 ${
             ['coordinator', 'supervisor', 'lead'].includes(currentUser.role)
-              ? 'bg-gradient-to-r from-amber-500/10 to-orange-500/10 border-amber-500/20 text-amber-700 dark:text-amber-400'
-              : 'bg-white border-gray-200 text-gray-700 dark:bg-zinc-900 dark:border-zinc-800 dark:text-gray-300 shadow-[0_2px_10px_rgba(0,0,0,0.02)]'
+              ? 'bg-accent-tally/10 border-accent-tally/20 text-accent-tally'
+              : 'bg-muted/50 border-border text-muted-foreground'
           }`}>
-            <Shield className={`w-3.5 h-3.5 shrink-0 ${['coordinator', 'supervisor', 'lead'].includes(currentUser.role) ? 'text-amber-600 dark:text-amber-500' : 'text-gray-500'}`} />
+            <Shield className={`w-3.5 h-3.5 shrink-0 ${['coordinator', 'supervisor', 'lead'].includes(currentUser.role) ? 'text-accent-tally' : 'text-muted-foreground'}`} />
             <span className="font-semibold truncate">{ROLE_LABELS[currentUser.role] || currentUser.title}</span>
             {dept && (
               <>
@@ -141,7 +141,7 @@ export function TopBar() {
         {canAssignTasks && (
           <Button
             onClick={() => setCreateTaskModalOpen(true)}
-            className="hidden md:flex bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-full px-5 text-xs h-8 mr-2 transition-all shadow-[0_0_15px_rgba(var(--primary),0.3)]"
+            className="hidden md:flex bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-full px-5 text-xs h-8 mr-2 transition-all shadow-[0_0_20px_hsl(var(--primary)/0.35)]"
           >
             Assign Task
           </Button>

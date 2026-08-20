@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { StatusBadge } from '@/components/shared/StatusBadge';
@@ -11,7 +11,7 @@ import { Plus, Filter, Search, Download, LayoutGrid, List } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Input } from '@/components/ui/input';
 import { Link } from 'wouter';
-import { cut } from '@/lib/motion';
+import { cut, stagger } from '@/lib/motion';
 
 const STATUS_LABELS: Record<string, string> = {
   ON_TRACK: 'On Track',
@@ -21,6 +21,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export default function Projects() {
+  const prefersReducedMotion = useReducedMotion();
   const { toast } = useToast();
   const [search, setSearch] = useState('');
   const [view, setView] = useState<'list' | 'card'>('list');
@@ -258,9 +259,10 @@ export default function Projects() {
       ) : (
         <div className="flex-1 overflow-auto">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-4">
-            {filteredProjects.map(project => (
-              <Link key={project.id} href={`/projects/${project.id}`}>
-                <div className="bg-card border border-border rounded-lg overflow-hidden shadow-sm hover:border-primary/50 transition-colors cursor-pointer group flex flex-col h-full">
+            {filteredProjects.map((project, i) => (
+              <motion.div key={project.id} {...(prefersReducedMotion ? {} : stagger(i))}>
+              <Link href={`/projects/${project.id}`}>
+                <div className="bg-card border border-border rounded-lg overflow-hidden shadow-sm hover:border-primary/50 hover:shadow-md transition-all cursor-pointer group flex flex-col h-full">
                   <div className="aspect-video w-full bg-muted overflow-hidden relative border-b border-border">
                     {project.thumbnail.startsWith('http') ? (
                       <img src={project.thumbnail} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
@@ -311,6 +313,7 @@ export default function Projects() {
                   </div>
                 </div>
               </Link>
+              </motion.div>
             ))}
           </div>
         </div>

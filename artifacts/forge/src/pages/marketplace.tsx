@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
+import { stagger } from '@/lib/motion';
 import { PLUGINS } from '@/data/mockData';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -20,6 +22,7 @@ const ICON_MAP: Record<string, any> = {
 const CATEGORIES = ['All', 'Pipeline', 'Render', 'Integration', 'Monitoring', 'Annotation'];
 
 export default function Marketplace() {
+  const prefersReducedMotion = useReducedMotion();
   const { installedPlugins, installPlugin, uninstallPlugin, enabledPlugins, togglePlugin } = usePluginsStore();
   const { toast } = useToast();
   const canManageIntegrations = useCapability('manage_integrations');
@@ -94,14 +97,15 @@ export default function Marketplace() {
             </Empty>
           </div>
         )}
-        {visiblePlugins.map(plugin => {
+        {visiblePlugins.map((plugin, i) => {
           const Icon = ICON_MAP[plugin.icon] || Package;
           const isInstalled = installedPlugins[plugin.id];
           const isEnabled = enabledPlugins[plugin.id];
-          
+
           return (
-            <Link key={plugin.id} href={`/marketplace/${plugin.id}`}>
-              <Card className="hover-elevate cursor-pointer h-full border-border hover:border-primary/50 transition-colors flex flex-col group">
+            <motion.div key={plugin.id} {...(prefersReducedMotion ? {} : stagger(i))}>
+            <Link href={`/marketplace/${plugin.id}`}>
+              <Card className="hover-elevate cursor-pointer h-full border-border hover:border-primary/50 hover:shadow-md transition-all flex flex-col group">
                 <CardContent className="p-5 flex-1 flex flex-col">
                   <div className="flex items-start justify-between mb-4">
                     <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
@@ -169,6 +173,7 @@ export default function Marketplace() {
                 </CardContent>
               </Card>
             </Link>
+            </motion.div>
           );
         })}
       </div>

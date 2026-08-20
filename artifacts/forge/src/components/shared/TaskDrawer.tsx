@@ -13,6 +13,9 @@ import { Progress } from '@/components/ui/progress';
 import { useAuthStore } from '@/store/auth';
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Link } from 'wouter';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { StepTracker } from '@/components/shared/StepTracker';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -46,7 +49,8 @@ export function TaskDrawer() {
   const { activeTaskDrawer, setActiveTaskDrawer } = useUIStore();
   const { currentUser } = useAuthStore();
   const { toast } = useToast();
-  
+  const isMobile = useIsMobile();
+
   const tasks = useTasksStore(state => state.tasks);
   const updateTask = useTasksStore(state => state.updateTask);
   const updateTaskStatus = useTasksStore(state => state.updateTaskStatus);
@@ -64,6 +68,12 @@ export function TaskDrawer() {
   const [logFormOpen, setLogFormOpen] = useState(false);
   const [logHours, setLogHours] = useState('');
   const [logNote, setLogNote] = useState('');
+
+  // "Approve & Send to Client" forwards a shot to the external, unauthenticated
+  // client portal (client-review.tsx) in one action — a one-way door that
+  // deserves a look-before-you-leap step, not a single click. This just gates
+  // the existing action behind an inline confirm; it changes no store logic.
+  const [clientSendConfirmOpen, setClientSendConfirmOpen] = useState(false);
 
   if (!activeTaskDrawer || !currentUser) return null;
 
@@ -112,38 +122,62 @@ export function TaskDrawer() {
         className="fixed inset-0 bg-background/50 backdrop-blur-sm z-40 animate-in fade-in duration-150"
         onClick={() => setActiveTaskDrawer(null)}
       />
-      <div className="fixed inset-y-0 right-0 w-[480px] max-w-[90vw] bg-card border-l border-border shadow-2xl z-50 flex flex-col animate-in slide-in-from-right duration-300">
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-border shrink-0">
-          <div className="flex items-center gap-3">
-            <Badge className={`${PRIORITY_COLORS[task.priority]} border text-xs font-semibold`}>
-              {task.priority.toUpperCase()}
-            </Badge>
-            <Badge className={`${STATUS_COLORS[task.status]} text-xs`}>
-              {task.status.replace('-', ' ').toUpperCase()}
-            </Badge>
-
-            {task.status === 'approved' && nextDept && isLeadership && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-6 text-[10px] bg-accent-tally/10 text-accent-tally border-accent-tally/20 hover:bg-accent-tally/20"
-                onClick={() => {
-                  updateTask(task.id, {
-                    department: nextDept.name,
-                    status: 'not-started',
-                    lastStatusUpdate: new Date().toISOString(),
-                  });
-                  toast({ title: 'Task Handed Off', description: `${task.title} moved to ${nextDept.name}.` });
-                }}
-              >
-                Handoff to {nextDept.abbreviation} <ArrowRight className="w-3 h-3 ml-1" />
-              </Button>
-            )}
+      <div
+        className={cn(
+          'fixed bg-card shadow-2xl z-50 flex flex-col',
+          isMobile
+            ? 'inset-x-0 bottom-0 top-auto max-h-[85vh] rounded-t-xl border-t border-border animate-in slide-in-from-bottom duration-300'
+            : 'inset-y-0 right-0 w-[480px] max-w-[90vw] border-l border-border animate-in slide-in-from-right duration-300'
+        )}
+      >
+        {/* Mobile drag handle — visual affordance for the bottom sheet */}
+        {isMobile && (
+          <div className="flex justify-center pt-2.5 pb-1 shrink-0">
+            <div className="h-1.5 w-10 rounded-full bg-muted" />
           </div>
-          <Button variant="ghost" size="icon" onClick={() => setActiveTaskDrawer(null)}>
-            <X className="w-4 h-4" />
-          </Button>
+        )}
+
+        {/* Header */}
+        <div className="border-b border-border shrink-0">
+          <div className="flex items-center justify-between gap-2 p-4 pb-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge className={`${PRIORITY_COLORS[task.priority]} border text-xs font-semibold`}>
+                {task.priority.toUpperCase()}
+              </Badge>
+              <Badge className={`${STATUS_COLORS[task.status]} text-xs`}>
+                {task.status.replace('-', ' ').toUpperCase()}
+              </Badge>
+
+              {task.status === 'approved' && nextDept && isLeadership && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-6 text-[10px] bg-accent-tally/10 text-accent-tally border-accent-tally/20 hover:bg-accent-tally/20"
+                  onClick={() => {
+                    updateTask(task.id, {
+                      department: nextDept.name,
+                      status: 'not-started',
+                      lastStatusUpdate: new Date().toISOString(),
+                    });
+                    toast({ title: 'Task Handed Off', description: `${task.title} moved to ${nextDept.name}.` });
+                  }}
+                >
+                  Handoff to {nextDept.abbreviation} <ArrowRight className="w-3 h-3 ml-1" />
+                </Button>
+              )}
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn(isMobile && 'touch-target')}
+              onClick={() => setActiveTaskDrawer(null)}
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+          <div className="px-4 pb-3">
+            <StepTracker status={task.status} size="sm" compact={isMobile} />
+          </div>
         </div>
 
         <ScrollArea className="flex-1">
@@ -308,35 +342,54 @@ export function TaskDrawer() {
                   at an internal 'approved' status with no path to the client
                   portal at all. */}
               {['vfx_producer', 'production_manager', 'coordinator'].includes(currentUser.role) && task.status === 'manager-review' && (
-                <div className="flex w-full gap-2">
-                  <Button className="flex-1 bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white" onClick={() => {
-                    recordApprovalEvent(task.id, 'approved', {
-                      action: 'published',
-                      byUserId: currentUser.id,
-                      byUserName: currentUser.name,
-                      byRole: currentUser.role,
-                    });
-                    if (task.shotId) {
-                      updateShotStatus(task.shotId, { status: 'client-review' });
-                      toast({ title: "Sent to Client Review", description: `${task.title} approved and forwarded to the client portal.` });
-                    } else {
-                      toast({ title: "Approved", description: `Published to production dashboard.` });
-                    }
-                  }}>
-                    <CheckCircle2 className="w-4 h-4 mr-2" /> Approve & Send to Client
-                  </Button>
-                  <Button variant="outline" className="flex-1 text-red-500 hover:bg-red-500/10" onClick={() => {
-                    recordApprovalEvent(task.id, 'in-progress', {
-                      action: 'rejected',
-                      byUserId: currentUser.id,
-                      byUserName: currentUser.name,
-                      byRole: currentUser.role,
-                    });
-                    toast({ title: "Review Rejected", description: `Sent back to team.` });
-                  }}>
-                    <X className="w-4 h-4 mr-2" /> Reject
-                  </Button>
-                </div>
+                clientSendConfirmOpen ? (
+                  <div className="w-full rounded-md border border-accent-tally/30 bg-accent-tally/5 p-3 space-y-3">
+                    <p className="text-sm">
+                      {task.shotId
+                        ? <>This forwards <b>{shot?.name ?? task.title}</b> to the external client portal — the client will be able to view and comment on it immediately.</>
+                        : <>This approves <b>{task.title}</b> internally. It isn't linked to a shot, so nothing is forwarded to the client portal.</>}
+                    </p>
+                    <div className="flex gap-2">
+                      <Button className="flex-1 bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white touch-target" onClick={() => {
+                        recordApprovalEvent(task.id, 'approved', {
+                          action: 'published',
+                          byUserId: currentUser.id,
+                          byUserName: currentUser.name,
+                          byRole: currentUser.role,
+                        });
+                        if (task.shotId) {
+                          updateShotStatus(task.shotId, { status: 'client-review' });
+                          toast({ title: "Sent to Client Review", description: `${task.title} approved and forwarded to the client portal.` });
+                        } else {
+                          toast({ title: "Approved", description: `Published to production dashboard.` });
+                        }
+                        setClientSendConfirmOpen(false);
+                      }}>
+                        <CheckCircle2 className="w-4 h-4 mr-2" /> Confirm & Send
+                      </Button>
+                      <Button variant="outline" className="touch-target" onClick={() => setClientSendConfirmOpen(false)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex w-full gap-2">
+                    <Button className="flex-1 bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white" onClick={() => setClientSendConfirmOpen(true)}>
+                      <CheckCircle2 className="w-4 h-4 mr-2" /> Approve & Send to Client
+                    </Button>
+                    <Button variant="outline" className="flex-1 text-red-500 hover:bg-red-500/10" onClick={() => {
+                      recordApprovalEvent(task.id, 'in-progress', {
+                        action: 'rejected',
+                        byUserId: currentUser.id,
+                        byUserName: currentUser.name,
+                        byRole: currentUser.role,
+                      });
+                      toast({ title: "Review Rejected", description: `Sent back to team.` });
+                    }}>
+                      <X className="w-4 h-4 mr-2" /> Reject
+                    </Button>
+                  </div>
+                )
               )}
               {isAssignee && task.status === 'in-progress' && (
                 <Button
@@ -543,6 +596,21 @@ export function TaskDrawer() {
             )}
 
             <Separator />
+
+            {/* Link into the lightweight Feedback view (see
+                components/shared/review/FeedbackList.tsx) for anyone who
+                just wants to read review notes on this submission, without
+                opening the full frame-accurate Player. Only shown once the
+                task has actually entered the review chain — nothing to read
+                before that. */}
+            {['review', 'lead-review', 'manager-review', 'approved'].includes(task.status) && (
+              <Link
+                href="/review?mode=feedback"
+                className="touch-target flex items-center justify-center gap-2 w-full px-3 rounded-md border border-border text-sm font-medium hover-elevate active-elevate-2"
+              >
+                <MessageSquare className="w-4 h-4" /> View Review Feedback
+              </Link>
+            )}
 
             {/* Comments */}
             <div>

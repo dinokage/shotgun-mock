@@ -1,4 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
+import { stagger } from '@/lib/motion';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +13,7 @@ import { Search, Film, Grid3X3, List, X, ChevronDown } from 'lucide-react';
 import { Link, useSearchParams } from 'wouter';
 import { useAuthStore } from '@/store/auth';
 import { useShotStore } from '@/store/shots';
+import { StatusBadge } from '@/components/shared/StatusBadge';
 
 const STATUS_COLORS: Record<string, string> = {
   complete: 'bg-green-500/10 text-green-500',
@@ -29,6 +32,7 @@ const SHOTS_PER_GROUP_PAGE_SIZE = 12;
 const LIST_PAGE_SIZE = 50;
 
 export default function Shots() {
+  const prefersReducedMotion = useReducedMotion();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [projectFilter, setProjectFilter] = useState('all');
@@ -133,38 +137,49 @@ export default function Shots() {
                   )}
                 </h2>
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-3">
-                  {shots.slice(0, shownInGroup).map(shot => {
+                  {shots.slice(0, shownInGroup).map((shot, i) => {
                     const assignee = USERS.find(u => u.id === shot.assigneeId);
                     return (
-                      <Link key={shot.id} href={`/shots/${shot.id}`}>
-                          <Card className="overflow-hidden hover:shadow-md transition-all cursor-pointer group border-border hover:border-primary/40">
-                          <div className="aspect-video relative overflow-hidden">
-                            <div className="absolute inset-0" style={{ background: `linear-gradient(135deg, hsl(${(shot.id.charCodeAt(2) * 37) % 360}, 60%, 25%), hsl(${(shot.id.charCodeAt(2) * 37 + 60) % 360}, 50%, 15%))` }} />
-                            <div className="absolute inset-0 flex items-center justify-center">
-                              <span className="font-mono text-white/20 text-2xl font-black tracking-tighter select-none">{shot.name.split('_').pop()}</span>
-                            </div>
-                            <Badge className={`absolute top-1.5 right-1.5 ${STATUS_COLORS[shot.status]} text-[8px] border-0`}>
-                              {shot.status.replace('-', ' ')}
-                            </Badge>
-                            <div className="absolute bottom-0 inset-x-0 h-6 bg-gradient-to-t from-black/60 to-transparent flex items-end px-2 pb-1">
-                              <span className="text-[9px] text-white/70 font-mono">{shot.duration}f · {shot.currentVersion}</span>
-                            </div>
-                          </div>
-                          <CardContent className="p-2.5">
-                            <div className="font-medium text-xs truncate group-hover:text-primary transition-colors">{shot.name}</div>
-                            <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center justify-between">
-                              <span className="font-mono">{shot.currentVersion}</span>
-                              <span>{shot.duration}f</span>
-                            </div>
-                            {assignee && (
-                              <div className="flex items-center gap-1 mt-1.5">
-                                <Avatar className="w-4 h-4"><AvatarImage src={assignee.avatar} /><AvatarFallback className="text-[8px]">{assignee.name.charAt(0)}</AvatarFallback></Avatar>
-                                <span className="text-[10px] text-muted-foreground truncate">{assignee.name}</span>
+                      <motion.div key={shot.id} {...(prefersReducedMotion ? {} : stagger(i))}>
+                        <Link href={`/shots/${shot.id}`}>
+                            <Card className="overflow-hidden hover:shadow-md transition-all cursor-pointer group border-border hover:border-primary/40">
+                            <div className="aspect-video relative overflow-hidden">
+                              <div className="absolute inset-0" style={{ background: `linear-gradient(135deg, hsl(${(shot.id.charCodeAt(2) * 37) % 360}, 60%, 25%), hsl(${(shot.id.charCodeAt(2) * 37 + 60) % 360}, 50%, 15%))` }} />
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <span className="font-mono text-white/20 text-2xl font-black tracking-tighter select-none">{shot.name.split('_').pop()}</span>
                               </div>
-                            )}
-                          </CardContent>
-                        </Card>
-                      </Link>
+                              <Badge className={`absolute top-1.5 right-1.5 ${STATUS_COLORS[shot.status]} text-[8px] border-0`}>
+                                {shot.status.replace('-', ' ')}
+                              </Badge>
+                              <div className="absolute bottom-0 inset-x-0 h-6 bg-gradient-to-t from-black/60 to-transparent flex items-end px-2 pb-1">
+                                <span className="text-[9px] text-white/70 font-mono">{shot.duration}f · {shot.currentVersion}</span>
+                              </div>
+                            </div>
+                            <CardContent className="p-2.5">
+                              <div className="font-medium text-xs truncate group-hover:text-primary transition-colors">{shot.name}</div>
+                              <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center justify-between">
+                                <span className="font-mono">{shot.currentVersion}</span>
+                                <span>{shot.duration}f</span>
+                              </div>
+                              {/* My Shots view: surface the internal review
+                                  stage right on the card, so a pending/rejected/
+                                  changes-requested shot doesn't require opening
+                                  it to spot. */}
+                              {mineOnly && (
+                                <div className="mt-1.5">
+                                  <StatusBadge status={shot.internalReviewStatus} className="text-[8px] px-1.5 py-0" />
+                                </div>
+                              )}
+                              {assignee && (
+                                <div className="flex items-center gap-1 mt-1.5">
+                                  <Avatar className="w-4 h-4"><AvatarImage src={assignee.avatar} /><AvatarFallback className="text-[8px]">{assignee.name.charAt(0)}</AvatarFallback></Avatar>
+                                  <span className="text-[10px] text-muted-foreground truncate">{assignee.name}</span>
+                                </div>
+                              )}
+                            </CardContent>
+                          </Card>
+                        </Link>
+                      </motion.div>
                     );
                   })}
                 </div>

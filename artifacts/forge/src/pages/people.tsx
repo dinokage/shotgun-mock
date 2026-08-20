@@ -1,4 +1,6 @@
 import { useState, useMemo } from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
+import { stagger } from '@/lib/motion';
 import { useAuthStore } from '@/store/auth';
 import { Link } from 'wouter';
 import { Card, CardContent } from '@/components/ui/card';
@@ -12,6 +14,7 @@ import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/
 import { STUDIO_LEADERSHIP_ROLES } from '@/store/permissions';
 
 export default function People() {
+  const prefersReducedMotion = useReducedMotion();
   const { currentUser } = useAuthStore();
   
   const [search, setSearch] = useState('');
@@ -99,10 +102,11 @@ export default function People() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 overflow-y-auto pb-6">
-        {filteredUsers.map(user => {
+        {filteredUsers.map((user, i) => {
           const dept = DEPARTMENTS.find(d => d.id === user.departmentId);
           return (
-            <Link key={user.id} href={`/people/${user.id}`}>
+            <motion.div key={user.id} {...(prefersReducedMotion ? {} : stagger(i))}>
+            <Link href={`/people/${user.id}`}>
               <Card className="cursor-pointer hover:border-primary/50 transition-all hover:shadow-lg group h-full">
                 <CardContent className="p-5">
                   <div className="flex justify-between items-start mb-4">
@@ -149,6 +153,7 @@ export default function People() {
                 </CardContent>
               </Card>
             </Link>
+            </motion.div>
           )
         })}
       </div>

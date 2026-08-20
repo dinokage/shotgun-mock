@@ -8,7 +8,7 @@ import { Play, Pause, SkipBack, SkipForward, Volume2, MousePointer2, CheckCircle
 import { useToast } from '@/hooks/use-toast';
 import { useHotkeys } from '@/hooks/use-hotkeys';
 import { useCapability } from '@/hooks/use-capability';
-import { Link } from 'wouter';
+import { Link, useSearch } from 'wouter';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu';
@@ -16,6 +16,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Label } from '@/components/ui/label';
 import { cn, copyToClipboard } from '@/lib/utils';
 import { cut } from '@/lib/motion';
+import { hashString } from '@/lib/seededMock';
+import { getPlaceholderThumbnail } from '@/lib/placeholderArt';
 import { useAuthStore } from '@/store/auth';
 import { useTasksStore } from '@/store/tasks';
 import { useReviewStore, PRESENTED_VERSION_ID, type ReviewComment } from '@/store/reviews';
@@ -28,6 +30,7 @@ import {
   PresentationToggle,
   PresentationLockBanner,
   GhostingToggle,
+  FeedbackList,
   type AnnotationTool,
   type Annotation,
   type DraggingElement,
@@ -208,6 +211,17 @@ export default function Review() {
   ]);
   const [tool, setTool] = useState<AnnotationTool>('select');
   const [viewerMode, setViewerMode] = useState(false);
+  // Presentation-layer-only mode switch: "Player" is the full annotation tool
+  // below (completely unchanged), "Feedback" is a lightweight read view of
+  // the same comment stream for anyone who just wants to read notes on a
+  // submission — including on a small screen where the full tool doesn't
+  // fit. Doesn't affect routing, RBAC, or any store logic.
+  // TaskDrawer's "View Review Feedback" link opens straight into Feedback
+  // mode via ?mode=feedback, instead of always landing on the heavier Player.
+  const searchParams = useSearch();
+  const [pageMode, setPageMode] = useState<'player' | 'feedback'>(
+    new URLSearchParams(searchParams).get('mode') === 'feedback' ? 'feedback' : 'player'
+  );
   // Read-only Reviewer mode and being a locked Presentation Mode viewer both
   // mean "you may look but not touch". `AnnotationCanvas` already enforces
   // this for its own drawing surface via its `readOnly`/`tool` props, but the
@@ -772,6 +786,11 @@ export default function Review() {
     }
   };
 
+  // Same fallback string the header title already computes inline just below
+  // — pulled into a variable here only so FeedbackList can use it too,
+  // without touching the header's existing JSX.
+  const versionLabel = reviewedShot ? `${reviewedShot.name} ${reviewedShot.currentVersion}` : 'SEQ_020_SH_040 v003';
+
   return (
     <div className="flex flex-col h-screen bg-background relative overflow-hidden">
       <div className="h-14 border-b border-border bg-card flex items-center justify-between gap-4 px-4 shrink-0 overflow-hidden">
@@ -945,6 +964,36 @@ export default function Review() {
         </div>
       </div>
 
+      {/* Mode switch: "Player" is the full annotation tool (unchanged below,
+          untouched by this addition); "Feedback" is a lightweight read view
+          of the same comment stream, built for small screens and anyone who
+          just wants to read notes on a submission without the heavy tool. */}
+      <div className="border-b border-border bg-card/50 px-4 py-2 shrink-0">
+        <Tabs value={pageMode} onValueChange={(v) => setPageMode(v as 'player' | 'feedback')}>
+          <TabsList className="h-auto p-1">
+            <TabsTrigger value="player" className="touch-target gap-1.5 px-3">
+              <Film className="w-4 h-4" /> Player
+            </TabsTrigger>
+            <TabsTrigger value="feedback" className="touch-target gap-1.5 px-3">
+              <MessageSquare className="w-4 h-4" /> Feedback
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
+
+      {pageMode === 'feedback' && (
+        <FeedbackList
+          versionLabel={versionLabel}
+          workflowStatus={reviewWorkflowStatus}
+          // Presentation Mode already disables independent frame control for
+          // locked viewers everywhere else on this page (see isLockedViewer
+          // checks throughout) — mirror that here instead of letting a
+          // locked viewer's tap fight the presenter's synced playhead.
+          onJumpToFrame={isLockedViewer ? undefined : (f) => { setFrame(f); setPageMode('player'); }}
+        />
+      )}
+
+      {pageMode === 'player' && (
       <div className="flex flex-1 overflow-hidden">
         {/* Left: Player */}
         <div className="flex-1 flex flex-col bg-black relative">
@@ -1129,6 +1178,7 @@ export default function Review() {
                   <video
                     ref={compareVideoRefA}
                     src={VERSIONS.find(v => v.id === compareVersionA)?.src}
+                    poster={getPlaceholderThumbnail(hashString(compareVersionA), 1280, 720)}
                     className="w-full h-full object-contain"
                     muted
                     playsInline
@@ -1142,6 +1192,7 @@ export default function Review() {
                   <video
                     ref={compareVideoRefB}
                     src={VERSIONS.find(v => v.id === compareVersionB)?.src}
+                    poster={getPlaceholderThumbnail(hashString(compareVersionB), 1280, 720)}
                     className="w-full h-full object-contain"
                     muted
                     playsInline
@@ -1243,9 +1294,10 @@ export default function Review() {
                               else videoRefs.current.delete(clip.id);
                             }}
                             src={clip.src}
+                            poster={getPlaceholderThumbnail(hashString(clip.id), 1280, 720)}
                             className={`absolute inset-0 w-full h-full object-contain ${isActive ? 'opacity-100' : 'opacity-0 hidden'} ${tool === 'select' ? 'cursor-move' : ''}`}
-                            style={{ 
-                              opacity: clip.opacity / 100, 
+                            style={{
+                              opacity: clip.opacity / 100,
                               mixBlendMode: clip.blendMode,
                               pointerEvents: tool === 'select' ? 'auto' : 'none',
                               transform: `translate(${clip.x || 0}px, ${clip.y || 0}px) scale(${clip.scale || 1})`,
@@ -1786,6 +1838,7 @@ export default function Review() {
           </Tabs>
         </div>
       </div>
+      )}
     </div>
   );
 }
