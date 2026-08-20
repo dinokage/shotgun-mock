@@ -4,14 +4,16 @@ import { cn } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { USERS, DEPARTMENTS } from '@/data/mockData';
+import { USERS, DEPARTMENTS, PROJECTS } from '@/data/mockData';
 import { useAuthStore } from '@/store/auth';
 import { useTasksStore } from '@/store/tasks';
 import { useStandupsStore } from '@/store/standups';
+import { useBroadcastsStore } from '@/store/broadcasts';
 import { useUIStore } from '@/store/ui';
 import { useIsLeadership } from '@/hooks/use-capability';
 import { StatusBadge } from '@/components/shared/StatusBadge';
-import { AlertCircle, CheckCircle2, MonitorPlay, ListVideo, GripVertical, PlayCircle, Plus, Calendar, MessageSquare, X, FileText } from 'lucide-react';
+import { BroadcastComposer, BroadcastFeed } from '@/components/shared/broadcast';
+import { AlertCircle, CheckCircle2, MonitorPlay, ListVideo, GripVertical, PlayCircle, Plus, Calendar, MessageSquare, X, FileText, Radio } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
@@ -111,6 +113,7 @@ export default function DailyStandup() {
   const clearPlaylistStore = useStandupsStore((s) => s.clearPlaylist);
   const feedApprovals = useStandupsStore((s) => s.feedApprovals);
   const toggleFeedApproval = useStandupsStore((s) => s.toggleFeedApproval);
+  const broadcasts = useBroadcastsStore((s) => s.broadcasts);
   const { setActiveTaskDrawer } = useUIStore();
   const isLeadership = useIsLeadership();
   const [selectedDeptId, setSelectedDeptId] = useState<string>('ALL');
@@ -400,6 +403,9 @@ export default function DailyStandup() {
           )}
           <TabsTrigger value="updates" className="flex items-center gap-2">
             <ListVideo className="w-4 h-4" /> My Updates & Feed
+          </TabsTrigger>
+          <TabsTrigger value="broadcasts" className="flex items-center gap-2">
+            <Radio className="w-4 h-4" /> Broadcasts
           </TabsTrigger>
           {['vfx_producer', 'production_manager', 'supervisor'].includes(currentUser.role) && (
             <TabsTrigger value="payroll" className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
@@ -968,6 +974,17 @@ export default function DailyStandup() {
               )}
 
             </div>
+          </div>
+        </TabsContent>
+
+        {/* --- NEW TAB: BROADCASTS --- */}
+        <TabsContent value="broadcasts">
+          <div className="max-w-3xl mx-auto space-y-6">
+            {/* Renders nothing for roles without the broadcast_updates
+                capability (see store/permissions.ts) — no visibility
+                gating needed here. */}
+            <BroadcastComposer projects={PROJECTS.map((p) => ({ id: p.id, name: p.name }))} />
+            <BroadcastFeed broadcasts={broadcasts} />
           </div>
         </TabsContent>
 

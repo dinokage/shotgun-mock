@@ -9,21 +9,24 @@ import { useProjectStore } from '@/store/projects';
 import { useTasksStore } from '@/store/tasks';
 import { useShotStore } from '@/store/shots';
 import { useReviewStore } from '@/store/reviews';
-import { USERS, DEPARTMENTS, Project, User, isTaskDone } from '@/data/mockData';
+import { USERS, DEPARTMENTS, Project, User, isTaskDone, TaskStatus, DailyLog } from '@/data/mockData';
 import { generateProducerInsights, type AIInsight } from '@/lib/aiInsights';
 import { useToast } from '@/hooks/use-toast';
-import { useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { useMemo, useState } from 'react';
+import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
+import { formatDistanceToNowStrict } from 'date-fns';
 import { stagger } from '@/lib/motion';
 import { ScopeTrace } from '@/components/shared/ScopeTrace';
+import { useBroadcastsStore, type Broadcast } from '@/store/broadcasts';
 import {
   FolderOpen, Users, ListTodo, PlayCircle, TrendingUp, AlertTriangle,
   ArrowRight, CheckCircle2, Clock, Plus,
-  Sparkles, Activity, AlertCircle, Inbox
+  Sparkles, Activity, AlertCircle, Inbox, CalendarClock, Send, Radio
 } from 'lucide-react';
 import { Link, useLocation } from 'wouter';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { PriorityChip } from '@/components/shared/PriorityChip';
+import { StepTracker } from '@/components/shared/StepTracker';
 import { STUDIO_LEADERSHIP_ROLES, DEPARTMENT_LEADERSHIP_ROLES } from '@/store/permissions';
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 
@@ -37,6 +40,63 @@ const INSIGHT_SEVERITY_STYLES: Record<AIInsight['severity'], { icon: typeof Aler
   warning: { icon: AlertCircle, iconColor: 'text-amber-400', buttonColor: 'border-amber-500/50 text-amber-500' },
   positive: { icon: CheckCircle2, iconColor: 'text-emerald-400', buttonColor: 'border-emerald-500/50 text-emerald-500' },
 };
+
+/**
+ * Shared stat-tile icon-badge treatment: alternate between the app's own
+ * accent-tally/accent-scope duotone (see src/index.css) rather than each
+ * dashboard picking its own ad hoc Tailwind color per stat. Same low-opacity
+ * tint pattern already used for badges in TaskDrawer.tsx / Sidebar.tsx
+ * (`bg-accent-tally/10 text-accent-tally`), applied here by tile position so
+ * every dashboard's stat row reads as one consistent design language.
+ */
+const STAT_TILE_ACCENTS = ['bg-accent-tally/10 text-accent-tally', 'bg-accent-scope/10 text-accent-scope'] as const;
+
+/** Common hover treatment for stat tiles now that Card's elevation tokens
+ * are actually wired up (see src/index.css) — a subtle shadow lift on top
+ * of the existing tint, transitioning together so neither pops instantly. */
+const STAT_TILE_CARD_CLASS = 'border-border/50 bg-card hover:bg-muted/20 hover:shadow-md transition-all duration-200';
+
+/** Maps a Broadcast's severity to the app's shared --status-green/orange
+ * tokens (same vocabulary as StatusBadge) so it reads consistently with the
+ * rest of the app rather than inventing new colors. 'info' has no dedicated
+ * status token, so it borrows the accent-scope tint used for other neutral
+ * informational surfaces (e.g. "View All" links). */
+const BROADCAST_SEVERITY_STYLES: Record<Broadcast['severity'], string> = {
+  success: 'border-status-green/30 bg-status-green/5 text-status-green',
+  warning: 'border-status-orange/30 bg-status-orange/5 text-status-orange',
+  info: 'border-accent-scope/30 bg-accent-scope/5 text-accent-scope',
+};
+
+/**
+ * Compact "Latest Update" banner surfaced near the top of every dashboard
+ * (producer, supervisor, artist) per the Mobile Status Broadcast product
+ * spec — shows only the single most recent broadcast, not the full feed
+ * (that lives in the Daily Standup "Broadcasts" tab). store/broadcasts.ts
+ * always prepends new posts, so broadcasts[0] is the latest without any
+ * extra sort here. Renders nothing until the first broadcast exists.
+ */
+function LatestBroadcastBanner() {
+  const broadcasts = useBroadcastsStore((s) => s.broadcasts);
+  const latest = broadcasts[0];
+  if (!latest) return null;
+
+  return (
+    <Link href="/daily-standup">
+      <Card className={`cursor-pointer hover:shadow-md transition-all ${BROADCAST_SEVERITY_STYLES[latest.severity]}`}>
+        <CardContent className="p-3 flex items-center gap-3">
+          <Radio className="w-4 h-4 shrink-0" />
+          <div className="min-w-0 flex-1 flex items-baseline gap-2">
+            <span className="font-semibold text-sm shrink-0">{latest.authorName}</span>
+            <span className="text-sm text-foreground/80 truncate">{latest.text}</span>
+          </div>
+          <span className="text-xs text-muted-foreground shrink-0">
+            {formatDistanceToNowStrict(new Date(latest.timestamp), { addSuffix: true })}
+          </span>
+        </CardContent>
+      </Card>
+    </Link>
+  );
+}
 
 // ============================================================================
 // Planner vs Actual — deterministic schedule-variance model
@@ -168,6 +228,7 @@ function ProducerDashboard() {
   }, [activeProjects]);
 
   return (
+    <MotionConfig reducedMotion="user">
     <div className="p-6 max-w-[1600px] mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
@@ -180,25 +241,29 @@ function ProducerDashboard() {
         </div>
       </div>
 
+      <LatestBroadcastBanner />
+
       {/* Top Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: 'Active Projects', value: activeProjects.length, icon: FolderOpen, color: 'text-blue-500', bg: 'bg-blue-500/10' },
-          { label: 'Active Shots / Sequences', value: `${activeShots.length} / ${activeSequenceCount}`, icon: ListTodo, color: 'text-orange-500', bg: 'bg-orange-500/10' },
-          { label: 'Pending Client Reviews', value: pendingClientReviews, icon: Activity, color: 'text-pink-500', bg: 'bg-pink-500/10' },
-          { label: 'Total Artists', value: USERS.length, icon: Users, color: 'text-green-500', bg: 'bg-green-500/10' },
+          { label: 'Active Projects', value: activeProjects.length, icon: FolderOpen },
+          { label: 'Active Shots / Sequences', value: `${activeShots.length} / ${activeSequenceCount}`, icon: ListTodo },
+          { label: 'Pending Client Reviews', value: pendingClientReviews, icon: Activity },
+          { label: 'Total Artists', value: USERS.length, icon: Users },
         ].map((s, i) => (
-          <Card key={i} className="border-border/50 bg-card hover:bg-muted/20 transition-colors">
-            <CardContent className="p-5 flex items-center gap-4">
-              <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${s.bg}`}>
-                <s.icon className={`w-6 h-6 ${s.color}`} />
-              </div>
-              <div>
-                <div className="text-2xl font-bold">{s.value}</div>
-                <div className="text-xs font-medium text-muted-foreground">{s.label}</div>
-              </div>
-            </CardContent>
-          </Card>
+          <motion.div key={i} {...stagger(i)}>
+            <Card className={STAT_TILE_CARD_CLASS}>
+              <CardContent className="p-5 flex items-center gap-4">
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${STAT_TILE_ACCENTS[i % 2]}`}>
+                  <s.icon className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="text-2xl font-bold">{s.value}</div>
+                  <div className="text-xs font-medium text-muted-foreground">{s.label}</div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
         ))}
       </div>
 
@@ -225,9 +290,10 @@ function ProducerDashboard() {
                 </Empty>
               ) : (
               <div className="space-y-4">
-                {activeProjects.slice(0, 4).map(project => (
-                  <Link key={project.id} href={`/projects/${project.id}`}>
-                    <div className="group p-4 rounded-xl border border-border bg-card hover:bg-muted/30 transition-all cursor-pointer">
+                {activeProjects.slice(0, 4).map((project, i) => (
+                  <motion.div key={project.id} {...stagger(i)}>
+                  <Link href={`/projects/${project.id}`}>
+                    <div className="group p-4 rounded-xl border border-border bg-card hover:bg-muted/30 hover:shadow-md transition-all cursor-pointer">
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-lg shrink-0 shadow-sm" style={{ background: project.thumbnail }} />
@@ -253,6 +319,7 @@ function ProducerDashboard() {
                       </div>
                     </div>
                   </Link>
+                  </motion.div>
                 ))}
               </div>
               )}
@@ -373,6 +440,7 @@ function ProducerDashboard() {
 
       </div>
     </div>
+    </MotionConfig>
   );
 }
 
@@ -406,6 +474,7 @@ function SupervisorDashboard({ currentUser }: { currentUser: User }) {
   if (!dept) return null;
 
   return (
+    <MotionConfig reducedMotion="user">
     <div className="p-6 max-w-[1600px] mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
@@ -420,24 +489,28 @@ function SupervisorDashboard({ currentUser }: { currentUser: User }) {
         </div>
       </div>
 
+      <LatestBroadcastBanner />
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: 'Team Members', value: deptTeam.length, icon: Users, color: 'text-blue-500', bg: 'bg-blue-500/10' },
-          { label: 'Active Tasks', value: activeTasks.length, icon: ListTodo, color: 'text-orange-500', bg: 'bg-orange-500/10' },
-          { label: 'Needs Review', value: reviewTasks.length, icon: PlayCircle, color: 'text-purple-500', bg: 'bg-purple-500/10' },
-          { label: 'Avg Velocity', value: avgVelocity, sub: 'tasks/day', icon: TrendingUp, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+          { label: 'Team Members', value: deptTeam.length, icon: Users },
+          { label: 'Active Tasks', value: activeTasks.length, icon: ListTodo },
+          { label: 'Needs Review', value: reviewTasks.length, icon: PlayCircle },
+          { label: 'Avg Velocity', value: avgVelocity, sub: 'tasks/day', icon: TrendingUp },
         ].map((s, i) => (
-          <Card key={i} className="border-border/50 bg-card hover:bg-muted/20 transition-colors">
-            <CardContent className="p-5 flex items-center gap-4">
-              <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${s.bg}`}>
-                <s.icon className={`w-6 h-6 ${s.color}`} />
-              </div>
-              <div>
-                <div className="text-2xl font-bold">{s.value} <span className="text-xs font-normal text-muted-foreground">{s.sub}</span></div>
-                <div className="text-xs font-medium text-muted-foreground">{s.label}</div>
-              </div>
-            </CardContent>
-          </Card>
+          <motion.div key={i} {...stagger(i)}>
+            <Card className={STAT_TILE_CARD_CLASS}>
+              <CardContent className="p-5 flex items-center gap-4">
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${STAT_TILE_ACCENTS[i % 2]}`}>
+                  <s.icon className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="text-2xl font-bold">{s.value} <span className="text-xs font-normal text-muted-foreground">{s.sub}</span></div>
+                  <div className="text-xs font-medium text-muted-foreground">{s.label}</div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
         ))}
       </div>
 
@@ -448,11 +521,12 @@ function SupervisorDashboard({ currentUser }: { currentUser: User }) {
           </CardHeader>
           <CardContent>
             <div className="divide-y divide-border">
-              {reviewTasks.slice(0, 5).map(task => {
+              {reviewTasks.slice(0, 5).map((task, i) => {
                 const assignee = USERS.find(u => u.id === task.assigneeId);
                 return (
-                  <div
+                  <motion.div
                     key={task.id}
+                    {...stagger(i)}
                     role="button"
                     tabIndex={0}
                     className="py-3 flex items-center justify-between hover:bg-muted/30 -mx-4 px-4 transition-colors cursor-pointer"
@@ -475,7 +549,7 @@ function SupervisorDashboard({ currentUser }: { currentUser: User }) {
                       </div>
                     </div>
                     <Badge variant="outline" className="text-purple-500 border-purple-500/20 bg-purple-500/5">Ready for Review</Badge>
-                  </div>
+                  </motion.div>
                 )
               })}
               {reviewTasks.length === 0 && <div className="text-sm text-muted-foreground text-center py-4">No tasks pending review.</div>}
@@ -515,16 +589,74 @@ function SupervisorDashboard({ currentUser }: { currentUser: User }) {
         </Card>
       </div>
     </div>
+    </MotionConfig>
   );
 }
 
 // --- Artist Dashboard (Personal Tasks Focus) ---
+
+/**
+ * Task['status'] has no 'changes-requested' literal — that value belongs to
+ * Shot.internalReviewStatus/clientReviewStatus and Review.status, not tasks.
+ * 'bottleneck' is the actual blocked/flagged Task state (see StepTracker's
+ * own isFlagged check), so that's what surfaces to the top of "My Current
+ * Tasks" ahead of the normal due-date ordering.
+ */
+const ARTIST_ATTENTION_STATUSES: TaskStatus[] = ['bottleneck'];
+
+/** Window (in days) within which an upcoming due date earns the dashboard's
+ * next-deadline callout — further out than this and it's not "next" yet. */
+const NEAR_TERM_DEADLINE_DAYS = 7;
+
 function ArtistDashboard({ currentUser }: { currentUser: User }) {
   const tasks = useTasksStore((state) => state.tasks);
+  const logTime = useTasksStore((state) => state.logTime);
   const reviews = useReviewStore((state) => state.reviews);
   const versions = useReviewStore((state) => state.versions);
   const myTasks = tasks.filter(t => t.assigneeId === currentUser.id);
-  const activeTasks = myTasks.filter(t => t.status === 'in-progress' || t.status === 'todo');
+
+  // Active tasks — anything blocked (bottleneck) is surfaced ahead of the
+  // normal due-date ordering used for the rest, so it can't get buried.
+  const activeTasks = useMemo(() => {
+    return myTasks
+      .filter(t => t.status === 'in-progress' || t.status === 'todo' || t.status === 'bottleneck')
+      .sort((a, b) => {
+        const aFlagged = ARTIST_ATTENTION_STATUSES.includes(a.status) ? 1 : 0;
+        const bFlagged = ARTIST_ATTENTION_STATUSES.includes(b.status) ? 1 : 0;
+        if (aFlagged !== bFlagged) return bFlagged - aFlagged;
+        return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+      });
+  }, [myTasks]);
+
+  // Soonest upcoming deadline among active tasks, surfaced as a standalone
+  // callout only when it actually falls within the near-term window.
+  const nextDeadline = useMemo(() => {
+    if (activeTasks.length === 0) return null;
+    const soonest = [...activeTasks].sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())[0];
+    const daysUntil = Math.ceil((new Date(soonest.dueDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    return daysUntil <= NEAR_TERM_DEADLINE_DAYS ? { task: soonest, daysUntil } : null;
+  }, [activeTasks]);
+
+  // The in-progress task this artist most recently touched — the target of
+  // the inline quick-log-time affordance below.
+  const mostRecentInProgressTask = useMemo(() => {
+    const inProgress = myTasks.filter(t => t.status === 'in-progress');
+    if (inProgress.length === 0) return null;
+    return inProgress.reduce((latest, t) =>
+      new Date(t.lastStatusUpdate).getTime() > new Date(latest.lastStatusUpdate).getTime() ? t : latest
+    );
+  }, [myTasks]);
+
+  // Submissions currently moving through the Lead -> Manager approval chain,
+  // longest-waiting first — an artist checking "where's my work" cares most
+  // about the submission that's been sitting the longest, not insertion order.
+  const mySubmissions = useMemo(
+    () => myTasks
+      .filter(t => t.status === 'review' || t.status === 'lead-review' || t.status === 'manager-review')
+      .sort((a, b) => new Date(a.lastStatusUpdate).getTime() - new Date(b.lastStatusUpdate).getTime()),
+    [myTasks]
+  );
+
   const myReviews = reviews.filter(r => r.reviewerId === currentUser.id && r.status === 'pending');
   // Feedback *I received* — reviews left on versions that I (not the reviewer)
   // actually submitted, i.e. the version's createdById is me. reviewerId is
@@ -538,6 +670,30 @@ function ArtistDashboard({ currentUser }: { currentUser: User }) {
   const { setActiveTaskDrawer } = useUIStore();
   const { toast } = useToast();
 
+  // Inline quick-log-time form state — mirrors TaskDrawer's own "Log Daily
+  // Time" affordance (same fields, same logTime call) so logging hours reads
+  // the same whether it's done here or from inside the task drawer.
+  const [logFormOpen, setLogFormOpen] = useState(false);
+  const [logHours, setLogHours] = useState('');
+  const [logNote, setLogNote] = useState('');
+
+  const handleQuickLogTime = () => {
+    if (!mostRecentInProgressTask) return;
+    const hoursNum = parseFloat(logHours);
+    if (!hoursNum || hoursNum <= 0) return;
+    const newLog: DailyLog = {
+      date: new Date().toISOString().slice(0, 10),
+      hours: hoursNum,
+      note: logNote.trim() || 'No notes provided.',
+      userId: currentUser.id,
+    };
+    logTime(mostRecentInProgressTask.id, newLog);
+    toast({ title: 'Time Logged', description: `Logged ${hoursNum}h on ${mostRecentInProgressTask.title}.` });
+    setLogFormOpen(false);
+    setLogHours('');
+    setLogNote('');
+  };
+
   // Total Hours Logged — real sum of this artist's own dailyLogs entries
   // across their tasks, not a hand-written "32h".
   const totalHoursLogged = myTasks.reduce(
@@ -546,6 +702,7 @@ function ArtistDashboard({ currentUser }: { currentUser: User }) {
   );
 
   return (
+    <MotionConfig reducedMotion="user">
     <div className="p-6 max-w-[1400px] mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
@@ -554,42 +711,145 @@ function ArtistDashboard({ currentUser }: { currentUser: User }) {
         </div>
       </div>
 
+      <LatestBroadcastBanner />
+
       {/* Top Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: 'My Active Tasks', value: activeTasks.length, icon: ListTodo, color: 'text-orange-500', bg: 'bg-orange-500/10' },
-          { label: 'Completed (This Week)', value: myTasks.filter(t => isTaskDone(t.status)).length, icon: CheckCircle2, color: 'text-green-500', bg: 'bg-green-500/10' },
-          { label: 'Reviews Requested', value: myReviews.length, icon: PlayCircle, color: 'text-purple-500', bg: 'bg-purple-500/10' },
-          { label: 'Total Hours Logged', value: `${totalHoursLogged}h`, icon: Clock, color: 'text-blue-500', bg: 'bg-blue-500/10' },
+          { label: 'My Active Tasks', value: activeTasks.length, icon: ListTodo },
+          { label: 'Completed (This Week)', value: myTasks.filter(t => isTaskDone(t.status)).length, icon: CheckCircle2 },
+          { label: 'Reviews Requested', value: myReviews.length, icon: PlayCircle },
+          { label: 'Total Hours Logged', value: `${totalHoursLogged}h`, icon: Clock },
         ].map((s, i) => (
-          <Card key={i} className="border-border/50 bg-card hover:bg-muted/20 transition-colors">
-            <CardContent className="p-5 flex items-center gap-4">
-              <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${s.bg}`}>
-                <s.icon className={`w-6 h-6 ${s.color}`} />
-              </div>
-              <div>
-                <div className="text-2xl font-bold">{s.value}</div>
-                <div className="text-xs font-medium text-muted-foreground">{s.label}</div>
-              </div>
-            </CardContent>
-          </Card>
+          <motion.div key={i} {...stagger(i)}>
+            <Card className={STAT_TILE_CARD_CLASS}>
+              <CardContent className="p-5 flex items-center gap-4">
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${STAT_TILE_ACCENTS[i % 2]}`}>
+                  <s.icon className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="text-2xl font-bold">{s.value}</div>
+                  <div className="text-xs font-medium text-muted-foreground">{s.label}</div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
         ))}
       </div>
+
+      {/* Next Deadline Callout — soonest active task due within the
+          near-term window, if any. */}
+      {nextDeadline && (
+        <Card className="border-accent-tally/30 bg-accent-tally/5">
+          <CardContent className="p-4 flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-lg bg-accent-tally/15 flex items-center justify-center shrink-0">
+                <CalendarClock className="w-5 h-5 text-accent-tally" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-xs font-semibold text-accent-tally uppercase tracking-wide">
+                  {nextDeadline.daysUntil < 0 ? 'Overdue' : nextDeadline.daysUntil === 0 ? 'Due Today' : `Due in ${nextDeadline.daysUntil}d`}
+                </div>
+                <div className="font-semibold text-sm truncate">{nextDeadline.task.title}</div>
+                <div className="text-xs text-muted-foreground timecode">
+                  {new Date(nextDeadline.task.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                </div>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="touch-target shrink-0 border-accent-tally/40 text-accent-tally hover:bg-accent-tally/10"
+              onClick={() => setActiveTaskDrawer(nextDeadline.task.id)}
+            >
+              View Task
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <div className="xl:col-span-2 space-y-6">
           <Card className="border-border/50">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardHeader className="flex flex-row items-center justify-between pb-2 gap-3">
               <CardTitle className="text-lg">My Current Tasks</CardTitle>
+              {/* Inline quick-log-time affordance — targets whichever
+                  in-progress task this artist most recently touched, so
+                  logging hours doesn't require opening the task drawer. */}
+              {mostRecentInProgressTask && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="touch-target shrink-0 gap-1.5 bg-accent-scope/10 text-accent-scope border-accent-scope/20 hover:bg-accent-scope/20"
+                  onClick={() => setLogFormOpen(v => !v)}
+                >
+                  <Clock className="w-3.5 h-3.5" /> Log Time
+                </Button>
+              )}
             </CardHeader>
             <CardContent>
+              {/* Inline Quick Log Time form — same fields (hours, note) and
+                  same logTime(task.id, newLog) call as TaskDrawer's "Log
+                  Daily Time" form, just surfaced on the dashboard itself. */}
+              <AnimatePresence initial={false}>
+                {logFormOpen && mostRecentInProgressTask && (
+                  <motion.div
+                    key="quick-log-time-form"
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2, ease: 'easeInOut' }}
+                    className="overflow-hidden"
+                  >
+                    <div className="mb-4 p-3 rounded-md border border-border bg-muted/20 space-y-2">
+                      <div className="text-xs text-muted-foreground">
+                        Logging time on <span className="font-medium text-foreground">{mostRecentInProgressTask.title}</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.5"
+                          placeholder="Hours"
+                          value={logHours}
+                          onChange={(e) => setLogHours(e.target.value)}
+                          className="w-24 bg-background border border-border rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                        <input
+                          type="text"
+                          placeholder="What did you work on?"
+                          value={logNote}
+                          onChange={(e) => setLogNote(e.target.value)}
+                          className="flex-1 bg-background border border-border rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="touch-target"
+                          onClick={() => { setLogFormOpen(false); setLogHours(''); setLogNote(''); }}
+                        >
+                          Cancel
+                        </Button>
+                        <Button size="sm" className="touch-target" onClick={handleQuickLogTime}>
+                          Add Log
+                        </Button>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
               <div className="divide-y divide-border">
-                {activeTasks.slice(0, 6).map(task => (
-                  <div
+                {activeTasks.slice(0, 6).map((task, i) => (
+                  <motion.div
                     key={task.id}
+                    {...stagger(i)}
                     role="button"
                     tabIndex={0}
-                    className="py-4 flex items-center justify-between hover:bg-muted/30 -mx-4 px-4 transition-colors cursor-pointer"
+                    className={`py-4 flex items-center justify-between hover:bg-muted/30 -mx-4 px-4 transition-colors cursor-pointer touch-target hover-elevate active-elevate-2 ${
+                      task.status === 'bottleneck' ? 'bg-orange-500/5 border-l-2 border-orange-500' : ''
+                    }`}
                     onClick={() => setActiveTaskDrawer(task.id)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
@@ -603,42 +863,82 @@ function ArtistDashboard({ currentUser }: { currentUser: User }) {
                       <div>
                         <div className="font-semibold text-sm hover:text-primary transition-colors">{task.title}</div>
                         <div className="text-xs text-muted-foreground mt-1 flex items-center gap-2">
-                          <Clock className="w-3 h-3" /> Due {new Date(task.dueDate).toLocaleDateString()}
+                          <Clock className="w-3 h-3" /> Due <span className="timecode">{new Date(task.dueDate).toLocaleDateString()}</span>
                         </div>
                       </div>
                     </div>
                     <PriorityChip priority={task.priority} />
-                  </div>
+                  </motion.div>
                 ))}
                 {activeTasks.length === 0 && <div className="text-center py-8 text-muted-foreground">You have no active tasks.</div>}
               </div>
             </CardContent>
           </Card>
-        </div>
 
-
-          <Card className="border-border/50 bg-muted/20 sticky top-0 self-start">
+          {/* My Submissions — tasks currently moving through the Lead ->
+              Manager approval chain, each against the same StepTracker used
+              in the task drawer so the artist can see where it sits without
+              opening it. */}
+          <Card className="border-border/50">
             <CardHeader className="pb-2">
-              <CardTitle className="text-lg flex items-center gap-2"><Sparkles className="w-5 h-5 text-purple-500" /> Recent Feedback</CardTitle>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Send className="w-4 h-4 text-accent-scope" /> My Submissions
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                {myReceivedFeedback.slice(0, 3).map(r => {
-                  const version = versions.find(v => v.id === r.versionId);
-                  const reviewer = USERS.find(u => u.id === r.reviewerId);
-                  return (
-                    <div key={r.id} className="p-3 bg-card border border-border rounded-md text-sm">
-                      <div className="font-medium text-foreground mb-1">Version {version?.versionNumber || 'v001'}</div>
-                      <div className="text-muted-foreground line-clamp-2">"{r.comments}" - {reviewer?.name || 'Reviewer'}</div>
+              <div className="divide-y divide-border">
+                {mySubmissions.map((task, i) => (
+                  <motion.div
+                    key={task.id}
+                    {...stagger(i)}
+                    role="button"
+                    tabIndex={0}
+                    className="py-3 flex items-center justify-between gap-4 hover:bg-muted/30 -mx-4 px-4 transition-colors cursor-pointer touch-target hover-elevate active-elevate-2"
+                    onClick={() => setActiveTaskDrawer(task.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setActiveTaskDrawer(task.id);
+                      }
+                    }}
+                  >
+                    <div className="font-medium text-sm truncate min-w-0">{task.title}</div>
+                    <div className="w-32 shrink-0">
+                      <StepTracker status={task.status} compact size="sm" />
                     </div>
-                  );
-                })}
-                {myReceivedFeedback.length === 0 && <div className="text-sm text-muted-foreground">No recent feedback.</div>}
+                  </motion.div>
+                ))}
+                {mySubmissions.length === 0 && (
+                  <div className="text-center py-6 text-sm text-muted-foreground">Nothing in review right now.</div>
+                )}
               </div>
             </CardContent>
           </Card>
         </div>
+
+        <Card className="border-border/50 bg-muted/20 sticky top-0 self-start">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-lg flex items-center gap-2"><Sparkles className="w-5 h-5 text-purple-500" /> Recent Feedback</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {myReceivedFeedback.slice(0, 3).map(r => {
+                const version = versions.find(v => v.id === r.versionId);
+                const reviewer = USERS.find(u => u.id === r.reviewerId);
+                return (
+                  <div key={r.id} className="p-3 bg-card border border-border rounded-md text-sm">
+                    <div className="font-medium text-foreground mb-1">Version {version?.versionNumber || 'v001'}</div>
+                    <div className="text-muted-foreground line-clamp-2">"{r.comments}" - {reviewer?.name || 'Reviewer'}</div>
+                  </div>
+                );
+              })}
+              {myReceivedFeedback.length === 0 && <div className="text-sm text-muted-foreground">No recent feedback.</div>}
+            </div>
+          </CardContent>
+        </Card>
       </div>
+    </div>
+    </MotionConfig>
   );
 }
 
@@ -661,6 +961,7 @@ function ClientDashboard({ currentUser }: { currentUser: User }) {
   );
 
   return (
+    <MotionConfig reducedMotion="user">
     <div className="p-6 max-w-[1400px] mx-auto space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Project Status</h1>
@@ -669,21 +970,23 @@ function ClientDashboard({ currentUser }: { currentUser: User }) {
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         {[
-          { label: 'Active Projects', value: activeProjects.length, icon: FolderOpen, color: 'text-blue-500', bg: 'bg-blue-500/10' },
-          { label: 'Pending Your Approval', value: pendingApprovals.length, icon: PlayCircle, color: 'text-purple-500', bg: 'bg-purple-500/10' },
-          { label: 'Approved Deliveries', value: approvedDeliveries, icon: CheckCircle2, color: 'text-green-500', bg: 'bg-green-500/10' },
+          { label: 'Active Projects', value: activeProjects.length, icon: FolderOpen },
+          { label: 'Pending Your Approval', value: pendingApprovals.length, icon: PlayCircle },
+          { label: 'Approved Deliveries', value: approvedDeliveries, icon: CheckCircle2 },
         ].map((s, i) => (
-          <Card key={i} className="border-border/50 bg-card hover:bg-muted/20 transition-colors">
-            <CardContent className="p-5 flex items-center gap-4">
-              <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${s.bg}`}>
-                <s.icon className={`w-6 h-6 ${s.color}`} />
-              </div>
-              <div>
-                <div className="text-2xl font-bold">{s.value}</div>
-                <div className="text-xs font-medium text-muted-foreground">{s.label}</div>
-              </div>
-            </CardContent>
-          </Card>
+          <motion.div key={i} {...stagger(i)}>
+            <Card className={STAT_TILE_CARD_CLASS}>
+              <CardContent className="p-5 flex items-center gap-4">
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${STAT_TILE_ACCENTS[i % 2]}`}>
+                  <s.icon className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="text-2xl font-bold">{s.value}</div>
+                  <div className="text-xs font-medium text-muted-foreground">{s.label}</div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
         ))}
       </div>
 
@@ -708,14 +1011,15 @@ function ClientDashboard({ currentUser }: { currentUser: User }) {
               </Empty>
             ) : (
               <div className="divide-y divide-border">
-                {pendingApprovals.slice(0, 6).map(shot => {
+                {pendingApprovals.slice(0, 6).map((shot, i) => {
                   const project = projects.find(p => p.id === shot.projectId);
                   return (
-                    <div
+                    <motion.div
                       key={shot.id}
+                      {...stagger(i)}
                       role="button"
                       tabIndex={0}
-                      className="py-3 flex items-center justify-between hover:bg-muted/30 -mx-4 px-4 transition-colors cursor-pointer"
+                      className="py-3 flex items-center justify-between hover:bg-muted/30 -mx-4 px-4 transition-colors cursor-pointer touch-target hover-elevate active-elevate-2"
                       onClick={() => setLocation('/client-review')}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' || e.key === ' ') {
@@ -729,7 +1033,7 @@ function ClientDashboard({ currentUser }: { currentUser: User }) {
                         <div className="text-xs text-muted-foreground">{project?.name || 'Unknown project'}</div>
                       </div>
                       <Badge variant="outline" className="text-pink-500 border-pink-500/30 bg-pink-500/10">Awaiting Review</Badge>
-                    </div>
+                    </motion.div>
                   );
                 })}
               </div>
@@ -769,6 +1073,7 @@ function ClientDashboard({ currentUser }: { currentUser: User }) {
         </Card>
       </div>
     </div>
+    </MotionConfig>
   );
 }
 

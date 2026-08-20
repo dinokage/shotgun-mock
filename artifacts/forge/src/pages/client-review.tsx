@@ -13,6 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { useReviewStore, PRESENTED_VERSION_ID } from '@/store/reviews';
 import { useShotStore } from '@/store/shots';
+import { useBroadcastsStore } from '@/store/broadcasts';
 import { cn } from '@/lib/utils';
 import { getPlaceholderThumbnail, getPlaceholderVideoSrc } from '@/lib/placeholderArt';
 import {
@@ -98,6 +99,22 @@ export default function ClientReview() {
   const activeShot = activeReviewId ? shots.find(s => s.id === activeReviewId) : null;
   const activeProject = activeShot ? PROJECTS.find(p => p.id === activeShot.projectId) : null;
   const activeStudio = activeProject ? STUDIOS.find(s => s.id === activeProject.studioId) : null;
+
+  // Studio Updates: the one bridge from the internal status-broadcast
+  // feature into this external, unauthenticated portal — a producer/manager
+  // marks a broadcast 'internal_and_client' and scopes it to this project.
+  // Filtered + sorted defensively (store already prepends newest-first) and
+  // capped at 3; renders nothing when empty so a client is never shown an
+  // empty state for an internal feature they don't otherwise know exists.
+  const broadcasts = useBroadcastsStore((s) => s.broadcasts);
+  const studioUpdates = useMemo(
+    () =>
+      broadcasts
+        .filter((b) => b.audience === 'internal_and_client' && b.projectId === activeProject?.id)
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+        .slice(0, 3),
+    [broadcasts, activeProject]
+  );
 
   // Deterministic render-preview art for the player's video area, so there's
   // always something on screen before playback starts (or if it never does).
@@ -260,7 +277,13 @@ export default function ClientReview() {
   // Separate Client Login (Access Code)
   if (!clientAuthenticated && !isExplicitClient) {
     return (
-      <div className="h-screen w-full flex items-center justify-center bg-zinc-950 p-4">
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-zinc-950 p-4 gap-6">
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 bg-primary rounded-lg flex items-center justify-center shadow-lg shadow-primary/20">
+            <div className="w-3.5 h-3.5 bg-card rounded-sm" />
+          </div>
+          <span className="font-bold text-lg tracking-tight text-white">Forge</span>
+        </div>
         <Card className="w-full max-w-md border-border/50 shadow-2xl">
           <CardHeader className="space-y-2 text-center pb-6">
             <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-2">
@@ -311,11 +334,18 @@ export default function ClientReview() {
       <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans">
         <header className="h-16 px-8 flex items-center justify-between border-b border-white/10 bg-zinc-900/50 backdrop-blur-md sticky top-0 z-10">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-emerald-600 rounded flex items-center justify-center font-bold shadow-lg shadow-emerald-500/20">F</div>
-            <span className="font-bold text-lg tracking-tight">Forge Client Portal</span>
+            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shadow-lg shadow-primary/20 shrink-0">
+              <div className="w-4 h-4 bg-card rounded-sm" />
+            </div>
+            <div className="leading-tight">
+              <div className="font-bold text-lg tracking-tight">Forge Client Portal</div>
+              <div className="text-[11px] text-zinc-500">External review — no studio login required</div>
+            </div>
           </div>
           <div className="flex items-center gap-4">
-            <Badge variant="outline" className="border-emerald-500/30 text-emerald-400 bg-emerald-500/10">Secure Connection</Badge>
+            <Badge variant="outline" className="border-status-green/30 text-status-green bg-status-green/10 gap-1.5">
+              <Lock className="w-3 h-3" /> Secure Connection
+            </Badge>
             <Button variant="ghost" size="sm" className="text-zinc-400 hover:text-white" onClick={handleLogout}>
               <LogOut className="w-4 h-4 mr-2" /> Exit
             </Button>
@@ -330,7 +360,7 @@ export default function ClientReview() {
 
           {pendingReviews.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-64 border border-white/5 rounded-xl bg-zinc-900/20">
-              <CheckCircle2 className="w-16 h-16 text-emerald-500 mb-4 opacity-50" />
+              <CheckCircle2 className="w-16 h-16 text-status-green mb-4 opacity-50" />
               <h3 className="text-xl font-semibold">All Caught Up!</h3>
               <p className="text-zinc-500">There are no pending reviews at this time.</p>
             </div>
@@ -340,7 +370,7 @@ export default function ClientReview() {
                 const project = PROJECTS.find(p => p.id === shot.projectId);
                 const studio = project ? STUDIOS.find(s => s.id === project.studioId) : null;
                 return (
-                  <div key={shot.id} className="group bg-zinc-900 border border-white/10 rounded-xl overflow-hidden hover:border-emerald-500/50 hover:shadow-[0_0_20px_rgba(16,185,129,0.15)] transition-all cursor-pointer flex flex-col" onClick={() => setActiveReviewId(shot.id)}>
+                  <div key={shot.id} className="group bg-zinc-900 border border-white/10 rounded-xl overflow-hidden hover:border-accent-scope/50 hover:shadow-[0_0_20px_hsl(var(--accent-scope)/0.15)] transition-all cursor-pointer flex flex-col" onClick={() => setActiveReviewId(shot.id)}>
                     <div
                       className="relative aspect-video bg-zinc-800 overflow-hidden bg-cover bg-center"
                       style={{ backgroundImage: `url(${getPlaceholderThumbnail(resolveThumbnailSeed(shot))})` }}
@@ -386,10 +416,14 @@ export default function ClientReview() {
           <Button variant="ghost" size="icon" className="hover:bg-white/10" onClick={() => { setActiveReviewId(null); setIsPlaying(false); }}>
             <ChevronLeft className="w-5 h-5" />
           </Button>
-          <div className="w-8 h-8 bg-emerald-600 rounded flex items-center justify-center font-bold">F</div>
+          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shrink-0">
+            <div className="w-4 h-4 bg-card rounded-sm" />
+          </div>
           <div>
             <div className="font-semibold text-lg">{activeProject?.name} - {activeShot?.name}</div>
-            <div className="text-xs text-white/50">External Client Review • Secure</div>
+            <div className="text-xs text-white/50 flex items-center gap-1.5">
+              <Lock className="w-3 h-3" /> External Client Review • Secure
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-4">
@@ -399,9 +433,41 @@ export default function ClientReview() {
               <span>Delivered by <span className="text-white font-medium">{activeStudio.name}</span></span>
             </div>
           )}
-          <span className="text-sm text-white/50">Viewing {activeShot?.usdVersion || 'v003.usd'}</span>
+          <span className="text-sm text-white/50 timecode">Viewing {activeShot?.usdVersion || 'v003.usd'}</span>
         </div>
       </div>
+
+      {/* Studio Updates: light trust signal from the delivering studio,
+          scoped to this project — see the studioUpdates derivation above. */}
+      {studioUpdates.length > 0 && (
+        <div className="px-6 py-3 border-b border-white/10 bg-zinc-950 shrink-0">
+          <div className="flex items-center gap-1.5 mb-2 text-[11px] font-semibold text-zinc-500 tracking-wide">
+            <Building2 className="w-3 h-3" />
+            STUDIO UPDATES
+          </div>
+          <div className="flex gap-3 overflow-x-auto">
+            {studioUpdates.map(update => (
+              <div
+                key={update.id}
+                className={cn(
+                  'flex-1 min-w-[240px] rounded-lg border border-white/10 bg-zinc-900/60 px-3 py-2.5 border-l-2',
+                  update.severity === 'success' && 'border-l-status-green',
+                  update.severity === 'warning' && 'border-l-status-orange',
+                  update.severity === 'info' && 'border-l-white/20'
+                )}
+              >
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <span className="text-xs font-medium text-zinc-200">{activeStudio?.name || 'Studio'}</span>
+                  <span className="text-[10px] text-zinc-500 timecode shrink-0">
+                    {new Date(update.timestamp).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-400 leading-snug">{update.text}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-1 overflow-hidden">
         {/* Main Player */}
@@ -441,8 +507,8 @@ export default function ClientReview() {
                 className="absolute inset-0 bg-black/20 flex items-center justify-center cursor-pointer hover:bg-black/40 transition-colors"
                 onClick={() => setIsPlaying(true)}
               >
-                <div className="w-20 h-20 rounded-full bg-emerald-600/90 flex items-center justify-center backdrop-blur shadow-lg">
-                  <Play className="w-10 h-10 text-white ml-2" />
+                <div className="w-20 h-20 rounded-full bg-accent-scope/90 flex items-center justify-center backdrop-blur shadow-lg">
+                  <Play className="w-10 h-10 text-accent-scope-foreground ml-2" />
                 </div>
               </div>
             )}
@@ -480,9 +546,9 @@ export default function ClientReview() {
               maxFrames={maxFrames}
               disabled={isLockedViewer}
               onFrameChange={(f) => { setIsPlaying(false); setFrame(f); }}
-              className="w-full bg-white/20 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+              className="w-full bg-white/20 rounded-lg appearance-none cursor-pointer accent-[hsl(var(--accent-scope))]"
             />
-            <div className="flex justify-between text-xs text-white/50 mt-2 font-mono">
+            <div className="flex justify-between text-xs text-white/50 mt-2 timecode">
               <span>{String(frame).padStart(3, '0')}</span>
               <span>{maxFrames}</span>
             </div>
@@ -499,7 +565,7 @@ export default function ClientReview() {
               frame={frame}
               maxFrames={maxFrames}
               buttonClassName="text-white hover:bg-white/10"
-              playButtonClassName="bg-emerald-600 hover:bg-emerald-700 text-white w-12 h-12 rounded-full"
+              playButtonClassName="bg-accent-scope hover:bg-accent-scope/90 text-accent-scope-foreground w-12 h-12 rounded-full"
               iconClassName="w-5 h-5"
               playIconClassName="w-6 h-6"
               centerPlayIcon
@@ -516,10 +582,10 @@ export default function ClientReview() {
           
           <div className="flex-1 p-6 overflow-y-auto space-y-6">
             <div className="space-y-3">
-              <label className="text-sm font-medium">Add a note at frame {String(frame).padStart(3, '0')}</label>
+              <label className="text-sm font-medium">Add a note at frame <span className="timecode">{String(frame).padStart(3, '0')}</span></label>
               <Textarea
                 placeholder="E.g. The lighting on the left looks a bit dark..."
-                className="bg-zinc-900 border-white/10 text-white min-h-[120px] focus:ring-emerald-500"
+                className="bg-zinc-900 border-white/10 text-white min-h-[120px] focus:ring-accent-scope"
                 value={feedback}
                 onChange={e => setFeedback(e.target.value)}
               />
@@ -570,13 +636,13 @@ export default function ClientReview() {
                           <User className="w-3 h-3 text-zinc-500" />
                           {note.authorName}
                         </span>
-                        <span className="text-[10px] text-zinc-500">{new Date(note.createdAt).toLocaleString()}</span>
+                        <span className="text-[10px] text-zinc-500 timecode">{new Date(note.createdAt).toLocaleString()}</span>
                       </div>
                       <p className="text-sm text-zinc-200 mb-2">{note.text}</p>
-                      <div className="flex items-center gap-2 text-[10px] font-mono text-zinc-500 mb-2">
-                        <span>Frame {String(note.frame).padStart(3, '0')}</span>
+                      <div className="flex items-center gap-2 text-[10px] text-zinc-500 mb-2">
+                        <span className="timecode">Frame {String(note.frame).padStart(3, '0')}</span>
                         {note.annotations && note.annotations.length > 0 && (
-                          <span className="inline-flex items-center gap-1 text-emerald-400/80 font-sans">
+                          <span className="inline-flex items-center gap-1 text-accent-scope/80 font-sans">
                             <PenTool className="w-3 h-3" />
                             {note.annotations.length} {note.annotations.length === 1 ? 'mark' : 'marks'}
                           </span>
@@ -584,7 +650,7 @@ export default function ClientReview() {
                       </div>
                       <div className={cn(
                         'inline-flex items-center gap-1.5 text-[11px] px-1.5 py-0.5 rounded',
-                        note.transferred ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'
+                        note.transferred ? 'bg-status-green/10 text-status-green' : 'bg-status-orange/10 text-status-orange'
                       )}>
                         {note.transferred ? <Send className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
                         {note.transferred ? 'Seen by studio team' : 'Awaiting studio review'}
@@ -599,16 +665,16 @@ export default function ClientReview() {
           <div className="p-6 border-t border-white/10 bg-zinc-900/50">
             <div className="text-sm text-center mb-4 text-zinc-400">Final Decision</div>
             <div className="flex gap-3">
-              <Button 
+              <Button
                 variant="outline"
-                className="flex-1 border-rose-500/50 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300"
+                className="flex-1 border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive"
                 onClick={() => handleSubmit('changes_requested')}
               >
                 <ThumbsDown className="w-4 h-4 mr-2" />
                 Request Changes
               </Button>
-              <Button 
-                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+              <Button
+                className="flex-1 bg-accent-scope hover:bg-accent-scope/90 text-accent-scope-foreground"
                 onClick={() => handleSubmit('approved')}
               >
                 <ThumbsUp className="w-4 h-4 mr-2" />

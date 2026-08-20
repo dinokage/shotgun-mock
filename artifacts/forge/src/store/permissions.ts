@@ -18,6 +18,7 @@ export const CAPABILITY_IDS = [
   'manage_pipeline',
   'manage_licenses',
   'manage_integrations',
+  'broadcast_updates',
 ] as const;
 
 export type CapabilityId = (typeof CAPABILITY_IDS)[number];
@@ -43,6 +44,7 @@ export const CAPABILITIES: Capability[] = [
   { id: 'manage_pipeline', label: 'Manage Pipelines', description: 'Add or reorder department pipeline stages.', category: 'Studio Ops' },
   { id: 'manage_licenses', label: 'Manage Licenses', description: 'Add license servers and adjust seat counts.', category: 'Studio Ops' },
   { id: 'manage_integrations', label: 'Manage API & Integrations', description: 'Create API tokens and webhook endpoints.', category: 'Studio Ops' },
+  { id: 'broadcast_updates', label: 'Broadcast Status Updates', description: 'Post studio-wide or project status updates to teams and, optionally, the client portal.', category: 'Studio Ops' },
 ];
 
 export const CAPABILITY_CATEGORIES = Array.from(new Set(CAPABILITIES.map((c) => c.category)));
@@ -102,6 +104,7 @@ export const DEFAULT_PERMISSION_SCHEME: PermissionScheme = {
     manage_pipeline: true,
     manage_licenses: true,
     manage_integrations: true,
+    broadcast_updates: true,
   }),
   production_manager: caps({
     create_tasks: true,
@@ -115,6 +118,7 @@ export const DEFAULT_PERMISSION_SCHEME: PermissionScheme = {
     edit_financials: true,
     manage_pipeline: true,
     manage_licenses: true,
+    broadcast_updates: true,
   }),
   coordinator: caps({
     create_tasks: true,
@@ -208,6 +212,25 @@ export const usePermissionsStore = create<PermissionsState>()(
     }),
     {
       name: 'forge-permissions-storage',
+      version: 2,
+      // Migrate schemes persisted before broadcast_updates existed — zustand's
+      // default merge is shallow, so a hydrated `scheme` replaces
+      // DEFAULT_PERMISSION_SCHEME wholesale rather than backfilling the new
+      // key per-role. Without this, every role (including
+      // vfx_producer/production_manager) would read broadcast_updates as
+      // undefined -> false, silently disabling the feature for anyone who'd
+      // already used the app. Same bug class as the tasks.ts v2 migration.
+      migrate(persistedState: unknown, fromVersion: number) {
+        if (fromVersion < 2) {
+          const state = persistedState as { scheme?: PermissionScheme };
+          if (state?.scheme) {
+            state.scheme = Object.fromEntries(
+              ROLES_ORDER.map((role) => [role, caps(state.scheme![role] ?? {})])
+            ) as PermissionScheme;
+          }
+        }
+        return persistedState as PermissionsState;
+      },
     }
   )
 );
