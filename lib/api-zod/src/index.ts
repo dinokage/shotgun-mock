@@ -17,3 +17,4 @@ export {
   UpdateTaskBody,
   UpdateTaskResponse
 } from './generated/api';
+export * from './generated/api';
