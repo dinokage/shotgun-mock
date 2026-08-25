@@ -41,6 +41,7 @@ async function main() {
     // In a real app we'd fetch the roleId if onConflictDoNothing prevented insert,
     // but for a clean seed script we can just use a deterministic UUID or wipe db first.
     // Let's assume clean DB or we can query it:
+    // @ts-ignore
     const [insertedRole] = await db.select().from(tenantRolesTable).where(eq(tenantRolesTable.name, roleDef.name));
     
     for (const cap of roleDef.capabilities) {
