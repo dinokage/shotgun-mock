@@ -51,20 +51,20 @@ import Notifications from '@/pages/notifications';
 import FinancialDashboard from '@/pages/financials';
 import SchemaBuilder from '@/pages/schema-builder';
 
-const queryClient = new QueryClient();
+import { queryClient } from '@/lib/queryClient';
 
 // Auth Guard component
 function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, isInitializing } = useAuthStore();
   const [, setLocation] = useLocation();
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isInitializing && !isAuthenticated) {
       setLocation('/login');
     }
-  }, [isAuthenticated, setLocation]);
+  }, [isAuthenticated, isInitializing, setLocation]);
 
-  if (!isAuthenticated) return null;
+  if (isInitializing || !isAuthenticated) return null;
   return <>{children}</>;
 }
 
@@ -92,7 +92,7 @@ function LeadershipGuard({ children }: { children: React.ReactNode }) {
 function Router() {
   return (
     <Switch>
-      <Route path="/login" component={Login} />
+      <Route path="/login/:role?" component={Login} />
       <Route path="/client-review" component={ClientReview} />
       {/* Public, outside AuthGuard — external recipients reach a specific
           delivery via its access code, with no Forge login at all. */}
@@ -187,6 +187,12 @@ function Router() {
 }
 
 function App() {
+  const { fetchMe } = useAuthStore();
+
+  useEffect(() => {
+    fetchMe();
+  }, [fetchMe]);
+
   return (
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>

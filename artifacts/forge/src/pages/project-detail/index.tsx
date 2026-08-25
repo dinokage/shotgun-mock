@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useRoute } from 'wouter';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useProjectStore } from '@/store/projects';
+import { useProject } from '@/hooks/useProjects';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft } from 'lucide-react';
 import { Link } from 'wouter';
@@ -15,10 +15,11 @@ import { StatusBadge } from '@/components/shared/StatusBadge';
 export default function ProjectDetail() {
   const [, params] = useRoute('/projects/:id');
   const projectId = params?.id;
-  const projects = useProjectStore((state) => state.projects);
-  const project = projects.find(p => p.id === projectId);
+  
+  const { data: project, isLoading, error } = useProject(projectId || '');
 
-  if (!project) return <div className="p-6 text-center text-muted-foreground">Project not found.</div>;
+  if (isLoading) return <div className="p-6 text-center text-muted-foreground">Loading...</div>;
+  if (error || !project) return <div className="p-6 text-center text-muted-foreground">Project not found.</div>;
 
   return (
     <div className="flex flex-col h-full">
@@ -33,7 +34,7 @@ export default function ProjectDetail() {
               <StatusBadge status={project.status} />
             </div>
             <div className="text-sm text-muted-foreground mt-0.5">
-              {project.type} • Due {new Date(project.dueDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+              {project.type} • Due {project.endDate ? new Date(project.endDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'TBD'}
             </div>
           </div>
         </div>
@@ -50,11 +51,11 @@ export default function ProjectDetail() {
           </TabsList>
           
           <div className="flex-1 min-h-0">
-            <TabsContent value="dashboard" className="h-full m-0 data-[state=active]:flex flex-col"><DashboardTab project={project} /></TabsContent>
-            <TabsContent value="assets" className="h-full m-0 data-[state=active]:flex flex-col"><AssetsTab project={project} /></TabsContent>
-            <TabsContent value="tasks" className="h-full m-0 data-[state=active]:flex flex-col"><TasksTab project={project} /></TabsContent>
-            <TabsContent value="versions" className="h-full m-0 data-[state=active]:flex flex-col"><VersionsTab project={project} /></TabsContent>
-            <TabsContent value="dailies" className="h-full m-0 data-[state=active]:flex flex-col"><DailiesTab project={project} /></TabsContent>
+            <TabsContent value="dashboard" className="h-full m-0 data-[state=active]:flex flex-col"><DashboardTab project={project as any} /></TabsContent>
+            <TabsContent value="assets" className="h-full m-0 data-[state=active]:flex flex-col"><AssetsTab project={project as any} /></TabsContent>
+            <TabsContent value="tasks" className="h-full m-0 data-[state=active]:flex flex-col"><TasksTab project={project as any} /></TabsContent>
+            <TabsContent value="versions" className="h-full m-0 data-[state=active]:flex flex-col"><VersionsTab project={project as any} /></TabsContent>
+            <TabsContent value="dailies" className="h-full m-0 data-[state=active]:flex flex-col"><DailiesTab project={project as any} /></TabsContent>
           </div>
         </Tabs>
       </div>

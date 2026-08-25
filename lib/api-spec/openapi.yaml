@@ -1,36 +1,214 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
-  title: Api
-  version: 0.1.0
-  description: API specification
+  title: Forge API
+  version: 1.0.0
+  description: Multi-tenant Production API for Forge
 servers:
   - url: /api
     description: Base API path
 tags:
-  - name: health
-    description: Health operations
+  - name: auth
+  - name: projects
+  - name: assets
+  - name: shots
+  - name: tasks
+  - name: versions
 paths:
-  /healthz:
-    get:
-      operationId: healthCheck
-      tags: [health]
-      summary: Health check
-      description: Returns server health status
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
       responses:
         "200":
-          description: Healthy
+          description: Logged in successfully
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/HealthStatus"
+                $ref: "#/components/schemas/AuthSession"
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Logout
+      responses:
+        "200":
+          description: Logged out
+  /auth/me:
+    get:
+      operationId: me
+      tags: [auth]
+      summary: Get current session
+      responses:
+        "200":
+          description: Current session info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSession"
+  /projects:
+    get:
+      operationId: getProjects
+      tags: [projects]
+      summary: List all projects for tenant
+      responses:
+        "200":
+          description: List of projects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Project"
+    post:
+      operationId: createProject
+      tags: [projects]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+  /tasks:
+    get:
+      operationId: getTasks
+      tags: [tasks]
+      parameters:
+        - in: query
+          name: projectId
+          schema:
+            type: string
+          required: false
+      responses:
+        "200":
+          description: List of tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+    post:
+      operationId: createTask
+      tags: [tasks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [entityId, entityType]
+              properties:
+                entityId:
+                  type: string
+                entityType:
+                  type: string
+                status:
+                  type: string
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+  /tasks/{id}:
+    put:
+      operationId: updateTask
+      tags: [tasks]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+
 components:
   schemas:
-    HealthStatus:
+    AuthSession:
       type: object
       properties:
+        user:
+          type: object
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+            role:
+              type: string
+            capabilities:
+              type: array
+              items:
+                type: string
+        tenant:
+          type: object
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+      required: [user, tenant]
+    Project:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
         status:
           type: string
-      required:
-        - status
-
+      required: [id, name, status]
+    Task:
+      type: object
+      properties:
+        id:
+          type: string
+        entityId:
+          type: string
+        entityType:
+          type: string
+        status:
+          type: string
+        assignedTo:
+          type: string
+      required: [id, entityId, entityType, status]

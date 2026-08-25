@@ -1,31 +1,55 @@
-import { TASKS, USERS, PROJECTS, DEPARTMENTS } from '@/data/mockData';
+export class ApiError extends Error {
+  constructor(public status: number, message: string, public data?: any) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
 
-// NOT a real HTTP client — get() switches over in-memory mock arrays and
-// post()/put() always resolve { success: true } regardless of payload. Used
-// by only a couple of call sites today; almost every zustand store in
-// src/store instead holds its own mock array directly and mutates it
-// locally (see product review §4/§6/§9 — "no single swap point").
-//
-// The real seam already exists at @workspace/api-client-react (Orval-
-// generated from lib/api-spec/openapi.yaml). As of this pass that spec only
-// defines a health check — there's no real endpoint contract to build
-// against yet. Once the backend defines routes there, each store's action
-// creators should be individually rewritten to call the generated hooks
-// instead of mutating their local mock array; this file should be deleted
-// at that point rather than "upgraded" into a real client.
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
+export async function apiFetch<T = any>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  let url = endpoint;
+  if (API_BASE) {
+    url = `${API_BASE}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+  } else {
+    url = endpoint.startsWith('/api') 
+      ? endpoint 
+      : `/api${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+  }
+  
+  const headers = new Headers(options.headers);
+  if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  const response = await fetch(url, {
+    credentials: 'include',
+    ...options,
+    headers,
+  });
+
+  if (!response.ok) {
+    let message = 'An error occurred';
+    let data;
+    try {
+      data = await response.json();
+      message = data.message || data.error || message;
+    } catch {
+      // Not JSON, ignore
+    }
+    throw new ApiError(response.status, message, data);
+  }
+
+  // Handle 204 No Content
+  if (response.status === 204) {
+    return {} as T;
+  }
+
+  return response.json();
+}
+
 export const apiClient = {
-  get: async (endpoint: string) => {
-    if (endpoint.includes('/tasks')) return TASKS;
-    if (endpoint.includes('/users')) return USERS;
-    if (endpoint.includes('/projects')) return PROJECTS;
-    if (endpoint.includes('/departments')) return DEPARTMENTS;
-    if (endpoint.includes('/standups')) return [];
-    return [];
-  },
-  post: async (endpoint: string, data?: any) => {
-    return { success: true, data };
-  },
-  put: async (endpoint: string, data?: any) => {
-    return { success: true, data };
-  },
+  get: <T>(path: string) => apiFetch<T>(path),
+  post: <T>(path: string, body: unknown) =>
+    apiFetch<T>(path, { method: 'POST', body: JSON.stringify(body) }),
 };

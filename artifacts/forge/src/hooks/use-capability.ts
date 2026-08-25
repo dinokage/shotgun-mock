@@ -8,10 +8,12 @@ import { usePermissionsStore, LEADERSHIP_ROLES, type CapabilityId } from '@/stor
  * own Settings tab because nothing else in the app read it.
  */
 export function useCapability(id: CapabilityId): boolean {
-  const role = useAuthStore((s) => s.currentUser?.role);
-  const scheme = usePermissionsStore((s) => s.scheme);
-  if (!role) return false;
-  return scheme[role]?.[id] === true;
+  const user = useAuthStore((s) => s.currentUser);
+  if (!user) return false;
+  // Fallback to true for admin just in case, but real RBAC handles admin fully
+  if (user.role === 'admin') return true; 
+  // Read directly from the capabilities array returned by API
+  return user.capabilities?.includes(id) ?? false;
 }
 
 /**

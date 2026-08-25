@@ -1,8 +1,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { AUDIT_EVENTS } from '@/data/mockData';
 import { useShotStore } from '@/store/shots';
-import { PlayCircle } from 'lucide-react';
+import { PlayCircle, History } from 'lucide-react';
+import { useAudit } from '@/hooks/useAudit';
 
 const burndownData = [
   { name: 'Week 1', planned: 247, actual: 247 },
@@ -23,10 +23,6 @@ const COLORS = {
 };
 
 export default function DashboardTab({ project }: { project: any }) {
-  // Scale the status breakdown proportionally to this project's real shot count so the
-  // donut segments always sum to the same total shown in the center label below. These
-  // were previously two independently-wired numbers (a fixed 247-shot breakdown vs. the
-  // project's actual shotsCount) that visibly disagreed on every project but the first.
   const pieBase = [
     { name: 'Complete', value: 98, fill: COLORS.complete },
     { name: 'In Progress', value: 74, fill: COLORS['in-progress'] },
@@ -41,6 +37,8 @@ export default function DashboardTab({ project }: { project: any }) {
 
   const shots = useShotStore((state) => state.shots);
   const projectShots = shots.filter(s => s.projectId === project.id).slice(0, 4);
+  const { data: auditData } = useAudit(project.id);
+  const events = auditData || [];
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pb-8">
@@ -91,7 +89,7 @@ export default function DashboardTab({ project }: { project: any }) {
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { label: 'Overall Progress', value: `${project.progress}%` },
+            { label: 'Overall Progress', value: `${project.progress ?? 0}%` },
             { label: 'Shots Approved', value: '98 / 247' },
             { label: 'Assets Approved', value: '45 / 84' },
             { label: 'Current Velocity', value: '18 tasks/wk' },
@@ -109,26 +107,27 @@ export default function DashboardTab({ project }: { project: any }) {
       <div className="space-y-6 min-w-0">
         <Card>
           <CardHeader>
-            <CardTitle>Shot Status</CardTitle>
+            <CardTitle>Recent Activity</CardTitle>
           </CardHeader>
-          <CardContent className="h-[250px] min-w-0 flex items-center justify-center relative">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={2} dataKey="value">
-                  {pieData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.fill} />
-                  ))}
-                </Pie>
-                <Tooltip 
-                  contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '8px' }}
-                  itemStyle={{ color: 'hsl(var(--foreground))' }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <span className="text-3xl font-bold">{project.shotsCount}</span>
-              <span className="text-xs text-muted-foreground">Total Shots</span>
-            </div>
+          <CardContent className="max-h-[300px] overflow-y-auto space-y-4">
+            {events.slice(0, 10).map((event: any) => (
+              <div key={event.id} className="flex gap-3 text-sm">
+                <div className="mt-0.5">
+                  <History className="w-4 h-4 text-primary" />
+                </div>
+                <div>
+                  <div className="font-medium">
+                    {event.entityType} {event.action}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    by User {event.userId} on {new Date(event.createdAt).toLocaleDateString()}
+                  </div>
+                </div>
+              </div>
+            ))}
+            {events.length === 0 && (
+              <div className="text-muted-foreground text-sm text-center py-4">No recent activity.</div>
+            )}
           </CardContent>
         </Card>
 

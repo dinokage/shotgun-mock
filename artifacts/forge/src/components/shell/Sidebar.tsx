@@ -16,6 +16,7 @@ import { useTasksStore } from '@/store/tasks';
 import { useReviewStore } from '@/store/reviews';
 import { useChatGroupsStore } from '@/store/chatGroups';
 import { useCapability, useIsLeadership } from '@/hooks/use-capability';
+import type { CapabilityId } from '@/store/permissions';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { STUDIOS, DEPARTMENTS } from '@/data/mockData';
 import { DEPARTMENT_LEADERSHIP_ROLES } from '@/store/permissions';
@@ -32,52 +33,40 @@ type NavItem = {
   icon: typeof LayoutDashboard;
   href: string;
   badge?: number;
+  capabilities?: CapabilityId[]; // User must have AT LEAST ONE of these to see the item
 };
 
-// Base navigation for everyone
-const BASE_NAV: NavItem[] = [
+const ALL_NAV: NavItem[] = [
+  // Base
   { label: 'Dashboard', icon: LayoutDashboard, href: '/' },
   { label: 'My Tasks', icon: ListTodo, href: '/tasks' },
-  { label: 'Team Chat', icon: MessageSquare, href: '/chat' },
-  { label: 'Daily Standup', icon: MonitorPlay, href: '/daily-standup' },
-];
-
-// Production & Leadership get scheduling, analytics, projects, etc.
-const PROD_NAV: NavItem[] = [
-  { label: 'Production Dashboard', icon: LayoutDashboard, href: '/production' },
-  { label: 'Projects', icon: FolderOpen, href: '/projects' },
-  { label: 'Tracking Grid', icon: Grid3X3, href: '/tracking' },
-  { label: 'Scheduling', icon: Calendar, href: '/scheduling' },
-  { label: 'Timesheets', icon: Clock, href: '/timesheets' },
-  { label: 'Analytics', icon: BarChart3, href: '/analytics' },
-  { label: 'Reviews', icon: PlayCircle, href: '/review' },
-  { label: 'Publishing', icon: Upload, href: '/publishing' },
-  { label: 'Deliveries', icon: Truck, href: '/delivery' },
-  { label: 'Financials', icon: DollarSign, href: '/financials' },
-];
-
-// Artists get specific focus areas
-const ARTIST_NAV: NavItem[] = [
   { label: 'My Shots', icon: Film, href: '/shots?mine=1' },
   { label: 'My Assets', icon: Package, href: '/assets?mine=1' },
+  { label: 'Team Chat', icon: MessageSquare, href: '/chat' },
+  { label: 'Daily Standup', icon: MonitorPlay, href: '/daily-standup' },
+  
+  // Production
+  { label: 'Production Dashboard', icon: LayoutDashboard, href: '/production', capabilities: ['create_tasks', 'manage_pipeline', 'view_financials'] },
+  { label: 'Projects', icon: FolderOpen, href: '/projects', capabilities: ['create_tasks', 'manage_pipeline'] },
+  { label: 'Tracking Grid', icon: Grid3X3, href: '/tracking', capabilities: ['create_tasks', 'manage_pipeline'] },
+  { label: 'Scheduling', icon: Calendar, href: '/scheduling', capabilities: ['assign_tasks', 'manage_pipeline'] },
   { label: 'Timesheets', icon: Clock, href: '/timesheets' },
+  { label: 'Analytics', icon: BarChart3, href: '/analytics', capabilities: ['view_financials', 'manage_pipeline'] },
   { label: 'Reviews', icon: PlayCircle, href: '/review' },
-];
-
-// Global directories
-const DIRECTORY_NAV: NavItem[] = [
+  { label: 'Publishing', icon: Upload, href: '/publishing', capabilities: ['create_tasks', 'manage_pipeline'] },
+  { label: 'Deliveries', icon: Truck, href: '/delivery', capabilities: ['manage_pipeline', 'create_tasks'] },
+  { label: 'Financials', icon: DollarSign, href: '/financials', capabilities: ['view_financials'] },
+  
+  // Directory
   { label: 'Departments', icon: Building2, href: '/departments' },
   { label: 'Studio Roster', icon: Users, href: '/people' },
-];
-
-// System nav
-const SYSTEM_NAV: NavItem[] = [
-  { label: 'Schema Builder', icon: Boxes, href: '/schema-builder' },
-  { label: 'Integrations Hub', icon: Puzzle, href: '/integrations' },
-  { label: 'Workflows', icon: Workflow, href: '/workflows' },
-  { label: 'Marketplace', icon: Store, href: '/marketplace' },
-
-  { label: 'Time Travel', icon: History, href: '/audit' },
+  
+  // System
+  { label: 'Schema Builder', icon: Boxes, href: '/schema-builder', capabilities: ['manage_roles'] },
+  { label: 'Integrations Hub', icon: Puzzle, href: '/integrations', capabilities: ['manage_integrations'] },
+  { label: 'Workflows', icon: Workflow, href: '/workflows', capabilities: ['manage_pipeline'] },
+  { label: 'Marketplace', icon: Store, href: '/marketplace' }, // available to everyone
+  { label: 'Time Travel', icon: History, href: '/audit', capabilities: ['manage_roles'] },
 ];
 
 export function Sidebar() {
@@ -87,7 +76,6 @@ export function Sidebar() {
   const { currentStudioId, setStudio } = useWorkspaceStore();
   const { currentUser } = useAuthStore();
   const isLeadership = useIsLeadership();
-  const canViewFinancials = useCapability('view_financials');
   const tasks = useTasksStore((s) => s.tasks);
   const reviews = useReviewStore((s) => s.reviews);
   const chatGroups = useChatGroupsStore((s) => s.groups);
@@ -140,12 +128,14 @@ export function Sidebar() {
       return item;
     });
 
-  const navItems = [
-    ...withBadges(BASE_NAV),
-    ...withBadges(isLeadership ? PROD_NAV : ARTIST_NAV),
-    ...(isLeadership ? DIRECTORY_NAV : [{ label: 'Studio Roster', icon: Users, href: '/people' }]),
-    ...(isLeadership ? SYSTEM_NAV : []),
-  ].filter(item => item.href !== '/financials' || canViewFinancials);
+  const hasAnyCapability = (caps?: CapabilityId[]) => {
+    if (!caps || caps.length === 0) return true;
+    if (currentUser.role === 'admin') return true;
+    return caps.some(c => currentUser.capabilities?.includes(c));
+  };
+
+  const navItems = withBadges(ALL_NAV).filter(item => hasAnyCapability(item.capabilities));
+  const canViewSettings = hasAnyCapability(['manage_roles', 'manage_members', 'manage_licenses']);
 
   // Shared body for both the permanent desktop column and the mobile
   // off-canvas drawer. `collapsed` only ever applies on desktop — the
@@ -234,7 +224,7 @@ export function Sidebar() {
 
         {/* Bottom Actions */}
         <div className={cn("p-2 border-t border-sidebar-border space-y-0.5", collapsed && "px-1")}>
-          {isLeadership && (
+          {canViewSettings && (
             <Link href="/settings" className="block" onClick={onNavigate}>
               <div className={cn(
                 "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",

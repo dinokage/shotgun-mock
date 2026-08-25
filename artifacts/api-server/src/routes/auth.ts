@@ -1,0 +1,96 @@
+import { Router } from "express";
+import { db } from "@workspace/db";
+import { usersTable, tenantsTable, tenantRolesTable, tenantRoleCapabilitiesTable } from "@workspace/db/schema";
+import { eq, and } from "drizzle-orm";
+import { verifyPassword, signSession, verifySession } from "../lib/auth";
+
+export const authRouter = Router();
+
+authRouter.post("/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: "Missing email or password" });
+    }
+
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email));
+    if (!user) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    const isValid = await verifyPassword(password, user.hashedPassword);
+    if (!isValid) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    // Resolve tenant and role details
+    const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, user.tenantId));
+    const [role] = await db.select().from(tenantRolesTable).where(eq(tenantRolesTable.id, user.roleId));
+    const roleCaps = await db.select().from(tenantRoleCapabilitiesTable).where(eq(tenantRoleCapabilitiesTable.roleId, user.roleId));
+    const capabilities = roleCaps.map(c => c.capabilityId);
+
+    const sessionPayload = {
+      userId: user.id,
+      tenantId: user.tenantId,
+      roleId: user.roleId,
+    };
+
+    const token = signSession(sessionPayload);
+    res.cookie("session", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    return res.status(200).json({
+      user: {
+        id: user.id,
+        name: user.name,
+        role: role?.name || "admin", 
+        capabilities,
+      },
+      tenant: {
+        id: tenant.id,
+        name: tenant.name,
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+authRouter.post("/logout", (req, res) => {
+  res.clearCookie("session");
+  return res.status(200).json({ message: "Logged out" });
+});
+
+authRouter.get("/me", async (req, res) => {
+  const token = req.cookies?.session;
+  if (!token) return res.status(401).json({ error: "Unauthorized" });
+
+  const session = verifySession(token);
+  if (!session) return res.status(401).json({ error: "Invalid session" });
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, session.userId));
+  if (!user) return res.status(401).json({ error: "User deleted" });
+
+  const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, session.tenantId));
+  const [role] = await db.select().from(tenantRolesTable).where(eq(tenantRolesTable.id, session.roleId));
+  const roleCaps = await db.select().from(tenantRoleCapabilitiesTable).where(eq(tenantRoleCapabilitiesTable.roleId, session.roleId));
+  const capabilities = roleCaps.map(c => c.capabilityId);
+
+  return res.status(200).json({
+    user: {
+      id: user.id,
+      name: user.name,
+      role: role?.name || "admin", 
+      capabilities,
+    },
+    tenant: {
+      id: tenant.id,
+      name: tenant?.name || "",
+    }
+  });
+});

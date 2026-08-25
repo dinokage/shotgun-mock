@@ -90,6 +90,19 @@ function caps(overrides: Partial<Record<CapabilityId, boolean>>): Record<Capabil
 }
 
 export const DEFAULT_PERMISSION_SCHEME: PermissionScheme = {
+  admin: caps(Object.fromEntries(CAPABILITY_IDS.map(id => [id, true]))),
+  producer: caps({
+    create_tasks: true,
+    edit_tasks: true,
+    delete_tasks: true,
+    assign_tasks: true,
+    submit_reviews: true,
+    approve_reviews: true,
+    manage_members: true,
+    manage_roles: true,
+    view_financials: true,
+    broadcast_updates: true,
+  }),
   vfx_producer: caps({
     create_tasks: true,
     edit_tasks: true,

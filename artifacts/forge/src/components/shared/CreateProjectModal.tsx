@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAuthStore } from '@/store/auth';
 import { useUIStore } from '@/store/ui';
-import { useProjectStore } from '@/store/projects';
+import { useCreateProject } from '@/hooks/useProjects';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,7 +25,7 @@ const PROJECT_TYPES = [
 
 export function CreateProjectModal() {
   const { createProjectModalOpen, setCreateProjectModalOpen } = useUIStore();
-  const { addProject } = useProjectStore();
+  const { mutateAsync: createProject, isPending } = useCreateProject();
   const { currentUser } = useAuthStore();
   const { toast } = useToast();
 
@@ -47,7 +47,7 @@ export function CreateProjectModal() {
     setDescription('');
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!name || !client || !type) {
@@ -55,23 +55,32 @@ export function CreateProjectModal() {
       return;
     }
 
-    const project = addProject({
-      name,
-      client,
-      type,
-      description,
-      dueDate: dueDate || undefined,
-      budget: budget ? Number(budget) : undefined,
-      studioId: currentUser.studioId,
-    });
+    try {
+      const project = await createProject({
+        name,
+        client,
+        type,
+        // Since we didn't add description and budget to the API DTO, we might ignore them here, 
+        // but we'll include endDate and a mock code
+        code: name.substring(0, 3).toUpperCase(), // Basic mock code
+        endDate: dueDate || null,
+        status: 'active',
+      });
 
-    toast({
-      title: 'Project Created',
-      description: `"${project.name}" has been added to the roster.`,
-    });
+      toast({
+        title: 'Project Created',
+        description: `"${project.name}" has been added to the roster.`,
+      });
 
-    resetForm();
-    setCreateProjectModalOpen(false);
+      resetForm();
+      setCreateProjectModalOpen(false);
+    } catch (err: any) {
+      toast({
+        title: 'Error',
+        description: err.message || 'Failed to create project.',
+        variant: 'destructive',
+      });
+    }
   };
 
   return (
@@ -132,8 +141,8 @@ export function CreateProjectModal() {
           </div>
 
           <DialogFooter className="mt-6">
-            <Button type="button" variant="outline" onClick={() => setCreateProjectModalOpen(false)}>Cancel</Button>
-            <Button type="submit">Create Project</Button>
+            <Button type="button" variant="outline" onClick={() => setCreateProjectModalOpen(false)} disabled={isPending}>Cancel</Button>
+            <Button type="submit" disabled={isPending}>{isPending ? 'Creating...' : 'Create Project'}</Button>
           </DialogFooter>
         </form>
       </DialogContent>

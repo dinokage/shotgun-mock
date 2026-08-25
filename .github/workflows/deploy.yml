@@ -1,0 +1,70 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+          run_install: false
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - uses: actions/cache@v4
+        name: Setup pnpm cache
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Drift Check
+        run: |
+          pnpm --filter "@workspace/api-spec" run codegen
+          if [[ -n $(git status -s) ]]; then
+            echo "Drift detected: Zod schemas are out of sync with openapi.yaml"
+            git status -s
+            exit 1
+          fi
+
+      - name: Run Migrations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          pnpm --filter "@workspace/db" run generate
+          pnpm --filter "@workspace/db" run migrate
+
+      - name: Trigger Railway Deploy
+        env:
+          RAILWAY_DEPLOY_WEBHOOK_URL: ${{ secrets.RAILWAY_DEPLOY_WEBHOOK_URL }}
+        run: |
+          if [ -z "$RAILWAY_DEPLOY_WEBHOOK_URL" ]; then
+            echo "RAILWAY_DEPLOY_WEBHOOK_URL is not set. Skipping deploy trigger."
+          else
+            curl -X POST -d '{}' "$RAILWAY_DEPLOY_WEBHOOK_URL"
+          fi

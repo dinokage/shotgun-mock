@@ -3,9 +3,7 @@ import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { StatusBadge } from '@/components/shared/StatusBadge';
-import { EPISODES } from '@/data/mockData';
-import { useProjectStore } from '@/store/projects';
-import { useShotStore } from '@/store/shots';
+import { useProjects } from '@/hooks/useProjects';
 import { useUIStore } from '@/store/ui';
 import { Plus, Filter, Search, Download, LayoutGrid, List } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -14,10 +12,9 @@ import { Link } from 'wouter';
 import { cut, stagger } from '@/lib/motion';
 
 const STATUS_LABELS: Record<string, string> = {
-  ON_TRACK: 'On Track',
-  AT_RISK: 'At Risk',
-  BOTTLENECK: 'Bottleneck',
-  COMPLETE: 'Complete',
+  active: 'Active',
+  on_hold: 'On Hold',
+  complete: 'Complete',
 };
 
 export default function Projects() {
@@ -28,8 +25,7 @@ export default function Projects() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
-  const projects = useProjectStore((state) => state.projects);
-  const shots = useShotStore((state) => state.shots);
+  const { data: projects = [], isLoading } = useProjects();
   const { setCreateProjectModalOpen } = useUIStore();
 
   const handleNewProject = () => {
@@ -54,16 +50,14 @@ export default function Projects() {
   };
 
   const handleExportCSV = () => {
-    const headers = ['ID', 'Project Name', 'Type', 'Client', 'Episodes', 'Progress %', 'Status', 'Due Date'];
+    const headers = ['ID', 'Project Name', 'Type', 'Client', 'Status', 'Due Date'];
     const rows = filteredProjects.map((project, idx) => [
-      String(idx + 1).padStart(3, '0'),
+      project.code,
       project.name,
       project.type,
       project.client,
-      EPISODES.filter(e => e.projectId === project.id).length,
-      project.progress,
       STATUS_LABELS[project.status] || project.status,
-      project.dueDate,
+      project.endDate || '',
     ]);
     const csv = [headers, ...rows].map((r) => r.map(escapeCSVValue).join(',')).join('\n');
 
@@ -79,6 +73,10 @@ export default function Projects() {
 
     toast({ title: 'Export Complete', description: `${filteredProjects.length} projects exported to CSV.` });
   };
+
+  if (isLoading) {
+    return <div className="p-6">Loading projects...</div>;
+  }
 
   return (
     <div className="p-6 max-w-[1600px] mx-auto h-[calc(100vh-3.5rem)] flex flex-col space-y-4 bg-background">
@@ -190,32 +188,29 @@ export default function Projects() {
             <table className="w-full text-left text-[13px] whitespace-nowrap">
               <thead className="sticky top-0 bg-muted/80 backdrop-blur-md z-10 shadow-[0_1px_0_var(--border)]">
                 <tr className="text-muted-foreground">
-                  <th className="h-10 px-4 font-medium w-16">ID</th>
+                  <th className="h-10 px-4 font-medium w-16">Code</th>
                   <th className="h-10 px-4 font-medium">Project Name</th>
                   <th className="h-10 px-4 font-medium">Type</th>
                   <th className="h-10 px-4 font-medium">Client</th>
-                  <th className="h-10 px-4 font-medium">Episodes</th>
-                  <th className="h-10 px-4 font-medium">Overall Progress</th>
                   <th className="h-10 px-4 font-medium">Status</th>
                   <th className="h-10 px-4 font-medium">Due Date</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredProjects.map((project, idx) => {
-                  const epCount = EPISODES.filter(e => e.projectId === project.id).length;
                   return (
                     <tr 
                       key={project.id} 
                       className="border-b border-border/50 hover:bg-muted/30 transition-colors"
                     >
-                      <td className="h-12 px-4 text-muted-foreground text-xs font-mono">{String(idx + 1).padStart(3, '0')}</td>
+                      <td className="h-12 px-4 text-muted-foreground text-xs font-mono">{project.code}</td>
                       <td className="h-12 px-4 font-medium">
                         <Link href={`/projects/${project.id}`} className="hover:text-primary hover:underline transition-colors flex items-center gap-3">
                           <div className="w-6 h-6 rounded-sm bg-muted overflow-hidden shrink-0 border border-border/50">
-                            {project.thumbnail.startsWith('http') ? (
+                            {project.thumbnail?.startsWith('http') ? (
                               <img src={project.thumbnail} alt="" className="w-full h-full object-cover" />
                             ) : (
-                              <div className="w-full h-full" style={{ background: project.thumbnail }} />
+                              <div className="w-full h-full" style={{ background: project.thumbnail || '#333' }} />
                             )}
                           </div>
                           {project.name}
@@ -223,28 +218,16 @@ export default function Projects() {
                       </td>
                       <td className="h-12 px-4 text-muted-foreground">{project.type}</td>
                       <td className="h-12 px-4 text-muted-foreground">{project.client}</td>
-                      <td className="h-12 px-4 tabular-nums text-muted-foreground">{epCount}</td>
-                      <td className="h-12 px-4">
-                        <div className="flex items-center gap-3 w-48">
-                          <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden border border-border/50">
-                            <div 
-                              className="bg-primary h-1.5 rounded-full transition-all duration-500" 
-                              style={{ width: `${project.progress}%` }} 
-                            />
-                          </div>
-                          <span className="text-[11px] tabular-nums font-medium min-w-[3ch]">{project.progress}%</span>
-                        </div>
-                      </td>
                       <td className="h-12 px-4">
                         <StatusBadge status={project.status} className="h-6 text-[10px]" />
                       </td>
-                      <td className="h-12 px-4 tabular-nums text-muted-foreground">{project.dueDate}</td>
+                      <td className="h-12 px-4 tabular-nums text-muted-foreground">{project.endDate ? new Date(project.endDate).toLocaleDateString() : 'TBD'}</td>
                     </tr>
                   );
                 })}
                 {filteredProjects.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="h-32 text-center text-muted-foreground">
+                    <td colSpan={6} className="h-32 text-center text-muted-foreground">
                       No projects found.
                     </td>
                   </tr>
@@ -264,10 +247,10 @@ export default function Projects() {
               <Link href={`/projects/${project.id}`}>
                 <div className="bg-card border border-border rounded-lg overflow-hidden shadow-sm hover:border-primary/50 hover:shadow-md transition-all cursor-pointer group flex flex-col h-full">
                   <div className="aspect-video w-full bg-muted overflow-hidden relative border-b border-border">
-                    {project.thumbnail.startsWith('http') ? (
+                    {project.thumbnail?.startsWith('http') ? (
                       <img src={project.thumbnail} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                     ) : (
-                      <div className="w-full h-full group-hover:opacity-80 transition-opacity" style={{ background: project.thumbnail }} />
+                      <div className="w-full h-full group-hover:opacity-80 transition-opacity" style={{ background: project.thumbnail || '#333' }} />
                     )}
                     <div className="absolute top-2 right-2">
                       <StatusBadge status={project.status} className="shadow-md" />
@@ -280,34 +263,9 @@ export default function Projects() {
                       <span>{project.type}</span>
                     </div>
 
-                    {/* Previews of Latest Shorts inside Project */}
-                    <div className="mb-4">
-                      <div className="text-[10px] uppercase font-bold text-muted-foreground mb-2">Latest Deliveries</div>
-                      <div className="flex gap-1">
-                        {shots.filter(s => s.projectId === project.id && s.thumbnail).slice(0, 4).map(shot => (
-                          <div key={shot.id} className="w-8 h-8 rounded-sm bg-muted overflow-hidden border border-border">
-                            <img src={shot.thumbnail} alt={shot.name} className="w-full h-full object-cover opacity-80 group-hover:opacity-100" />
-                          </div>
-                        ))}
-                        {shots.filter(s => s.projectId === project.id && s.thumbnail).length === 0 && (
-                          <span className="text-xs text-muted-foreground italic">No deliveries yet.</span>
-                        )}
-                      </div>
-                    </div>
-
                     <div className="mt-auto">
-                      <div className="flex justify-between text-xs text-muted-foreground mb-1.5">
-                        <span>Progress</span>
-                        <span className="tabular-nums font-medium text-foreground">{project.progress}%</span>
-                      </div>
-                      <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
-                        <div 
-                          className="bg-primary h-1.5 rounded-full" 
-                          style={{ width: `${project.progress}%` }} 
-                        />
-                      </div>
                       <div className="text-xs text-muted-foreground mt-4">
-                        Due {new Date(project.dueDate).toLocaleDateString()}
+                        Due {project.endDate ? new Date(project.endDate).toLocaleDateString() : 'TBD'}
                       </div>
                     </div>
                   </div>

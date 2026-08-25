@@ -34,135 +34,95 @@ interface TaskState {
    * current stage (`status`) and the full history survive reload/navigation.
    */
   recordApprovalEvent: (id: string, status: TaskStatus, event: Omit<ApprovalEvent, 'id' | 'timestamp'>) => void;
-}
+}// Helper to lazily sync mutations to the backend without blocking the UI
+const syncBackend = async (id: string, updates: any) => {
+  try {
+    const { apiFetch } = await import('@/lib/apiClient');
+    await apiFetch(`/tasks/${id}`, { method: 'PUT', body: JSON.stringify(updates) });
+  } catch (err) {
+    console.error('Failed to sync task mutation to backend', err);
+  }
+};
 
 export const useTasksStore = create<TaskState>()(
   persist(
     (set) => ({
       tasks: TASKS,
       setTasks: (tasks) => set({ tasks }),
-      addTask: (task) => set((state) => ({ tasks: [task, ...state.tasks] })),
-      updateTaskDates: (id, newDate) =>
+      addTask: (task) => {
+        set((state) => ({ tasks: [task, ...state.tasks] }));
+        import('@/lib/apiClient').then(({ apiFetch }) => {
+          apiFetch('/tasks', { method: 'POST', body: JSON.stringify(task) }).catch(console.error);
+        });
+      },
+      updateTaskDates: (id, newDate) => {
+        set((state) => ({ tasks: state.tasks.map((t) => (t.id === id ? { ...t, dueDate: newDate } : t)) }));
+        syncBackend(id, { dueDate: newDate });
+      },
+      updateTask: (id, updates) => {
+        set((state) => ({ tasks: state.tasks.map((t) => (t.id === id ? { ...t, ...updates } : t)) }));
+        syncBackend(id, updates);
+      },
+      updateTaskStatus: (id, status) => {
+        const lastStatusUpdate = new Date().toISOString();
+        set((state) => ({ tasks: state.tasks.map((t) => t.id === id ? { ...t, status, lastStatusUpdate } : t) }));
+        syncBackend(id, { status, lastStatusUpdate });
+      },
+      completeTask: (id) => {
+        const lastStatusUpdate = new Date().toISOString();
+        set((state) => ({ tasks: state.tasks.map((t) => t.id === id ? { ...t, status: 'complete', lastStatusUpdate } : t) }));
+        syncBackend(id, { status: 'complete', lastStatusUpdate });
+      },
+      reassignTask: (id, assigneeId) => {
+        set((state) => ({ tasks: state.tasks.map((t) => (t.id === id ? { ...t, assigneeId } : t)) }));
+        syncBackend(id, { assigneeId });
+      },
+      revokeAssignment: (id) => {
+        set((state) => ({ tasks: state.tasks.map((t) => (t.id === id ? { ...t, assigneeId: '' } : t)) }));
+        syncBackend(id, { assigneeId: '' });
+      },
+      addComment: (taskId, userId, text) => {
         set((state) => ({
-          tasks: state.tasks.map((t) => (t.id === id ? { ...t, dueDate: newDate } : t)),
-        })),
-      updateTask: (id, updates) =>
+          tasks: state.tasks.map((t) => t.id === taskId ? { ...t, comments: [...t.comments, { userId, text, timestamp: new Date().toISOString() }] } : t),
+        }));
+      },
+      toggleChecklistItem: (taskId, index) => {
         set((state) => ({
-          tasks: state.tasks.map((t) => (t.id === id ? { ...t, ...updates } : t)),
-        })),
-      updateTaskStatus: (id, status) =>
+          tasks: state.tasks.map((t) => t.id === taskId ? { ...t, checklist: t.checklist.map((item, i) => i === index ? { ...item, done: !item.done } : item) } : t),
+        }));
+      },
+      recordApprovalEvent: (id, status, event) => {
+        const timestamp = new Date().toISOString();
         set((state) => ({
-          tasks: state.tasks.map((t) =>
-            t.id === id
-              ? { ...t, status, lastStatusUpdate: new Date().toISOString() }
-              : t
-          ),
-        })),
-      completeTask: (id) =>
+          tasks: state.tasks.map((t) => t.id === id ? { ...t, status, lastStatusUpdate: timestamp, approvalHistory: [...(t.approvalHistory ?? []), { ...event, id: `ae-${Date.now()}`, timestamp }] } : t),
+        }));
+        syncBackend(id, { status, lastStatusUpdate: timestamp });
+      },
+      logTime: (taskId, log) => {
         set((state) => ({
-          tasks: state.tasks.map((t) =>
-            t.id === id
-              ? { ...t, status: 'complete', lastStatusUpdate: new Date().toISOString() }
-              : t
-          ),
-        })),
-      reassignTask: (id, assigneeId) =>
-        set((state) => ({
-          tasks: state.tasks.map((t) => (t.id === id ? { ...t, assigneeId } : t)),
-        })),
-      revokeAssignment: (id) =>
-        set((state) => ({
-          tasks: state.tasks.map((t) => (t.id === id ? { ...t, assigneeId: '' } : t)),
-        })),
-      addComment: (taskId, userId, text) =>
-        set((state) => ({
-          tasks: state.tasks.map((t) =>
-            t.id === taskId
-              ? {
-                  ...t,
-                  comments: [
-                    ...t.comments,
-                    { userId, text, timestamp: new Date().toISOString() },
-                  ],
-                }
-              : t
-          ),
-        })),
-      toggleChecklistItem: (taskId, index) =>
-        set((state) => ({
-          tasks: state.tasks.map((t) =>
-            t.id === taskId
-              ? {
-                  ...t,
-                  checklist: t.checklist.map((item, i) =>
-                    i === index ? { ...item, done: !item.done } : item
-                  ),
-                }
-              : t
-          ),
-        })),
-      recordApprovalEvent: (id, status, event) =>
-        set((state) => {
-          const timestamp = new Date().toISOString();
-          return {
-            tasks: state.tasks.map((t) =>
-              t.id === id
-                ? {
-                    ...t,
-                    status,
-                    lastStatusUpdate: timestamp,
-                    approvalHistory: [
-                      ...(t.approvalHistory ?? []),
-                      { ...event, id: `ae-${Date.now()}`, timestamp },
-                    ],
-                  }
-                : t
-            ),
-          };
-        }),
-      logTime: (taskId, log) =>
-        set((state) => ({
-          tasks: state.tasks.map((t) =>
-            t.id === taskId
-              ? { ...t, dailyLogs: [...t.dailyLogs, log], actualHours: t.actualHours + log.hours }
-              : t
-          ),
-        })),
-      updateDailyLog: (taskId, index, updates) =>
+          tasks: state.tasks.map((t) => t.id === taskId ? { ...t, dailyLogs: [...t.dailyLogs, log], actualHours: t.actualHours + log.hours } : t),
+        }));
+      },
+      updateDailyLog: (taskId, index, updates) => {
         set((state) => ({
           tasks: state.tasks.map((t) => {
             if (t.id !== taskId || !t.dailyLogs[index]) return t;
             const oldHours = t.dailyLogs[index].hours;
-            // Merge field-by-field with `??` rather than a blind `{...log, ...updates}`
-            // spread — callers may pass an `updates` object with explicit `undefined`
-            // values for fields they didn't intend to touch, which a raw spread would
-            // otherwise use to clobber the existing value.
-            const nextLogs = t.dailyLogs.map((log, i) =>
-              i === index
-                ? {
-                    date: updates.date ?? log.date,
-                    hours: updates.hours ?? log.hours,
-                    note: updates.note ?? log.note,
-                    userId: updates.userId ?? log.userId,
-                  }
-                : log
-            );
+            const nextLogs = t.dailyLogs.map((log, i) => i === index ? { ...log, ...updates } : log);
             const newHours = nextLogs[index].hours;
             return { ...t, dailyLogs: nextLogs, actualHours: t.actualHours - oldHours + newHours };
           }),
-        })),
-      deleteDailyLog: (taskId, index) =>
+        }));
+      },
+      deleteDailyLog: (taskId, index) => {
         set((state) => ({
           tasks: state.tasks.map((t) => {
             if (t.id !== taskId || !t.dailyLogs[index]) return t;
             const removedHours = t.dailyLogs[index].hours;
-            return {
-              ...t,
-              dailyLogs: t.dailyLogs.filter((_, i) => i !== index),
-              actualHours: t.actualHours - removedHours,
-            };
+            return { ...t, dailyLogs: t.dailyLogs.filter((_, i) => i !== index), actualHours: t.actualHours - removedHours };
           }),
-        })),
+        }));
+      },
     }),
     {
       name: 'forge-task-storage',

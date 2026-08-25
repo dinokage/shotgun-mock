@@ -15,9 +15,11 @@ export type Role =
   | 'senior_artist'
   | 'artist'
   | 'junior_artist'
-  | 'client';
+  | 'client' | 'producer' | 'production_manager' | 'admin' | 'artist' | 'lead' | 'supervisor';
 
 export const ROLE_HIERARCHY: Record<Role, number> = {
+  admin: 10,
+  producer: 9,
   vfx_producer: 8,
   production_manager: 7,
   coordinator: 6,
@@ -30,6 +32,8 @@ export const ROLE_HIERARCHY: Record<Role, number> = {
 };
 
 export const ROLE_LABELS: Record<Role, string> = {
+  admin: 'System Admin',
+  producer: 'Producer',
   vfx_producer: 'VFX Producer',
   production_manager: 'Production Manager',
   coordinator: 'Production Coordinator',
@@ -71,6 +75,7 @@ export interface User {
   status: 'active' | 'away' | 'on-leave';
   skills: string[];
   password: string; // For login simulation
+  capabilities?: string[]; // Array of RBAC capability IDs
 }
 
 export interface Department {

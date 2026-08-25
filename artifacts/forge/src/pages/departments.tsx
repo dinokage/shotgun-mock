@@ -6,22 +6,27 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { DEPARTMENTS, USERS, TASKS, isTaskActive, isTaskDone } from '@/data/mockData';
+import { USERS, TASKS, isTaskActive, isTaskDone } from '@/data/mockData';
 import { Users, ListTodo, CheckCircle2, ArrowRight, Settings, Check, ChevronLeft, ChevronRight, Workflow } from 'lucide-react';
 
 import { useAuthStore } from '@/store/auth';
 import { useDepartmentPipelineStore } from '@/store/departments';
 import { useCapability } from '@/hooks/use-capability';
+import { useDepartments } from '@/hooks/useDepartments';
 
 export default function Departments() {
   const prefersReducedMotion = useReducedMotion();
   const { currentUser } = useAuthStore();
-  const isGlobalManager = currentUser && ['vfx_producer', 'production_manager'].includes(currentUser.role);
+  const isGlobalManager = currentUser && ['vfx_producer', 'production_manager', 'admin'].includes(currentUser.role);
   const canManagePipeline = useCapability('manage_pipeline');
+
+  const { data: DEPARTMENTS = [], isLoading } = useDepartments();
 
   const [isEditing, setIsEditing] = useState(false);
   const pipelineOrder = useDepartmentPipelineStore((s) => s.pipelineOrder);
   const moveInPipeline = useDepartmentPipelineStore((s) => s.moveInPipeline);
+
+  if (isLoading) return <div className="p-6">Loading departments...</div>;
 
   // Resolve the persisted id order back to department records, scoped to what
   // this user is allowed to see, same as before.

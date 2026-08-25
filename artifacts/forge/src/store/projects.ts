@@ -24,7 +24,7 @@ export type NewProjectInput = Pick<Project, 'name' | 'type' | 'client'> &
 interface ProjectState {
   projects: Project[];
   setProjects: (projects: Project[]) => void;
-  addProject: (project: NewProjectInput) => Project;
+  addProject: (project: NewProjectInput) => Promise<Project>;
   updateProject: (id: string, updates: Partial<Project>) => void;
   getProjectById: (id: string) => Project | undefined;
 }
@@ -34,10 +34,10 @@ export const useProjectStore = create<ProjectState>()(
     (set, get) => ({
       projects: PROJECTS,
       setProjects: (projects) => set({ projects }),
-      addProject: (input) => {
+      addProject: async (input) => {
         const today = new Date().toISOString().split('T')[0];
-        const project: Project = {
-          id: `p${Date.now()}`, // Mock ID generation, non-colliding with seeded `p${n}` ids
+        const projectData: Partial<Project> = {
+          id: `p${Date.now()}`,
           progress: 0,
           status: 'ON_TRACK',
           shotsCount: 0,
@@ -52,13 +52,33 @@ export const useProjectStore = create<ProjectState>()(
           riskScore: 10,
           ...input,
         };
-        set((state) => ({ projects: [project, ...state.projects] }));
-        return project;
+        
+        try {
+          const { apiFetch } = await import('@/lib/apiClient');
+          const savedProject = await apiFetch<Project>('/projects', { method: 'POST', body: JSON.stringify(projectData) });
+          set((state) => ({ projects: [savedProject, ...state.projects] }));
+          return savedProject;
+        } catch (err) {
+          console.error("Failed to add project to backend:", err);
+          const localProject = projectData as Project;
+          set((state) => ({ projects: [localProject, ...state.projects] }));
+          return localProject;
+        }
       },
-      updateProject: (id, updates) =>
-        set((state) => ({
-          projects: state.projects.map((p) => (p.id === id ? { ...p, ...updates } : p)),
-        })),
+      updateProject: async (id, updates) => {
+        try {
+          const { apiFetch } = await import('@/lib/apiClient');
+          const updatedProject = await apiFetch<Project>(`/projects/${id}`, { method: 'PUT', body: JSON.stringify(updates) });
+          set((state) => ({
+            projects: state.projects.map((p) => (p.id === id ? { ...p, ...updatedProject } : p)),
+          }));
+        } catch (err) {
+          console.error("Failed to update project on backend:", err);
+          set((state) => ({
+            projects: state.projects.map((p) => (p.id === id ? { ...p, ...updates } : p)),
+          }));
+        }
+      },
       getProjectById: (id) => get().projects.find((p) => p.id === id),
     }),
     {

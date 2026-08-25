@@ -8,23 +8,20 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent } from '@/components/ui/empty';
-import { PROJECTS, USERS, SEQUENCES, Shot } from '@/data/mockData';
+import { PROJECTS, USERS, SEQUENCES } from '@/data/mockData';
 import { Search, Film, Grid3X3, List, X, ChevronDown } from 'lucide-react';
 import { Link, useSearchParams } from 'wouter';
 import { useAuthStore } from '@/store/auth';
-import { useShotStore } from '@/store/shots';
+import { useShots, ShotDTO } from '@/hooks/useShots';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 
 const STATUS_COLORS: Record<string, string> = {
   complete: 'bg-green-500/10 text-green-500',
-  'in-progress': 'bg-blue-500/10 text-blue-500',
-  bottleneck: 'bg-red-500/10 text-red-500',
+  'in_progress': 'bg-blue-500/10 text-blue-500',
   review: 'bg-purple-500/10 text-purple-500',
-  'not-started': 'bg-muted text-muted-foreground',
-  'at-risk': 'bg-orange-500/10 text-orange-500',
-  'client-review': 'bg-purple-500/10 text-purple-500',
   approved: 'bg-green-500/10 text-green-500',
-  published: 'bg-green-500/10 text-green-500',
+  omitted: 'bg-red-500/10 text-red-500',
+  todo: 'bg-muted text-muted-foreground',
 };
 
 const SEQUENCE_PAGE_SIZE = 8;
@@ -38,15 +35,13 @@ export default function Shots() {
   const [projectFilter, setProjectFilter] = useState('all');
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const { currentUser } = useAuthStore();
-  const shots = useShotStore(state => state.shots);
+  const { data: shots = [], isLoading } = useShots();
   const [searchParams] = useSearchParams();
-  // Artist sidebar links to /shots?mine=1 — scope the catalog down to the
-  // current user's own assignments instead of showing the whole studio.
   const mineOnly = searchParams.get('mine') === '1';
 
   const filtered = useMemo(() => {
     return shots.filter(s => {
-      if (mineOnly && s.assigneeId !== currentUser?.id) return false;
+      if (mineOnly && s.assignedToId !== currentUser?.id) return false;
       if (search && !s.name.toLowerCase().includes(search.toLowerCase())) return false;
       if (statusFilter !== 'all' && s.status !== statusFilter) return false;
       if (projectFilter !== 'all' && s.projectId !== projectFilter) return false;
@@ -55,9 +50,9 @@ export default function Shots() {
   }, [shots, search, statusFilter, projectFilter, mineOnly, currentUser?.id]);
 
   const grouped = useMemo(() => {
-    const groups: Record<string, Shot[]> = {};
+    const groups: Record<string, ShotDTO[]> = {};
     filtered.forEach(s => {
-      const key = s.sequence || 'Other';
+      const key = s.sequenceId || 'Other';
       if (!groups[key]) groups[key] = [];
       groups[key].push(s);
     });
@@ -66,9 +61,6 @@ export default function Shots() {
 
   const sequenceKeys = Object.keys(grouped);
 
-  // How many results are currently visible per view/section — reset back to
-  // the first page whenever the filter set changes, so "Load more" always
-  // starts from a predictable, honest baseline.
   const [visibleSequences, setVisibleSequences] = useState(SEQUENCE_PAGE_SIZE);
   const [groupVisible, setGroupVisible] = useState<Record<string, number>>({});
   const [listVisible, setListVisible] = useState(LIST_PAGE_SIZE);
@@ -77,6 +69,8 @@ export default function Shots() {
     setGroupVisible({});
     setListVisible(LIST_PAGE_SIZE);
   }, [search, statusFilter, projectFilter, mineOnly, currentUser?.id]);
+
+  if (isLoading) return <div className="p-6">Loading shots...</div>;
 
   return (
     <div className="p-6 max-w-[1600px] mx-auto space-y-6">
@@ -106,8 +100,8 @@ export default function Shots() {
           <SelectTrigger className="w-36 h-9"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Status</SelectItem>
-            {['complete', 'in-progress', 'bottleneck', 'review', 'at-risk', 'not-started', 'client-review', 'approved', 'published'].map(s => (
-              <SelectItem key={s} value={s}>{s.replace('-', ' ')}</SelectItem>
+            {['todo', 'in_progress', 'review', 'approved', 'omitted'].map(s => (
+              <SelectItem key={s} value={s}>{s.replace('_', ' ')}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -138,38 +132,29 @@ export default function Shots() {
                 </h2>
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-3">
                   {shots.slice(0, shownInGroup).map((shot, i) => {
-                    const assignee = USERS.find(u => u.id === shot.assigneeId);
+                    const assignee = USERS.find(u => u.id === shot.assignedToId);
                     return (
                       <motion.div key={shot.id} {...(prefersReducedMotion ? {} : stagger(i))}>
                         <Link href={`/shots/${shot.id}`}>
                             <Card className="overflow-hidden hover:shadow-md transition-all cursor-pointer group border-border hover:border-primary/40">
-                            <div className="aspect-video relative overflow-hidden">
-                              <div className="absolute inset-0" style={{ background: `linear-gradient(135deg, hsl(${(shot.id.charCodeAt(2) * 37) % 360}, 60%, 25%), hsl(${(shot.id.charCodeAt(2) * 37 + 60) % 360}, 50%, 15%))` }} />
-                              <div className="absolute inset-0 flex items-center justify-center">
-                                <span className="font-mono text-white/20 text-2xl font-black tracking-tighter select-none">{shot.name.split('_').pop()}</span>
-                              </div>
+                            <div className="aspect-video relative overflow-hidden bg-muted flex items-center justify-center">
+                              {shot.thumbnailUrl ? (
+                                <img src={shot.thumbnailUrl} className="w-full h-full object-cover" />
+                              ) : (
+                                <Film className="w-8 h-8 text-muted-foreground/50" />
+                              )}
                               <Badge className={`absolute top-1.5 right-1.5 ${STATUS_COLORS[shot.status]} text-[8px] border-0`}>
-                                {shot.status.replace('-', ' ')}
+                                {shot.status.replace('_', ' ')}
                               </Badge>
                               <div className="absolute bottom-0 inset-x-0 h-6 bg-gradient-to-t from-black/60 to-transparent flex items-end px-2 pb-1">
-                                <span className="text-[9px] text-white/70 font-mono">{shot.duration}f · {shot.currentVersion}</span>
+                                <span className="text-[9px] text-white/70 font-mono">{shot.duration || 0}f</span>
                               </div>
                             </div>
                             <CardContent className="p-2.5">
                               <div className="font-medium text-xs truncate group-hover:text-primary transition-colors">{shot.name}</div>
                               <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center justify-between">
-                                <span className="font-mono">{shot.currentVersion}</span>
-                                <span>{shot.duration}f</span>
+                                <span>{shot.duration || 0}f</span>
                               </div>
-                              {/* My Shots view: surface the internal review
-                                  stage right on the card, so a pending/rejected/
-                                  changes-requested shot doesn't require opening
-                                  it to spot. */}
-                              {mineOnly && (
-                                <div className="mt-1.5">
-                                  <StatusBadge status={shot.internalReviewStatus} className="text-[8px] px-1.5 py-0" />
-                                </div>
-                              )}
                               {assignee && (
                                 <div className="flex items-center gap-1 mt-1.5">
                                   <Avatar className="w-4 h-4"><AvatarImage src={assignee.avatar} /><AvatarFallback className="text-[8px]">{assignee.name.charAt(0)}</AvatarFallback></Avatar>
@@ -224,23 +209,19 @@ export default function Shots() {
                 <th className="h-10 px-4 text-left font-medium">Sequence</th>
                 <th className="h-10 px-4 text-left font-medium">Status</th>
                 <th className="h-10 px-4 text-left font-medium">Assignee</th>
-                <th className="h-10 px-4 text-left font-medium">Version</th>
                 <th className="h-10 px-4 text-left font-medium">Frames</th>
-                <th className="h-10 px-4 text-left font-medium">Review</th>
               </tr>
             </thead>
             <tbody>
               {filtered.slice(0, listVisible).map(shot => {
-                const assignee = USERS.find(u => u.id === shot.assigneeId);
+                const assignee = USERS.find(u => u.id === shot.assignedToId);
                 return (
                   <tr key={shot.id} className="border-b last:border-0 hover:bg-muted/50 transition-colors">
                     <td className="p-4"><Link href={`/shots/${shot.id}`} className="font-medium hover:text-primary">{shot.name}</Link></td>
-                    <td className="p-4 text-muted-foreground">{shot.sequence}</td>
-                    <td className="p-4"><Badge className={`${STATUS_COLORS[shot.status]} text-[10px]`}>{shot.status.replace('-', ' ')}</Badge></td>
+                    <td className="p-4 text-muted-foreground">{shot.sequenceId || 'Other'}</td>
+                    <td className="p-4"><Badge className={`${STATUS_COLORS[shot.status]} text-[10px]`}>{shot.status.replace('_', ' ')}</Badge></td>
                     <td className="p-4 text-muted-foreground">{assignee?.name}</td>
-                    <td className="p-4 font-mono text-muted-foreground">{shot.currentVersion}</td>
-                    <td className="p-4 text-muted-foreground">{shot.duration}f</td>
-                    <td className="p-4"><Badge variant="outline" className="text-[10px]">{shot.internalReviewStatus}</Badge></td>
+                    <td className="p-4 text-muted-foreground">{shot.duration || 0}f</td>
                   </tr>
                 );
               })}
