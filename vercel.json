@@ -1,0 +1,5 @@
+{
+  "buildCommand": "pnpm --filter @workspace/forge build",
+  "outputDirectory": "artifacts/forge/dist",
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD ./artifacts/forge ./lib"
+}
