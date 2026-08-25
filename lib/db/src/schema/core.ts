@@ -35,7 +35,9 @@ export const usersTable = pgTable("users", {
 
 export const auditLogsTable = pgTable("audit_logs", {
   id: text("id").primaryKey(),
-  tenantId: text("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
+  tenantId: text("tenant_id")
+    .notNull()
+    .references(() => tenantsTable.id, { onDelete: "cascade" }),
   actorUserId: text("actor_user_id").notNull(),
   action: text("action").notNull(),
   targetEntityType: text("target_entity_type").notNull(),
@@ -46,7 +48,9 @@ export const auditLogsTable = pgTable("audit_logs", {
 
 export const pendingInvitesTable = pgTable("pending_invites", {
   id: text("id").primaryKey(),
-  tenantId: text("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
+  tenantId: text("tenant_id")
+    .notNull()
+    .references(() => tenantsTable.id, { onDelete: "cascade" }),
   email: text("email").notNull(),
   roleId: text("role_id").notNull(),
   token: text("token").notNull().unique(),

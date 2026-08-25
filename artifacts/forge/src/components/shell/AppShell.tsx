@@ -1,16 +1,17 @@
-import { Sidebar } from './Sidebar';
-import { TopBar } from './TopBar';
+import { Sidebar } from "./Sidebar";
+import { TopBar } from "./TopBar";
 
-import { CommandPalette } from '@/components/shared/CommandPalette';
-import { KeyboardShortcutsDialog } from '@/components/shared/KeyboardShortcutsDialog';
-import { CreateTaskModal } from '@/components/shared/CreateTaskModal';
-import { CreateProjectModal } from '@/components/shared/CreateProjectModal';
-import { TaskDrawer } from '@/components/shared/TaskDrawer';
-import { useUIStore } from '@/store/ui';
-import { useEffect } from 'react';
+import { CommandPalette } from "@/components/shared/CommandPalette";
+import { KeyboardShortcutsDialog } from "@/components/shared/KeyboardShortcutsDialog";
+import { CreateTaskModal } from "@/components/shared/CreateTaskModal";
+import { CreateProjectModal } from "@/components/shared/CreateProjectModal";
+import { TaskDrawer } from "@/components/shared/TaskDrawer";
+import { useUIStore } from "@/store/ui";
+import { useEffect } from "react";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { commandPaletteOpen, setCommandPaletteOpen, setShortcutsDialogOpen } = useUIStore();
+  const { commandPaletteOpen, setCommandPaletteOpen, setShortcutsDialogOpen } =
+    useUIStore();
 
   // App-wide keyboard listeners live here so every screen inherits them.
   //   ⌘K / Ctrl+K → toggle the command palette (works even while typing in
@@ -19,22 +20,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   //                 text inputs so a literal "?" can still be typed.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setCommandPaletteOpen(!commandPaletteOpen);
         return;
       }
 
-      if (e.key === '?' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (e.key === "?" && !e.metaKey && !e.ctrlKey && !e.altKey) {
         const target = e.target as HTMLElement;
         const tag = target?.tagName?.toLowerCase();
-        if (tag === 'input' || tag === 'textarea' || tag === 'select' || target?.isContentEditable) return;
+        if (
+          tag === "input" ||
+          tag === "textarea" ||
+          tag === "select" ||
+          target?.isContentEditable
+        )
+          return;
         e.preventDefault();
         setShortcutsDialogOpen(true);
       }
     };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
   }, [commandPaletteOpen, setCommandPaletteOpen, setShortcutsDialogOpen]);
 
   return (

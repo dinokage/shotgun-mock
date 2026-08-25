@@ -1,6 +1,6 @@
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import { PublishLog, PUBLISH_LOGS } from '@/data/mockData';
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import { PublishLog, PUBLISH_LOGS } from "@/data/mockData";
 
 /**
  * Publish pipeline log entries shown on the Publishing Center page. Seeded
@@ -17,11 +17,10 @@ export const usePublishingStore = create<PublishingState>()(
   persist(
     (set) => ({
       logs: PUBLISH_LOGS,
-      addPublishLog: (log) =>
-        set((state) => ({ logs: [log, ...state.logs] })),
+      addPublishLog: (log) => set((state) => ({ logs: [log, ...state.logs] })),
     }),
     {
-      name: 'forge-publishing',
-    }
-  )
+      name: "forge-publishing",
+    },
+  ),
 );

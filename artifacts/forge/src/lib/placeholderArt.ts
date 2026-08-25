@@ -33,7 +33,11 @@ function hsl(h: number, s: number, l: number, a = 1) {
  * separately from the data-URI wrapper so it can be inlined directly when
  * that's preferable (e.g. avoiding a data-URI size hit for many cards).
  */
-export function buildPlaceholderSvg(seed: number, width = 640, height = 360): string {
+export function buildPlaceholderSvg(
+  seed: number,
+  width = 640,
+  height = 360,
+): string {
   const rand = mulberry32(seed);
 
   // A muted base hue per seed, plus two related accent hues so the palette
@@ -51,7 +55,7 @@ export function buildPlaceholderSvg(seed: number, width = 640, height = 360): st
     const light = 30 + rand() * 20;
     const opacity = 0.35 + rand() * 0.25;
     return `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${r.toFixed(1)}" fill="${hsl(hue, sat, light, opacity)}" />`;
-  }).join('');
+  }).join("");
 
   // A low-poly silhouette band along the bottom — evokes an environment/set
   // piece without depicting anything specific.
@@ -88,7 +92,7 @@ export function buildPlaceholderSvg(seed: number, width = 640, height = 360): st
   </defs>
   <rect width="${width}" height="${height}" fill="url(#bg)" />
   <g filter="url(#soften)">${blobs}</g>
-  <polygon points="${points.join(' ')}" fill="${silhouetteFill}" />
+  <polygon points="${points.join(" ")}" fill="${silhouetteFill}" />
   <rect width="${width}" height="${height}" filter="url(#grain)" />
   <rect width="${width}" height="${height}" fill="url(#vignette)" />
 </svg>`;
@@ -102,7 +106,11 @@ const dataUriCache = new Map<string, string>();
  * `<video poster>`. Cached per seed+size so repeated renders (e.g. the same
  * card re-rendering) don't rebuild/re-encode the SVG each time.
  */
-export function getPlaceholderThumbnail(seed: number, width = 640, height = 360): string {
+export function getPlaceholderThumbnail(
+  seed: number,
+  width = 640,
+  height = 360,
+): string {
   const key = `${seed}:${width}x${height}`;
   const cached = dataUriCache.get(key);
   if (cached) return cached;
@@ -122,11 +130,11 @@ export function getPlaceholderThumbnail(seed: number, width = 640, height = 360)
 // the client review portal and the delivery viewer so both play the same
 // clip for the same shot.
 const SAMPLE_VIDEO_POOL = [
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4',
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
+  "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
+  "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
+  "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+  "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
+  "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
 ];
 
 export function getPlaceholderVideoSrc(seed: number): string {

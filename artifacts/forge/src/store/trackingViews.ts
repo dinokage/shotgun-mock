@@ -1,18 +1,19 @@
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 // Grouping / sorting vocabulary shared with the Tracking Grid page.
 export type TrackingGroupKey =
-  | 'none'
-  | 'project'
-  | 'episode'
-  | 'department'
-  | 'assignee'
-  | 'status'
-  | 'internalReview'
-  | 'clientReview';
+  | "none"
+  | "project"
+  | "episode"
+  | "department"
+  | "assignee"
+  | "status"
+  | "internalReview"
+  | "clientReview";
 
-export type TrackingSortKey = 'hierarchy' | 'shot' | 'assignee' | 'status' | 'updated';
+export type TrackingSortKey =
+  "hierarchy" | "shot" | "assignee" | "status" | "updated";
 
 export interface TrackingViewFilters {
   search: string;
@@ -20,7 +21,7 @@ export interface TrackingViewFilters {
   groupBy1: TrackingGroupKey;
   groupBy2: TrackingGroupKey;
   sortBy: TrackingSortKey;
-  view: 'list' | 'card';
+  view: "list" | "card";
 }
 
 export interface SavedTrackingView {
@@ -47,7 +48,10 @@ export const useTrackingViewsStore = create<TrackingViewsState>()(
         set((state) => {
           const id = `tview-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
           return {
-            views: [...state.views, { id, name, createdAt: new Date().toISOString(), filters }],
+            views: [
+              ...state.views,
+              { id, name, createdAt: new Date().toISOString(), filters },
+            ],
             activeViewId: id,
           };
         }),
@@ -59,7 +63,7 @@ export const useTrackingViewsStore = create<TrackingViewsState>()(
       setActiveViewId: (id) => set({ activeViewId: id }),
     }),
     {
-      name: 'forge-tracking-views',
-    }
-  )
+      name: "forge-tracking-views",
+    },
+  ),
 );

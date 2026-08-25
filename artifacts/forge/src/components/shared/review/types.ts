@@ -1,5 +1,12 @@
-import type { Dispatch, SetStateAction } from 'react';
-import { MousePointer2, PenTool, ArrowUpRight, Square, Type, type LucideIcon } from 'lucide-react';
+import type { Dispatch, SetStateAction } from "react";
+import {
+  MousePointer2,
+  PenTool,
+  ArrowUpRight,
+  Square,
+  Type,
+  type LucideIcon,
+} from "lucide-react";
 
 /**
  * Shared types + constants for the annotation-player toolset used by both the
@@ -7,7 +14,7 @@ import { MousePointer2, PenTool, ArrowUpRight, Square, Type, type LucideIcon } f
  * portal (src/pages/client-review.tsx).
  */
 
-export type AnnotationTool = 'select' | 'pen' | 'arrow' | 'rectangle' | 'text';
+export type AnnotationTool = "select" | "pen" | "arrow" | "rectangle" | "text";
 
 export interface Point {
   x: number;
@@ -36,7 +43,7 @@ export interface Annotation {
  * internal review page, a video clip being repositioned in the compositor). */
 export interface DraggingElement {
   id: string;
-  type: 'video' | 'annotation';
+  type: "video" | "annotation";
   startX: number;
   startY: number;
   initialX: number;
@@ -50,13 +57,15 @@ export interface AnnotationToolDef {
 }
 
 export const ANNOTATION_TOOLS: AnnotationToolDef[] = [
-  { id: 'select', icon: MousePointer2, label: 'Select' },
-  { id: 'pen', icon: PenTool, label: 'Draw freehand' },
-  { id: 'arrow', icon: ArrowUpRight, label: 'Draw arrow' },
-  { id: 'rectangle', icon: Square, label: 'Draw rectangle' },
-  { id: 'text', icon: Type, label: 'Add text annotation' },
+  { id: "select", icon: MousePointer2, label: "Select" },
+  { id: "pen", icon: PenTool, label: "Draw freehand" },
+  { id: "arrow", icon: ArrowUpRight, label: "Draw arrow" },
+  { id: "rectangle", icon: Square, label: "Draw rectangle" },
+  { id: "text", icon: Type, label: "Add text annotation" },
 ];
 
 export type SetAnnotations = Dispatch<SetStateAction<Annotation[]>>;
 export type SetSelectedAnnotationId = Dispatch<SetStateAction<string | null>>;
-export type SetDraggingElement = Dispatch<SetStateAction<DraggingElement | null>>;
+export type SetDraggingElement = Dispatch<
+  SetStateAction<DraggingElement | null>
+>;

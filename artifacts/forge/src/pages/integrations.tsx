@@ -1,10 +1,16 @@
-import React, { useState } from 'react';
-import { Link } from 'wouter';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Switch } from '@/components/ui/switch';
+import React, { useState } from "react";
+import { Link } from "wouter";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -12,21 +18,89 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from '@/components/ui/dialog';
-import { CheckCircle2, AlertTriangle, Settings, RefreshCw, UploadCloud, Link as LinkIcon, Puzzle, Search } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
-import { useIntegrationsStore } from '@/store/integrations';
-import { useCapability } from '@/hooks/use-capability';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
+} from "@/components/ui/dialog";
+import {
+  CheckCircle2,
+  AlertTriangle,
+  Settings,
+  RefreshCw,
+  UploadCloud,
+  Link as LinkIcon,
+  Puzzle,
+  Search,
+} from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { useIntegrationsStore } from "@/store/integrations";
+import { useCapability } from "@/hooks/use-capability";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+  EmptyDescription,
+} from "@/components/ui/empty";
 
 const INTEGRATIONS = [
-  { id: 'maya', name: 'Autodesk Maya', category: '3D/Animation', status: 'connected', version: 'v2.4.1', lastSync: '2 mins ago', icon: 'M' },
-  { id: 'blender', name: 'Blender', category: '3D/Animation', status: 'connected', version: 'v1.8.0', lastSync: '1 hr ago', icon: 'B' },
-  { id: 'nuke', name: 'Foundry Nuke', category: 'Compositing', status: 'warning', version: 'v3.0.2', lastSync: '2 days ago', icon: 'N' },
-  { id: 'houdini', name: 'SideFX Houdini', category: 'FX/Simulation', status: 'disconnected', version: 'Not Installed', lastSync: 'Never', icon: 'H' },
-  { id: 'premiere', name: 'Adobe Premiere Pro', category: 'Editing', status: 'connected', version: 'v1.2.5', lastSync: '10 mins ago', icon: 'Pr' },
-  { id: 'photoshop', name: 'Adobe Photoshop', category: '2D/Matte Painting', status: 'connected', version: 'v1.5.0', lastSync: '5 mins ago', icon: 'Ps' },
+  {
+    id: "maya",
+    name: "Autodesk Maya",
+    category: "3D/Animation",
+    status: "connected",
+    version: "v2.4.1",
+    lastSync: "2 mins ago",
+    icon: "M",
+  },
+  {
+    id: "blender",
+    name: "Blender",
+    category: "3D/Animation",
+    status: "connected",
+    version: "v1.8.0",
+    lastSync: "1 hr ago",
+    icon: "B",
+  },
+  {
+    id: "nuke",
+    name: "Foundry Nuke",
+    category: "Compositing",
+    status: "warning",
+    version: "v3.0.2",
+    lastSync: "2 days ago",
+    icon: "N",
+  },
+  {
+    id: "houdini",
+    name: "SideFX Houdini",
+    category: "FX/Simulation",
+    status: "disconnected",
+    version: "Not Installed",
+    lastSync: "Never",
+    icon: "H",
+  },
+  {
+    id: "premiere",
+    name: "Adobe Premiere Pro",
+    category: "Editing",
+    status: "connected",
+    version: "v1.2.5",
+    lastSync: "10 mins ago",
+    icon: "Pr",
+  },
+  {
+    id: "photoshop",
+    name: "Adobe Photoshop",
+    category: "2D/Matte Painting",
+    status: "connected",
+    version: "v1.5.0",
+    lastSync: "5 mins ago",
+    icon: "Ps",
+  },
 ];
 
 export default function IntegrationsHub() {
@@ -37,11 +111,11 @@ export default function IntegrationsHub() {
   const toggleAutoSync = useIntegrationsStore((s) => s.toggleAutoSync);
   const pathConfig = useIntegrationsStore((s) => s.pathConfig);
   const savePathConfig = useIntegrationsStore((s) => s.savePathConfig);
-  const canManageIntegrations = useCapability('manage_integrations');
+  const canManageIntegrations = useCapability("manage_integrations");
 
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [formConfig, setFormConfig] = useState(pathConfig);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState("");
 
   // Merge static seed data with any persisted runtime overrides (status/lastSync).
   const allIntegrations = INTEGRATIONS.map((integration) => ({
@@ -50,21 +124,30 @@ export default function IntegrationsHub() {
   }));
   const integrations = allIntegrations.filter((integration) => {
     const q = search.trim().toLowerCase();
-    if (q === '') return true;
-    return integration.name.toLowerCase().includes(q) || integration.category.toLowerCase().includes(q);
+    if (q === "") return true;
+    return (
+      integration.name.toLowerCase().includes(q) ||
+      integration.category.toLowerCase().includes(q)
+    );
   });
-  const settingsIntegration = allIntegrations.find((i) => i.id === settingsId) ?? null;
+  const settingsIntegration =
+    allIntegrations.find((i) => i.id === settingsId) ?? null;
 
   const handleSync = (id: string, name: string) => {
     if (!canManageIntegrations) return;
     const current = allIntegrations.find((i) => i.id === id);
-    const wasDisconnected = current?.status === 'disconnected';
+    const wasDisconnected = current?.status === "disconnected";
     // Syncing pipeline data only resolves a "disconnected" state (that's what
     // "Connect" means here). A "warning" (plugin update required) status must
     // survive a data sync — pulling data doesn't update the installed plugin.
-    syncIntegration(id, wasDisconnected ? 'connected' : (current?.status as 'connected' | 'warning'));
+    syncIntegration(
+      id,
+      wasDisconnected
+        ? "connected"
+        : (current?.status as "connected" | "warning"),
+    );
     toast({
-      title: wasDisconnected ? 'Connected' : 'Sync Initiated',
+      title: wasDisconnected ? "Connected" : "Sync Initiated",
       description: wasDisconnected
         ? `${name} is now connected and synchronized.`
         : `Synchronizing pipeline data with ${name}...`,
@@ -76,10 +159,17 @@ export default function IntegrationsHub() {
     // Only re-sync integrations that are already connected (or need an
     // update) — this must not silently provision/connect anything that's
     // currently disconnected. Use "Connect" on the card for that.
-    const syncable = allIntegrations.filter((integration) => integration.status !== 'disconnected');
-    syncable.forEach((integration) => syncIntegration(integration.id, integration.status as 'connected' | 'warning'));
+    const syncable = allIntegrations.filter(
+      (integration) => integration.status !== "disconnected",
+    );
+    syncable.forEach((integration) =>
+      syncIntegration(
+        integration.id,
+        integration.status as "connected" | "warning",
+      ),
+    );
     toast({
-      title: 'Sync All Initiated',
+      title: "Sync All Initiated",
       description: `Synchronizing pipeline data with ${syncable.length} connected integrations...`,
     });
   };
@@ -88,16 +178,20 @@ export default function IntegrationsHub() {
     if (!canManageIntegrations) return;
     savePathConfig(formConfig);
     toast({
-      title: 'Configuration Saved',
-      description: 'Path mapping and environment variables have been updated.',
+      title: "Configuration Saved",
+      description: "Path mapping and environment variables have been updated.",
     });
   };
 
   return (
     <div className="p-6 max-w-[1200px] mx-auto space-y-8">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight mb-2">DCC Integrations</h1>
-        <p className="text-muted-foreground">Manage pipeline connections to Digital Content Creation tools.</p>
+        <h1 className="text-3xl font-bold tracking-tight mb-2">
+          DCC Integrations
+        </h1>
+        <p className="text-muted-foreground">
+          Manage pipeline connections to Digital Content Creation tools.
+        </p>
       </div>
 
       <div className="flex items-center gap-4">
@@ -112,7 +206,9 @@ export default function IntegrationsHub() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <span tabIndex={0}>
-                  <Button variant="outline" disabled><RefreshCw className="w-4 h-4 mr-2" /> Sync All</Button>
+                  <Button variant="outline" disabled>
+                    <RefreshCw className="w-4 h-4 mr-2" /> Sync All
+                  </Button>
                 </span>
               </TooltipTrigger>
               <TooltipContent side="bottom" className="max-w-[220px] text-xs">
@@ -122,10 +218,14 @@ export default function IntegrationsHub() {
           </TooltipProvider>
         )}
         {canManageIntegrations && (
-          <Button variant="outline" onClick={handleSyncAll}><RefreshCw className="w-4 h-4 mr-2" /> Sync All</Button>
+          <Button variant="outline" onClick={handleSyncAll}>
+            <RefreshCw className="w-4 h-4 mr-2" /> Sync All
+          </Button>
         )}
         <Button asChild>
-          <Link href="/marketplace"><Puzzle className="w-4 h-4 mr-2" /> Install Plugin</Link>
+          <Link href="/marketplace">
+            <Puzzle className="w-4 h-4 mr-2" /> Install Plugin
+          </Link>
         </Button>
       </div>
 
@@ -136,15 +236,17 @@ export default function IntegrationsHub() {
               <Search />
             </EmptyMedia>
             <EmptyTitle>No integrations match your search</EmptyTitle>
-            <EmptyDescription>Try a different name or category.</EmptyDescription>
+            <EmptyDescription>
+              Try a different name or category.
+            </EmptyDescription>
           </EmptyHeader>
         </Empty>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {integrations.map(integration => (
+        {integrations.map((integration) => (
           <Card key={integration.id} className="relative overflow-hidden group">
-            {integration.status === 'connected' && (
+            {integration.status === "connected" && (
               <div className="absolute top-0 right-0 w-16 h-16 bg-green-500/10 rounded-bl-full -z-10 transition-transform group-hover:scale-110" />
             )}
             <CardHeader className="pb-4">
@@ -152,17 +254,28 @@ export default function IntegrationsHub() {
                 <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center font-bold text-xl text-primary mb-3">
                   {integration.icon}
                 </div>
-                <Badge variant="outline" className={
-                  integration.status === 'connected' ? 'bg-green-500/10 text-green-500 border-green-500/20' :
-                  integration.status === 'warning' ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' :
-                  'bg-muted text-muted-foreground'
-                }>
-                  {integration.status === 'connected' ? (
-                    <><CheckCircle2 className="w-3 h-3 mr-1" /> Connected</>
-                  ) : integration.status === 'warning' ? (
-                    <><AlertTriangle className="w-3 h-3 mr-1" /> Update Reqd</>
+                <Badge
+                  variant="outline"
+                  className={
+                    integration.status === "connected"
+                      ? "bg-green-500/10 text-green-500 border-green-500/20"
+                      : integration.status === "warning"
+                        ? "bg-orange-500/10 text-orange-500 border-orange-500/20"
+                        : "bg-muted text-muted-foreground"
+                  }
+                >
+                  {integration.status === "connected" ? (
+                    <>
+                      <CheckCircle2 className="w-3 h-3 mr-1" /> Connected
+                    </>
+                  ) : integration.status === "warning" ? (
+                    <>
+                      <AlertTriangle className="w-3 h-3 mr-1" /> Update Reqd
+                    </>
                   ) : (
-                    <><LinkIcon className="w-3 h-3 mr-1" /> Disconnected</>
+                    <>
+                      <LinkIcon className="w-3 h-3 mr-1" /> Disconnected
+                    </>
                   )}
                 </Badge>
               </div>
@@ -181,12 +294,18 @@ export default function IntegrationsHub() {
                 </div>
                 <div className="pt-4 flex gap-2">
                   <Button
-                    variant={integration.status === 'disconnected' ? 'default' : 'outline'}
+                    variant={
+                      integration.status === "disconnected"
+                        ? "default"
+                        : "outline"
+                    }
                     className="flex-1"
                     disabled={!canManageIntegrations}
                     onClick={() => handleSync(integration.id, integration.name)}
                   >
-                    {integration.status === 'disconnected' ? 'Connect' : 'Sync Data'}
+                    {integration.status === "disconnected"
+                      ? "Connect"
+                      : "Sync Data"}
                   </Button>
                   <Button
                     variant="outline"
@@ -208,37 +327,58 @@ export default function IntegrationsHub() {
       {/* Global Config */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Global Pipeline Configuration</CardTitle>
-          <CardDescription>Path mapping and environment variables for DCC tools.</CardDescription>
+          <CardTitle className="text-lg">
+            Global Pipeline Configuration
+          </CardTitle>
+          <CardDescription>
+            Path mapping and environment variables for DCC tools.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Project Root Path (Windows)</label>
+              <label className="text-sm font-medium">
+                Project Root Path (Windows)
+              </label>
               <Input
                 value={formConfig.winPath}
-                onChange={(e) => setFormConfig((c) => ({ ...c, winPath: e.target.value }))}
+                onChange={(e) =>
+                  setFormConfig((c) => ({ ...c, winPath: e.target.value }))
+                }
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Project Root Path (macOS/Linux)</label>
+              <label className="text-sm font-medium">
+                Project Root Path (macOS/Linux)
+              </label>
               <Input
                 value={formConfig.macPath}
-                onChange={(e) => setFormConfig((c) => ({ ...c, macPath: e.target.value }))}
+                onChange={(e) =>
+                  setFormConfig((c) => ({ ...c, macPath: e.target.value }))
+                }
               />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Python Interpreter</label>
               <Input
                 value={formConfig.pythonInterpreter}
-                onChange={(e) => setFormConfig((c) => ({ ...c, pythonInterpreter: e.target.value }))}
+                onChange={(e) =>
+                  setFormConfig((c) => ({
+                    ...c,
+                    pythonInterpreter: e.target.value,
+                  }))
+                }
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">ShotGrid/Forge API URL</label>
+              <label className="text-sm font-medium">
+                ShotGrid/Forge API URL
+              </label>
               <Input
                 value={formConfig.apiUrl}
-                onChange={(e) => setFormConfig((c) => ({ ...c, apiUrl: e.target.value }))}
+                onChange={(e) =>
+                  setFormConfig((c) => ({ ...c, apiUrl: e.target.value }))
+                }
               />
             </div>
           </div>
@@ -252,7 +392,8 @@ export default function IntegrationsHub() {
                 <TooltipTrigger asChild>
                   <span tabIndex={0} className="inline-block">
                     <Button className="mt-4" disabled>
-                      <UploadCloud className="w-4 h-4 mr-2" /> Save Configuration
+                      <UploadCloud className="w-4 h-4 mr-2" /> Save
+                      Configuration
                     </Button>
                   </span>
                 </TooltipTrigger>
@@ -265,7 +406,10 @@ export default function IntegrationsHub() {
         </CardContent>
       </Card>
 
-      <Dialog open={settingsIntegration !== null} onOpenChange={(open) => !open && setSettingsId(null)}>
+      <Dialog
+        open={settingsIntegration !== null}
+        onOpenChange={(open) => !open && setSettingsId(null)}
+      >
         <DialogContent className="max-w-md">
           {settingsIntegration && (
             <>
@@ -276,22 +420,35 @@ export default function IntegrationsHub() {
                   </span>
                   {settingsIntegration.name}
                 </DialogTitle>
-                <DialogDescription>{settingsIntegration.category} integration settings</DialogDescription>
+                <DialogDescription>
+                  {settingsIntegration.category} integration settings
+                </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Status</span>
-                  <Badge variant="outline" className={
-                    settingsIntegration.status === 'connected' ? 'bg-green-500/10 text-green-500 border-green-500/20' :
-                    settingsIntegration.status === 'warning' ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' :
-                    'bg-muted text-muted-foreground'
-                  }>
-                    {settingsIntegration.status === 'connected' ? 'Connected' : settingsIntegration.status === 'warning' ? 'Update Reqd' : 'Disconnected'}
+                  <Badge
+                    variant="outline"
+                    className={
+                      settingsIntegration.status === "connected"
+                        ? "bg-green-500/10 text-green-500 border-green-500/20"
+                        : settingsIntegration.status === "warning"
+                          ? "bg-orange-500/10 text-orange-500 border-orange-500/20"
+                          : "bg-muted text-muted-foreground"
+                    }
+                  >
+                    {settingsIntegration.status === "connected"
+                      ? "Connected"
+                      : settingsIntegration.status === "warning"
+                        ? "Update Reqd"
+                        : "Disconnected"}
                   </Badge>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Plugin Version</span>
-                  <span className="font-mono">{settingsIntegration.version}</span>
+                  <span className="font-mono">
+                    {settingsIntegration.version}
+                  </span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Last Sync</span>
@@ -300,12 +457,17 @@ export default function IntegrationsHub() {
                 <div className="flex items-center justify-between rounded-md border border-border px-3 py-2.5">
                   <div>
                     <div className="text-sm font-medium">Auto-sync</div>
-                    <div className="text-xs text-muted-foreground">Automatically pull pipeline data on a schedule</div>
+                    <div className="text-xs text-muted-foreground">
+                      Automatically pull pipeline data on a schedule
+                    </div>
                   </div>
                   <Switch
                     checked={autoSync[settingsIntegration.id] ?? false}
                     disabled={!canManageIntegrations}
-                    onCheckedChange={(checked) => canManageIntegrations && toggleAutoSync(settingsIntegration.id, checked)}
+                    onCheckedChange={(checked) =>
+                      canManageIntegrations &&
+                      toggleAutoSync(settingsIntegration.id, checked)
+                    }
                   />
                 </div>
               </div>
@@ -314,7 +476,10 @@ export default function IntegrationsHub() {
                   variant="outline"
                   disabled={!canManageIntegrations}
                   onClick={() => {
-                    handleSync(settingsIntegration.id, settingsIntegration.name);
+                    handleSync(
+                      settingsIntegration.id,
+                      settingsIntegration.name,
+                    );
                     setSettingsId(null);
                   }}
                 >

@@ -12,7 +12,10 @@ projectsRouter.use(tenantAuthMiddleware);
 projectsRouter.get("/", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
-    const projects = await db.select().from(projectsTable).where(eq(projectsTable.tenantId, tenantId));
+    const projects = await db
+      .select()
+      .from(projectsTable)
+      .where(eq(projectsTable.tenantId, tenantId));
     return res.json(projects);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -23,7 +26,7 @@ projectsRouter.post("/", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const { name } = req.body;
-    
+
     if (!name) return res.status(400).json({ error: "Missing name" });
 
     const newId = crypto.randomUUID();
@@ -34,7 +37,12 @@ projectsRouter.post("/", async (req, res) => {
       status: "active",
     });
 
-    const [created] = await db.select().from(projectsTable).where(and(eq(projectsTable.tenantId, tenantId), eq(projectsTable.id, newId)));
+    const [created] = await db
+      .select()
+      .from(projectsTable)
+      .where(
+        and(eq(projectsTable.tenantId, tenantId), eq(projectsTable.id, newId)),
+      );
     return res.status(201).json(created);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });

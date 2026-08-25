@@ -1,29 +1,35 @@
-import { useMemo, useState } from 'react';
-import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
-import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { StatusBadge } from '@/components/shared/StatusBadge';
-import { useProjects } from '@/hooks/useProjects';
-import { useUIStore } from '@/store/ui';
-import { Plus, Filter, Search, Download, LayoutGrid, List } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
-import { Input } from '@/components/ui/input';
-import { Link } from 'wouter';
-import { cut, stagger } from '@/lib/motion';
+import { useMemo, useState } from "react";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { StatusBadge } from "@/components/shared/StatusBadge";
+import { useProjects } from "@/hooks/useProjects";
+import { useUIStore } from "@/store/ui";
+import { Plus, Filter, Search, Download, LayoutGrid, List } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { Input } from "@/components/ui/input";
+import { Link } from "wouter";
+import { cut, stagger } from "@/lib/motion";
 
 const STATUS_LABELS: Record<string, string> = {
-  active: 'Active',
-  on_hold: 'On Hold',
-  complete: 'Complete',
+  active: "Active",
+  on_hold: "On Hold",
+  complete: "Complete",
 };
 
 export default function Projects() {
   const prefersReducedMotion = useReducedMotion();
   const { toast } = useToast();
-  const [search, setSearch] = useState('');
-  const [view, setView] = useState<'list' | 'card'>('list');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [typeFilter, setTypeFilter] = useState('all');
+  const [search, setSearch] = useState("");
+  const [view, setView] = useState<"list" | "card">("list");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("all");
   const [showFilters, setShowFilters] = useState(false);
   const { data: projects = [], isLoading } = useProjects();
   const { setCreateProjectModalOpen } = useUIStore();
@@ -34,44 +40,57 @@ export default function Projects() {
 
   const projectTypes = useMemo(
     () => Array.from(new Set(projects.map((p) => p.type))).sort(),
-    [projects]
+    [projects],
   );
 
-  const filteredProjects = projects.filter(p => {
-    if (search && !p.name.toLowerCase().includes(search.toLowerCase())) return false;
-    if (statusFilter !== 'all' && p.status !== statusFilter) return false;
-    if (typeFilter !== 'all' && p.type !== typeFilter) return false;
+  const filteredProjects = projects.filter((p) => {
+    if (search && !p.name.toLowerCase().includes(search.toLowerCase()))
+      return false;
+    if (statusFilter !== "all" && p.status !== statusFilter) return false;
+    if (typeFilter !== "all" && p.type !== typeFilter) return false;
     return true;
   });
 
   const escapeCSVValue = (value: unknown) => {
-    const s = String(value ?? '');
+    const s = String(value ?? "");
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
 
   const handleExportCSV = () => {
-    const headers = ['ID', 'Project Name', 'Type', 'Client', 'Status', 'Due Date'];
+    const headers = [
+      "ID",
+      "Project Name",
+      "Type",
+      "Client",
+      "Status",
+      "Due Date",
+    ];
     const rows = filteredProjects.map((project, idx) => [
       project.code,
       project.name,
       project.type,
       project.client,
       STATUS_LABELS[project.status] || project.status,
-      project.endDate || '',
+      project.endDate || "",
     ]);
-    const csv = [headers, ...rows].map((r) => r.map(escapeCSVValue).join(',')).join('\n');
+    const csv = [headers, ...rows]
+      .map((r) => r.map(escapeCSVValue).join(","))
+      .join("\n");
 
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
-    a.download = `projects-${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `projects-${new Date().toISOString().split("T")[0]}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    toast({ title: 'Export Complete', description: `${filteredProjects.length} projects exported to CSV.` });
+    toast({
+      title: "Export Complete",
+      description: `${filteredProjects.length} projects exported to CSV.`,
+    });
   };
 
   if (isLoading) {
@@ -84,7 +103,9 @@ export default function Projects() {
       <div className="flex items-center justify-between shrink-0">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Active Projects</h1>
-          <p className="text-muted-foreground text-sm mt-1">Production pipeline tracking and client deliveries.</p>
+          <p className="text-muted-foreground text-sm mt-1">
+            Production pipeline tracking and client deliveries.
+          </p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={handleExportCSV}>
@@ -100,26 +121,26 @@ export default function Projects() {
       <div className="flex items-center gap-3 p-3 bg-card border border-border rounded-lg shadow-sm shrink-0">
         <div className="relative flex-1 max-w-sm">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input 
-            placeholder="Search projects..." 
-            className="pl-9 h-9" 
-            value={search} 
-            onChange={(e) => setSearch(e.target.value)} 
+          <Input
+            placeholder="Search projects..."
+            className="pl-9 h-9"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
           />
         </div>
         <div className="flex bg-muted/50 p-0.5 rounded-lg border border-border">
-          <Button 
-            variant={view === 'list' ? 'secondary' : 'ghost'} 
-            size="sm" 
-            onClick={() => setView('list')}
+          <Button
+            variant={view === "list" ? "secondary" : "ghost"}
+            size="sm"
+            onClick={() => setView("list")}
             className="h-8 px-3 shadow-none"
           >
             <List className="w-4 h-4" />
           </Button>
-          <Button 
-            variant={view === 'card' ? 'secondary' : 'ghost'} 
-            size="sm" 
-            onClick={() => setView('card')}
+          <Button
+            variant={view === "card" ? "secondary" : "ghost"}
+            size="sm"
+            onClick={() => setView("card")}
             className="h-8 px-3 shadow-none"
           >
             <LayoutGrid className="w-4 h-4" />
@@ -129,8 +150,8 @@ export default function Projects() {
           variant="ghost"
           size="icon"
           onClick={() => setShowFilters((v) => !v)}
-          title={showFilters ? 'Hide filters' : 'Show filters'}
-          className={`h-9 w-9 ${showFilters ? 'text-foreground bg-muted' : 'text-muted-foreground'}`}
+          title={showFilters ? "Hide filters" : "Show filters"}
+          className={`h-9 w-9 ${showFilters ? "text-foreground bg-muted" : "text-muted-foreground"}`}
         >
           <Filter className="w-4 h-4" />
         </Button>
@@ -142,36 +163,47 @@ export default function Projects() {
           <motion.div
             key="project-filter-controls"
             initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
+            animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={cut.transition}
             className="overflow-hidden shrink-0"
           >
             <div className="flex items-center gap-3 p-3 bg-card border border-border rounded-lg shadow-sm">
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-40 h-9"><SelectValue placeholder="Status" /></SelectTrigger>
+                <SelectTrigger className="w-40 h-9">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>
                   {Object.entries(STATUS_LABELS).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               <Select value={typeFilter} onValueChange={setTypeFilter}>
-                <SelectTrigger className="w-40 h-9"><SelectValue placeholder="Type" /></SelectTrigger>
+                <SelectTrigger className="w-40 h-9">
+                  <SelectValue placeholder="Type" />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Types</SelectItem>
                   {projectTypes.map((t) => (
-                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                    <SelectItem key={t} value={t}>
+                      {t}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {(statusFilter !== 'all' || typeFilter !== 'all') && (
+              {(statusFilter !== "all" || typeFilter !== "all") && (
                 <Button
                   variant="ghost"
                   size="sm"
                   className="text-muted-foreground"
-                  onClick={() => { setStatusFilter('all'); setTypeFilter('all'); }}
+                  onClick={() => {
+                    setStatusFilter("all");
+                    setTypeFilter("all");
+                  }}
                 >
                   Clear filters
                 </Button>
@@ -182,7 +214,7 @@ export default function Projects() {
       </AnimatePresence>
 
       {/* Main Content */}
-      {view === 'list' ? (
+      {view === "list" ? (
         <div className="flex-1 bg-card border border-border rounded-lg overflow-hidden shadow-sm flex flex-col">
           <div className="overflow-auto flex-1">
             <table className="w-full text-left text-[13px] whitespace-nowrap">
@@ -199,35 +231,63 @@ export default function Projects() {
               <tbody>
                 {filteredProjects.map((project, idx) => {
                   return (
-                    <tr 
-                      key={project.id} 
+                    <tr
+                      key={project.id}
                       className="border-b border-border/50 hover:bg-muted/30 transition-colors"
                     >
-                      <td className="h-12 px-4 text-muted-foreground text-xs font-mono">{project.code}</td>
+                      <td className="h-12 px-4 text-muted-foreground text-xs font-mono">
+                        {project.code}
+                      </td>
                       <td className="h-12 px-4 font-medium">
-                        <Link href={`/projects/${project.id}`} className="hover:text-primary hover:underline transition-colors flex items-center gap-3">
+                        <Link
+                          href={`/projects/${project.id}`}
+                          className="hover:text-primary hover:underline transition-colors flex items-center gap-3"
+                        >
                           <div className="w-6 h-6 rounded-sm bg-muted overflow-hidden shrink-0 border border-border/50">
-                            {project.thumbnail?.startsWith('http') ? (
-                              <img src={project.thumbnail} alt="" className="w-full h-full object-cover" />
+                            {project.thumbnail?.startsWith("http") ? (
+                              <img
+                                src={project.thumbnail}
+                                alt=""
+                                className="w-full h-full object-cover"
+                              />
                             ) : (
-                              <div className="w-full h-full" style={{ background: project.thumbnail || '#333' }} />
+                              <div
+                                className="w-full h-full"
+                                style={{
+                                  background: project.thumbnail || "#333",
+                                }}
+                              />
                             )}
                           </div>
                           {project.name}
                         </Link>
                       </td>
-                      <td className="h-12 px-4 text-muted-foreground">{project.type}</td>
-                      <td className="h-12 px-4 text-muted-foreground">{project.client}</td>
-                      <td className="h-12 px-4">
-                        <StatusBadge status={project.status} className="h-6 text-[10px]" />
+                      <td className="h-12 px-4 text-muted-foreground">
+                        {project.type}
                       </td>
-                      <td className="h-12 px-4 tabular-nums text-muted-foreground">{project.endDate ? new Date(project.endDate).toLocaleDateString() : 'TBD'}</td>
+                      <td className="h-12 px-4 text-muted-foreground">
+                        {project.client}
+                      </td>
+                      <td className="h-12 px-4">
+                        <StatusBadge
+                          status={project.status}
+                          className="h-6 text-[10px]"
+                        />
+                      </td>
+                      <td className="h-12 px-4 tabular-nums text-muted-foreground">
+                        {project.endDate
+                          ? new Date(project.endDate).toLocaleDateString()
+                          : "TBD"}
+                      </td>
                     </tr>
                   );
                 })}
                 {filteredProjects.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="h-32 text-center text-muted-foreground">
+                    <td
+                      colSpan={6}
+                      className="h-32 text-center text-muted-foreground"
+                    >
                       No projects found.
                     </td>
                   </tr>
@@ -243,34 +303,52 @@ export default function Projects() {
         <div className="flex-1 overflow-auto">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-4">
             {filteredProjects.map((project, i) => (
-              <motion.div key={project.id} {...(prefersReducedMotion ? {} : stagger(i))}>
-              <Link href={`/projects/${project.id}`}>
-                <div className="bg-card border border-border rounded-lg overflow-hidden shadow-sm hover:border-primary/50 hover:shadow-md transition-all cursor-pointer group flex flex-col h-full">
-                  <div className="aspect-video w-full bg-muted overflow-hidden relative border-b border-border">
-                    {project.thumbnail?.startsWith('http') ? (
-                      <img src={project.thumbnail} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                    ) : (
-                      <div className="w-full h-full group-hover:opacity-80 transition-opacity" style={{ background: project.thumbnail || '#333' }} />
-                    )}
-                    <div className="absolute top-2 right-2">
-                      <StatusBadge status={project.status} className="shadow-md" />
+              <motion.div
+                key={project.id}
+                {...(prefersReducedMotion ? {} : stagger(i))}
+              >
+                <Link href={`/projects/${project.id}`}>
+                  <div className="bg-card border border-border rounded-lg overflow-hidden shadow-sm hover:border-primary/50 hover:shadow-md transition-all cursor-pointer group flex flex-col h-full">
+                    <div className="aspect-video w-full bg-muted overflow-hidden relative border-b border-border">
+                      {project.thumbnail?.startsWith("http") ? (
+                        <img
+                          src={project.thumbnail}
+                          alt=""
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        />
+                      ) : (
+                        <div
+                          className="w-full h-full group-hover:opacity-80 transition-opacity"
+                          style={{ background: project.thumbnail || "#333" }}
+                        />
+                      )}
+                      <div className="absolute top-2 right-2">
+                        <StatusBadge
+                          status={project.status}
+                          className="shadow-md"
+                        />
+                      </div>
                     </div>
-                  </div>
-                  <div className="p-4 flex flex-col flex-1">
-                    <h3 className="font-semibold text-lg line-clamp-1 group-hover:text-primary transition-colors">{project.name}</h3>
-                    <div className="text-sm text-muted-foreground mt-1 mb-4 flex justify-between">
-                      <span>{project.client}</span>
-                      <span>{project.type}</span>
-                    </div>
+                    <div className="p-4 flex flex-col flex-1">
+                      <h3 className="font-semibold text-lg line-clamp-1 group-hover:text-primary transition-colors">
+                        {project.name}
+                      </h3>
+                      <div className="text-sm text-muted-foreground mt-1 mb-4 flex justify-between">
+                        <span>{project.client}</span>
+                        <span>{project.type}</span>
+                      </div>
 
-                    <div className="mt-auto">
-                      <div className="text-xs text-muted-foreground mt-4">
-                        Due {project.endDate ? new Date(project.endDate).toLocaleDateString() : 'TBD'}
+                      <div className="mt-auto">
+                        <div className="text-xs text-muted-foreground mt-4">
+                          Due{" "}
+                          {project.endDate
+                            ? new Date(project.endDate).toLocaleDateString()
+                            : "TBD"}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              </Link>
+                </Link>
               </motion.div>
             ))}
           </div>

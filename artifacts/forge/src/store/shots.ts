@@ -1,6 +1,6 @@
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import { SHOTS, Shot } from '@/data/mockData';
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import { SHOTS, Shot } from "@/data/mockData";
 
 interface ShotState {
   shots: Shot[];
@@ -12,10 +12,13 @@ interface ShotState {
 // Helper to lazily sync mutations to the backend without blocking the UI
 const syncBackend = async (id: string, updates: any) => {
   try {
-    const { apiFetch } = await import('@/lib/apiClient');
-    await apiFetch(`/shots/${id}`, { method: 'PUT', body: JSON.stringify(updates) });
+    const { apiFetch } = await import("@/lib/apiClient");
+    await apiFetch(`/shots/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(updates),
+    });
   } catch (err) {
-    console.error('Failed to sync shot mutation to backend', err);
+    console.error("Failed to sync shot mutation to backend", err);
   }
 };
 
@@ -26,7 +29,9 @@ export const useShotStore = create<ShotState>()(
       setShots: (shots) => set({ shots }),
       updateShot: (id, updates) => {
         set((state) => ({
-          shots: state.shots.map((s) => (s.id === id ? { ...s, ...updates } : s)),
+          shots: state.shots.map((s) =>
+            s.id === id ? { ...s, ...updates } : s,
+          ),
         }));
         syncBackend(id, updates);
       },
@@ -41,12 +46,14 @@ export const useShotStore = create<ShotState>()(
             return s;
           }),
         }));
-        const updatePayload = isInternal ? { internalReviewStatus: status } : { clientReviewStatus: status };
+        const updatePayload = isInternal
+          ? { internalReviewStatus: status }
+          : { clientReviewStatus: status };
         syncBackend(id, updatePayload);
       },
     }),
     {
-      name: 'forge-shot-storage',
-    }
-  )
+      name: "forge-shot-storage",
+    },
+  ),
 );

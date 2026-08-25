@@ -1,4 +1,4 @@
-import { cn } from '@/lib/utils';
+import { cn } from "@/lib/utils";
 
 interface FrameScrubberProps {
   frame: number;
@@ -13,7 +13,13 @@ interface FrameScrubberProps {
  * the internal review player's version-compare scrubber. Pages remain free
  * to render their own frame-counter labels around it.
  */
-export function FrameScrubber({ frame, maxFrames, onFrameChange, disabled, className }: FrameScrubberProps) {
+export function FrameScrubber({
+  frame,
+  maxFrames,
+  onFrameChange,
+  disabled,
+  className,
+}: FrameScrubberProps) {
   return (
     <input
       type="range"
@@ -23,7 +29,10 @@ export function FrameScrubber({ frame, maxFrames, onFrameChange, disabled, class
       disabled={disabled}
       aria-label="Frame scrubber"
       onChange={(e) => onFrameChange(parseInt(e.target.value, 10))}
-      className={cn('h-1 accent-primary disabled:opacity-40 disabled:cursor-not-allowed', className)}
+      className={cn(
+        "h-1 accent-primary disabled:opacity-40 disabled:cursor-not-allowed",
+        className,
+      )}
     />
   );
 }

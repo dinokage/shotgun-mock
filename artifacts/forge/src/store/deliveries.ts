@@ -1,6 +1,6 @@
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import { PROJECTS, SHOTS, USERS } from '@/data/mockData';
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import { PROJECTS, SHOTS, USERS } from "@/data/mockData";
 
 /**
  * A Delivery is a one-time, scoped handoff of specific FINAL approved files
@@ -16,7 +16,7 @@ export interface DeliveryItem {
   thumbnailSeed: number;
 }
 
-export type DeliveryStatus = 'active' | 'revoked';
+export type DeliveryStatus = "active" | "revoked";
 
 export interface Delivery {
   id: string;
@@ -45,21 +45,39 @@ export interface Delivery {
  * finished" without requiring someone to run the full approval chain first
  * just to see the Deliveries feature have anything to work with.
  */
-export const DELIVERY_ELIGIBLE_STATUSES = ['complete', 'approved', 'published'] as const;
+export const DELIVERY_ELIGIBLE_STATUSES = [
+  "complete",
+  "approved",
+  "published",
+] as const;
 
 /** A delivery with an expiresAt in the past is treated as expired regardless
  * of its stored `status` — expiry is computed from the clock, not a flag
  * that could drift out of sync with it. */
 export function isDeliveryExpired(delivery: Delivery): boolean {
-  return delivery.expiresAt !== null && new Date(delivery.expiresAt).getTime() < Date.now();
+  return (
+    delivery.expiresAt !== null &&
+    new Date(delivery.expiresAt).getTime() < Date.now()
+  );
 }
 
 export function isDeliveryActive(delivery: Delivery): boolean {
-  return delivery.status === 'active' && !isDeliveryExpired(delivery);
+  return delivery.status === "active" && !isDeliveryExpired(delivery);
 }
 
 function generateAccessCode(): string {
-  const words = ['orbit', 'ember', 'quartz', 'lumen', 'atlas', 'cobalt', 'raven', 'delta', 'nova', 'aster'];
+  const words = [
+    "orbit",
+    "ember",
+    "quartz",
+    "lumen",
+    "atlas",
+    "cobalt",
+    "raven",
+    "delta",
+    "nova",
+    "aster",
+  ];
   const word = words[Math.floor(Math.random() * words.length)];
   const digits = Math.floor(1000 + Math.random() * 9000);
   return `${word}-${digits}`;
@@ -69,34 +87,53 @@ function generateAccessCode(): string {
  * content immediately, built from real approved/published shots rather than
  * placeholder rows. */
 function buildSeedDeliveries(): Delivery[] {
-  const producer = USERS.find((u) => u.role === 'vfx_producer');
+  const producer = USERS.find((u) => u.role === "vfx_producer");
   const deliveries: Delivery[] = [];
 
-  const candidateProjects = PROJECTS.filter((p) => p.status === 'COMPLETE' || p.status === 'ON_TRACK').slice(0, 2);
+  const candidateProjects = PROJECTS.filter(
+    (p) => p.status === "COMPLETE" || p.status === "ON_TRACK",
+  ).slice(0, 2);
   candidateProjects.forEach((project, i) => {
     const finishedShots = SHOTS.filter(
-      (s) => s.projectId === project.id && (DELIVERY_ELIGIBLE_STATUSES as readonly string[]).includes(s.status)
+      (s) =>
+        s.projectId === project.id &&
+        (DELIVERY_ELIGIBLE_STATUSES as readonly string[]).includes(s.status),
     ).slice(0, 4);
     if (finishedShots.length === 0) return;
 
     const createdDaysAgo = i === 0 ? 2 : 9;
-    const createdAt = new Date(Date.now() - createdDaysAgo * 24 * 60 * 60 * 1000).toISOString();
+    const createdAt = new Date(
+      Date.now() - createdDaysAgo * 24 * 60 * 60 * 1000,
+    ).toISOString();
 
     deliveries.push({
       id: `del${i + 1}`,
       projectId: project.id,
       title: `${project.name} — Final Delivery ${i + 1}`,
       clientName: project.client,
-      items: finishedShots.map((s) => ({ shotId: s.id, name: s.name, thumbnailSeed: s.thumbnailSeed })),
-      accessCode: i === 0 ? 'orbit-4471' : 'ember-1928',
-      status: i === 1 ? 'revoked' : 'active',
+      items: finishedShots.map((s) => ({
+        shotId: s.id,
+        name: s.name,
+        thumbnailSeed: s.thumbnailSeed,
+      })),
+      accessCode: i === 0 ? "orbit-4471" : "ember-1928",
+      status: i === 1 ? "revoked" : "active",
       createdById: producer?.id ?? USERS[0].id,
       createdByName: producer?.name ?? USERS[0].name,
       createdAt,
-      expiresAt: i === 0 ? new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toISOString() : null,
-      notes: i === 0 ? 'Final approved shots for the trailer cut — masters only, no proxies.' : '',
+      expiresAt:
+        i === 0
+          ? new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toISOString()
+          : null,
+      notes:
+        i === 0
+          ? "Final approved shots for the trailer cut — masters only, no proxies."
+          : "",
       downloadCount: i === 0 ? 3 : 7,
-      lastAccessedAt: i === 0 ? new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString() : new Date(Date.now() - 12 * 24 * 60 * 60 * 1000).toISOString(),
+      lastAccessedAt:
+        i === 0
+          ? new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString()
+          : new Date(Date.now() - 12 * 24 * 60 * 60 * 1000).toISOString(),
     });
   });
 
@@ -128,7 +165,7 @@ export const useDeliveryStore = create<DeliveryState>()(
       createDelivery: (input) => {
         const delivery: Delivery = {
           id: `del-${Date.now()}`,
-          status: 'active',
+          status: "active",
           accessCode: generateAccessCode(),
           createdAt: new Date().toISOString(),
           downloadCount: 0,
@@ -141,23 +178,33 @@ export const useDeliveryStore = create<DeliveryState>()(
 
       revokeDelivery: (id) =>
         set((state) => ({
-          deliveries: state.deliveries.map((d) => (d.id === id ? { ...d, status: 'revoked' as const } : d)),
+          deliveries: state.deliveries.map((d) =>
+            d.id === id ? { ...d, status: "revoked" as const } : d,
+          ),
         })),
 
       reactivateDelivery: (id) =>
         set((state) => ({
-          deliveries: state.deliveries.map((d) => (d.id === id ? { ...d, status: 'active' as const } : d)),
+          deliveries: state.deliveries.map((d) =>
+            d.id === id ? { ...d, status: "active" as const } : d,
+          ),
         })),
 
       recordAccess: (id) =>
         set((state) => ({
           deliveries: state.deliveries.map((d) =>
-            d.id === id ? { ...d, downloadCount: d.downloadCount + 1, lastAccessedAt: new Date().toISOString() } : d
+            d.id === id
+              ? {
+                  ...d,
+                  downloadCount: d.downloadCount + 1,
+                  lastAccessedAt: new Date().toISOString(),
+                }
+              : d,
           ),
         })),
     }),
     {
-      name: 'forge-deliveries',
-    }
-  )
+      name: "forge-deliveries",
+    },
+  ),
 );

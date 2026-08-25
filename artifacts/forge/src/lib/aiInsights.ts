@@ -16,9 +16,9 @@ import {
   TASKS,
   type Asset,
   type Task,
-} from '@/data/mockData';
+} from "@/data/mockData";
 
-export type InsightSeverity = 'critical' | 'warning' | 'positive';
+export type InsightSeverity = "critical" | "warning" | "positive";
 
 export interface AIInsight {
   id: string;
@@ -32,17 +32,30 @@ export interface AIInsight {
 
 // Tasks in these states still represent open work — they can block downstream
 // work or count toward a department's active load.
-const UNRESOLVED_TASK_STATUSES = new Set<Task['status']>([
-  'todo', 'not-started', 'in-progress', 'bottleneck', 'review', 'lead-review', 'manager-review',
+const UNRESOLVED_TASK_STATUSES = new Set<Task["status"]>([
+  "todo",
+  "not-started",
+  "in-progress",
+  "bottleneck",
+  "review",
+  "lead-review",
+  "manager-review",
 ]);
 
 // Assets in these states are still "live" — a dependency on one of these can
 // genuinely hold up downstream work, unlike a dependency that's already complete.
-const ACTIVE_ASSET_STATUSES = new Set<Asset['status']>([
-  'in-progress', 'bottleneck', 'at-risk', 'not-started', 'review',
+const ACTIVE_ASSET_STATUSES = new Set<Asset["status"]>([
+  "in-progress",
+  "bottleneck",
+  "at-risk",
+  "not-started",
+  "review",
 ]);
 
-const STUCK_ASSET_STATUSES = new Set<Asset['status']>(['bottleneck', 'at-risk']);
+const STUCK_ASSET_STATUSES = new Set<Asset["status"]>([
+  "bottleneck",
+  "at-risk",
+]);
 
 const MIN_DEPT_SAMPLE = 8; // ignore departments too small to make a rate meaningful
 
@@ -66,12 +79,15 @@ function findBlockingAssetInsight(): AIInsight | null {
     .map(([assetId, dependentIds]) => {
       const source = assetById.get(assetId);
       if (!source) return null;
-      const activeDependentIds = dependentIds.filter(
-        (id) => ACTIVE_ASSET_STATUSES.has(assetById.get(id)!.status)
+      const activeDependentIds = dependentIds.filter((id) =>
+        ACTIVE_ASSET_STATUSES.has(assetById.get(id)!.status),
       );
       const activeDependentSet = new Set(activeDependentIds);
       const impactedTasks = TASKS.filter(
-        (t) => t.assetId && activeDependentSet.has(t.assetId) && UNRESOLVED_TASK_STATUSES.has(t.status)
+        (t) =>
+          t.assetId &&
+          activeDependentSet.has(t.assetId) &&
+          UNRESOLVED_TASK_STATUSES.has(t.status),
       );
       const projectCount = new Set(impactedTasks.map((t) => t.projectId)).size;
       return {
@@ -81,7 +97,9 @@ function findBlockingAssetInsight(): AIInsight | null {
         projectCount,
       };
     })
-    .filter((c): c is NonNullable<typeof c> => c !== null && c.activeDependents > 0);
+    .filter(
+      (c): c is NonNullable<typeof c> => c !== null && c.activeDependents > 0,
+    );
 
   candidates.sort((a, b) => {
     const aStuck = STUCK_ASSET_STATUSES.has(a.source.status) ? 1 : 0;
@@ -97,10 +115,12 @@ function findBlockingAssetInsight(): AIInsight | null {
 
   return {
     id: `blocker-${top.source.id}`,
-    severity: STUCK_ASSET_STATUSES.has(top.source.status) ? 'critical' : 'warning',
+    severity: STUCK_ASSET_STATUSES.has(top.source.status)
+      ? "critical"
+      : "warning",
     title: `Dependency Bottleneck: ${top.source.name}`,
-    reasoning: `Flagged because ${top.source.name}${project ? ` (${project.name})` : ''} is currently "${top.source.status.replace('-', ' ')}" and is a dependency of ${top.activeDependents} other active asset${top.activeDependents === 1 ? '' : 's'} — feeding ${top.impactedTasks} unresolved task${top.impactedTasks === 1 ? '' : 's'} across ${top.projectCount} project${top.projectCount === 1 ? '' : 's'}. Largest downstream fan-out in the studio.`,
-    actionLabel: 'View Blocked Asset',
+    reasoning: `Flagged because ${top.source.name}${project ? ` (${project.name})` : ""} is currently "${top.source.status.replace("-", " ")}" and is a dependency of ${top.activeDependents} other active asset${top.activeDependents === 1 ? "" : "s"} — feeding ${top.impactedTasks} unresolved task${top.impactedTasks === 1 ? "" : "s"} across ${top.projectCount} project${top.projectCount === 1 ? "" : "s"}. Largest downstream fan-out in the studio.`,
+    actionLabel: "View Blocked Asset",
     actionHref: `/assets/${top.source.id}`,
   };
 }
@@ -122,8 +142,13 @@ function findDepartmentPaceInsight(): AIInsight | null {
   const ranked = Array.from(groupActiveTasksByDept().entries())
     .filter(([, tasks]) => tasks.length >= MIN_DEPT_SAMPLE)
     .map(([department, tasks]) => {
-      const behind = tasks.filter((t) => t.weeklyRating === 'behind').length;
-      return { department, active: tasks.length, behind, rate: behind / tasks.length };
+      const behind = tasks.filter((t) => t.weeklyRating === "behind").length;
+      return {
+        department,
+        active: tasks.length,
+        behind,
+        rate: behind / tasks.length,
+      };
     })
     .sort((a, b) => b.rate - a.rate || b.active - a.active);
 
@@ -135,31 +160,33 @@ function findDepartmentPaceInsight(): AIInsight | null {
 
   return {
     id: `pace-${top.department}`,
-    severity: pct >= 50 ? 'critical' : 'warning',
+    severity: pct >= 50 ? "critical" : "warning",
     title: `Bottleneck Warning: ${top.department}`,
     reasoning: `Flagged because ${top.behind} of ${top.active} active tasks (${pct}%) in ${top.department} are self-reported "behind" pace this week — the highest behind-pace rate of any department with ${MIN_DEPT_SAMPLE}+ active tasks.`,
-    actionLabel: 'View Department',
-    actionHref: dept ? `/departments/${dept.id}` : '/departments',
+    actionLabel: "View Department",
+    actionHref: dept ? `/departments/${dept.id}` : "/departments",
   };
 }
 
 /** Finds the non-complete project carrying the highest studio-assigned risk score. */
 function findProjectRiskInsight(): AIInsight | null {
-  const candidates = PROJECTS.filter((p) => p.status !== 'COMPLETE').sort(
-    (a, b) => b.riskScore - a.riskScore
+  const candidates = PROJECTS.filter((p) => p.status !== "COMPLETE").sort(
+    (a, b) => b.riskScore - a.riskScore,
   );
   const top = candidates[0];
   if (!top) return null;
 
   const shots = SHOTS.filter((s) => s.projectId === top.id);
-  const flaggedShots = shots.filter((s) => s.status === 'bottleneck' || s.status === 'at-risk').length;
+  const flaggedShots = shots.filter(
+    (s) => s.status === "bottleneck" || s.status === "at-risk",
+  ).length;
 
   return {
     id: `risk-${top.id}`,
-    severity: top.riskScore >= 60 ? 'critical' : 'warning',
+    severity: top.riskScore >= 60 ? "critical" : "warning",
     title: `Elevated Risk: ${top.name}`,
     reasoning: `Flagged because ${top.name} carries the highest studio risk score (${top.riskScore}/100) among non-complete projects — ${top.progress}% complete against a ${new Date(top.dueDate).toLocaleDateString()} deadline, with ${flaggedShots} of ${shots.length} shots in a bottleneck or at-risk state.`,
-    actionLabel: 'View Project',
+    actionLabel: "View Project",
     actionHref: `/projects/${top.id}`,
   };
 }
@@ -169,8 +196,13 @@ function findDepartmentOnTrackInsight(): AIInsight | null {
   const ranked = Array.from(groupActiveTasksByDept().entries())
     .filter(([, tasks]) => tasks.length >= MIN_DEPT_SAMPLE)
     .map(([department, tasks]) => {
-      const onTrack = tasks.filter((t) => t.weeklyRating === 'on-track').length;
-      return { department, active: tasks.length, onTrack, rate: onTrack / tasks.length };
+      const onTrack = tasks.filter((t) => t.weeklyRating === "on-track").length;
+      return {
+        department,
+        active: tasks.length,
+        onTrack,
+        rate: onTrack / tasks.length,
+      };
     })
     .sort((a, b) => b.rate - a.rate || b.active - a.active);
 
@@ -182,11 +214,11 @@ function findDepartmentOnTrackInsight(): AIInsight | null {
 
   return {
     id: `ontrack-${top.department}`,
-    severity: 'positive',
+    severity: "positive",
     title: `Healthy Pace: ${top.department}`,
     reasoning: `Flagged because ${top.onTrack} of ${top.active} active tasks (${pct}%) in ${top.department} are self-reported "on-track" — the best pace of any department with ${MIN_DEPT_SAMPLE}+ active tasks.`,
-    actionLabel: 'View Department',
-    actionHref: dept ? `/departments/${dept.id}` : '/departments',
+    actionLabel: "View Department",
+    actionHref: dept ? `/departments/${dept.id}` : "/departments",
   };
 }
 

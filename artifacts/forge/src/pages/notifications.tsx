@@ -1,13 +1,19 @@
-import { AnimatePresence, motion } from 'framer-motion';
-import { useLocation } from 'wouter';
-import { Bell, CheckCheck } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
-import { useNotificationStore } from '@/store/notifications';
-import type { Notification } from '@/data/mockData';
-import { cut, stagger } from '@/lib/motion';
+import { AnimatePresence, motion } from "framer-motion";
+import { useLocation } from "wouter";
+import { Bell, CheckCheck } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+  EmptyDescription,
+} from "@/components/ui/empty";
+import { useNotificationStore } from "@/store/notifications";
+import type { Notification } from "@/data/mockData";
+import { cut, stagger } from "@/lib/motion";
 
 /**
  * Resolves a notification's entityType/entityId to a route. Falls back to
@@ -18,15 +24,15 @@ function resolveNotificationRoute(notif: Notification): string | null {
   const { entityType, entityId, actionUrl } = notif;
   if (entityType && entityId) {
     switch (entityType) {
-      case 'shot':
+      case "shot":
         return `/shots/${entityId}`;
-      case 'asset':
+      case "asset":
         return `/assets/${entityId}`;
-      case 'task':
+      case "task":
         // No per-task detail route exists yet — send to the task list.
-        return '/tasks';
-      case 'review':
-        return '/review';
+        return "/tasks";
+      case "review":
+        return "/review";
       default:
         break;
     }
@@ -44,7 +50,9 @@ export default function Notifications() {
   // Preferences are enforced at generation time in the store for any dynamic source
   // (see addNotification), but since today's notifications are static mock seed data,
   // muted categories are filtered out here at render time instead.
-  const visible = notifications.filter((n) => preferences[n.category]?.push !== false);
+  const visible = notifications.filter(
+    (n) => preferences[n.category]?.push !== false,
+  );
   const unreadCount = visible.filter((n) => !n.read).length;
 
   return (
@@ -54,7 +62,9 @@ export default function Notifications() {
           <Bell className="w-8 h-8 text-primary" />
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Notifications</h1>
-            <p className="text-muted-foreground mt-1">Your recent alerts and activity.</p>
+            <p className="text-muted-foreground mt-1">
+              Your recent alerts and activity.
+            </p>
           </div>
         </div>
         <AnimatePresence>
@@ -65,7 +75,12 @@ export default function Notifications() {
               exit={{ opacity: 0, x: 8 }}
               transition={cut.transition}
             >
-              <Button variant="outline" size="sm" onClick={markAllAsRead} className="gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={markAllAsRead}
+                className="gap-2"
+              >
                 <CheckCheck className="w-4 h-4" /> Mark all as read
               </Button>
             </motion.div>
@@ -91,7 +106,7 @@ export default function Notifications() {
                 role="button"
                 tabIndex={0}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
+                  if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
                     activate();
                   }
@@ -100,7 +115,9 @@ export default function Notifications() {
               >
                 <Card
                   className={`p-4 flex gap-4 items-start transition-colors duration-200 ${
-                    !notif.read ? 'bg-primary/5 border-primary/20 hover:bg-primary/10' : 'bg-card border-border hover:bg-muted/40'
+                    !notif.read
+                      ? "bg-primary/5 border-primary/20 hover:bg-primary/10"
+                      : "bg-card border-border hover:bg-muted/40"
                   }`}
                 >
                   <div className="w-2 mt-2 shrink-0 flex justify-center">
@@ -118,13 +135,22 @@ export default function Notifications() {
                   </div>
                   <div className="flex-1">
                     <div className="flex justify-between items-start mb-1">
-                      <span className={`font-semibold transition-colors duration-200 ${notif.read ? 'text-muted-foreground' : 'text-foreground'}`}>
+                      <span
+                        className={`font-semibold transition-colors duration-200 ${notif.read ? "text-muted-foreground" : "text-foreground"}`}
+                      >
                         {notif.title}
                       </span>
-                      <span className="text-xs text-muted-foreground ml-4 shrink-0">{notif.timestamp}</span>
+                      <span className="text-xs text-muted-foreground ml-4 shrink-0">
+                        {notif.timestamp}
+                      </span>
                     </div>
-                    <p className="text-sm text-muted-foreground mb-2">{notif.description}</p>
-                    <Badge variant="outline" className="text-[10px] capitalize bg-muted/50">
+                    <p className="text-sm text-muted-foreground mb-2">
+                      {notif.description}
+                    </p>
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] capitalize bg-muted/50"
+                    >
                       {notif.category}
                     </Badge>
                   </div>
@@ -140,12 +166,14 @@ export default function Notifications() {
                 <Bell />
               </EmptyMedia>
               <EmptyTitle>
-                {notifications.length === 0 ? 'No notifications yet' : 'All caught up'}
+                {notifications.length === 0
+                  ? "No notifications yet"
+                  : "All caught up"}
               </EmptyTitle>
               <EmptyDescription>
                 {notifications.length === 0
                   ? "You'll see task assignments, reviews, and studio alerts here."
-                  : 'All notification categories are currently muted in your preferences. Adjust them in Settings > Notifications.'}
+                  : "All notification categories are currently muted in your preferences. Adjust them in Settings > Notifications."}
               </EmptyDescription>
             </EmptyHeader>
           </Empty>

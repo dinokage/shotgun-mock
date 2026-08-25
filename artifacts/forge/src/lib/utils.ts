@@ -1,6 +1,6 @@
-import { twMerge } from 'tailwind-merge';
+import { twMerge } from "tailwind-merge";
 
-import { clsx, type ClassValue } from 'clsx';
+import { clsx, type ClassValue } from "clsx";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -12,7 +12,7 @@ export async function copyToClipboard(text: string): Promise<boolean> {
       await navigator.clipboard.writeText(text);
       return true;
     } catch (err) {
-      console.error('Failed to copy text: ', err);
+      console.error("Failed to copy text: ", err);
       return false;
     }
   } else {
@@ -26,11 +26,11 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     textArea.focus();
     textArea.select();
     try {
-      document.execCommand('copy');
+      document.execCommand("copy");
       textArea.remove();
       return true;
     } catch (err) {
-      console.error('Fallback: Oops, unable to copy', err);
+      console.error("Fallback: Oops, unable to copy", err);
       textArea.remove();
       return false;
     }

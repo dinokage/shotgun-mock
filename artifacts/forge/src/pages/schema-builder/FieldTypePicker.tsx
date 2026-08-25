@@ -1,9 +1,13 @@
-import { useState } from 'react';
-import { motion } from 'framer-motion';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { cn } from '@/lib/utils';
-import type { FieldType } from '@/store/schema';
-import { FIELD_TYPE_META } from '@/store/schema';
+import { useState } from "react";
+import { motion } from "framer-motion";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
+import type { FieldType } from "@/store/schema";
+import { FIELD_TYPE_META } from "@/store/schema";
 import {
   Type,
   Hash,
@@ -13,7 +17,7 @@ import {
   CheckSquare,
   Sigma,
   ChevronDown,
-} from 'lucide-react';
+} from "lucide-react";
 
 export const FIELD_TYPE_ICONS: Record<FieldType, typeof Type> = {
   text: Type,
@@ -25,7 +29,15 @@ export const FIELD_TYPE_ICONS: Record<FieldType, typeof Type> = {
   computed: Sigma,
 };
 
-const ORDER: FieldType[] = ['text', 'number', 'date', 'boolean', 'single_select', 'multi_select', 'computed'];
+const ORDER: FieldType[] = [
+  "text",
+  "number",
+  "date",
+  "boolean",
+  "single_select",
+  "multi_select",
+  "computed",
+];
 
 export function FieldTypePicker({
   value,
@@ -47,8 +59,8 @@ export function FieldTypePicker({
           whileHover={{ scale: 1.03 }}
           whileTap={{ scale: 0.97 }}
           className={cn(
-            'inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-1.5 text-xs font-medium hover:bg-muted/70 hover:border-primary/40 transition-colors',
-            compact && 'px-2 py-1'
+            "inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-1.5 text-xs font-medium hover:bg-muted/70 hover:border-primary/40 transition-colors",
+            compact && "px-2 py-1",
           )}
         >
           <Icon className="w-3.5 h-3.5 text-primary" />
@@ -72,15 +84,22 @@ export function FieldTypePicker({
                   setOpen(false);
                 }}
                 className={cn(
-                  'flex flex-col items-start gap-1 rounded-lg border p-2.5 text-left transition-colors',
+                  "flex flex-col items-start gap-1 rounded-lg border p-2.5 text-left transition-colors",
                   isActive
-                    ? 'border-primary bg-primary/10 ring-1 ring-primary/30'
-                    : 'border-border hover:border-primary/40 hover:bg-muted/50'
+                    ? "border-primary bg-primary/10 ring-1 ring-primary/30"
+                    : "border-border hover:border-primary/40 hover:bg-muted/50",
                 )}
               >
                 <div className="flex items-center gap-1.5">
-                  <TypeIcon className={cn('w-3.5 h-3.5', isActive ? 'text-primary' : 'text-muted-foreground')} />
-                  <span className="text-xs font-semibold">{FIELD_TYPE_META[type].label}</span>
+                  <TypeIcon
+                    className={cn(
+                      "w-3.5 h-3.5",
+                      isActive ? "text-primary" : "text-muted-foreground",
+                    )}
+                  />
+                  <span className="text-xs font-semibold">
+                    {FIELD_TYPE_META[type].label}
+                  </span>
                 </div>
                 <span className="text-[10px] text-muted-foreground leading-snug">
                   {FIELD_TYPE_META[type].description}

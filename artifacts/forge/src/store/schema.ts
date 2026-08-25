@@ -1,6 +1,6 @@
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import type { Task } from '@/data/mockData';
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import type { Task } from "@/data/mockData";
 
 // ============================================================================
 // FORGE — No-code Entity Schema Builder + Task Templates
@@ -9,22 +9,34 @@ import type { Task } from '@/data/mockData';
 // ============================================================================
 
 export type FieldType =
-  | 'text'
-  | 'number'
-  | 'date'
-  | 'boolean'
-  | 'single_select'
-  | 'multi_select'
-  | 'computed';
+  | "text"
+  | "number"
+  | "date"
+  | "boolean"
+  | "single_select"
+  | "multi_select"
+  | "computed";
 
-export const FIELD_TYPE_META: Record<FieldType, { label: string; description: string }> = {
-  text: { label: 'Text', description: 'Free-form single-line text.' },
-  number: { label: 'Number', description: 'Integer or decimal value.' },
-  date: { label: 'Date', description: 'A calendar date.' },
-  boolean: { label: 'Boolean', description: 'A true/false toggle.' },
-  single_select: { label: 'Single Select', description: 'One value chosen from a fixed list.' },
-  multi_select: { label: 'Multi Select', description: 'Any number of values from a fixed list.' },
-  computed: { label: 'Computed', description: 'Derived automatically from other fields via an expression.' },
+export const FIELD_TYPE_META: Record<
+  FieldType,
+  { label: string; description: string }
+> = {
+  text: { label: "Text", description: "Free-form single-line text." },
+  number: { label: "Number", description: "Integer or decimal value." },
+  date: { label: "Date", description: "A calendar date." },
+  boolean: { label: "Boolean", description: "A true/false toggle." },
+  single_select: {
+    label: "Single Select",
+    description: "One value chosen from a fixed list.",
+  },
+  multi_select: {
+    label: "Multi Select",
+    description: "Any number of values from a fixed list.",
+  },
+  computed: {
+    label: "Computed",
+    description: "Derived automatically from other fields via an expression.",
+  },
 };
 
 export interface EntityField {
@@ -62,7 +74,7 @@ export interface TaskTemplateItem {
   title: string;
   department: string; // Department.id
   estimatedHours: number;
-  priority: Task['priority'];
+  priority: Task["priority"];
   order: number;
 }
 
@@ -83,10 +95,14 @@ let fieldCounter = 0;
 let templateCounter = 0;
 let templateTaskCounter = 0;
 
-const newEntityTypeId = () => `etype-${Date.now().toString(36)}-${(entityCounter++).toString(36)}`;
-const newFieldId = () => `fld-${Date.now().toString(36)}-${(fieldCounter++).toString(36)}`;
-const newTemplateId = () => `tmpl-${Date.now().toString(36)}-${(templateCounter++).toString(36)}`;
-const newTemplateTaskId = () => `tmpltask-${Date.now().toString(36)}-${(templateTaskCounter++).toString(36)}`;
+const newEntityTypeId = () =>
+  `etype-${Date.now().toString(36)}-${(entityCounter++).toString(36)}`;
+const newFieldId = () =>
+  `fld-${Date.now().toString(36)}-${(fieldCounter++).toString(36)}`;
+const newTemplateId = () =>
+  `tmpl-${Date.now().toString(36)}-${(templateCounter++).toString(36)}`;
+const newTemplateTaskId = () =>
+  `tmpltask-${Date.now().toString(36)}-${(templateTaskCounter++).toString(36)}`;
 
 // 'true' and 'false' are literals in the computed-expression grammar
 // (lib/expressionEvaluator.ts resolves them before ever consulting the
@@ -94,14 +110,15 @@ const newTemplateTaskId = () => `tmpltask-${Date.now().toString(36)}-${(template
 // referenced by value in an expression — it always evaluates to the
 // literal instead of the field's actual data. Treat them as taken so
 // auto-generated keys never collide with the expression language.
-export const RESERVED_KEYS = ['true', 'false'];
+export const RESERVED_KEYS = ["true", "false"];
 
 export function slugifyKey(label: string, taken: string[] = []): string {
-  const base = label
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '') || 'field';
+  const base =
+    label
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "") || "field";
   const startsWithDigit = /^[0-9]/.test(base);
   let key = startsWithDigit ? `f_${base}` : base;
   let suffix = 2;
@@ -120,95 +137,105 @@ export function slugifyKey(label: string, taken: string[] = []): string {
 // field's label must NOT silently re-slugify (and break) its key.
 const seedCreatureFields: EntityField[] = [
   {
-    id: 'fld-seed-1',
-    key: 'name',
-    label: 'Creature Name',
-    type: 'text',
+    id: "fld-seed-1",
+    key: "name",
+    label: "Creature Name",
+    type: "text",
     required: true,
-    defaultValue: 'Void Drake',
-    description: 'Working name used across concept, model, and rig.',
+    defaultValue: "Void Drake",
+    description: "Working name used across concept, model, and rig.",
     keyManuallyEdited: true,
   },
   {
-    id: 'fld-seed-2',
-    key: 'locomotion',
-    label: 'Locomotion',
-    type: 'single_select',
+    id: "fld-seed-2",
+    key: "locomotion",
+    label: "Locomotion",
+    type: "single_select",
     required: true,
-    options: ['Biped', 'Quadruped', 'Avian', 'Aquatic', 'Serpentine'],
-    defaultValue: 'Quadruped',
+    options: ["Biped", "Quadruped", "Avian", "Aquatic", "Serpentine"],
+    defaultValue: "Quadruped",
     keyManuallyEdited: true,
   },
   {
-    id: 'fld-seed-3',
-    key: 'abilities',
-    label: 'Special Abilities',
-    type: 'multi_select',
+    id: "fld-seed-3",
+    key: "abilities",
+    label: "Special Abilities",
+    type: "multi_select",
     required: false,
-    options: ['Flight', 'Fire Breath', 'Camouflage', 'Regeneration', 'Venom', 'Armor Plating'],
-    defaultValue: 'Flight,Fire Breath',
+    options: [
+      "Flight",
+      "Fire Breath",
+      "Camouflage",
+      "Regeneration",
+      "Venom",
+      "Armor Plating",
+    ],
+    defaultValue: "Flight,Fire Breath",
     keyManuallyEdited: true,
   },
   {
-    id: 'fld-seed-4',
-    key: 'hero_asset',
-    label: 'Hero Asset',
-    type: 'boolean',
+    id: "fld-seed-4",
+    key: "hero_asset",
+    label: "Hero Asset",
+    type: "boolean",
     required: false,
-    defaultValue: 'true',
-    description: 'Gets senior artist assignment and extra review passes when true.',
+    defaultValue: "true",
+    description:
+      "Gets senior artist assignment and extra review passes when true.",
     keyManuallyEdited: true,
   },
   {
-    id: 'fld-seed-5',
-    key: 'complexity_score',
-    label: 'Complexity Score',
-    type: 'number',
+    id: "fld-seed-5",
+    key: "complexity_score",
+    label: "Complexity Score",
+    type: "number",
     required: true,
-    defaultValue: '7',
-    description: '1 (simple) – 10 (extremely complex rig/groom/sim).',
+    defaultValue: "7",
+    description: "1 (simple) – 10 (extremely complex rig/groom/sim).",
     keyManuallyEdited: true,
   },
   {
-    id: 'fld-seed-6',
-    key: 'screen_time_minutes',
-    label: 'Screen Time (minutes)',
-    type: 'number',
+    id: "fld-seed-6",
+    key: "screen_time_minutes",
+    label: "Screen Time (minutes)",
+    type: "number",
     required: true,
-    defaultValue: '4',
+    defaultValue: "4",
     keyManuallyEdited: true,
   },
   {
-    id: 'fld-seed-7',
-    key: 'model_lock_date',
-    label: 'Model Lock Date',
-    type: 'date',
+    id: "fld-seed-7",
+    key: "model_lock_date",
+    label: "Model Lock Date",
+    type: "date",
     required: false,
-    defaultValue: '2026-09-15',
+    defaultValue: "2026-09-15",
     keyManuallyEdited: true,
   },
   {
-    id: 'fld-seed-8',
-    key: 'est_build_hours',
-    label: 'Estimated Build Hours',
-    type: 'computed',
+    id: "fld-seed-8",
+    key: "est_build_hours",
+    label: "Estimated Build Hours",
+    type: "computed",
     required: false,
-    expression: 'complexity_score * screen_time_minutes * 12 + hero_asset * 40',
-    description: 'Rough budgeting heuristic: complexity × screen time × 12, plus a 40hr hero-asset premium.',
+    expression: "complexity_score * screen_time_minutes * 12 + hero_asset * 40",
+    description:
+      "Rough budgeting heuristic: complexity × screen time × 12, plus a 40hr hero-asset premium.",
     keyManuallyEdited: true,
   },
 ];
 
 const SEED_ENTITY_TYPES: EntityTypeDef[] = [
   {
-    id: 'etype-seed-creature',
-    name: 'Creature',
-    icon: 'PawPrint',
-    color: '#ff6b6b',
-    description: 'A creature design that flows through concept, model, rig, groom, and CFX.',
+    id: "etype-seed-creature",
+    name: "Creature",
+    icon: "PawPrint",
+    color: "#ff6b6b",
+    description:
+      "A creature design that flows through concept, model, rig, groom, and CFX.",
     fields: seedCreatureFields,
-    createdAt: '2026-06-01T09:00:00.000Z',
-    updatedAt: '2026-06-01T09:00:00.000Z',
+    createdAt: "2026-06-01T09:00:00.000Z",
+    updatedAt: "2026-06-01T09:00:00.000Z",
   },
 ];
 
@@ -218,32 +245,97 @@ const SEED_ENTITY_TYPES: EntityTypeDef[] = [
 
 const SEED_TEMPLATES: TaskTemplateDef[] = [
   {
-    id: 'tmpl-seed-shot-pipeline',
-    name: 'Standard Shot Pipeline',
-    description: 'The default per-shot task bundle: Layout through Comp, in pipeline order.',
-    icon: 'Film',
-    createdAt: '2026-06-01T09:00:00.000Z',
-    updatedAt: '2026-06-01T09:00:00.000Z',
+    id: "tmpl-seed-shot-pipeline",
+    name: "Standard Shot Pipeline",
+    description:
+      "The default per-shot task bundle: Layout through Comp, in pipeline order.",
+    icon: "Film",
+    createdAt: "2026-06-01T09:00:00.000Z",
+    updatedAt: "2026-06-01T09:00:00.000Z",
     tasks: [
-      { id: 'tt-seed-1', title: 'Layout', department: 'dept5', estimatedHours: 8, priority: 'medium', order: 0 },
-      { id: 'tt-seed-2', title: 'Animation', department: 'dept6', estimatedHours: 24, priority: 'high', order: 1 },
-      { id: 'tt-seed-3', title: 'FX Simulation', department: 'dept12', estimatedHours: 16, priority: 'medium', order: 2 },
-      { id: 'tt-seed-4', title: 'Lighting', department: 'dept7', estimatedHours: 12, priority: 'medium', order: 3 },
-      { id: 'tt-seed-5', title: 'Compositing', department: 'dept18', estimatedHours: 16, priority: 'high', order: 4 },
+      {
+        id: "tt-seed-1",
+        title: "Layout",
+        department: "dept5",
+        estimatedHours: 8,
+        priority: "medium",
+        order: 0,
+      },
+      {
+        id: "tt-seed-2",
+        title: "Animation",
+        department: "dept6",
+        estimatedHours: 24,
+        priority: "high",
+        order: 1,
+      },
+      {
+        id: "tt-seed-3",
+        title: "FX Simulation",
+        department: "dept12",
+        estimatedHours: 16,
+        priority: "medium",
+        order: 2,
+      },
+      {
+        id: "tt-seed-4",
+        title: "Lighting",
+        department: "dept7",
+        estimatedHours: 12,
+        priority: "medium",
+        order: 3,
+      },
+      {
+        id: "tt-seed-5",
+        title: "Compositing",
+        department: "dept18",
+        estimatedHours: 16,
+        priority: "high",
+        order: 4,
+      },
     ],
   },
   {
-    id: 'tmpl-seed-character-build',
-    name: 'Character Asset Build',
-    description: 'Full turnover bundle for a new hero or supporting character asset.',
-    icon: 'PersonStanding',
-    createdAt: '2026-06-01T09:00:00.000Z',
-    updatedAt: '2026-06-01T09:00:00.000Z',
+    id: "tmpl-seed-character-build",
+    name: "Character Asset Build",
+    description:
+      "Full turnover bundle for a new hero or supporting character asset.",
+    icon: "PersonStanding",
+    createdAt: "2026-06-01T09:00:00.000Z",
+    updatedAt: "2026-06-01T09:00:00.000Z",
     tasks: [
-      { id: 'tt-seed-6', title: 'Model', department: 'dept2', estimatedHours: 32, priority: 'high', order: 0 },
-      { id: 'tt-seed-7', title: 'Surfacing / LookDev', department: 'dept3', estimatedHours: 24, priority: 'medium', order: 1 },
-      { id: 'tt-seed-8', title: 'Rig', department: 'dept4', estimatedHours: 40, priority: 'high', order: 2 },
-      { id: 'tt-seed-9', title: 'Groom', department: 'dept13', estimatedHours: 20, priority: 'medium', order: 3 },
+      {
+        id: "tt-seed-6",
+        title: "Model",
+        department: "dept2",
+        estimatedHours: 32,
+        priority: "high",
+        order: 0,
+      },
+      {
+        id: "tt-seed-7",
+        title: "Surfacing / LookDev",
+        department: "dept3",
+        estimatedHours: 24,
+        priority: "medium",
+        order: 1,
+      },
+      {
+        id: "tt-seed-8",
+        title: "Rig",
+        department: "dept4",
+        estimatedHours: 40,
+        priority: "high",
+        order: 2,
+      },
+      {
+        id: "tt-seed-9",
+        title: "Groom",
+        department: "dept13",
+        estimatedHours: 20,
+        priority: "medium",
+        order: 3,
+      },
     ],
   },
 ];
@@ -255,25 +347,48 @@ interface SchemaState {
   templates: TaskTemplateDef[];
 
   // Entity types
-  addEntityType: (partial?: Partial<Pick<EntityTypeDef, 'name' | 'icon' | 'color' | 'description'>>) => string;
-  updateEntityType: (id: string, updates: Partial<Omit<EntityTypeDef, 'id' | 'fields'>>) => void;
+  addEntityType: (
+    partial?: Partial<
+      Pick<EntityTypeDef, "name" | "icon" | "color" | "description">
+    >,
+  ) => string;
+  updateEntityType: (
+    id: string,
+    updates: Partial<Omit<EntityTypeDef, "id" | "fields">>,
+  ) => void;
   deleteEntityType: (id: string) => void;
   duplicateEntityType: (id: string) => string | null;
 
   // Fields
   addField: (entityTypeId: string, partial?: Partial<EntityField>) => string;
-  updateField: (entityTypeId: string, fieldId: string, updates: Partial<EntityField>) => void;
+  updateField: (
+    entityTypeId: string,
+    fieldId: string,
+    updates: Partial<EntityField>,
+  ) => void;
   removeField: (entityTypeId: string, fieldId: string) => void;
   reorderFields: (entityTypeId: string, orderedFieldIds: string[]) => void;
 
   // Task templates
-  addTemplate: (partial?: Partial<Pick<TaskTemplateDef, 'name' | 'description' | 'icon'>>) => string;
-  updateTemplate: (id: string, updates: Partial<Omit<TaskTemplateDef, 'id' | 'tasks'>>) => void;
+  addTemplate: (
+    partial?: Partial<Pick<TaskTemplateDef, "name" | "description" | "icon">>,
+  ) => string;
+  updateTemplate: (
+    id: string,
+    updates: Partial<Omit<TaskTemplateDef, "id" | "tasks">>,
+  ) => void;
   deleteTemplate: (id: string) => void;
   duplicateTemplate: (id: string) => string | null;
 
-  addTemplateTask: (templateId: string, partial?: Partial<TaskTemplateItem>) => string;
-  updateTemplateTask: (templateId: string, taskId: string, updates: Partial<TaskTemplateItem>) => void;
+  addTemplateTask: (
+    templateId: string,
+    partial?: Partial<TaskTemplateItem>,
+  ) => string;
+  updateTemplateTask: (
+    templateId: string,
+    taskId: string,
+    updates: Partial<TaskTemplateItem>,
+  ) => void;
   removeTemplateTask: (templateId: string, taskId: string) => void;
   reorderTemplateTasks: (templateId: string, orderedTaskIds: string[]) => void;
 }
@@ -289,10 +404,10 @@ export const useSchemaStore = create<SchemaState>()(
         const now = new Date().toISOString();
         const entityType: EntityTypeDef = {
           id,
-          name: partial?.name ?? 'Untitled Entity Type',
-          icon: partial?.icon ?? 'Boxes',
-          color: partial?.color ?? '#4facfe',
-          description: partial?.description ?? '',
+          name: partial?.name ?? "Untitled Entity Type",
+          icon: partial?.icon ?? "Boxes",
+          color: partial?.color ?? "#4facfe",
+          description: partial?.description ?? "",
           fields: [],
           createdAt: now,
           updatedAt: now,
@@ -304,12 +419,16 @@ export const useSchemaStore = create<SchemaState>()(
       updateEntityType: (id, updates) =>
         set((state) => ({
           entityTypes: state.entityTypes.map((e) =>
-            e.id === id ? { ...e, ...updates, updatedAt: new Date().toISOString() } : e
+            e.id === id
+              ? { ...e, ...updates, updatedAt: new Date().toISOString() }
+              : e,
           ),
         })),
 
       deleteEntityType: (id) =>
-        set((state) => ({ entityTypes: state.entityTypes.filter((e) => e.id !== id) })),
+        set((state) => ({
+          entityTypes: state.entityTypes.filter((e) => e.id !== id),
+        })),
 
       duplicateEntityType: (id) => {
         const source = get().entityTypes.find((e) => e.id === id);
@@ -334,19 +453,23 @@ export const useSchemaStore = create<SchemaState>()(
           entityTypes: state.entityTypes.map((e) => {
             if (e.id !== entityTypeId) return e;
             const taken = e.fields.map((f) => f.key);
-            const label = partial?.label ?? 'New Field';
+            const label = partial?.label ?? "New Field";
             const field: EntityField = {
               id,
               key: partial?.key ?? slugifyKey(label, taken),
               label,
-              type: partial?.type ?? 'text',
+              type: partial?.type ?? "text",
               required: partial?.required ?? false,
               options: partial?.options,
               defaultValue: partial?.defaultValue,
               expression: partial?.expression,
               description: partial?.description,
             };
-            return { ...e, fields: [...e.fields, field], updatedAt: new Date().toISOString() };
+            return {
+              ...e,
+              fields: [...e.fields, field],
+              updatedAt: new Date().toISOString(),
+            };
           }),
         }));
         return id;
@@ -358,7 +481,9 @@ export const useSchemaStore = create<SchemaState>()(
             if (e.id !== entityTypeId) return e;
             return {
               ...e,
-              fields: e.fields.map((f) => (f.id === fieldId ? { ...f, ...updates } : f)),
+              fields: e.fields.map((f) =>
+                f.id === fieldId ? { ...f, ...updates } : f,
+              ),
               updatedAt: new Date().toISOString(),
             };
           }),
@@ -368,8 +493,12 @@ export const useSchemaStore = create<SchemaState>()(
         set((state) => ({
           entityTypes: state.entityTypes.map((e) =>
             e.id === entityTypeId
-              ? { ...e, fields: e.fields.filter((f) => f.id !== fieldId), updatedAt: new Date().toISOString() }
-              : e
+              ? {
+                  ...e,
+                  fields: e.fields.filter((f) => f.id !== fieldId),
+                  updatedAt: new Date().toISOString(),
+                }
+              : e,
           ),
         })),
 
@@ -378,8 +507,14 @@ export const useSchemaStore = create<SchemaState>()(
           entityTypes: state.entityTypes.map((e) => {
             if (e.id !== entityTypeId) return e;
             const byId = new Map(e.fields.map((f) => [f.id, f]));
-            const reordered = orderedFieldIds.map((id) => byId.get(id)).filter(Boolean) as EntityField[];
-            return { ...e, fields: reordered, updatedAt: new Date().toISOString() };
+            const reordered = orderedFieldIds
+              .map((id) => byId.get(id))
+              .filter(Boolean) as EntityField[];
+            return {
+              ...e,
+              fields: reordered,
+              updatedAt: new Date().toISOString(),
+            };
           }),
         })),
 
@@ -388,9 +523,9 @@ export const useSchemaStore = create<SchemaState>()(
         const now = new Date().toISOString();
         const template: TaskTemplateDef = {
           id,
-          name: partial?.name ?? 'Untitled Template',
-          description: partial?.description ?? '',
-          icon: partial?.icon ?? 'ClipboardList',
+          name: partial?.name ?? "Untitled Template",
+          description: partial?.description ?? "",
+          icon: partial?.icon ?? "ClipboardList",
           tasks: [],
           createdAt: now,
           updatedAt: now,
@@ -402,12 +537,16 @@ export const useSchemaStore = create<SchemaState>()(
       updateTemplate: (id, updates) =>
         set((state) => ({
           templates: state.templates.map((t) =>
-            t.id === id ? { ...t, ...updates, updatedAt: new Date().toISOString() } : t
+            t.id === id
+              ? { ...t, ...updates, updatedAt: new Date().toISOString() }
+              : t,
           ),
         })),
 
       deleteTemplate: (id) =>
-        set((state) => ({ templates: state.templates.filter((t) => t.id !== id) })),
+        set((state) => ({
+          templates: state.templates.filter((t) => t.id !== id),
+        })),
 
       duplicateTemplate: (id) => {
         const source = get().templates.find((t) => t.id === id);
@@ -433,13 +572,17 @@ export const useSchemaStore = create<SchemaState>()(
             if (t.id !== templateId) return t;
             const task: TaskTemplateItem = {
               id,
-              title: partial?.title ?? 'New Task',
-              department: partial?.department ?? 'dept2',
+              title: partial?.title ?? "New Task",
+              department: partial?.department ?? "dept2",
               estimatedHours: partial?.estimatedHours ?? 8,
-              priority: partial?.priority ?? 'medium',
+              priority: partial?.priority ?? "medium",
               order: t.tasks.length,
             };
-            return { ...t, tasks: [...t.tasks, task], updatedAt: new Date().toISOString() };
+            return {
+              ...t,
+              tasks: [...t.tasks, task],
+              updatedAt: new Date().toISOString(),
+            };
           }),
         }));
         return id;
@@ -451,7 +594,9 @@ export const useSchemaStore = create<SchemaState>()(
             if (t.id !== templateId) return t;
             return {
               ...t,
-              tasks: t.tasks.map((task) => (task.id === taskId ? { ...task, ...updates } : task)),
+              tasks: t.tasks.map((task) =>
+                task.id === taskId ? { ...task, ...updates } : task,
+              ),
               updatedAt: new Date().toISOString(),
             };
           }),
@@ -461,8 +606,12 @@ export const useSchemaStore = create<SchemaState>()(
         set((state) => ({
           templates: state.templates.map((t) =>
             t.id === templateId
-              ? { ...t, tasks: t.tasks.filter((task) => task.id !== taskId), updatedAt: new Date().toISOString() }
-              : t
+              ? {
+                  ...t,
+                  tasks: t.tasks.filter((task) => task.id !== taskId),
+                  updatedAt: new Date().toISOString(),
+                }
+              : t,
           ),
         })),
 
@@ -475,12 +624,16 @@ export const useSchemaStore = create<SchemaState>()(
               .map((id) => byId.get(id))
               .filter(Boolean)
               .map((task, i) => ({ ...(task as TaskTemplateItem), order: i }));
-            return { ...t, tasks: reordered, updatedAt: new Date().toISOString() };
+            return {
+              ...t,
+              tasks: reordered,
+              updatedAt: new Date().toISOString(),
+            };
           }),
         })),
     }),
     {
-      name: 'forge-schema-storage',
-    }
-  )
+      name: "forge-schema-storage",
+    },
+  ),
 );

@@ -1,8 +1,16 @@
-import { useState } from 'react';
-import { AUDIT_EVENTS, USERS, ASSETS, SHOTS } from '@/data/mockData';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from '@/components/ui/select';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { useState } from "react";
+import { AUDIT_EVENTS, USERS, ASSETS, SHOTS } from "@/data/mockData";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  SelectGroup,
+  SelectLabel,
+} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,37 +21,53 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
-import { UserAvatar } from '@/components/shared/UserAvatar';
-import { Badge } from '@/components/ui/badge';
-import { ChevronDown, ChevronUp, History, RotateCcw, Undo2 } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
-import { useAuditStore } from '@/store/audit';
+} from "@/components/ui/alert-dialog";
+import { UserAvatar } from "@/components/shared/UserAvatar";
+import { Badge } from "@/components/ui/badge";
+import {
+  ChevronDown,
+  ChevronUp,
+  History,
+  RotateCcw,
+  Undo2,
+} from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { useAuditStore } from "@/store/audit";
 
 export default function AuditLog() {
-  const [selectedEntity, setSelectedEntity] = useState('asset1');
+  const [selectedEntity, setSelectedEntity] = useState("asset1");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const rollbackPoints = useAuditStore(s => s.rollbackPoints);
-  const rollbackEntity = useAuditStore(s => s.rollbackEntity);
-  const clearRollback = useAuditStore(s => s.clearRollback);
+  const rollbackPoints = useAuditStore((s) => s.rollbackPoints);
+  const rollbackEntity = useAuditStore((s) => s.rollbackEntity);
+  const clearRollback = useAuditStore((s) => s.clearRollback);
   const rollbackPoint = rollbackPoints[selectedEntity];
 
-  const events = AUDIT_EVENTS.filter(e => e.entityId === selectedEntity).reverse();
+  const events = AUDIT_EVENTS.filter(
+    (e) => e.entityId === selectedEntity,
+  ).reverse();
   // Every event for a given entityId shares the same entityType, so any
   // event tells us which real store (assets vs shots) rollback should hit —
   // fall back to the id's own prefix for an entity with no events yet.
-  const entityType = events[0]?.entityType ?? (selectedEntity.startsWith('asset') ? 'asset' : 'shot');
+  const entityType =
+    events[0]?.entityType ??
+    (selectedEntity.startsWith("asset") ? "asset" : "shot");
 
   const handleRollback = (timestamp: string) => {
     rollbackEntity(selectedEntity, entityType, timestamp);
-    toast({ title: 'Rollback complete', description: `${selectedEntity} restored to state at ${timestamp} — real fields updated, not just this timeline view.` });
+    toast({
+      title: "Rollback complete",
+      description: `${selectedEntity} restored to state at ${timestamp} — real fields updated, not just this timeline view.`,
+    });
   };
 
   const handleRestoreLatest = () => {
     clearRollback(selectedEntity, entityType);
-    toast({ title: 'Restored to latest', description: `${selectedEntity} is back to its current state.` });
+    toast({
+      title: "Restored to latest",
+      description: `${selectedEntity} is back to its current state.`,
+    });
   };
 
   return (
@@ -51,7 +75,9 @@ export default function AuditLog() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Time Travel</h1>
-          <p className="text-muted-foreground mt-1">Audit log and state rollback</p>
+          <p className="text-muted-foreground mt-1">
+            Audit log and state rollback
+          </p>
         </div>
         <div className="w-80">
           <Select value={selectedEntity} onValueChange={setSelectedEntity}>
@@ -61,14 +87,18 @@ export default function AuditLog() {
             <SelectContent>
               <SelectGroup>
                 <SelectLabel>Assets</SelectLabel>
-                {ASSETS.slice(0, 40).map(a => (
-                  <SelectItem key={a.id} value={a.id}>{a.name} ({a.id})</SelectItem>
+                {ASSETS.slice(0, 40).map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.name} ({a.id})
+                  </SelectItem>
                 ))}
               </SelectGroup>
               <SelectGroup>
                 <SelectLabel>Shots</SelectLabel>
-                {SHOTS.slice(0, 40).map(s => (
-                  <SelectItem key={s.id} value={s.id}>{s.name} ({s.id})</SelectItem>
+                {SHOTS.slice(0, 40).map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name} ({s.id})
+                  </SelectItem>
                 ))}
               </SelectGroup>
             </SelectContent>
@@ -80,13 +110,19 @@ export default function AuditLog() {
         <Card className="border-primary/30 bg-primary/5">
           <CardContent className="p-4 flex items-center justify-between gap-4">
             <div className="text-sm">
-              <span className="font-medium">Rolled back</span>{' '}
+              <span className="font-medium">Rolled back</span>{" "}
               <span className="text-muted-foreground">
-                — <span className="font-mono">{selectedEntity}</span> is showing state as of{' '}
-                <span className="font-mono">{rollbackPoint}</span>. Events after this point are marked reverted below.
+                — <span className="font-mono">{selectedEntity}</span> is showing
+                state as of <span className="font-mono">{rollbackPoint}</span>.
+                Events after this point are marked reverted below.
               </span>
             </div>
-            <Button variant="outline" size="sm" className="shrink-0" onClick={handleRestoreLatest}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              onClick={handleRestoreLatest}
+            >
               <Undo2 className="w-3.5 h-3.5 mr-1.5" /> Restore latest
             </Button>
           </CardContent>
@@ -95,15 +131,16 @@ export default function AuditLog() {
 
       <div className="space-y-4 relative before:absolute before:inset-0 before:ml-[35px] before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-border before:to-transparent">
         {events.map((event, index) => {
-          const user = USERS.find(u => u.id === event.userId);
+          const user = USERS.find((u) => u.id === event.userId);
           const isExpanded = expandedId === event.id;
           const hasChanges = Object.keys(event.changedFields).length > 0;
-          const isReverted = Boolean(rollbackPoint) && event.timestamp > rollbackPoint;
+          const isReverted =
+            Boolean(rollbackPoint) && event.timestamp > rollbackPoint;
 
           return (
             <Card
               key={event.id}
-              className={`relative overflow-hidden hover:border-primary/30 transition-colors z-10 ${isReverted ? 'opacity-50' : ''}`}
+              className={`relative overflow-hidden hover:border-primary/30 transition-colors z-10 ${isReverted ? "opacity-50" : ""}`}
             >
               <div className="p-4 flex items-start gap-4 bg-card relative">
                 <button
@@ -119,10 +156,23 @@ export default function AuditLog() {
                   <div className="flex-1">
                     <div className="flex justify-between items-start mb-1">
                       <div className="font-medium text-sm flex items-center gap-2">
-                        <span className="font-mono text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">{event.eventType}</span>
-                        <span className={isReverted ? 'line-through decoration-destructive/60' : ''}>{event.description}</span>
+                        <span className="font-mono text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                          {event.eventType}
+                        </span>
+                        <span
+                          className={
+                            isReverted
+                              ? "line-through decoration-destructive/60"
+                              : ""
+                          }
+                        >
+                          {event.description}
+                        </span>
                         {isReverted && (
-                          <Badge variant="outline" className="text-[10px] border-destructive/30 text-destructive">
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] border-destructive/30 text-destructive"
+                          >
                             Reverted
                           </Badge>
                         )}
@@ -137,8 +187,13 @@ export default function AuditLog() {
                       <span>{user?.name}</span>
                       {hasChanges && (
                         <span className="ml-4 flex items-center gap-1">
-                          {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                          {Object.keys(event.changedFields).length} field(s) changed
+                          {isExpanded ? (
+                            <ChevronUp className="w-3 h-3" />
+                          ) : (
+                            <ChevronDown className="w-3 h-3" />
+                          )}
+                          {Object.keys(event.changedFields).length} field(s)
+                          changed
                         </span>
                       )}
                     </div>
@@ -152,20 +207,28 @@ export default function AuditLog() {
                       size="sm"
                       className="shrink-0 group hover:border-destructive hover:text-destructive transition-colors"
                     >
-                      <RotateCcw className="w-4 h-4 mr-1.5 group-hover:-rotate-90 transition-transform" /> Rollback
+                      <RotateCcw className="w-4 h-4 mr-1.5 group-hover:-rotate-90 transition-transform" />{" "}
+                      Rollback
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle>Rollback to this state?</AlertDialogTitle>
+                      <AlertDialogTitle>
+                        Rollback to this state?
+                      </AlertDialogTitle>
                       <AlertDialogDescription>
-                        This restores <span className="font-mono">{selectedEntity}</span> to its state as of{' '}
-                        <span className="font-mono">{event.timestamp}</span>. Changes made after this point will be discarded.
+                        This restores{" "}
+                        <span className="font-mono">{selectedEntity}</span> to
+                        its state as of{" "}
+                        <span className="font-mono">{event.timestamp}</span>.
+                        Changes made after this point will be discarded.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction onClick={() => handleRollback(event.timestamp)}>
+                      <AlertDialogAction
+                        onClick={() => handleRollback(event.timestamp)}
+                      >
                         Rollback
                       </AlertDialogAction>
                     </AlertDialogFooter>
@@ -176,26 +239,49 @@ export default function AuditLog() {
               {isExpanded && hasChanges && (
                 <CardContent className="bg-muted/10 border-t border-border p-4 font-mono text-xs">
                   <div className="space-y-2">
-                    {Object.entries(event.changedFields).map(([field, change]) => (
-                      <div key={field} className="grid grid-cols-[120px_1fr] gap-4">
-                        <div className="text-muted-foreground">{field}:</div>
-                        <div>
-                          {(change as string).split('→').map((part: string, i: number) => {
-                            // assigneeId stores real user ids so rollback can
-                            // apply them directly to the entity — resolve to
-                            // a name here for readability, same idea as
-                            // UserAvatar does elsewhere on this page.
-                            const label = field === 'assigneeId' ? (USERS.find(u => u.id === part.trim())?.name ?? part.trim()) : part.trim();
-                            return (
-                              <span key={i}>
-                                <span className={i === 0 ? "text-red-400/80 line-through" : "text-status-green"}>{label}</span>
-                                {i === 0 && <span className="text-muted-foreground mx-2">→</span>}
-                              </span>
-                            );
-                          })}
+                    {Object.entries(event.changedFields).map(
+                      ([field, change]) => (
+                        <div
+                          key={field}
+                          className="grid grid-cols-[120px_1fr] gap-4"
+                        >
+                          <div className="text-muted-foreground">{field}:</div>
+                          <div>
+                            {(change as string)
+                              .split("→")
+                              .map((part: string, i: number) => {
+                                // assigneeId stores real user ids so rollback can
+                                // apply them directly to the entity — resolve to
+                                // a name here for readability, same idea as
+                                // UserAvatar does elsewhere on this page.
+                                const label =
+                                  field === "assigneeId"
+                                    ? (USERS.find((u) => u.id === part.trim())
+                                        ?.name ?? part.trim())
+                                    : part.trim();
+                                return (
+                                  <span key={i}>
+                                    <span
+                                      className={
+                                        i === 0
+                                          ? "text-red-400/80 line-through"
+                                          : "text-status-green"
+                                      }
+                                    >
+                                      {label}
+                                    </span>
+                                    {i === 0 && (
+                                      <span className="text-muted-foreground mx-2">
+                                        →
+                                      </span>
+                                    )}
+                                  </span>
+                                );
+                              })}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ),
+                    )}
                   </div>
                 </CardContent>
               )}

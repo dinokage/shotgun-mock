@@ -1,6 +1,6 @@
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import { MESSAGES as SEED_MESSAGES, ChatMessage } from '@/data/mockData';
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import { MESSAGES as SEED_MESSAGES, ChatMessage } from "@/data/mockData";
 
 export interface ChatGroup {
   id: string;
@@ -24,14 +24,15 @@ interface ChatGroupsState {
 }
 
 export function dmChannelId(userIdA: string, userIdB: string): string {
-  return `dm_${[userIdA, userIdB].sort().join('_')}`;
+  return `dm_${[userIdA, userIdB].sort().join("_")}`;
 }
 
 export const useChatGroupsStore = create<ChatGroupsState>()(
   persist(
     (set, get) => ({
       groups: [],
-      addGroup: (group) => set((state) => ({ groups: [...state.groups, group] })),
+      addGroup: (group) =>
+        set((state) => ({ groups: [...state.groups, group] })),
       getOrCreateDM: (userIdA, userIdB) => {
         const id = dmChannelId(userIdA, userIdB);
         const exists = get().groups.some((g) => g.id === id);
@@ -41,7 +42,7 @@ export const useChatGroupsStore = create<ChatGroupsState>()(
               ...state.groups,
               {
                 id,
-                name: 'Direct Message',
+                name: "Direct Message",
                 memberIds: [userIdA, userIdB],
                 createdBy: userIdA,
                 createdAt: new Date().toISOString(),
@@ -54,9 +55,9 @@ export const useChatGroupsStore = create<ChatGroupsState>()(
       },
     }),
     {
-      name: 'forge-chat-groups-storage',
-    }
-  )
+      name: "forge-chat-groups-storage",
+    },
+  ),
 );
 
 // --- Chat Messages -----------------------------------------------------
@@ -72,10 +73,11 @@ export const useChatMessagesStore = create<ChatMessagesState>()(
   persist(
     (set) => ({
       messages: SEED_MESSAGES,
-      addMessage: (message) => set((state) => ({ messages: [...state.messages, message] })),
+      addMessage: (message) =>
+        set((state) => ({ messages: [...state.messages, message] })),
     }),
     {
-      name: 'forge-chat-messages-storage',
-    }
-  )
+      name: "forge-chat-messages-storage",
+    },
+  ),
 );

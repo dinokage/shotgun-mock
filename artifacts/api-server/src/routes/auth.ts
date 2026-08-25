@@ -1,6 +1,11 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { usersTable, tenantsTable, tenantRolesTable, tenantRoleCapabilitiesTable } from "@workspace/db/schema";
+import {
+  usersTable,
+  tenantsTable,
+  tenantRolesTable,
+  tenantRoleCapabilitiesTable,
+} from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { verifyPassword, signSession, verifySession } from "../lib/auth";
 
@@ -13,7 +18,10 @@ authRouter.post("/login", async (req, res) => {
       return res.status(400).json({ error: "Missing email or password" });
     }
 
-    const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email));
+    const [user] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.email, email));
     if (!user) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
@@ -24,10 +32,19 @@ authRouter.post("/login", async (req, res) => {
     }
 
     // Resolve tenant and role details
-    const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, user.tenantId));
-    const [role] = await db.select().from(tenantRolesTable).where(eq(tenantRolesTable.id, user.roleId));
-    const roleCaps = await db.select().from(tenantRoleCapabilitiesTable).where(eq(tenantRoleCapabilitiesTable.roleId, user.roleId));
-    const capabilities = roleCaps.map(c => c.capabilityId);
+    const [tenant] = await db
+      .select()
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, user.tenantId));
+    const [role] = await db
+      .select()
+      .from(tenantRolesTable)
+      .where(eq(tenantRolesTable.id, user.roleId));
+    const roleCaps = await db
+      .select()
+      .from(tenantRoleCapabilitiesTable)
+      .where(eq(tenantRoleCapabilitiesTable.roleId, user.roleId));
+    const capabilities = roleCaps.map((c) => c.capabilityId);
 
     const sessionPayload = {
       userId: user.id,
@@ -47,13 +64,13 @@ authRouter.post("/login", async (req, res) => {
       user: {
         id: user.id,
         name: user.name,
-        role: role?.name || "admin", 
+        role: role?.name || "admin",
         capabilities,
       },
       tenant: {
         id: tenant.id,
         name: tenant.name,
-      }
+      },
     });
   } catch (err) {
     console.error(err);
@@ -73,24 +90,36 @@ authRouter.get("/me", async (req, res) => {
   const session = verifySession(token);
   if (!session) return res.status(401).json({ error: "Invalid session" });
 
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, session.userId));
+  const [user] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.id, session.userId));
   if (!user) return res.status(401).json({ error: "User deleted" });
 
-  const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, session.tenantId));
-  const [role] = await db.select().from(tenantRolesTable).where(eq(tenantRolesTable.id, session.roleId));
-  const roleCaps = await db.select().from(tenantRoleCapabilitiesTable).where(eq(tenantRoleCapabilitiesTable.roleId, session.roleId));
-  const capabilities = roleCaps.map(c => c.capabilityId);
+  const [tenant] = await db
+    .select()
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, session.tenantId));
+  const [role] = await db
+    .select()
+    .from(tenantRolesTable)
+    .where(eq(tenantRolesTable.id, session.roleId));
+  const roleCaps = await db
+    .select()
+    .from(tenantRoleCapabilitiesTable)
+    .where(eq(tenantRoleCapabilitiesTable.roleId, session.roleId));
+  const capabilities = roleCaps.map((c) => c.capabilityId);
 
   return res.status(200).json({
     user: {
       id: user.id,
       name: user.name,
-      role: role?.name || "admin", 
+      role: role?.name || "admin",
       capabilities,
     },
     tenant: {
       id: tenant.id,
       name: tenant?.name || "",
-    }
+    },
   });
 });

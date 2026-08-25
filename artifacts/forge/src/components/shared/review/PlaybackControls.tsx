@@ -1,6 +1,6 @@
-import { Play, Pause, SkipBack, SkipForward } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import { Play, Pause, SkipBack, SkipForward } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 interface PlaybackControlsProps {
   isPlaying: boolean;
@@ -44,29 +44,60 @@ export function PlaybackControls({
   className,
   buttonClassName,
   playButtonClassName,
-  iconClassName = 'w-4 h-4',
+  iconClassName = "w-4 h-4",
   playIconClassName,
   centerPlayIcon,
   frameLabelClassName,
 }: PlaybackControlsProps) {
   return (
-    <div className={cn('flex items-center gap-2', className)}>
-      <Button size="icon" variant="ghost" className={buttonClassName} disabled={disabled} aria-label="Previous Frame" onClick={onStepBack}>
+    <div className={cn("flex items-center gap-2", className)}>
+      <Button
+        size="icon"
+        variant="ghost"
+        className={buttonClassName}
+        disabled={disabled}
+        aria-label="Previous Frame"
+        onClick={onStepBack}
+      >
         <SkipBack className={iconClassName} />
       </Button>
-      <Button size="icon" variant="ghost" className={cn(buttonClassName, playButtonClassName)} disabled={disabled} aria-label={isPlaying ? 'Pause' : 'Play'} onClick={onTogglePlay}>
+      <Button
+        size="icon"
+        variant="ghost"
+        className={cn(buttonClassName, playButtonClassName)}
+        disabled={disabled}
+        aria-label={isPlaying ? "Pause" : "Play"}
+        onClick={onTogglePlay}
+      >
         {isPlaying ? (
           <Pause className={playIconClassName ?? iconClassName} />
         ) : (
-          <Play className={cn(playIconClassName ?? iconClassName, centerPlayIcon && 'ml-1')} />
+          <Play
+            className={cn(
+              playIconClassName ?? iconClassName,
+              centerPlayIcon && "ml-1",
+            )}
+          />
         )}
       </Button>
-      <Button size="icon" variant="ghost" className={buttonClassName} disabled={disabled} aria-label="Next Frame" onClick={onStepForward}>
+      <Button
+        size="icon"
+        variant="ghost"
+        className={buttonClassName}
+        disabled={disabled}
+        aria-label="Next Frame"
+        onClick={onStepForward}
+      >
         <SkipForward className={iconClassName} />
       </Button>
       {showFrameLabel && (
-        <span className={cn('text-xs font-mono text-muted-foreground ml-1', frameLabelClassName)}>
-          {String(frame).padStart(3, '0')} / {maxFrames}
+        <span
+          className={cn(
+            "text-xs font-mono text-muted-foreground ml-1",
+            frameLabelClassName,
+          )}
+        >
+          {String(frame).padStart(3, "0")} / {maxFrames}
         </span>
       )}
     </div>

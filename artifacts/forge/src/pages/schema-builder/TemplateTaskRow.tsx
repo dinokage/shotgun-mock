@@ -1,9 +1,15 @@
-import { motion } from 'framer-motion';
-import { useSortable } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Trash2, Clock } from 'lucide-react';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { motion } from "framer-motion";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { GripVertical, Trash2, Clock } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,19 +20,19 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
-import { cn } from '@/lib/utils';
-import { DEPARTMENTS, type Task } from '@/data/mockData';
-import type { TaskTemplateItem } from '@/store/schema';
-import { DURATION, EASE_DISSOLVE } from '@/lib/motion';
+} from "@/components/ui/alert-dialog";
+import { cn } from "@/lib/utils";
+import { DEPARTMENTS, type Task } from "@/data/mockData";
+import type { TaskTemplateItem } from "@/store/schema";
+import { DURATION, EASE_DISSOLVE } from "@/lib/motion";
 
-const PRIORITIES: Task['priority'][] = ['low', 'medium', 'high', 'critical'];
+const PRIORITIES: Task["priority"][] = ["low", "medium", "high", "critical"];
 
-const PRIORITY_DOT: Record<Task['priority'], string> = {
-  low: 'bg-green-500',
-  medium: 'bg-blue-500',
-  high: 'bg-orange-500',
-  critical: 'bg-red-500',
+const PRIORITY_DOT: Record<Task["priority"], string> = {
+  low: "bg-green-500",
+  medium: "bg-blue-500",
+  high: "bg-orange-500",
+  critical: "bg-red-500",
 };
 
 export function TemplateTaskRow({
@@ -38,7 +44,14 @@ export function TemplateTaskRow({
   onUpdate: (updates: Partial<TaskTemplateItem>) => void;
   onRemove: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: task.id });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -57,8 +70,10 @@ export function TemplateTaskRow({
       exit={{ opacity: 0, x: -12, transition: { duration: DURATION.fast } }}
       transition={{ duration: DURATION.base, ease: EASE_DISSOLVE }}
       className={cn(
-        'flex items-center gap-2 rounded-lg border bg-card p-2.5',
-        isDragging ? 'border-primary shadow-lg cursor-grabbing' : 'border-border'
+        "flex items-center gap-2 rounded-lg border bg-card p-2.5",
+        isDragging
+          ? "border-primary shadow-lg cursor-grabbing"
+          : "border-border",
       )}
     >
       <button
@@ -77,7 +92,10 @@ export function TemplateTaskRow({
         placeholder="Task title"
       />
 
-      <Select value={task.department} onValueChange={(v) => onUpdate({ department: v })}>
+      <Select
+        value={task.department}
+        onValueChange={(v) => onUpdate({ department: v })}
+      >
         <SelectTrigger className="h-8 text-xs w-[168px] shrink-0">
           <SelectValue />
         </SelectTrigger>
@@ -85,7 +103,10 @@ export function TemplateTaskRow({
           {DEPARTMENTS.map((d) => (
             <SelectItem key={d.id} value={d.id} className="text-xs">
               <span className="inline-flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
+                <span
+                  className="w-2 h-2 rounded-full shrink-0"
+                  style={{ backgroundColor: d.color }}
+                />
                 {d.name}
               </span>
             </SelectItem>
@@ -99,12 +120,19 @@ export function TemplateTaskRow({
           type="number"
           min={0}
           value={task.estimatedHours}
-          onChange={(e) => onUpdate({ estimatedHours: Math.max(0, Number(e.target.value) || 0) })}
+          onChange={(e) =>
+            onUpdate({
+              estimatedHours: Math.max(0, Number(e.target.value) || 0),
+            })
+          }
           className="h-8 text-xs px-2"
         />
       </div>
 
-      <Select value={task.priority} onValueChange={(v) => onUpdate({ priority: v as Task['priority'] })}>
+      <Select
+        value={task.priority}
+        onValueChange={(v) => onUpdate({ priority: v as Task["priority"] })}
+      >
         <SelectTrigger className="h-8 text-xs w-[112px] shrink-0">
           <SelectValue />
         </SelectTrigger>
@@ -112,7 +140,9 @@ export function TemplateTaskRow({
           {PRIORITIES.map((p) => (
             <SelectItem key={p} value={p} className="text-xs capitalize">
               <span className="inline-flex items-center gap-1.5">
-                <span className={cn('w-1.5 h-1.5 rounded-full', PRIORITY_DOT[p])} />
+                <span
+                  className={cn("w-1.5 h-1.5 rounded-full", PRIORITY_DOT[p])}
+                />
                 {p}
               </span>
             </SelectItem>
@@ -134,9 +164,12 @@ export function TemplateTaskRow({
         </AlertDialogTrigger>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove task "{task.title || 'Untitled task'}"?</AlertDialogTitle>
+            <AlertDialogTitle>
+              Remove task "{task.title || "Untitled task"}"?
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              This removes the task from the template bundle. This action cannot be undone.
+              This removes the task from the template bundle. This action cannot
+              be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

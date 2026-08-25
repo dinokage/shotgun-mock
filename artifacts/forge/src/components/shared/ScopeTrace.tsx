@@ -1,4 +1,4 @@
-import { useId, useMemo } from 'react';
+import { useId, useMemo } from "react";
 
 interface ScopeTraceProps {
   /** Ordered numeric series, oldest -> newest. Fewer than 2 points renders nothing. */
@@ -20,11 +20,16 @@ interface ScopeTraceProps {
  * Sized via a normalized 0-100 viewBox that fills its container — wrap it in
  * an element with an explicit height (e.g. `h-8 w-full`).
  */
-export function ScopeTrace({ data, className = '', strokeWidth = 2, area = false }: ScopeTraceProps) {
+export function ScopeTrace({
+  data,
+  className = "",
+  strokeWidth = 2,
+  area = false,
+}: ScopeTraceProps) {
   const gradientId = useId();
 
   const { linePath, areaPath } = useMemo(() => {
-    if (!data || data.length < 2) return { linePath: '', areaPath: '' };
+    if (!data || data.length < 2) return { linePath: "", areaPath: "" };
 
     const min = Math.min(...data);
     const max = Math.max(...data);
@@ -42,7 +47,11 @@ export function ScopeTrace({ data, className = '', strokeWidth = 2, area = false
       return [x, y] as const;
     });
 
-    const line = points.map(([x, y], i) => `${i === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`).join(' ');
+    const line = points
+      .map(
+        ([x, y], i) => `${i === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`,
+      )
+      .join(" ");
     const areaP = `${line} L 100 100 L 0 100 Z`;
     return { linePath: line, areaPath: areaP };
   }, [data]);
@@ -64,7 +73,12 @@ export function ScopeTrace({ data, className = '', strokeWidth = 2, area = false
               <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
             </linearGradient>
           </defs>
-          <path d={areaPath} fill={`url(#${gradientId})`} stroke="none" className="text-accent-scope" />
+          <path
+            d={areaPath}
+            fill={`url(#${gradientId})`}
+            stroke="none"
+            className="text-accent-scope"
+          />
         </>
       )}
       <g className="scope-trace text-accent-scope">

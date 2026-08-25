@@ -1,12 +1,13 @@
-import { useQuery } from '@tanstack/react-query';
-import { apiFetch } from '@/lib/apiClient';
-import { useMemo } from 'react';
-import { User } from '@/data/mockData';
+import { useQuery } from "@tanstack/react-query";
+import { apiFetch } from "@/lib/apiClient";
+import { useMemo } from "react";
+import { User } from "@/data/mockData";
 export type UserDTO = User;
 export function useUsers() {
   return useQuery<UserDTO[]>({
-    queryKey: ['users'],
-    queryFn: async () => (await apiFetch<{ users: UserDTO[] }>('/api/users')).users,
+    queryKey: ["users"],
+    queryFn: async () =>
+      (await apiFetch<{ users: UserDTO[] }>("/api/users")).users,
     staleTime: 60000,
   });
 }

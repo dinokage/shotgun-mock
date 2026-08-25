@@ -1,32 +1,55 @@
-import { useEffect } from 'react';
-import { Link, useLocation } from 'wouter';
-import { cn } from '@/lib/utils';
+import { useEffect } from "react";
+import { Link, useLocation } from "wouter";
+import { cn } from "@/lib/utils";
 import {
-  LayoutDashboard, FolderOpen, PlayCircle, Calendar,
-  GitFork, Workflow, Store, Database,
-  History, Bot, Settings2, Package, Film, ListTodo,
-  Upload, BarChart3, ChevronLeft, ChevronRight,
-  Building2, ChevronDown, Users, MonitorPlay, MessageSquare, Grid3X3, Puzzle, Clock, Boxes,
-  DollarSign, Truck
-} from 'lucide-react';
-import { useUIStore } from '@/store/ui';
-import { useWorkspaceStore } from '@/store/workspace';
-import { useAuthStore } from '@/store/auth';
-import { useTasksStore } from '@/store/tasks';
-import { useReviewStore } from '@/store/reviews';
-import { useChatGroupsStore } from '@/store/chatGroups';
-import { useCapability, useIsLeadership } from '@/hooks/use-capability';
-import type { CapabilityId } from '@/store/permissions';
-import { useIsMobile } from '@/hooks/use-mobile';
-import { STUDIOS, DEPARTMENTS } from '@/data/mockData';
-import { DEPARTMENT_LEADERSHIP_ROLES } from '@/store/permissions';
-import { Badge } from '@/components/ui/badge';
+  LayoutDashboard,
+  FolderOpen,
+  PlayCircle,
+  Calendar,
+  GitFork,
+  Workflow,
+  Store,
+  Database,
+  History,
+  Bot,
+  Settings2,
+  Package,
+  Film,
+  ListTodo,
+  Upload,
+  BarChart3,
+  ChevronLeft,
+  ChevronRight,
+  Building2,
+  ChevronDown,
+  Users,
+  MonitorPlay,
+  MessageSquare,
+  Grid3X3,
+  Puzzle,
+  Clock,
+  Boxes,
+  DollarSign,
+  Truck,
+} from "lucide-react";
+import { useUIStore } from "@/store/ui";
+import { useWorkspaceStore } from "@/store/workspace";
+import { useAuthStore } from "@/store/auth";
+import { useTasksStore } from "@/store/tasks";
+import { useReviewStore } from "@/store/reviews";
+import { useChatGroupsStore } from "@/store/chatGroups";
+import { useCapability, useIsLeadership } from "@/hooks/use-capability";
+import type { CapabilityId } from "@/store/permissions";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { STUDIOS, DEPARTMENTS } from "@/data/mockData";
+import { DEPARTMENT_LEADERSHIP_ROLES } from "@/store/permissions";
+import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+} from "@/components/ui/dropdown-menu";
 
 type NavItem = {
   label: string;
@@ -38,40 +61,101 @@ type NavItem = {
 
 const ALL_NAV: NavItem[] = [
   // Base
-  { label: 'Dashboard', icon: LayoutDashboard, href: '/' },
-  { label: 'My Tasks', icon: ListTodo, href: '/tasks' },
-  { label: 'My Shots', icon: Film, href: '/shots?mine=1' },
-  { label: 'My Assets', icon: Package, href: '/assets?mine=1' },
-  { label: 'Team Chat', icon: MessageSquare, href: '/chat' },
-  { label: 'Daily Standup', icon: MonitorPlay, href: '/daily-standup' },
-  
+  { label: "Dashboard", icon: LayoutDashboard, href: "/" },
+  { label: "My Tasks", icon: ListTodo, href: "/tasks" },
+  { label: "My Shots", icon: Film, href: "/shots?mine=1" },
+  { label: "My Assets", icon: Package, href: "/assets?mine=1" },
+  { label: "Team Chat", icon: MessageSquare, href: "/chat" },
+  { label: "Daily Standup", icon: MonitorPlay, href: "/daily-standup" },
+
   // Production
-  { label: 'Production Dashboard', icon: LayoutDashboard, href: '/production', capabilities: ['create_tasks', 'manage_pipeline', 'view_financials'] },
-  { label: 'Projects', icon: FolderOpen, href: '/projects', capabilities: ['create_tasks', 'manage_pipeline'] },
-  { label: 'Tracking Grid', icon: Grid3X3, href: '/tracking', capabilities: ['create_tasks', 'manage_pipeline'] },
-  { label: 'Scheduling', icon: Calendar, href: '/scheduling', capabilities: ['assign_tasks', 'manage_pipeline'] },
-  { label: 'Timesheets', icon: Clock, href: '/timesheets' },
-  { label: 'Analytics', icon: BarChart3, href: '/analytics', capabilities: ['view_financials', 'manage_pipeline'] },
-  { label: 'Reviews', icon: PlayCircle, href: '/review' },
-  { label: 'Publishing', icon: Upload, href: '/publishing', capabilities: ['create_tasks', 'manage_pipeline'] },
-  { label: 'Deliveries', icon: Truck, href: '/delivery', capabilities: ['manage_pipeline', 'create_tasks'] },
-  { label: 'Financials', icon: DollarSign, href: '/financials', capabilities: ['view_financials'] },
-  
+  {
+    label: "Production Dashboard",
+    icon: LayoutDashboard,
+    href: "/production",
+    capabilities: ["create_tasks", "manage_pipeline", "view_financials"],
+  },
+  {
+    label: "Projects",
+    icon: FolderOpen,
+    href: "/projects",
+    capabilities: ["create_tasks", "manage_pipeline"],
+  },
+  {
+    label: "Tracking Grid",
+    icon: Grid3X3,
+    href: "/tracking",
+    capabilities: ["create_tasks", "manage_pipeline"],
+  },
+  {
+    label: "Scheduling",
+    icon: Calendar,
+    href: "/scheduling",
+    capabilities: ["assign_tasks", "manage_pipeline"],
+  },
+  { label: "Timesheets", icon: Clock, href: "/timesheets" },
+  {
+    label: "Analytics",
+    icon: BarChart3,
+    href: "/analytics",
+    capabilities: ["view_financials", "manage_pipeline"],
+  },
+  { label: "Reviews", icon: PlayCircle, href: "/review" },
+  {
+    label: "Publishing",
+    icon: Upload,
+    href: "/publishing",
+    capabilities: ["create_tasks", "manage_pipeline"],
+  },
+  {
+    label: "Deliveries",
+    icon: Truck,
+    href: "/delivery",
+    capabilities: ["manage_pipeline", "create_tasks"],
+  },
+  {
+    label: "Financials",
+    icon: DollarSign,
+    href: "/financials",
+    capabilities: ["view_financials"],
+  },
+
   // Directory
-  { label: 'Departments', icon: Building2, href: '/departments' },
-  { label: 'Studio Roster', icon: Users, href: '/people' },
-  
+  { label: "Departments", icon: Building2, href: "/departments" },
+  { label: "Studio Roster", icon: Users, href: "/people" },
+
   // System
-  { label: 'Schema Builder', icon: Boxes, href: '/schema-builder', capabilities: ['manage_roles'] },
-  { label: 'Integrations Hub', icon: Puzzle, href: '/integrations', capabilities: ['manage_integrations'] },
-  { label: 'Workflows', icon: Workflow, href: '/workflows', capabilities: ['manage_pipeline'] },
-  { label: 'Marketplace', icon: Store, href: '/marketplace' }, // available to everyone
-  { label: 'Time Travel', icon: History, href: '/audit', capabilities: ['manage_roles'] },
+  {
+    label: "Schema Builder",
+    icon: Boxes,
+    href: "/schema-builder",
+    capabilities: ["manage_roles"],
+  },
+  {
+    label: "Integrations Hub",
+    icon: Puzzle,
+    href: "/integrations",
+    capabilities: ["manage_integrations"],
+  },
+  {
+    label: "Workflows",
+    icon: Workflow,
+    href: "/workflows",
+    capabilities: ["manage_pipeline"],
+  },
+  { label: "Marketplace", icon: Store, href: "/marketplace" }, // available to everyone
+  {
+    label: "Time Travel",
+    icon: History,
+    href: "/audit",
+    capabilities: ["manage_roles"],
+  },
 ];
 
 export function Sidebar() {
   const [location] = useLocation();
-  const { sidebarCollapsed, toggleSidebar, mobileNavOpen, setMobileNavOpen } = useUIStore();
+  const { sidebarCollapsed, toggleSidebar, mobileNavOpen, setMobileNavOpen } =
+    useUIStore();
   const isMobile = useIsMobile();
   const { currentStudioId, setStudio } = useWorkspaceStore();
   const { currentUser } = useAuthStore();
@@ -79,7 +163,7 @@ export function Sidebar() {
   const tasks = useTasksStore((s) => s.tasks);
   const reviews = useReviewStore((s) => s.reviews);
   const chatGroups = useChatGroupsStore((s) => s.groups);
-  const currentStudio = STUDIOS.find(s => s.id === currentStudioId);
+  const currentStudio = STUDIOS.find((s) => s.id === currentStudioId);
 
   // The drawer's open/closed flag lives in the global UI store, not local
   // state, so it survives a viewport resize. Without this, opening the
@@ -96,46 +180,63 @@ export function Sidebar() {
 
   // Real, store-derived counts — computed the same way the notifications
   // badge in TopBar is: filter live state, don't hand-write a number.
-  const teamChatBadge = chatGroups.filter(g => g.memberIds.includes(currentUser.id)).length;
+  const teamChatBadge = chatGroups.filter((g) =>
+    g.memberIds.includes(currentUser.id),
+  ).length;
   const reviewsBadge = isLeadership
-    // Items awaiting a Lead/Manager sign-off across the studio (same
-    // statuses SupervisorDashboard treats as its department review queue).
-    ? tasks.filter(t => t.status === 'lead-review' || t.status === 'manager-review').length
-    // Reviews this artist is waiting on (same query ArtistDashboard uses
-    // for its "Reviews Requested" stat).
-    : reviews.filter(r => r.reviewerId === currentUser.id && r.status === 'pending').length;
+    ? // Items awaiting a Lead/Manager sign-off across the studio (same
+      // statuses SupervisorDashboard treats as its department review queue).
+      tasks.filter(
+        (t) => t.status === "lead-review" || t.status === "manager-review",
+      ).length
+    : // Reviews this artist is waiting on (same query ArtistDashboard uses
+      // for its "Reviews Requested" stat).
+      reviews.filter(
+        (r) => r.reviewerId === currentUser.id && r.status === "pending",
+      ).length;
 
   // "Needs My Review" queue count for department leads/supervisors, scoped
   // the same way tasks.tsx's own needsReviewCount is — so a lead sees the
   // size of their queue on "My Tasks" before they even click into it,
   // instead of discovering it only after filtering the shared task list.
-  const isDeptLeadership = !!currentUser && DEPARTMENT_LEADERSHIP_ROLES.includes(currentUser.role);
+  const isDeptLeadership =
+    !!currentUser && DEPARTMENT_LEADERSHIP_ROLES.includes(currentUser.role);
   const myDepartmentName = currentUser
-    ? DEPARTMENTS.find(d => d.id === currentUser.departmentId)?.name
+    ? DEPARTMENTS.find((d) => d.id === currentUser.departmentId)?.name
     : undefined;
   const tasksReviewBadge = isDeptLeadership
-    ? tasks.filter(t =>
-        (t.status === 'review' || t.status === 'lead-review') &&
-        (!myDepartmentName || t.department === myDepartmentName)
+    ? tasks.filter(
+        (t) =>
+          (t.status === "review" || t.status === "lead-review") &&
+          (!myDepartmentName || t.department === myDepartmentName),
       ).length
     : 0;
 
   const withBadges = (items: NavItem[]): NavItem[] =>
-    items.map(item => {
-      if (item.href === '/chat') return { ...item, badge: teamChatBadge || undefined };
-      if (item.href === '/review') return { ...item, badge: reviewsBadge || undefined };
-      if (item.href === '/tasks') return { ...item, badge: tasksReviewBadge || undefined };
+    items.map((item) => {
+      if (item.href === "/chat")
+        return { ...item, badge: teamChatBadge || undefined };
+      if (item.href === "/review")
+        return { ...item, badge: reviewsBadge || undefined };
+      if (item.href === "/tasks")
+        return { ...item, badge: tasksReviewBadge || undefined };
       return item;
     });
 
   const hasAnyCapability = (caps?: CapabilityId[]) => {
     if (!caps || caps.length === 0) return true;
-    if (currentUser.role === 'admin') return true;
-    return caps.some(c => currentUser.capabilities?.includes(c));
+    if (currentUser.role === "admin") return true;
+    return caps.some((c) => currentUser.capabilities?.includes(c));
   };
 
-  const navItems = withBadges(ALL_NAV).filter(item => hasAnyCapability(item.capabilities));
-  const canViewSettings = hasAnyCapability(['manage_roles', 'manage_members', 'manage_licenses']);
+  const navItems = withBadges(ALL_NAV).filter((item) =>
+    hasAnyCapability(item.capabilities),
+  );
+  const canViewSettings = hasAnyCapability([
+    "manage_roles",
+    "manage_members",
+    "manage_licenses",
+  ]);
 
   // Shared body for both the permanent desktop column and the mobile
   // off-canvas drawer. `collapsed` only ever applies on desktop — the
@@ -147,21 +248,32 @@ export function Sidebar() {
     return (
       <>
         {/* Workspace Switcher */}
-        <div className={cn("p-3 border-b border-sidebar-border", collapsed && "px-2")}>
+        <div
+          className={cn(
+            "p-3 border-b border-sidebar-border",
+            collapsed && "px-2",
+          )}
+        >
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className={cn(
-                "w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-sidebar-accent/50 transition-colors text-left",
-                collapsed && "justify-center px-0"
-              )}>
+              <button
+                className={cn(
+                  "w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-sidebar-accent/50 transition-colors text-left",
+                  collapsed && "justify-center px-0",
+                )}
+              >
                 <div className="w-7 h-7 rounded-md bg-primary/20 flex items-center justify-center shrink-0">
                   <Building2 className="w-4 h-4 text-primary" />
                 </div>
                 {!collapsed && (
                   <>
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold truncate">{currentStudio?.name || 'Studio'}</div>
-                      <div className="text-[10px] text-muted-foreground truncate">{currentStudio?.region || 'Global'}</div>
+                      <div className="text-sm font-semibold truncate">
+                        {currentStudio?.name || "Studio"}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground truncate">
+                        {currentStudio?.region || "Global"}
+                      </div>
                     </div>
                     <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
                   </>
@@ -169,7 +281,7 @@ export function Sidebar() {
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-56" align="start">
-              {STUDIOS.map(s => (
+              {STUDIOS.map((s) => (
                 <DropdownMenuItem key={s.id} onClick={() => setStudio(s.id)}>
                   <Building2 className="w-4 h-4 mr-2 text-muted-foreground" />
                   {s.name}
@@ -184,8 +296,10 @@ export function Sidebar() {
           {navItems.map((item) => {
             // Compare against the path only — item.href may carry a query string
             // (e.g. artist "My Shots" -> /shots?mine=1) which `location` never includes.
-            const itemPath = item.href.split('?')[0];
-            const isActive = location === itemPath || (itemPath !== '/' && location.startsWith(itemPath));
+            const itemPath = item.href.split("?")[0];
+            const isActive =
+              location === itemPath ||
+              (itemPath !== "/" && location.startsWith(itemPath));
             return (
               <Link key={item.label} href={item.href} onClick={onNavigate}>
                 <div
@@ -194,19 +308,28 @@ export function Sidebar() {
                     isActive
                       ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-[inset_2px_0_0_0_hsl(var(--accent-tally))] hover:bg-sidebar-accent/80"
                       : "text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
-                    collapsed && "justify-center px-2"
+                    collapsed && "justify-center px-2",
                   )}
                   title={collapsed ? item.label : undefined}
                 >
-                  <item.icon className={cn(
-                    "w-4 h-4 shrink-0 transition-colors",
-                    isActive ? "text-accent-tally" : "text-muted-foreground group-hover:text-sidebar-foreground"
-                  )} />
+                  <item.icon
+                    className={cn(
+                      "w-4 h-4 shrink-0 transition-colors",
+                      isActive
+                        ? "text-accent-tally"
+                        : "text-muted-foreground group-hover:text-sidebar-foreground",
+                    )}
+                  />
                   {!collapsed && (
-                    <span className="flex-1 truncate text-sm">{item.label}</span>
+                    <span className="flex-1 truncate text-sm">
+                      {item.label}
+                    </span>
                   )}
                   {!collapsed && item.badge && (
-                    <Badge variant="secondary" className="px-1.5 py-0 text-[10px] h-4 bg-accent-tally/10 text-accent-tally hover:bg-accent-tally/20">
+                    <Badge
+                      variant="secondary"
+                      className="px-1.5 py-0 text-[10px] h-4 bg-accent-tally/10 text-accent-tally hover:bg-accent-tally/20"
+                    >
                       {item.badge}
                     </Badge>
                   )}
@@ -223,17 +346,29 @@ export function Sidebar() {
         </div>
 
         {/* Bottom Actions */}
-        <div className={cn("p-2 border-t border-sidebar-border space-y-0.5", collapsed && "px-1")}>
+        <div
+          className={cn(
+            "p-2 border-t border-sidebar-border space-y-0.5",
+            collapsed && "px-1",
+          )}
+        >
           {canViewSettings && (
             <Link href="/settings" className="block" onClick={onNavigate}>
-              <div className={cn(
-                "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",
-                collapsed && "justify-center px-2",
-                location.startsWith('/settings')
-                  ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-[inset_2px_0_0_0_hsl(var(--accent-tally))] hover:bg-sidebar-accent/80"
-                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-              )}>
-                <Settings2 className={cn("w-4 h-4 shrink-0 transition-colors", location.startsWith('/settings') && "text-accent-tally")} />
+              <div
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",
+                  collapsed && "justify-center px-2",
+                  location.startsWith("/settings")
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-[inset_2px_0_0_0_hsl(var(--accent-tally))] hover:bg-sidebar-accent/80"
+                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
+                )}
+              >
+                <Settings2
+                  className={cn(
+                    "w-4 h-4 shrink-0 transition-colors",
+                    location.startsWith("/settings") && "text-accent-tally",
+                  )}
+                />
                 {!collapsed && <span>Settings</span>}
               </div>
             </Link>
@@ -246,10 +381,14 @@ export function Sidebar() {
               onClick={toggleSidebar}
               className={cn(
                 "w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-sidebar-foreground/50 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors",
-                collapsed && "justify-center px-2"
+                collapsed && "justify-center px-2",
               )}
             >
-              {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+              {collapsed ? (
+                <ChevronRight className="w-4 h-4" />
+              ) : (
+                <ChevronLeft className="w-4 h-4" />
+              )}
               {!collapsed && <span>Collapse</span>}
             </button>
           )}
@@ -270,7 +409,7 @@ export function Sidebar() {
         <div
           className={cn(
             "fixed inset-y-0 left-0 z-50 w-72 bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex flex-col transition-transform duration-300 ease-in-out",
-            mobileNavOpen ? "translate-x-0" : "-translate-x-full"
+            mobileNavOpen ? "translate-x-0" : "-translate-x-full",
           )}
         >
           {renderBody(false, () => setMobileNavOpen(false))}
@@ -283,7 +422,7 @@ export function Sidebar() {
     <div
       className={cn(
         "flex-shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex flex-col h-full transition-all duration-300 ease-in-out",
-        sidebarCollapsed ? "w-16" : "w-64"
+        sidebarCollapsed ? "w-16" : "w-64",
       )}
     >
       {renderBody(sidebarCollapsed, () => {})}

@@ -1,21 +1,43 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Button } from '@/components/ui/button';
-import { Play, ThumbsUp, ThumbsDown, MessageSquare, ChevronLeft, LogOut, CheckCircle2, Send, Clock, Building2, User, PenTool } from 'lucide-react';
-import { Textarea } from '@/components/ui/textarea';
-import { useToast } from '@/hooks/use-toast';
-import { PROJECTS, STUDIOS, VERSIONS } from '@/data/mockData';
-import { useLocation } from 'wouter';
-import { useAuthStore } from '@/store/auth';
-import { Badge } from '@/components/ui/badge';
-import { Lock, Key } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { useReviewStore, PRESENTED_VERSION_ID } from '@/store/reviews';
-import { useShotStore } from '@/store/shots';
-import { useBroadcastsStore } from '@/store/broadcasts';
-import { cn } from '@/lib/utils';
-import { getPlaceholderThumbnail, getPlaceholderVideoSrc } from '@/lib/placeholderArt';
+import { useState, useRef, useEffect, useMemo } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Button } from "@/components/ui/button";
+import {
+  Play,
+  ThumbsUp,
+  ThumbsDown,
+  MessageSquare,
+  ChevronLeft,
+  LogOut,
+  CheckCircle2,
+  Send,
+  Clock,
+  Building2,
+  User,
+  PenTool,
+} from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/hooks/use-toast";
+import { PROJECTS, STUDIOS, VERSIONS } from "@/data/mockData";
+import { useLocation } from "wouter";
+import { useAuthStore } from "@/store/auth";
+import { Badge } from "@/components/ui/badge";
+import { Lock, Key } from "lucide-react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { useReviewStore, PRESENTED_VERSION_ID } from "@/store/reviews";
+import { useShotStore } from "@/store/shots";
+import { useBroadcastsStore } from "@/store/broadcasts";
+import { cn } from "@/lib/utils";
+import {
+  getPlaceholderThumbnail,
+  getPlaceholderVideoSrc,
+} from "@/lib/placeholderArt";
 import {
   AnnotationToolbar,
   AnnotationCanvas,
@@ -26,9 +48,16 @@ import {
   type AnnotationTool,
   type Annotation,
   type DraggingElement,
-} from '@/components/shared/review';
+} from "@/components/shared/review";
 
-const COLORS = ['#10b981', '#ef4444', '#3b82f6', '#eab308', '#d946ef', '#ffffff'];
+const COLORS = [
+  "#10b981",
+  "#ef4444",
+  "#3b82f6",
+  "#eab308",
+  "#d946ef",
+  "#ffffff",
+];
 
 /**
  * Resolves the thumbnail seed to render for a shot's preview art. Prefers
@@ -36,14 +65,25 @@ const COLORS = ['#10b981', '#ef4444', '#3b82f6', '#eab308', '#d946ef', '#ffffff'
  * reflects the delivered version, not just the shot), falling back to the
  * shot's own seed when no matching Version row exists in the mock data.
  */
-function resolveThumbnailSeed(shot: { id: string; currentVersion: string; thumbnailSeed: number }): number {
+function resolveThumbnailSeed(shot: {
+  id: string;
+  currentVersion: string;
+  thumbnailSeed: number;
+}): number {
   const currentVersionRecord = VERSIONS.find(
-    (v) => v.entityType === 'shot' && v.entityId === shot.id && v.versionNumber === shot.currentVersion
+    (v) =>
+      v.entityType === "shot" &&
+      v.entityId === shot.id &&
+      v.versionNumber === shot.currentVersion,
   );
   return currentVersionRecord?.thumbnailSeed ?? shot.thumbnailSeed;
 }
 
-function resolveShotVideoSrc(shot: { id: string; currentVersion: string; thumbnailSeed: number }): string {
+function resolveShotVideoSrc(shot: {
+  id: string;
+  currentVersion: string;
+  thumbnailSeed: number;
+}): string {
   return getPlaceholderVideoSrc(resolveThumbnailSeed(shot));
 }
 
@@ -52,29 +92,30 @@ export default function ClientReview() {
   const [, setLocation] = useLocation();
 
   const searchParams = new URLSearchParams(window.location.search);
-  const hasToken = searchParams.get('token') === 'demo';
-  
-  const [accessCode, setAccessCode] = useState('');
+  const hasToken = searchParams.get("token") === "demo";
+
+  const [accessCode, setAccessCode] = useState("");
   const [clientAuthenticated, setClientAuthenticated] = useState(hasToken);
 
   // If a user has the explicit 'client' role, they automatically bypass the access code.
   // Otherwise, everyone (even managers testing the portal) must enter the access code.
-  const isExplicitClient = currentUser?.role === 'client';
-
-
+  const isExplicitClient = currentUser?.role === "client";
 
   const [activeReviewId, setActiveReviewId] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [frame, setFrame] = useState(1);
-  const [feedback, setFeedback] = useState('');
+  const [feedback, setFeedback] = useState("");
   const { toast } = useToast();
-  
-  const [tool, setTool] = useState<AnnotationTool>('select');
-  const [color, setColor] = useState('#10b981');
+
+  const [tool, setTool] = useState<AnnotationTool>("select");
+  const [color, setColor] = useState("#10b981");
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
-  const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
+  const [selectedAnnotationId, setSelectedAnnotationId] = useState<
+    string | null
+  >(null);
   const [ghosting, setGhosting] = useState(false);
-  const [draggingElement, setDraggingElement] = useState<DraggingElement | null>(null);
+  const [draggingElement, setDraggingElement] =
+    useState<DraggingElement | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const maxFrames = 240;
@@ -95,10 +136,16 @@ export default function ClientReview() {
   const shots = useShotStore((s) => s.shots);
   const updateReviewStatus = useShotStore((s) => s.updateReviewStatus);
   const updateShot = useShotStore((s) => s.updateShot);
-  const pendingReviews = shots.filter(s => s.status === 'client-review');
-  const activeShot = activeReviewId ? shots.find(s => s.id === activeReviewId) : null;
-  const activeProject = activeShot ? PROJECTS.find(p => p.id === activeShot.projectId) : null;
-  const activeStudio = activeProject ? STUDIOS.find(s => s.id === activeProject.studioId) : null;
+  const pendingReviews = shots.filter((s) => s.status === "client-review");
+  const activeShot = activeReviewId
+    ? shots.find((s) => s.id === activeReviewId)
+    : null;
+  const activeProject = activeShot
+    ? PROJECTS.find((p) => p.id === activeShot.projectId)
+    : null;
+  const activeStudio = activeProject
+    ? STUDIOS.find((s) => s.id === activeProject.studioId)
+    : null;
 
   // Studio Updates: the one bridge from the internal status-broadcast
   // feature into this external, unauthenticated portal — a producer/manager
@@ -110,24 +157,34 @@ export default function ClientReview() {
   const studioUpdates = useMemo(
     () =>
       broadcasts
-        .filter((b) => b.audience === 'internal_and_client' && b.projectId === activeProject?.id)
-        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+        .filter(
+          (b) =>
+            b.audience === "internal_and_client" &&
+            b.projectId === activeProject?.id,
+        )
+        .sort(
+          (a, b) =>
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+        )
         .slice(0, 3),
-    [broadcasts, activeProject]
+    [broadcasts, activeProject],
   );
 
   // Deterministic render-preview art for the player's video area, so there's
   // always something on screen before playback starts (or if it never does).
   const activeVersionPoster = useMemo(
-    () => (activeShot ? getPlaceholderThumbnail(resolveThumbnailSeed(activeShot), 1280, 720) : undefined),
-    [activeShot]
+    () =>
+      activeShot
+        ? getPlaceholderThumbnail(resolveThumbnailSeed(activeShot), 1280, 720)
+        : undefined,
+    [activeShot],
   );
 
   // Real per-shot media reference for playback, instead of one hardcoded
   // clip shared by every shot regardless of which one was clicked.
   const activeVideoSrc = useMemo(
     () => (activeShot ? resolveShotVideoSrc(activeShot) : undefined),
-    [activeShot]
+    [activeShot],
   );
 
   // Client feedback moderation: notes submitted here are held pending until
@@ -135,7 +192,9 @@ export default function ClientReview() {
   // stream — they never become visible internally by default.
   const clientNotes = useReviewStore((s) => s.clientNotes);
   const addClientNote = useReviewStore((s) => s.addClientNote);
-  const shotNotes = activeShot ? clientNotes.filter(n => n.shotId === activeShot.id) : [];
+  const shotNotes = activeShot
+    ? clientNotes.filter((n) => n.shotId === activeShot.id)
+    : [];
 
   useEffect(() => {
     let animationFrameId: number;
@@ -151,7 +210,7 @@ export default function ClientReview() {
         const now = Date.now();
         const dt = now - lastTime;
         if (dt >= 1000 / 24) {
-          setFrame(f => {
+          setFrame((f) => {
             let nextF = f + 1;
             if (nextF > maxFrames) {
               nextF = 1;
@@ -173,7 +232,7 @@ export default function ClientReview() {
 
     return () => {
       if (animationFrameId) cancelAnimationFrame(animationFrameId);
-    }
+    };
   }, [isPlaying, activeReviewId, maxFrames, isLockedViewer]);
 
   // While locked, mirror the presenter's playhead and give up local playback.
@@ -187,74 +246,92 @@ export default function ClientReview() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't trigger if user is typing in an input or textarea
-      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return;
+      if (
+        document.activeElement?.tagName === "INPUT" ||
+        document.activeElement?.tagName === "TEXTAREA"
+      )
+        return;
       if (isLockedViewer) return;
-      if (e.code === 'Space') {
+      if (e.code === "Space") {
         e.preventDefault();
-        setIsPlaying(p => !p);
-      } else if (e.code === 'ArrowLeft') {
-        e.preventDefault();
-        setIsPlaying(false);
-        setFrame(f => Math.max(1, f - 1));
-      } else if (e.code === 'ArrowRight') {
+        setIsPlaying((p) => !p);
+      } else if (e.code === "ArrowLeft") {
         e.preventDefault();
         setIsPlaying(false);
-        setFrame(f => Math.min(maxFrames, f + 1));
-      } else if (e.code === 'Backspace' || e.code === 'Delete') {
+        setFrame((f) => Math.max(1, f - 1));
+      } else if (e.code === "ArrowRight") {
+        e.preventDefault();
+        setIsPlaying(false);
+        setFrame((f) => Math.min(maxFrames, f + 1));
+      } else if (e.code === "Backspace" || e.code === "Delete") {
         if (selectedAnnotationId) {
-          setAnnotations(prev => prev.filter(a => a.id !== selectedAnnotationId));
+          setAnnotations((prev) =>
+            prev.filter((a) => a.id !== selectedAnnotationId),
+          );
           setSelectedAnnotationId(null);
         }
-      } else if (e.code === 'Escape') {
+      } else if (e.code === "Escape") {
         setSelectedAnnotationId(null);
-        setTool('select');
-      } else if (e.key === '1') setTool('select');
-      else if (e.key === '2') setTool('pen');
-      else if (e.key === '3') setTool('arrow');
-      else if (e.key === '4') setTool('rectangle');
-      else if (e.key === '5') setTool('text');
+        setTool("select");
+      } else if (e.key === "1") setTool("select");
+      else if (e.key === "2") setTool("pen");
+      else if (e.key === "3") setTool("arrow");
+      else if (e.key === "4") setTool("rectangle");
+      else if (e.key === "5") setTool("text");
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [maxFrames, isLockedViewer, selectedAnnotationId]);
 
   // Handle global mouse move for canvas dragging
   useEffect(() => {
     if (!draggingElement) return;
-    
+
     const handleMouseMove = (e: MouseEvent) => {
       const dx = e.clientX - draggingElement.startX;
       const dy = e.clientY - draggingElement.startY;
-      
-      if (draggingElement.type === 'annotation') {
-        setAnnotations(prev => prev.map(a => {
-          if (a.id !== draggingElement.id) return a;
-          return { ...a, x: draggingElement.initialX + dx, y: draggingElement.initialY + dy };
-        }));
+
+      if (draggingElement.type === "annotation") {
+        setAnnotations((prev) =>
+          prev.map((a) => {
+            if (a.id !== draggingElement.id) return a;
+            return {
+              ...a,
+              x: draggingElement.initialX + dx,
+              y: draggingElement.initialY + dy,
+            };
+          }),
+        );
       }
     };
-    
+
     const handleMouseUp = () => setDraggingElement(null);
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    }
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
   }, [draggingElement]);
 
-  const handleSubmit = (action: 'approved' | 'changes_requested') => {
+  const handleSubmit = (action: "approved" | "changes_requested") => {
     if (activeShot) {
       // Persist the real decision: the shot's clientReviewStatus (the
       // review-pipeline record) and its overall status (what takes it out of
       // "Awaiting Review" on this dashboard and on the producer home page,
       // both of which filter on status === 'client-review').
-      updateReviewStatus(activeShot.id, false, action === 'approved' ? 'approved' : 'changes-requested');
-      updateShot(activeShot.id, { status: action === 'approved' ? 'approved' : 'in-progress' });
+      updateReviewStatus(
+        activeShot.id,
+        false,
+        action === "approved" ? "approved" : "changes-requested",
+      );
+      updateShot(activeShot.id, {
+        status: action === "approved" ? "approved" : "in-progress",
+      });
     }
     toast({
-      title: action === 'approved' ? 'Approved' : 'Changes Requested',
-      description: 'Your decision has been sent to the studio team.'
+      title: action === "approved" ? "Approved" : "Changes Requested",
+      description: "Your decision has been sent to the studio team.",
     });
     setTimeout(() => {
       setActiveReviewId(null);
@@ -263,14 +340,18 @@ export default function ClientReview() {
 
   const handleLogout = () => {
     logout();
-    setLocation('/login');
+    setLocation("/login");
   };
 
   const handleAccessSubmit = () => {
-    if (accessCode.toLowerCase() === 'demo') {
+    if (accessCode.toLowerCase() === "demo") {
       setClientAuthenticated(true);
     } else {
-      toast({ title: 'Invalid Code', description: 'Please check your email for the correct access code.', variant: 'destructive' });
+      toast({
+        title: "Invalid Code",
+        description: "Please check your email for the correct access code.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -282,15 +363,21 @@ export default function ClientReview() {
           <div className="w-7 h-7 bg-primary rounded-lg flex items-center justify-center shadow-lg shadow-primary/20">
             <div className="w-3.5 h-3.5 bg-card rounded-sm" />
           </div>
-          <span className="font-bold text-lg tracking-tight text-white">Forge</span>
+          <span className="font-bold text-lg tracking-tight text-white">
+            Forge
+          </span>
         </div>
         <Card className="w-full max-w-md border-border/50 shadow-2xl">
           <CardHeader className="space-y-2 text-center pb-6">
             <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-2">
               <Key className="w-6 h-6 text-primary" />
             </div>
-            <CardTitle className="text-2xl font-bold">Client Review Portal</CardTitle>
-            <CardDescription>Enter your secure access code to view pending deliverables.</CardDescription>
+            <CardTitle className="text-2xl font-bold">
+              Client Review Portal
+            </CardTitle>
+            <CardDescription>
+              Enter your secure access code to view pending deliverables.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -298,9 +385,9 @@ export default function ClientReview() {
                 type="password"
                 placeholder="Enter access code"
                 value={accessCode}
-                onChange={e => setAccessCode(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') handleAccessSubmit();
+                onChange={(e) => setAccessCode(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleAccessSubmit();
                 }}
                 className="text-center text-lg tracking-widest h-12"
               />
@@ -320,7 +407,8 @@ export default function ClientReview() {
                 the input's placeholder (which read the code out to anyone
                 who focused the field, without even needing to submit). */}
             <p className="text-xs text-center text-muted-foreground/70 border-t border-border/50 pt-3 mt-2">
-              Demo mode — access code is <span className="font-mono text-foreground/80">demo</span>
+              Demo mode — access code is{" "}
+              <span className="font-mono text-foreground/80">demo</span>
             </p>
           </CardContent>
         </Card>
@@ -338,15 +426,27 @@ export default function ClientReview() {
               <div className="w-4 h-4 bg-card rounded-sm" />
             </div>
             <div className="leading-tight">
-              <div className="font-bold text-lg tracking-tight">Forge Client Portal</div>
-              <div className="text-[11px] text-zinc-500">External review — no studio login required</div>
+              <div className="font-bold text-lg tracking-tight">
+                Forge Client Portal
+              </div>
+              <div className="text-[11px] text-zinc-500">
+                External review — no studio login required
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <Badge variant="outline" className="border-status-green/30 text-status-green bg-status-green/10 gap-1.5">
+            <Badge
+              variant="outline"
+              className="border-status-green/30 text-status-green bg-status-green/10 gap-1.5"
+            >
               <Lock className="w-3 h-3" /> Secure Connection
             </Badge>
-            <Button variant="ghost" size="sm" className="text-zinc-400 hover:text-white" onClick={handleLogout}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-zinc-400 hover:text-white"
+              onClick={handleLogout}
+            >
               <LogOut className="w-4 h-4 mr-2" /> Exit
             </Button>
           </div>
@@ -354,26 +454,41 @@ export default function ClientReview() {
 
         <main className="p-8 max-w-7xl mx-auto space-y-8">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Pending Reviews</h1>
-            <p className="text-zinc-400 mt-2 text-sm">Please review the following deliveries and provide your feedback or approval.</p>
+            <h1 className="text-3xl font-bold tracking-tight">
+              Pending Reviews
+            </h1>
+            <p className="text-zinc-400 mt-2 text-sm">
+              Please review the following deliveries and provide your feedback
+              or approval.
+            </p>
           </div>
 
           {pendingReviews.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-64 border border-white/5 rounded-xl bg-zinc-900/20">
               <CheckCircle2 className="w-16 h-16 text-status-green mb-4 opacity-50" />
               <h3 className="text-xl font-semibold">All Caught Up!</h3>
-              <p className="text-zinc-500">There are no pending reviews at this time.</p>
+              <p className="text-zinc-500">
+                There are no pending reviews at this time.
+              </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {pendingReviews.map(shot => {
-                const project = PROJECTS.find(p => p.id === shot.projectId);
-                const studio = project ? STUDIOS.find(s => s.id === project.studioId) : null;
+              {pendingReviews.map((shot) => {
+                const project = PROJECTS.find((p) => p.id === shot.projectId);
+                const studio = project
+                  ? STUDIOS.find((s) => s.id === project.studioId)
+                  : null;
                 return (
-                  <div key={shot.id} className="group bg-zinc-900 border border-white/10 rounded-xl overflow-hidden hover:border-accent-scope/50 hover:shadow-[0_0_20px_hsl(var(--accent-scope)/0.15)] transition-all cursor-pointer flex flex-col" onClick={() => setActiveReviewId(shot.id)}>
+                  <div
+                    key={shot.id}
+                    className="group bg-zinc-900 border border-white/10 rounded-xl overflow-hidden hover:border-accent-scope/50 hover:shadow-[0_0_20px_hsl(var(--accent-scope)/0.15)] transition-all cursor-pointer flex flex-col"
+                    onClick={() => setActiveReviewId(shot.id)}
+                  >
                     <div
                       className="relative aspect-video bg-zinc-800 overflow-hidden bg-cover bg-center"
-                      style={{ backgroundImage: `url(${getPlaceholderThumbnail(resolveThumbnailSeed(shot))})` }}
+                      style={{
+                        backgroundImage: `url(${getPlaceholderThumbnail(resolveThumbnailSeed(shot))})`,
+                      }}
                     >
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                         <Play className="w-12 h-12 text-white drop-shadow-md" />
@@ -388,14 +503,26 @@ export default function ClientReview() {
                     <div className="p-5 flex-1 flex flex-col">
                       <div className="flex justify-between items-start mb-2">
                         <div>
-                          <div className="font-semibold text-lg">{shot.name}</div>
-                          <div className="text-sm text-zinc-400">{project?.name}</div>
+                          <div className="font-semibold text-lg">
+                            {shot.name}
+                          </div>
+                          <div className="text-sm text-zinc-400">
+                            {project?.name}
+                          </div>
                         </div>
-                        <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 hover:bg-amber-500/20">Awaiting Review</Badge>
+                        <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 hover:bg-amber-500/20">
+                          Awaiting Review
+                        </Badge>
                       </div>
                       <div className="mt-auto pt-4 flex items-center justify-between text-xs text-zinc-500 border-t border-white/5">
-                        <span>{shot.usdVersion || 'v003.usd'}</span>
-                        <span>Delivered {new Date(shot.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                        <span>{shot.usdVersion || "v003.usd"}</span>
+                        <span>
+                          Delivered{" "}
+                          {new Date(shot.updatedAt).toLocaleDateString(
+                            undefined,
+                            { month: "short", day: "numeric" },
+                          )}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -413,14 +540,24 @@ export default function ClientReview() {
     <div className="flex flex-col h-screen bg-black text-white overflow-hidden font-sans animate-in fade-in">
       <div className="h-16 px-6 flex items-center justify-between border-b border-white/10 shrink-0 bg-zinc-950">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" className="hover:bg-white/10" onClick={() => { setActiveReviewId(null); setIsPlaying(false); }}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="hover:bg-white/10"
+            onClick={() => {
+              setActiveReviewId(null);
+              setIsPlaying(false);
+            }}
+          >
             <ChevronLeft className="w-5 h-5" />
           </Button>
           <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shrink-0">
             <div className="w-4 h-4 bg-card rounded-sm" />
           </div>
           <div>
-            <div className="font-semibold text-lg">{activeProject?.name} - {activeShot?.name}</div>
+            <div className="font-semibold text-lg">
+              {activeProject?.name} - {activeShot?.name}
+            </div>
             <div className="text-xs text-white/50 flex items-center gap-1.5">
               <Lock className="w-3 h-3" /> External Client Review • Secure
             </div>
@@ -430,10 +567,17 @@ export default function ClientReview() {
           {activeStudio && (
             <div className="flex items-center gap-2 pr-4 border-r border-white/10 text-xs text-white/60">
               <Building2 className="w-4 h-4 text-white/40" />
-              <span>Delivered by <span className="text-white font-medium">{activeStudio.name}</span></span>
+              <span>
+                Delivered by{" "}
+                <span className="text-white font-medium">
+                  {activeStudio.name}
+                </span>
+              </span>
             </div>
           )}
-          <span className="text-sm text-white/50 timecode">Viewing {activeShot?.usdVersion || 'v003.usd'}</span>
+          <span className="text-sm text-white/50 timecode">
+            Viewing {activeShot?.usdVersion || "v003.usd"}
+          </span>
         </div>
       </div>
 
@@ -446,23 +590,32 @@ export default function ClientReview() {
             STUDIO UPDATES
           </div>
           <div className="flex gap-3 overflow-x-auto">
-            {studioUpdates.map(update => (
+            {studioUpdates.map((update) => (
               <div
                 key={update.id}
                 className={cn(
-                  'flex-1 min-w-[240px] rounded-lg border border-white/10 bg-zinc-900/60 px-3 py-2.5 border-l-2',
-                  update.severity === 'success' && 'border-l-status-green',
-                  update.severity === 'warning' && 'border-l-status-orange',
-                  update.severity === 'info' && 'border-l-white/20'
+                  "flex-1 min-w-[240px] rounded-lg border border-white/10 bg-zinc-900/60 px-3 py-2.5 border-l-2",
+                  update.severity === "success" && "border-l-status-green",
+                  update.severity === "warning" && "border-l-status-orange",
+                  update.severity === "info" && "border-l-white/20",
                 )}
               >
                 <div className="flex items-center justify-between gap-2 mb-1">
-                  <span className="text-xs font-medium text-zinc-200">{activeStudio?.name || 'Studio'}</span>
+                  <span className="text-xs font-medium text-zinc-200">
+                    {activeStudio?.name || "Studio"}
+                  </span>
                   <span className="text-[10px] text-zinc-500 timecode shrink-0">
-                    {new Date(update.timestamp).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                    {new Date(update.timestamp).toLocaleString(undefined, {
+                      month: "short",
+                      day: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}
                   </span>
                 </div>
-                <p className="text-xs text-zinc-400 leading-snug">{update.text}</p>
+                <p className="text-xs text-zinc-400 leading-snug">
+                  {update.text}
+                </p>
               </div>
             ))}
           </div>
@@ -491,7 +644,7 @@ export default function ClientReview() {
               onAnnotationsChange={setAnnotations}
               frame={frame}
               maxFrames={maxFrames}
-              tool={isLockedViewer ? 'select' : tool}
+              tool={isLockedViewer ? "select" : tool}
               color={color}
               colors={COLORS}
               selectedAnnotationId={selectedAnnotationId}
@@ -536,7 +689,11 @@ export default function ClientReview() {
               variant="client"
             />
             <div className="w-px h-6 bg-white/10" />
-            <GhostingToggle active={ghosting} onToggle={() => setGhosting(!ghosting)} variant="client" />
+            <GhostingToggle
+              active={ghosting}
+              onToggle={() => setGhosting(!ghosting)}
+              variant="client"
+            />
           </div>
 
           {/* Scrubber */}
@@ -545,11 +702,14 @@ export default function ClientReview() {
               frame={frame}
               maxFrames={maxFrames}
               disabled={isLockedViewer}
-              onFrameChange={(f) => { setIsPlaying(false); setFrame(f); }}
+              onFrameChange={(f) => {
+                setIsPlaying(false);
+                setFrame(f);
+              }}
               className="w-full bg-white/20 rounded-lg appearance-none cursor-pointer accent-[hsl(var(--accent-scope))]"
             />
             <div className="flex justify-between text-xs text-white/50 mt-2 timecode">
-              <span>{String(frame).padStart(3, '0')}</span>
+              <span>{String(frame).padStart(3, "0")}</span>
               <span>{maxFrames}</span>
             </div>
           </div>
@@ -560,8 +720,14 @@ export default function ClientReview() {
               isPlaying={isPlaying}
               disabled={isLockedViewer}
               onTogglePlay={() => setIsPlaying(!isPlaying)}
-              onStepBack={() => { setIsPlaying(false); setFrame(Math.max(1, frame - 1)); }}
-              onStepForward={() => { setIsPlaying(false); setFrame(Math.min(maxFrames, frame + 1)); }}
+              onStepBack={() => {
+                setIsPlaying(false);
+                setFrame(Math.max(1, frame - 1));
+              }}
+              onStepForward={() => {
+                setIsPlaying(false);
+                setFrame(Math.min(maxFrames, frame + 1));
+              }}
               frame={frame}
               maxFrames={maxFrames}
               buttonClassName="text-white hover:bg-white/10"
@@ -577,17 +743,24 @@ export default function ClientReview() {
         <div className="w-96 bg-zinc-950 border-l border-white/10 flex flex-col">
           <div className="p-6 border-b border-white/10">
             <h2 className="text-xl font-bold mb-1">Feedback</h2>
-            <p className="text-sm text-white/50">Provide notes for the studio on this version.</p>
+            <p className="text-sm text-white/50">
+              Provide notes for the studio on this version.
+            </p>
           </div>
-          
+
           <div className="flex-1 p-6 overflow-y-auto space-y-6">
             <div className="space-y-3">
-              <label className="text-sm font-medium">Add a note at frame <span className="timecode">{String(frame).padStart(3, '0')}</span></label>
+              <label className="text-sm font-medium">
+                Add a note at frame{" "}
+                <span className="timecode">
+                  {String(frame).padStart(3, "0")}
+                </span>
+              </label>
               <Textarea
                 placeholder="E.g. The lighting on the left looks a bit dark..."
                 className="bg-zinc-900 border-white/10 text-white min-h-[120px] focus:ring-accent-scope"
                 value={feedback}
-                onChange={e => setFeedback(e.target.value)}
+                onChange={(e) => setFeedback(e.target.value)}
               />
               <Button
                 className="w-full bg-white/10 hover:bg-white/20 text-white"
@@ -599,18 +772,23 @@ export default function ClientReview() {
                     shotName: activeShot.name,
                     frame,
                     text: feedback.trim(),
-                    authorName: currentUser?.name || 'Client Reviewer',
+                    authorName: currentUser?.name || "Client Reviewer",
                     // Persist whatever markup is currently drawn on the frame
                     // alongside the note — otherwise the drawing vanishes and
                     // only the typed text survives into the review pipeline.
-                    annotations: annotations.length > 0 ? annotations : undefined,
+                    annotations:
+                      annotations.length > 0 ? annotations : undefined,
                   });
                   // Clear the canvas now that this markup has been captured
                   // with the note, so the next note starts from a blank frame.
                   setAnnotations([]);
                   setSelectedAnnotationId(null);
-                  setFeedback('');
-                  toast({ title: 'Note Added', description: 'Sent to the studio for review — they’ll transfer it to the team once seen.' });
+                  setFeedback("");
+                  toast({
+                    title: "Note Added",
+                    description:
+                      "Sent to the studio for review — they’ll transfer it to the team once seen.",
+                  });
                 }}
               >
                 <MessageSquare className="w-4 h-4 mr-2" />
@@ -620,9 +798,11 @@ export default function ClientReview() {
 
             {shotNotes.length > 0 && (
               <div className="space-y-3">
-                <div className="text-xs font-semibold text-zinc-500 tracking-wide">YOUR NOTES</div>
+                <div className="text-xs font-semibold text-zinc-500 tracking-wide">
+                  YOUR NOTES
+                </div>
                 <AnimatePresence initial={false}>
-                  {shotNotes.map(note => (
+                  {shotNotes.map((note) => (
                     <motion.div
                       key={note.id}
                       layout
@@ -636,24 +816,39 @@ export default function ClientReview() {
                           <User className="w-3 h-3 text-zinc-500" />
                           {note.authorName}
                         </span>
-                        <span className="text-[10px] text-zinc-500 timecode">{new Date(note.createdAt).toLocaleString()}</span>
+                        <span className="text-[10px] text-zinc-500 timecode">
+                          {new Date(note.createdAt).toLocaleString()}
+                        </span>
                       </div>
                       <p className="text-sm text-zinc-200 mb-2">{note.text}</p>
                       <div className="flex items-center gap-2 text-[10px] text-zinc-500 mb-2">
-                        <span className="timecode">Frame {String(note.frame).padStart(3, '0')}</span>
+                        <span className="timecode">
+                          Frame {String(note.frame).padStart(3, "0")}
+                        </span>
                         {note.annotations && note.annotations.length > 0 && (
                           <span className="inline-flex items-center gap-1 text-accent-scope/80 font-sans">
                             <PenTool className="w-3 h-3" />
-                            {note.annotations.length} {note.annotations.length === 1 ? 'mark' : 'marks'}
+                            {note.annotations.length}{" "}
+                            {note.annotations.length === 1 ? "mark" : "marks"}
                           </span>
                         )}
                       </div>
-                      <div className={cn(
-                        'inline-flex items-center gap-1.5 text-[11px] px-1.5 py-0.5 rounded',
-                        note.transferred ? 'bg-status-green/10 text-status-green' : 'bg-status-orange/10 text-status-orange'
-                      )}>
-                        {note.transferred ? <Send className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
-                        {note.transferred ? 'Seen by studio team' : 'Awaiting studio review'}
+                      <div
+                        className={cn(
+                          "inline-flex items-center gap-1.5 text-[11px] px-1.5 py-0.5 rounded",
+                          note.transferred
+                            ? "bg-status-green/10 text-status-green"
+                            : "bg-status-orange/10 text-status-orange",
+                        )}
+                      >
+                        {note.transferred ? (
+                          <Send className="w-3 h-3" />
+                        ) : (
+                          <Clock className="w-3 h-3" />
+                        )}
+                        {note.transferred
+                          ? "Seen by studio team"
+                          : "Awaiting studio review"}
                       </div>
                     </motion.div>
                   ))}
@@ -661,21 +856,23 @@ export default function ClientReview() {
               </div>
             )}
           </div>
-          
+
           <div className="p-6 border-t border-white/10 bg-zinc-900/50">
-            <div className="text-sm text-center mb-4 text-zinc-400">Final Decision</div>
+            <div className="text-sm text-center mb-4 text-zinc-400">
+              Final Decision
+            </div>
             <div className="flex gap-3">
               <Button
                 variant="outline"
                 className="flex-1 border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                onClick={() => handleSubmit('changes_requested')}
+                onClick={() => handleSubmit("changes_requested")}
               >
                 <ThumbsDown className="w-4 h-4 mr-2" />
                 Request Changes
               </Button>
               <Button
                 className="flex-1 bg-accent-scope hover:bg-accent-scope/90 text-accent-scope-foreground"
-                onClick={() => handleSubmit('approved')}
+                onClick={() => handleSubmit("approved")}
               >
                 <ThumbsUp className="w-4 h-4 mr-2" />
                 Approve

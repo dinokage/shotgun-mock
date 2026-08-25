@@ -48,3 +48,13 @@ Thumbs.db
 .cache/
 .local/
 .worktrees/
+
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
+
+# Junk / Debug artifacts
+dump.rdb
+all_files.txt
+cookie.txt

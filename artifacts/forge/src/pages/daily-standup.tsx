@@ -1,30 +1,59 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { cn } from '@/lib/utils';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { USERS, DEPARTMENTS, PROJECTS } from '@/data/mockData';
-import { useAuthStore } from '@/store/auth';
-import { useTasksStore } from '@/store/tasks';
-import { useStandupsStore } from '@/store/standups';
-import { useBroadcastsStore } from '@/store/broadcasts';
-import { useUIStore } from '@/store/ui';
-import { useIsLeadership } from '@/hooks/use-capability';
-import { StatusBadge } from '@/components/shared/StatusBadge';
-import { BroadcastComposer, BroadcastFeed } from '@/components/shared/broadcast';
-import { AlertCircle, CheckCircle2, MonitorPlay, ListVideo, GripVertical, PlayCircle, Plus, Calendar, MessageSquare, X, FileText, Radio } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useToast } from '@/hooks/use-toast';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Image as ImageIcon, Video, Paperclip, Send } from 'lucide-react';
-import { apiClient } from '@/lib/apiClient';
-import { fadeInUp, DURATION } from '@/lib/motion';
-import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
+import { useState, useEffect, useMemo, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { cn } from "@/lib/utils";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { USERS, DEPARTMENTS, PROJECTS } from "@/data/mockData";
+import { useAuthStore } from "@/store/auth";
+import { useTasksStore } from "@/store/tasks";
+import { useStandupsStore } from "@/store/standups";
+import { useBroadcastsStore } from "@/store/broadcasts";
+import { useUIStore } from "@/store/ui";
+import { useIsLeadership } from "@/hooks/use-capability";
+import { StatusBadge } from "@/components/shared/StatusBadge";
+import {
+  BroadcastComposer,
+  BroadcastFeed,
+} from "@/components/shared/broadcast";
+import {
+  AlertCircle,
+  CheckCircle2,
+  MonitorPlay,
+  ListVideo,
+  GripVertical,
+  PlayCircle,
+  Plus,
+  Calendar,
+  MessageSquare,
+  X,
+  FileText,
+  Radio,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useToast } from "@/hooks/use-toast";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Image as ImageIcon, Video, Paperclip, Send } from "lucide-react";
+import { apiClient } from "@/lib/apiClient";
+import { fadeInUp, DURATION } from "@/lib/motion";
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+  EmptyDescription,
+} from "@/components/ui/empty";
 import {
   DndContext,
   closestCenter,
@@ -33,20 +62,20 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
-} from '@dnd-kit/core';
+} from "@dnd-kit/core";
 import {
   SortableContext,
   verticalListSortingStrategy,
   useSortable,
   arrayMove,
   sortableKeyboardCoordinates,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 // Stable id for the one hardcoded "mock" playblast feed card that has an
 // approvals affordance, so approvals can be attached to real, persisted
 // store state (store/standups.ts) instead of local-only component state.
-const PLAYBLAST_FEED_ID = 'feed-robot-walk-playblast';
+const PLAYBLAST_FEED_ID = "feed-robot-walk-playblast";
 
 function PlaylistItem({
   task,
@@ -57,7 +86,14 @@ function PlaylistItem({
   index: number;
   onRemove: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
     id: task.id,
   });
   const assignee = USERS.find((u) => u.id === task.assigneeId);
@@ -83,16 +119,23 @@ function PlaylistItem({
         <GripVertical className="w-5 h-5" />
       </button>
       <div className="w-8 h-8 rounded bg-muted flex items-center justify-center font-mono text-xs text-muted-foreground font-bold">
-        {String(index + 1).padStart(2, '0')}
+        {String(index + 1).padStart(2, "0")}
       </div>
       <div className="flex-1">
         <div className="font-semibold text-sm">{task.title}</div>
         <div className="text-xs text-muted-foreground flex items-center gap-2 mt-1">
-          <Avatar className="w-4 h-4"><AvatarImage src={assignee?.avatar} /></Avatar>
+          <Avatar className="w-4 h-4">
+            <AvatarImage src={assignee?.avatar} />
+          </Avatar>
           {assignee?.name} • v001
         </div>
       </div>
-      <Button variant="ghost" size="sm" className="text-red-500 opacity-0 group-hover:opacity-100 transition-opacity" onClick={onRemove}>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+        onClick={onRemove}
+      >
         Remove
       </Button>
     </div>
@@ -116,18 +159,18 @@ export default function DailyStandup() {
   const broadcasts = useBroadcastsStore((s) => s.broadcasts);
   const { setActiveTaskDrawer } = useUIStore();
   const isLeadership = useIsLeadership();
-  const [selectedDeptId, setSelectedDeptId] = useState<string>('ALL');
+  const [selectedDeptId, setSelectedDeptId] = useState<string>("ALL");
   const [sessionActive, setSessionActive] = useState(false);
   const [approvedUsers, setApprovedUsers] = useState<Set<string>>(new Set());
-  const [updateText, setUpdateText] = useState('');
-  const [updateHours, setUpdateHours] = useState('8');
-  const [postTaskId, setPostTaskId] = useState('');
+  const [updateText, setUpdateText] = useState("");
+  const [updateHours, setUpdateHours] = useState("8");
+  const [postTaskId, setPostTaskId] = useState("");
   const [isPosting, setIsPosting] = useState(false);
   const [syncError, setSyncError] = useState(false);
   const [logDialogOpen, setLogDialogOpen] = useState(false);
-  const [logTaskId, setLogTaskId] = useState('');
-  const [logHours, setLogHours] = useState('8');
-  const [logNote, setLogNote] = useState('');
+  const [logTaskId, setLogTaskId] = useState("");
+  const [logHours, setLogHours] = useState("8");
+  const [logNote, setLogNote] = useState("");
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [videoPreviewOpen, setVideoPreviewOpen] = useState(false);
@@ -137,7 +180,9 @@ export default function DailyStandup() {
 
   const playlistSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
   );
 
   // Tasks and standup updates now live in real, persisted Zustand stores
@@ -147,7 +192,7 @@ export default function DailyStandup() {
   // stale-data banner instead of only logging to the console.
   const fetchData = async () => {
     try {
-      await Promise.all([apiClient.get('/tasks'), apiClient.get('/standups')]);
+      await Promise.all([apiClient.get("/tasks"), apiClient.get("/standups")]);
       setSyncError(false);
     } catch (e) {
       console.error(e);
@@ -161,20 +206,29 @@ export default function DailyStandup() {
     return () => clearInterval(interval);
   }, []);
 
-  const isAllDepts = selectedDeptId === 'ALL';
-  const dept = isAllDepts ? null : DEPARTMENTS.find(d => d.id === selectedDeptId);
-  const team = isAllDepts ? USERS : USERS.filter(u => u.departmentId === selectedDeptId);
+  const isAllDepts = selectedDeptId === "ALL";
+  const dept = isAllDepts
+    ? null
+    : DEPARTMENTS.find((d) => d.id === selectedDeptId);
+  const team = isAllDepts
+    ? USERS
+    : USERS.filter((u) => u.departmentId === selectedDeptId);
 
   // Playlist entries derived live from the persisted id order + the current
   // task list, so it always reflects real task data (title/status/assignee)
   // instead of a stale snapshot captured at add-time.
   const playlist = useMemo(
-    () => playlistIds.map((id) => tasks.find((t) => t.id === id)).filter((t): t is (typeof tasks)[number] => Boolean(t)),
-    [playlistIds, tasks]
+    () =>
+      playlistIds
+        .map((id) => tasks.find((t) => t.id === id))
+        .filter((t): t is (typeof tasks)[number] => Boolean(t)),
+    [playlistIds, tasks],
   );
 
   const playblastApprovals = feedApprovals[PLAYBLAST_FEED_ID] ?? [];
-  const hasApprovedPlayblast = playblastApprovals.includes(currentUser?.id ?? '');
+  const hasApprovedPlayblast = playblastApprovals.includes(
+    currentUser?.id ?? "",
+  );
 
   // A task is "awaiting lead/supervisor review" once it's either been
   // quick-submitted (status 'review') or pushed through the formal review
@@ -182,60 +236,85 @@ export default function DailyStandup() {
   // convention TaskDrawer.tsx uses for gating Approve/Reject actions.
   // Filtering on 'review' alone silently dropped every lead-review task
   // from the Dailies Playlist Builder's "Ready for Review" queue.
-  const pendingReviewTasks = tasks.filter(t =>
-    (isAllDepts || t.department === dept?.name) && ['review', 'lead-review'].includes(t.status)
+  const pendingReviewTasks = tasks.filter(
+    (t) =>
+      (isAllDepts || t.department === dept?.name) &&
+      ["review", "lead-review"].includes(t.status),
   );
 
   // Updates posted from the "My Updates" form, mapped with the full user
   // object + a display time, the same shape the feed previously expected
   // from the apiClient stub.
-  const feedUpdates = standupUpdates.map((update) => {
-    const user = USERS.find(u => u.id === update.userId) || currentUser;
-    return {
-      ...update,
-      user,
-      time: new Date(update.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
-  }).filter(update => {
-    if (!currentUser) return false;
-    // RBAC: Main production managers see everything.
-    if (['vfx_producer', 'production_manager'].includes(currentUser.role)) return true;
-    
-    // RBAC: Dept managers/leads see their dept + their own updates
-    if (['supervisor', 'lead', 'coordinator'].includes(currentUser.role)) {
-      return update.user?.departmentId === currentUser.departmentId || update.userId === currentUser.id;
-    }
-    
-    // RBAC: Artists only see their own updates
-    return update.userId === currentUser.id;
-  });
+  const feedUpdates = standupUpdates
+    .map((update) => {
+      const user = USERS.find((u) => u.id === update.userId) || currentUser;
+      return {
+        ...update,
+        user,
+        time: new Date(update.timestamp).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      };
+    })
+    .filter((update) => {
+      if (!currentUser) return false;
+      // RBAC: Main production managers see everything.
+      if (["vfx_producer", "production_manager"].includes(currentUser.role))
+        return true;
 
-  const payrollRows = useMemo(() => team.map(member => {
-    const tasksWithLogs = tasks.filter(t => t.assigneeId === member.id);
-    const today = new Date().toISOString().split('T')[0];
-    let totalHoursToday = 0;
-    tasksWithLogs.forEach(task => {
-      const todaysLogs = task.dailyLogs.filter(log => log.date.startsWith(today));
-      totalHoursToday += todaysLogs.reduce((acc, log) => acc + log.hours, 0);
+      // RBAC: Dept managers/leads see their dept + their own updates
+      if (["supervisor", "lead", "coordinator"].includes(currentUser.role)) {
+        return (
+          update.user?.departmentId === currentUser.departmentId ||
+          update.userId === currentUser.id
+        );
+      }
+
+      // RBAC: Artists only see their own updates
+      return update.userId === currentUser.id;
     });
-    const memberDept = DEPARTMENTS.find(d => d.id === member.departmentId);
-    return {
-      member,
-      memberDept,
-      totalHoursToday,
-      isOverloaded: member.capacity > 95,
-      isApproved: approvedUsers.has(member.id),
-    };
-  }), [team, tasks, approvedUsers]);
+
+  const payrollRows = useMemo(
+    () =>
+      team.map((member) => {
+        const tasksWithLogs = tasks.filter((t) => t.assigneeId === member.id);
+        const today = new Date().toISOString().split("T")[0];
+        let totalHoursToday = 0;
+        tasksWithLogs.forEach((task) => {
+          const todaysLogs = task.dailyLogs.filter((log) =>
+            log.date.startsWith(today),
+          );
+          totalHoursToday += todaysLogs.reduce(
+            (acc, log) => acc + log.hours,
+            0,
+          );
+        });
+        const memberDept = DEPARTMENTS.find(
+          (d) => d.id === member.departmentId,
+        );
+        return {
+          member,
+          memberDept,
+          totalHoursToday,
+          isOverloaded: member.capacity > 95,
+          isApproved: approvedUsers.has(member.id),
+        };
+      }),
+    [team, tasks, approvedUsers],
+  );
 
   if (!currentUser) return null;
 
-  const myTasks = tasks.filter(t => t.assigneeId === currentUser.id);
+  const myTasks = tasks.filter((t) => t.assigneeId === currentUser.id);
 
   const addToPlaylist = (task: any) => {
     if (!playlistIds.includes(task.id)) {
       addToPlaylistStore(task.id);
-      toast({ title: 'Added to Playlist', description: `${task.title} queued for dailies.` });
+      toast({
+        title: "Added to Playlist",
+        description: `${task.title} queued for dailies.`,
+      });
     }
   };
 
@@ -251,7 +330,10 @@ export default function DailyStandup() {
   const handleFilesSelected = (files: FileList | null) => {
     if (!files || files.length === 0) return;
     setAttachedFiles((prev) => [...prev, ...Array.from(files)]);
-    toast({ title: 'Attachment Added', description: `${files.length} file(s) staged for this update.` });
+    toast({
+      title: "Attachment Added",
+      description: `${files.length} file(s) staged for this update.`,
+    });
   };
 
   const handleRemoveAttachment = (index: number) => {
@@ -259,8 +341,11 @@ export default function DailyStandup() {
   };
 
   const handleUnblock = (taskId: string) => {
-    updateTaskStatus(taskId, 'in-progress');
-    toast({ title: 'Task Unbottleneck', description: 'The task has been moved back to in-progress.' });
+    updateTaskStatus(taskId, "in-progress");
+    toast({
+      title: "Task Unbottleneck",
+      description: "The task has been moved back to in-progress.",
+    });
   };
 
   const handlePostUpdate = () => {
@@ -277,8 +362,11 @@ export default function DailyStandup() {
         hours: Number(updateHours) || 0,
         timestamp: new Date().toISOString(),
       });
-      toast({ title: 'Update Posted!', description: 'Your daily progress has been shared.' });
-      setUpdateText('');
+      toast({
+        title: "Update Posted!",
+        description: "Your daily progress has been shared.",
+      });
+      setUpdateText("");
       setAttachedFiles([]);
       setIsPosting(false);
     }, DURATION.fast * 1000);
@@ -288,10 +376,14 @@ export default function DailyStandup() {
     const resolvedTaskId = logTaskId || myTasks[0]?.id;
     const hoursNum = parseFloat(logHours);
     if (!resolvedTaskId || !hoursNum || hoursNum <= 0) {
-      toast({ title: 'Missing Info', description: 'Select a task and enter valid hours.', variant: 'destructive' });
+      toast({
+        title: "Missing Info",
+        description: "Select a task and enter valid hours.",
+        variant: "destructive",
+      });
       return;
     }
-    const task = tasks.find(t => t.id === resolvedTaskId);
+    const task = tasks.find((t) => t.id === resolvedTaskId);
     if (!task) return;
     updateTask(task.id, {
       dailyLogs: [
@@ -299,58 +391,80 @@ export default function DailyStandup() {
         {
           date: new Date().toISOString().slice(0, 10),
           hours: hoursNum,
-          note: logNote.trim() || 'No notes provided.',
+          note: logNote.trim() || "No notes provided.",
           userId: currentUser.id,
         },
       ],
       actualHours: task.actualHours + hoursNum,
     });
-    toast({ title: 'Log Submitted', description: 'Your daily update has been recorded successfully.' });
+    toast({
+      title: "Log Submitted",
+      description: "Your daily update has been recorded successfully.",
+    });
     setLogDialogOpen(false);
-    setLogTaskId('');
-    setLogHours('8');
-    setLogNote('');
+    setLogTaskId("");
+    setLogHours("8");
+    setLogNote("");
   };
 
   const handleViewLogs = (memberId: string, memberName: string) => {
-    const memberTasks = tasks.filter(t => t.assigneeId === memberId);
-    const taskToOpen = memberTasks.find(t => t.dailyLogs.length > 0) || memberTasks[0];
+    const memberTasks = tasks.filter((t) => t.assigneeId === memberId);
+    const taskToOpen =
+      memberTasks.find((t) => t.dailyLogs.length > 0) || memberTasks[0];
     if (taskToOpen) {
       setActiveTaskDrawer(taskToOpen.id);
     } else {
-      toast({ title: 'No Timesheet Data', description: `${memberName} has no logged tasks yet.` });
+      toast({
+        title: "No Timesheet Data",
+        description: `${memberName} has no logged tasks yet.`,
+      });
     }
   };
 
   const escapePayrollCSVValue = (value: unknown) => {
-    const s = String(value ?? '');
+    const s = String(value ?? "");
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
 
   const handleExportPayrollCSV = () => {
-    const headers = ['Employee', 'Role', 'Department', 'Status', 'Hours Today', 'Capacity %', 'Timesheet Approved'];
-    const rows = payrollRows.map(({ member, memberDept, totalHoursToday, isApproved }) => [
-      member.name,
-      member.title,
-      memberDept?.name ?? '',
-      member.status === 'active' ? 'Punched In' : 'Away',
-      totalHoursToday,
-      member.capacity,
-      isApproved ? 'Yes' : 'No',
-    ]);
-    const csv = [headers, ...rows].map((r) => r.map(escapePayrollCSVValue).join(',')).join('\n');
+    const headers = [
+      "Employee",
+      "Role",
+      "Department",
+      "Status",
+      "Hours Today",
+      "Capacity %",
+      "Timesheet Approved",
+    ];
+    const rows = payrollRows.map(
+      ({ member, memberDept, totalHoursToday, isApproved }) => [
+        member.name,
+        member.title,
+        memberDept?.name ?? "",
+        member.status === "active" ? "Punched In" : "Away",
+        totalHoursToday,
+        member.capacity,
+        isApproved ? "Yes" : "No",
+      ],
+    );
+    const csv = [headers, ...rows]
+      .map((r) => r.map(escapePayrollCSVValue).join(","))
+      .join("\n");
 
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
-    a.download = `payroll-attendance-${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `payroll-attendance-${new Date().toISOString().split("T")[0]}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    toast({ title: 'Export Complete', description: `${payrollRows.length} employee records exported to CSV.` });
+    toast({
+      title: "Export Complete",
+      description: `${payrollRows.length} employee records exported to CSV.`,
+    });
   };
 
   return (
@@ -361,19 +475,23 @@ export default function DailyStandup() {
             <MonitorPlay className="w-8 h-8 text-primary" />
             Daily Standup
           </h1>
-          <p className="text-muted-foreground mt-1">Review team progress, blockers, and build daily playlists</p>
+          <p className="text-muted-foreground mt-1">
+            Review team progress, blockers, and build daily playlists
+          </p>
         </div>
-        
+
         {/* Department Switcher */}
         {isLeadership && (
-          <select 
+          <select
             className="h-10 rounded-md border border-border bg-card px-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
             value={selectedDeptId}
             onChange={(e) => setSelectedDeptId(e.target.value)}
           >
             <option value="ALL">All Departments (Studio-Wide)</option>
-            {DEPARTMENTS.map(d => (
-              <option key={d.id} value={d.id}>{d.name}</option>
+            {DEPARTMENTS.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
             ))}
           </select>
         )}
@@ -391,7 +509,10 @@ export default function DailyStandup() {
         )}
       </AnimatePresence>
 
-      <Tabs defaultValue={isLeadership ? "overview" : "updates"} className="w-full">
+      <Tabs
+        defaultValue={isLeadership ? "overview" : "updates"}
+        className="w-full"
+      >
         <TabsList className="mb-4">
           {isLeadership && (
             <>
@@ -407,8 +528,13 @@ export default function DailyStandup() {
           <TabsTrigger value="broadcasts" className="flex items-center gap-2">
             <Radio className="w-4 h-4" /> Broadcasts
           </TabsTrigger>
-          {['vfx_producer', 'production_manager', 'supervisor'].includes(currentUser.role) && (
-            <TabsTrigger value="payroll" className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+          {["vfx_producer", "production_manager", "supervisor"].includes(
+            currentUser.role,
+          ) && (
+            <TabsTrigger
+              value="payroll"
+              className="flex items-center gap-2 text-amber-600 dark:text-amber-400"
+            >
               <CheckCircle2 className="w-4 h-4" /> Payroll & Attendance
             </TabsTrigger>
           )}
@@ -417,283 +543,403 @@ export default function DailyStandup() {
         {isLeadership && (
           <>
             <TabsContent value="overview">
-          <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
-            {/* Left Column: Team Status Overview */}
-            <div className="xl:col-span-1 space-y-4">
-              <Card className="border-border/50 bg-muted/20">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm uppercase tracking-wider text-muted-foreground">Team Roster</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {team.map(member => {
-                    const isOverloaded = member.capacity > 95;
-                    const isAway = member.status !== 'active';
-                    
-                    return (
-                      <div key={member.id} className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50 cursor-pointer transition-colors">
-                        <div className="flex items-center gap-3">
-                          <Avatar className="w-8 h-8">
-                            <AvatarImage src={member.avatar} />
-                            <AvatarFallback>{member.name.charAt(0)}</AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <div className="text-sm font-medium">{member.name}</div>
-                            <div className="text-[10px] text-muted-foreground flex items-center gap-1">
-                              {isAway ? (
-                                <span className="text-red-500">Away/Leave</span>
-                              ) : (
-                                <>
-                                  <div className={`w-1.5 h-1.5 rounded-full ${isOverloaded ? 'bg-red-500' : 'bg-green-500'}`} />
-                                  Cap: {member.capacity}%
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                        {isOverloaded && <AlertCircle className="w-4 h-4 text-red-500" />}
-                      </div>
-                    )
-                  })}
-                </CardContent>
-              </Card>
-            </div>
+              <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+                {/* Left Column: Team Status Overview */}
+                <div className="xl:col-span-1 space-y-4">
+                  <Card className="border-border/50 bg-muted/20">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm uppercase tracking-wider text-muted-foreground">
+                        Team Roster
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {team.map((member) => {
+                        const isOverloaded = member.capacity > 95;
+                        const isAway = member.status !== "active";
 
-            {/* Right Columns: Active Tasks & Blockers */}
-            <div className="xl:col-span-3 space-y-6">
-              {/* Bottleneck or At Risk */}
-              <div>
-                 <h3 className="text-lg font-semibold flex items-center gap-2 mb-4">
-                   <AlertCircle className="w-5 h-5 text-red-500" />
-                   Bottleneck / Needs Attention
-                 </h3>
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                   {tasks.filter(t => (isAllDepts || t.department === dept?.name) && (t.status === 'bottleneck' || t.weeklyRating === 'at-risk' || t.weeklyRating === 'behind')).slice(0, 4).map(task => {
-                     const assignee = USERS.find(u => u.id === task.assigneeId);
-                     return (
-                       <Card key={task.id} className="border-red-500/20 bg-red-500/5">
-                         <CardContent className="p-4">
-                           <div className="flex justify-between items-start mb-2">
-                             <div className="flex gap-2">
-                                <StatusBadge status={task.status} />
-                                {task.weeklyRating && <Badge variant="outline" className="text-red-500 border-red-500/30 bg-red-500/10 text-[10px] uppercase">Rating: {task.weeklyRating}</Badge>}
-                             </div>
-                           </div>
-                           <div className="font-semibold text-sm mb-3">{task.title}</div>
-                           <div className="flex items-center justify-between mt-auto pt-3 border-t border-border/50">
-                             <div className="flex items-center gap-2">
-                                <Avatar className="w-6 h-6">
-                                  <AvatarImage src={assignee?.avatar} />
-                                </Avatar>
-                                <span className="text-xs text-muted-foreground">{assignee?.name}</span>
-                             </div>
-                             <Button 
-                                 size="sm" 
-                                 variant="outline" 
-                                 className="h-7 text-xs border-red-500/20 hover:bg-red-500/10 hover:text-red-500"
-                                 onClick={() => handleUnblock(task.id)}
-                               >
-                                 Unblock
-                               </Button>
-                           </div>
-                         </CardContent>
-                       </Card>
-                     )
-                   })}
-                 </div>
-              </div>
-
-              {/* Yesterday's Progress / Daily Logs */}
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold flex items-center gap-2">
-                     <CheckCircle2 className="w-5 h-5 text-green-500" />
-                     Recent Progress & Daily Logs
-                  </h3>
-                  <Dialog open={logDialogOpen} onOpenChange={(open) => {
-                    setLogDialogOpen(open);
-                    if (open) setLogTaskId(myTasks[0]?.id ?? '');
-                  }}>
-                    <DialogTrigger asChild>
-                      <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90">
-                        <Plus className="w-4 h-4 mr-2" /> Log Update
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Submit Daily Log</DialogTitle>
-                      </DialogHeader>
-                      <div className="space-y-4 py-4">
-                        <div className="space-y-2">
-                          <Label>Task</Label>
-                          <select
-                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                            value={logTaskId}
-                            onChange={(e) => setLogTaskId(e.target.value)}
-                          >
-                            {myTasks.length === 0 && <option value="">No tasks assigned</option>}
-                            {myTasks.map(t => (
-                              <option key={t.id} value={t.id}>{t.title}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Hours Spent</Label>
-                          <Input type="number" value={logHours} onChange={(e) => setLogHours(e.target.value)} min="0" max="24" />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Update Notes</Label>
-                          <textarea
-                            className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                            placeholder="What did you accomplish today? Any blockers?"
-                            value={logNote}
-                            onChange={(e) => setLogNote(e.target.value)}
-                          />
-                        </div>
-                      </div>
-                      <DialogFooter>
-                        <Button onClick={handleLogUpdateSubmit} disabled={myTasks.length === 0}>Submit Update</Button>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
-                </div>
-                <Card className="border-border/50">
-                  <CardContent className="p-0">
-                    <div className="divide-y divide-border">
-                      {tasks.filter(t => (isAllDepts || t.department === dept?.name) && t.dailyLogs.length > 0).slice(0, 8).map(task => {
-                        const assignee = USERS.find(u => u.id === task.assigneeId);
-                        const latestLog = task.dailyLogs[task.dailyLogs.length - 1];
                         return (
-                          <div key={task.id} className="p-4 hover:bg-muted/30 transition-colors">
-                            <div className="flex items-start gap-4">
-                              <Avatar className="w-8 h-8 mt-1">
-                                <AvatarImage src={assignee?.avatar} />
+                          <div
+                            key={member.id}
+                            className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50 cursor-pointer transition-colors"
+                          >
+                            <div className="flex items-center gap-3">
+                              <Avatar className="w-8 h-8">
+                                <AvatarImage src={member.avatar} />
+                                <AvatarFallback>
+                                  {member.name.charAt(0)}
+                                </AvatarFallback>
                               </Avatar>
-                              <div className="flex-1">
-                                <div className="flex items-center justify-between mb-1">
-                                  <div className="font-medium text-sm">
-                                    <span className="text-muted-foreground mr-1">{assignee?.name} logged</span>
-                                    {latestLog.hours}h on {task.title}
-                                  </div>
-                                  <span className="text-xs text-muted-foreground">{new Date(latestLog.date).toLocaleDateString()}</span>
+                              <div>
+                                <div className="text-sm font-medium">
+                                  {member.name}
                                 </div>
-                                <div className="text-sm bg-muted/50 p-2.5 rounded-md text-muted-foreground italic border-l-2 border-primary">
-                                  "{latestLog.note}"
+                                <div className="text-[10px] text-muted-foreground flex items-center gap-1">
+                                  {isAway ? (
+                                    <span className="text-red-500">
+                                      Away/Leave
+                                    </span>
+                                  ) : (
+                                    <>
+                                      <div
+                                        className={`w-1.5 h-1.5 rounded-full ${isOverloaded ? "bg-red-500" : "bg-green-500"}`}
+                                      />
+                                      Cap: {member.capacity}%
+                                    </>
+                                  )}
                                 </div>
                               </div>
                             </div>
+                            {isOverloaded && (
+                              <AlertCircle className="w-4 h-4 text-red-500" />
+                            )}
                           </div>
-                        )
+                        );
                       })}
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
-          </div>
-        </TabsContent>
+                    </CardContent>
+                  </Card>
+                </div>
 
-        <TabsContent value="playlist">
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-            {/* Left: Pending Reviews */}
-            <div className="xl:col-span-1 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-lg">Ready for Review</h3>
-                <Badge variant="secondary">{pendingReviewTasks.length}</Badge>
-              </div>
-              <Card className="border-border/50 bg-muted/10 h-[600px] overflow-y-auto">
-                <CardContent className="p-3 space-y-2">
-                  {pendingReviewTasks.map(task => {
-                    const assignee = USERS.find(u => u.id === task.assigneeId);
-                    return (
-                      <div key={task.id} className="p-3 bg-card border border-border rounded-lg group hover:border-primary/50 transition-colors">
-                        <div className="flex justify-between items-start mb-2">
-                          <div className="font-medium text-sm">{task.title}</div>
-                          <Button size="icon" variant="ghost" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-primary" onClick={() => addToPlaylist(task)}>
-                            <Plus className="w-4 h-4" />
-                          </Button>
-                        </div>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <Avatar className="w-5 h-5"><AvatarImage src={assignee?.avatar} /></Avatar>
-                          {assignee?.name}
-                        </div>
-                      </div>
-                    )
-                  })}
-                  {pendingReviewTasks.length === 0 && (
-                    <div className="text-center py-10 text-muted-foreground text-sm">No tasks pending review in this department.</div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Right: Playlist Builder timeline */}
-            <div className="xl:col-span-2 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-lg flex items-center gap-2">
-                  <ListVideo className="w-5 h-5 text-purple-500" /> Morning Dailies Playlist
-                </h3>
-                <Button 
-                  className={sessionActive ? "bg-green-600 hover:bg-green-700 text-white" : "bg-purple-600 hover:bg-purple-700 text-white"} 
-                  disabled={playlist.length === 0 && !sessionActive}
-                  onClick={() => {
-                    if (sessionActive) {
-                      setSessionActive(false);
-                      clearPlaylistStore();
-                      toast({ title: 'Session Ended', description: 'Playlist cleared.' });
-                    } else {
-                      setSessionActive(true);
-                      toast({ title: 'Dailies Session Started', description: `Launched RV with ${playlist.length} shots queued.` });
-                    }
-                  }}
-                >
-                  <PlayCircle className="w-4 h-4 mr-2" /> {sessionActive ? 'End Session' : 'Start Dailies Session'}
-                </Button>
-              </div>
-
-              <Card className="border-purple-500/20 bg-purple-500/5 h-[600px]">
-                <CardContent className="p-6">
-                  {playlist.length === 0 ? (
-                    <Empty className="h-full border-2 border-purple-500/20 rounded-xl bg-card/50">
-                      <EmptyHeader>
-                        <EmptyMedia variant="icon" className="bg-purple-500/10 text-purple-500">
-                          <ListVideo className="w-8 h-8" />
-                        </EmptyMedia>
-                        <EmptyTitle>No shots queued</EmptyTitle>
-                        <EmptyDescription>Click the '+' on a task to add it to today's playlist</EmptyDescription>
-                      </EmptyHeader>
-                    </Empty>
-                  ) : (
-                    <DndContext
-                      sensors={playlistSensors}
-                      collisionDetection={closestCenter}
-                      onDragEnd={handlePlaylistDragEnd}
-                    >
-                      <SortableContext items={playlistIds} strategy={verticalListSortingStrategy}>
-                        <div className="space-y-3">
-                          {playlist.map((task, idx) => (
-                            <PlaylistItem
+                {/* Right Columns: Active Tasks & Blockers */}
+                <div className="xl:col-span-3 space-y-6">
+                  {/* Bottleneck or At Risk */}
+                  <div>
+                    <h3 className="text-lg font-semibold flex items-center gap-2 mb-4">
+                      <AlertCircle className="w-5 h-5 text-red-500" />
+                      Bottleneck / Needs Attention
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {tasks
+                        .filter(
+                          (t) =>
+                            (isAllDepts || t.department === dept?.name) &&
+                            (t.status === "bottleneck" ||
+                              t.weeklyRating === "at-risk" ||
+                              t.weeklyRating === "behind"),
+                        )
+                        .slice(0, 4)
+                        .map((task) => {
+                          const assignee = USERS.find(
+                            (u) => u.id === task.assigneeId,
+                          );
+                          return (
+                            <Card
                               key={task.id}
-                              task={task}
-                              index={idx}
-                              onRemove={() => removeFromPlaylistStore(task.id)}
-                            />
-                          ))}
+                              className="border-red-500/20 bg-red-500/5"
+                            >
+                              <CardContent className="p-4">
+                                <div className="flex justify-between items-start mb-2">
+                                  <div className="flex gap-2">
+                                    <StatusBadge status={task.status} />
+                                    {task.weeklyRating && (
+                                      <Badge
+                                        variant="outline"
+                                        className="text-red-500 border-red-500/30 bg-red-500/10 text-[10px] uppercase"
+                                      >
+                                        Rating: {task.weeklyRating}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="font-semibold text-sm mb-3">
+                                  {task.title}
+                                </div>
+                                <div className="flex items-center justify-between mt-auto pt-3 border-t border-border/50">
+                                  <div className="flex items-center gap-2">
+                                    <Avatar className="w-6 h-6">
+                                      <AvatarImage src={assignee?.avatar} />
+                                    </Avatar>
+                                    <span className="text-xs text-muted-foreground">
+                                      {assignee?.name}
+                                    </span>
+                                  </div>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-xs border-red-500/20 hover:bg-red-500/10 hover:text-red-500"
+                                    onClick={() => handleUnblock(task.id)}
+                                  >
+                                    Unblock
+                                  </Button>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          );
+                        })}
+                    </div>
+                  </div>
+
+                  {/* Yesterday's Progress / Daily Logs */}
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold flex items-center gap-2">
+                        <CheckCircle2 className="w-5 h-5 text-green-500" />
+                        Recent Progress & Daily Logs
+                      </h3>
+                      <Dialog
+                        open={logDialogOpen}
+                        onOpenChange={(open) => {
+                          setLogDialogOpen(open);
+                          if (open) setLogTaskId(myTasks[0]?.id ?? "");
+                        }}
+                      >
+                        <DialogTrigger asChild>
+                          <Button
+                            size="sm"
+                            className="bg-primary text-primary-foreground hover:bg-primary/90"
+                          >
+                            <Plus className="w-4 h-4 mr-2" /> Log Update
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>Submit Daily Log</DialogTitle>
+                          </DialogHeader>
+                          <div className="space-y-4 py-4">
+                            <div className="space-y-2">
+                              <Label>Task</Label>
+                              <select
+                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                value={logTaskId}
+                                onChange={(e) => setLogTaskId(e.target.value)}
+                              >
+                                {myTasks.length === 0 && (
+                                  <option value="">No tasks assigned</option>
+                                )}
+                                {myTasks.map((t) => (
+                                  <option key={t.id} value={t.id}>
+                                    {t.title}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Hours Spent</Label>
+                              <Input
+                                type="number"
+                                value={logHours}
+                                onChange={(e) => setLogHours(e.target.value)}
+                                min="0"
+                                max="24"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Update Notes</Label>
+                              <textarea
+                                className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                placeholder="What did you accomplish today? Any blockers?"
+                                value={logNote}
+                                onChange={(e) => setLogNote(e.target.value)}
+                              />
+                            </div>
+                          </div>
+                          <DialogFooter>
+                            <Button
+                              onClick={handleLogUpdateSubmit}
+                              disabled={myTasks.length === 0}
+                            >
+                              Submit Update
+                            </Button>
+                          </DialogFooter>
+                        </DialogContent>
+                      </Dialog>
+                    </div>
+                    <Card className="border-border/50">
+                      <CardContent className="p-0">
+                        <div className="divide-y divide-border">
+                          {tasks
+                            .filter(
+                              (t) =>
+                                (isAllDepts || t.department === dept?.name) &&
+                                t.dailyLogs.length > 0,
+                            )
+                            .slice(0, 8)
+                            .map((task) => {
+                              const assignee = USERS.find(
+                                (u) => u.id === task.assigneeId,
+                              );
+                              const latestLog =
+                                task.dailyLogs[task.dailyLogs.length - 1];
+                              return (
+                                <div
+                                  key={task.id}
+                                  className="p-4 hover:bg-muted/30 transition-colors"
+                                >
+                                  <div className="flex items-start gap-4">
+                                    <Avatar className="w-8 h-8 mt-1">
+                                      <AvatarImage src={assignee?.avatar} />
+                                    </Avatar>
+                                    <div className="flex-1">
+                                      <div className="flex items-center justify-between mb-1">
+                                        <div className="font-medium text-sm">
+                                          <span className="text-muted-foreground mr-1">
+                                            {assignee?.name} logged
+                                          </span>
+                                          {latestLog.hours}h on {task.title}
+                                        </div>
+                                        <span className="text-xs text-muted-foreground">
+                                          {new Date(
+                                            latestLog.date,
+                                          ).toLocaleDateString()}
+                                        </span>
+                                      </div>
+                                      <div className="text-sm bg-muted/50 p-2.5 rounded-md text-muted-foreground italic border-l-2 border-primary">
+                                        "{latestLog.note}"
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
                         </div>
-                      </SortableContext>
-                    </DndContext>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </TabsContent>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="playlist">
+              <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                {/* Left: Pending Reviews */}
+                <div className="xl:col-span-1 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-lg">Ready for Review</h3>
+                    <Badge variant="secondary">
+                      {pendingReviewTasks.length}
+                    </Badge>
+                  </div>
+                  <Card className="border-border/50 bg-muted/10 h-[600px] overflow-y-auto">
+                    <CardContent className="p-3 space-y-2">
+                      {pendingReviewTasks.map((task) => {
+                        const assignee = USERS.find(
+                          (u) => u.id === task.assigneeId,
+                        );
+                        return (
+                          <div
+                            key={task.id}
+                            className="p-3 bg-card border border-border rounded-lg group hover:border-primary/50 transition-colors"
+                          >
+                            <div className="flex justify-between items-start mb-2">
+                              <div className="font-medium text-sm">
+                                {task.title}
+                              </div>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-primary"
+                                onClick={() => addToPlaylist(task)}
+                              >
+                                <Plus className="w-4 h-4" />
+                              </Button>
+                            </div>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <Avatar className="w-5 h-5">
+                                <AvatarImage src={assignee?.avatar} />
+                              </Avatar>
+                              {assignee?.name}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {pendingReviewTasks.length === 0 && (
+                        <div className="text-center py-10 text-muted-foreground text-sm">
+                          No tasks pending review in this department.
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Right: Playlist Builder timeline */}
+                <div className="xl:col-span-2 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-lg flex items-center gap-2">
+                      <ListVideo className="w-5 h-5 text-purple-500" /> Morning
+                      Dailies Playlist
+                    </h3>
+                    <Button
+                      className={
+                        sessionActive
+                          ? "bg-green-600 hover:bg-green-700 text-white"
+                          : "bg-purple-600 hover:bg-purple-700 text-white"
+                      }
+                      disabled={playlist.length === 0 && !sessionActive}
+                      onClick={() => {
+                        if (sessionActive) {
+                          setSessionActive(false);
+                          clearPlaylistStore();
+                          toast({
+                            title: "Session Ended",
+                            description: "Playlist cleared.",
+                          });
+                        } else {
+                          setSessionActive(true);
+                          toast({
+                            title: "Dailies Session Started",
+                            description: `Launched RV with ${playlist.length} shots queued.`,
+                          });
+                        }
+                      }}
+                    >
+                      <PlayCircle className="w-4 h-4 mr-2" />{" "}
+                      {sessionActive ? "End Session" : "Start Dailies Session"}
+                    </Button>
+                  </div>
+
+                  <Card className="border-purple-500/20 bg-purple-500/5 h-[600px]">
+                    <CardContent className="p-6">
+                      {playlist.length === 0 ? (
+                        <Empty className="h-full border-2 border-purple-500/20 rounded-xl bg-card/50">
+                          <EmptyHeader>
+                            <EmptyMedia
+                              variant="icon"
+                              className="bg-purple-500/10 text-purple-500"
+                            >
+                              <ListVideo className="w-8 h-8" />
+                            </EmptyMedia>
+                            <EmptyTitle>No shots queued</EmptyTitle>
+                            <EmptyDescription>
+                              Click the '+' on a task to add it to today's
+                              playlist
+                            </EmptyDescription>
+                          </EmptyHeader>
+                        </Empty>
+                      ) : (
+                        <DndContext
+                          sensors={playlistSensors}
+                          collisionDetection={closestCenter}
+                          onDragEnd={handlePlaylistDragEnd}
+                        >
+                          <SortableContext
+                            items={playlistIds}
+                            strategy={verticalListSortingStrategy}
+                          >
+                            <div className="space-y-3">
+                              {playlist.map((task, idx) => (
+                                <PlaylistItem
+                                  key={task.id}
+                                  task={task}
+                                  index={idx}
+                                  onRemove={() =>
+                                    removeFromPlaylistStore(task.id)
+                                  }
+                                />
+                              ))}
+                            </div>
+                          </SortableContext>
+                        </DndContext>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+            </TabsContent>
           </>
         )}
 
         {/* --- NEW TAB: MY UPDATES --- */}
         <TabsContent value="updates">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            
             {/* Left: Log Update Form */}
             <div className="lg:col-span-1 space-y-6">
               <Card className="border-border/50 bg-card">
@@ -707,31 +953,46 @@ export default function DailyStandup() {
                     <Label>Select Task</Label>
                     <select
                       className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                      value={postTaskId || myTasks[0]?.id || ''}
+                      value={postTaskId || myTasks[0]?.id || ""}
                       onChange={(e) => setPostTaskId(e.target.value)}
                     >
-                      {myTasks.length === 0 && <option value="">No tasks assigned</option>}
-                      {myTasks.map(t => (
-                        <option key={t.id} value={t.id} className="bg-background">{t.title}</option>
+                      {myTasks.length === 0 && (
+                        <option value="">No tasks assigned</option>
+                      )}
+                      {myTasks.map((t) => (
+                        <option
+                          key={t.id}
+                          value={t.id}
+                          className="bg-background"
+                        >
+                          {t.title}
+                        </option>
                       ))}
                     </select>
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label>Hours Logged</Label>
-                    <Input type="number" value={updateHours} onChange={(e) => setUpdateHours(e.target.value)} min="0" max="24" className="h-9" />
+                    <Input
+                      type="number"
+                      value={updateHours}
+                      onChange={(e) => setUpdateHours(e.target.value)}
+                      min="0"
+                      max="24"
+                      className="h-9"
+                    />
                   </div>
 
                   <div className="space-y-2">
                     <Label>What did you accomplish?</Label>
-                    <Textarea 
+                    <Textarea
                       placeholder="Write your update here... Mention any blockers."
                       value={updateText}
                       onChange={(e) => setUpdateText(e.target.value)}
                       className="min-h-[100px] resize-none"
                     />
                   </div>
-                  
+
                   {/* Media Upload Area */}
                   <div className="space-y-2">
                     <Label>Attachments (Optional)</Label>
@@ -743,19 +1004,21 @@ export default function DailyStandup() {
                       className="hidden"
                       onChange={(e) => {
                         handleFilesSelected(e.target.files);
-                        e.target.value = '';
+                        e.target.value = "";
                       }}
                     />
                     <div
                       role="button"
                       tabIndex={0}
                       className={cn(
-                        'border-2 border-dashed rounded-lg p-4 text-center hover:bg-muted/30 transition-colors cursor-pointer group',
-                        isDraggingFile ? 'border-primary bg-primary/5' : 'border-border/50',
+                        "border-2 border-dashed rounded-lg p-4 text-center hover:bg-muted/30 transition-colors cursor-pointer group",
+                        isDraggingFile
+                          ? "border-primary bg-primary/5"
+                          : "border-border/50",
                       )}
                       onClick={() => fileInputRef.current?.click()}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
+                        if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
                           fileInputRef.current?.click();
                         }
@@ -776,17 +1039,27 @@ export default function DailyStandup() {
                         <Video className="w-6 h-6" />
                         <Paperclip className="w-6 h-6" />
                       </div>
-                      <p className="text-xs text-muted-foreground">Drag & drop images, shorts, or videos here, or click to browse</p>
-                      <p className="text-[10px] text-muted-foreground mt-1">Supports MP4, MOV, JPG, PNG (Max 50MB)</p>
+                      <p className="text-xs text-muted-foreground">
+                        Drag & drop images, shorts, or videos here, or click to
+                        browse
+                      </p>
+                      <p className="text-[10px] text-muted-foreground mt-1">
+                        Supports MP4, MOV, JPG, PNG (Max 50MB)
+                      </p>
                     </div>
                     {attachedFiles.length > 0 && (
                       <div className="space-y-1.5 pt-1">
                         {attachedFiles.map((file, i) => (
-                          <div key={`${file.name}-${i}`} className="flex items-center justify-between gap-2 rounded-md border border-border/50 bg-muted/30 px-2.5 py-1.5 text-xs">
+                          <div
+                            key={`${file.name}-${i}`}
+                            className="flex items-center justify-between gap-2 rounded-md border border-border/50 bg-muted/30 px-2.5 py-1.5 text-xs"
+                          >
                             <span className="flex items-center gap-1.5 min-w-0 text-foreground/90">
                               <FileText className="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground" />
                               <span className="truncate">{file.name}</span>
-                              <span className="text-muted-foreground flex-shrink-0">({Math.max(1, Math.round(file.size / 1024))} KB)</span>
+                              <span className="text-muted-foreground flex-shrink-0">
+                                ({Math.max(1, Math.round(file.size / 1024))} KB)
+                              </span>
                             </span>
                             <button
                               type="button"
@@ -802,13 +1075,17 @@ export default function DailyStandup() {
                     )}
                   </div>
 
-                  <Button className="w-full mt-2" onClick={handlePostUpdate} disabled={isPosting}>
+                  <Button
+                    className="w-full mt-2"
+                    onClick={handlePostUpdate}
+                    disabled={isPosting}
+                  >
                     {isPosting ? (
                       <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin mr-2" />
                     ) : (
                       <Send className="w-4 h-4 mr-2" />
                     )}
-                    {isPosting ? 'Posting...' : 'Post Update'}
+                    {isPosting ? "Posting..." : "Post Update"}
                   </Button>
                 </CardContent>
               </Card>
@@ -817,24 +1094,40 @@ export default function DailyStandup() {
             {/* Right: Team Feed */}
             <div className="lg:col-span-2 space-y-4">
               <h3 className="font-semibold text-lg mb-4">Team Updates Feed</h3>
-              
+
               {/* Dynamic User Updates */}
               {feedUpdates.map((update) => (
-                <Card key={update.id} className="border-primary/50 bg-primary/5 overflow-hidden animate-in fade-in slide-in-from-bottom-2">
+                <Card
+                  key={update.id}
+                  className="border-primary/50 bg-primary/5 overflow-hidden animate-in fade-in slide-in-from-bottom-2"
+                >
                   <CardContent className="p-0">
                     <div className="p-4 flex items-start gap-3">
                       <Avatar className="w-10 h-10 border border-primary/50">
                         <AvatarImage src={update.user?.avatar} />
-                        <AvatarFallback>{update.user?.name?.charAt(0)}</AvatarFallback>
+                        <AvatarFallback>
+                          {update.user?.name?.charAt(0)}
+                        </AvatarFallback>
                       </Avatar>
                       <div className="flex-1">
                         <div className="flex items-baseline justify-between">
-                          <div className="font-semibold text-sm">{update.user?.name}</div>
-                          <div className="text-xs text-muted-foreground">{update.time}</div>
+                          <div className="font-semibold text-sm">
+                            {update.user?.name}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {update.time}
+                          </div>
                         </div>
                         <div className="text-xs text-primary mb-2 flex items-center gap-1">
-                          <Badge variant="outline" className="text-[10px] h-5 border-primary/30 bg-primary/10">Recent Update</Badge>
-                          <span className="text-muted-foreground ml-1">logged {update.hours}h</span>
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] h-5 border-primary/30 bg-primary/10"
+                          >
+                            Recent Update
+                          </Badge>
+                          <span className="text-muted-foreground ml-1">
+                            logged {update.hours}h
+                          </span>
                         </div>
                         <p className="text-sm text-foreground/90 whitespace-pre-wrap">
                           {update.text}
@@ -844,135 +1137,216 @@ export default function DailyStandup() {
                   </CardContent>
                 </Card>
               ))}
-              
+
               {/* Mock Feed Item 1 (With Image/Video) */}
-              {(['vfx_producer', 'production_manager'].includes(currentUser.role) || currentUser.departmentId === USERS[2]?.departmentId) && (
-              <Card className="border-border/50 bg-card overflow-hidden">
-                <CardContent className="p-0">
-                  <div className="p-4 border-b border-border/50 flex items-start gap-3">
-                    <Avatar className="w-10 h-10 border border-border/50">
-                      <AvatarImage src={USERS[2]?.avatar} />
-                      <AvatarFallback>A</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1">
-                      <div className="flex items-baseline justify-between">
-                        <div className="font-semibold text-sm">{USERS[2]?.name}</div>
-                        <div className="text-xs text-muted-foreground">2 hours ago</div>
-                      </div>
-                      <div className="text-xs text-primary mb-2 flex items-center gap-1">
-                        <Badge variant="outline" className="text-[10px] h-5 border-primary/30 bg-primary/10">Anim: Robot Walk Cycle</Badge>
-                        <span className="text-muted-foreground ml-1">logged 8h</span>
-                      </div>
-                      <p className="text-sm text-foreground/90">
-                        Finished blocking out the main walk cycle for the hero robot. Timing feels much better now. I've attached a quick playblast for review. Let me know if the weight distribution looks right on the left leg!
-                      </p>
-                    </div>
-                  </div>
-                  {/* Media Attachment */}
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    aria-label="Open playblast preview"
-                    className="bg-black relative aspect-video group cursor-pointer"
-                    onClick={() => setVideoPreviewOpen(true)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        setVideoPreviewOpen(true);
-                      }
-                    }}
-                  >
-                    {/* Placeholder image from artifact */}
-                    <img src="/src/assets/daily_update_video_thumbnail.png" alt="Playblast Thumbnail" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
-
-                    {/* Play Button Overlay */}
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="w-12 h-12 bg-primary/90 text-primary-foreground rounded-full flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
-                        <PlayCircle className="w-6 h-6" />
+              {(["vfx_producer", "production_manager"].includes(
+                currentUser.role,
+              ) ||
+                currentUser.departmentId === USERS[2]?.departmentId) && (
+                <Card className="border-border/50 bg-card overflow-hidden">
+                  <CardContent className="p-0">
+                    <div className="p-4 border-b border-border/50 flex items-start gap-3">
+                      <Avatar className="w-10 h-10 border border-border/50">
+                        <AvatarImage src={USERS[2]?.avatar} />
+                        <AvatarFallback>A</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1">
+                        <div className="flex items-baseline justify-between">
+                          <div className="font-semibold text-sm">
+                            {USERS[2]?.name}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            2 hours ago
+                          </div>
+                        </div>
+                        <div className="text-xs text-primary mb-2 flex items-center gap-1">
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] h-5 border-primary/30 bg-primary/10"
+                          >
+                            Anim: Robot Walk Cycle
+                          </Badge>
+                          <span className="text-muted-foreground ml-1">
+                            logged 8h
+                          </span>
+                        </div>
+                        <p className="text-sm text-foreground/90">
+                          Finished blocking out the main walk cycle for the hero
+                          robot. Timing feels much better now. I've attached a
+                          quick playblast for review. Let me know if the weight
+                          distribution looks right on the left leg!
+                        </p>
                       </div>
                     </div>
-                    <div className="absolute bottom-2 right-2 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded">
-                      0:12
-                    </div>
-                  </div>
-                  <Dialog open={videoPreviewOpen} onOpenChange={setVideoPreviewOpen}>
-                    <DialogContent className="sm:max-w-2xl">
-                      <DialogHeader>
-                        <DialogTitle>Anim: Robot Walk Cycle — Playblast</DialogTitle>
-                      </DialogHeader>
-                      <div className="bg-black rounded-md overflow-hidden aspect-video">
-                        <img src="/src/assets/daily_update_video_thumbnail.png" alt="Playblast Thumbnail" className="w-full h-full object-contain" />
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Full video playback isn't available in this environment yet — this is the review thumbnail. Once the media server is connected, this will stream the actual playblast.
-                      </p>
-                    </DialogContent>
-                  </Dialog>
-
-                  {/* Feed Item Footer / Interactions */}
-                  <div className="p-3 bg-muted/20 flex gap-4 text-xs font-medium text-muted-foreground">
-                    <button
-                      className={cn(
-                        'flex items-center gap-1.5 hover:text-primary transition-colors',
-                        hasApprovedPlayblast && 'text-primary',
-                      )}
-                      onClick={() => toggleFeedApproval(PLAYBLAST_FEED_ID, currentUser.id)}
+                    {/* Media Attachment */}
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      aria-label="Open playblast preview"
+                      className="bg-black relative aspect-video group cursor-pointer"
+                      onClick={() => setVideoPreviewOpen(true)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setVideoPreviewOpen(true);
+                        }
+                      }}
                     >
-                      <CheckCircle2 className={cn('w-4 h-4', hasApprovedPlayblast && 'fill-primary/20')} /> {playblastApprovals.length} Approval{playblastApprovals.length === 1 ? '' : 's'}
-                    </button>
-                    <button
-                      className={cn(
-                        'flex items-center gap-1.5 hover:text-primary transition-colors',
-                        feedCommentsOpen && 'text-primary',
-                      )}
-                      onClick={() => setFeedCommentsOpen((prev) => !prev)}
-                    >
-                      <MessageSquare className="w-4 h-4" /> 2 Comments
-                    </button>
-                  </div>
-                  {feedCommentsOpen && (
-                    <div className="px-4 pb-4 pt-1 space-y-2 border-t border-border/50 bg-muted/10">
-                      <div className="flex items-start gap-2 pt-3 text-xs">
-                        <Avatar className="w-6 h-6 shrink-0"><AvatarImage src={USERS[1]?.avatar} /><AvatarFallback>{USERS[1]?.name.charAt(0)}</AvatarFallback></Avatar>
-                        <div><span className="font-semibold">{USERS[1]?.name}</span> <span className="text-muted-foreground">Weight looks great now, ship it.</span></div>
+                      {/* Placeholder image from artifact */}
+                      <img
+                        src="/src/assets/daily_update_video_thumbnail.png"
+                        alt="Playblast Thumbnail"
+                        className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
+                      />
+
+                      {/* Play Button Overlay */}
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="w-12 h-12 bg-primary/90 text-primary-foreground rounded-full flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                          <PlayCircle className="w-6 h-6" />
+                        </div>
                       </div>
-                      <div className="flex items-start gap-2 text-xs">
-                        <Avatar className="w-6 h-6 shrink-0"><AvatarImage src={USERS[2]?.avatar} /><AvatarFallback>{USERS[2]?.name.charAt(0)}</AvatarFallback></Avatar>
-                        <div><span className="font-semibold">{USERS[2]?.name}</span> <span className="text-muted-foreground">Agreed, left leg reads much better.</span></div>
+                      <div className="absolute bottom-2 right-2 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded">
+                        0:12
                       </div>
                     </div>
-                  )}
-                </CardContent>
-              </Card>
+                    <Dialog
+                      open={videoPreviewOpen}
+                      onOpenChange={setVideoPreviewOpen}
+                    >
+                      <DialogContent className="sm:max-w-2xl">
+                        <DialogHeader>
+                          <DialogTitle>
+                            Anim: Robot Walk Cycle — Playblast
+                          </DialogTitle>
+                        </DialogHeader>
+                        <div className="bg-black rounded-md overflow-hidden aspect-video">
+                          <img
+                            src="/src/assets/daily_update_video_thumbnail.png"
+                            alt="Playblast Thumbnail"
+                            className="w-full h-full object-contain"
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Full video playback isn't available in this
+                          environment yet — this is the review thumbnail. Once
+                          the media server is connected, this will stream the
+                          actual playblast.
+                        </p>
+                      </DialogContent>
+                    </Dialog>
+
+                    {/* Feed Item Footer / Interactions */}
+                    <div className="p-3 bg-muted/20 flex gap-4 text-xs font-medium text-muted-foreground">
+                      <button
+                        className={cn(
+                          "flex items-center gap-1.5 hover:text-primary transition-colors",
+                          hasApprovedPlayblast && "text-primary",
+                        )}
+                        onClick={() =>
+                          toggleFeedApproval(PLAYBLAST_FEED_ID, currentUser.id)
+                        }
+                      >
+                        <CheckCircle2
+                          className={cn(
+                            "w-4 h-4",
+                            hasApprovedPlayblast && "fill-primary/20",
+                          )}
+                        />{" "}
+                        {playblastApprovals.length} Approval
+                        {playblastApprovals.length === 1 ? "" : "s"}
+                      </button>
+                      <button
+                        className={cn(
+                          "flex items-center gap-1.5 hover:text-primary transition-colors",
+                          feedCommentsOpen && "text-primary",
+                        )}
+                        onClick={() => setFeedCommentsOpen((prev) => !prev)}
+                      >
+                        <MessageSquare className="w-4 h-4" /> 2 Comments
+                      </button>
+                    </div>
+                    {feedCommentsOpen && (
+                      <div className="px-4 pb-4 pt-1 space-y-2 border-t border-border/50 bg-muted/10">
+                        <div className="flex items-start gap-2 pt-3 text-xs">
+                          <Avatar className="w-6 h-6 shrink-0">
+                            <AvatarImage src={USERS[1]?.avatar} />
+                            <AvatarFallback>
+                              {USERS[1]?.name.charAt(0)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <span className="font-semibold">
+                              {USERS[1]?.name}
+                            </span>{" "}
+                            <span className="text-muted-foreground">
+                              Weight looks great now, ship it.
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-2 text-xs">
+                          <Avatar className="w-6 h-6 shrink-0">
+                            <AvatarImage src={USERS[2]?.avatar} />
+                            <AvatarFallback>
+                              {USERS[2]?.name.charAt(0)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <span className="font-semibold">
+                              {USERS[2]?.name}
+                            </span>{" "}
+                            <span className="text-muted-foreground">
+                              Agreed, left leg reads much better.
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
               )}
 
               {/* Mock Feed Item 2 (Text Only) */}
-              {(['vfx_producer', 'production_manager'].includes(currentUser.role) || currentUser.departmentId === USERS[1]?.departmentId) && (
-              <Card className="border-border/50 bg-card overflow-hidden">
-                <CardContent className="p-0">
-                  <div className="p-4 flex items-start gap-3">
-                    <Avatar className="w-10 h-10 border border-border/50">
-                      <AvatarImage src={USERS[1]?.avatar} />
-                      <AvatarFallback>A</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1">
-                      <div className="flex items-baseline justify-between">
-                        <div className="font-semibold text-sm">{USERS[1]?.name}</div>
-                        <div className="text-xs text-muted-foreground">4 hours ago</div>
+              {(["vfx_producer", "production_manager"].includes(
+                currentUser.role,
+              ) ||
+                currentUser.departmentId === USERS[1]?.departmentId) && (
+                <Card className="border-border/50 bg-card overflow-hidden">
+                  <CardContent className="p-0">
+                    <div className="p-4 flex items-start gap-3">
+                      <Avatar className="w-10 h-10 border border-border/50">
+                        <AvatarImage src={USERS[1]?.avatar} />
+                        <AvatarFallback>A</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1">
+                        <div className="flex items-baseline justify-between">
+                          <div className="font-semibold text-sm">
+                            {USERS[1]?.name}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            4 hours ago
+                          </div>
+                        </div>
+                        <div className="text-xs text-primary mb-2 flex items-center gap-1">
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] h-5 border-blue-500/30 text-blue-500 bg-blue-500/10"
+                          >
+                            Layout: Bridge Sequence
+                          </Badge>
+                          <span className="text-muted-foreground ml-1">
+                            logged 4h
+                          </span>
+                        </div>
+                        <p className="text-sm text-foreground/90">
+                          Camera tracking is finally matching the plate. Will
+                          push the USD to the farm tonight so lighting can pick
+                          it up tomorrow morning.
+                        </p>
                       </div>
-                      <div className="text-xs text-primary mb-2 flex items-center gap-1">
-                        <Badge variant="outline" className="text-[10px] h-5 border-blue-500/30 text-blue-500 bg-blue-500/10">Layout: Bridge Sequence</Badge>
-                        <span className="text-muted-foreground ml-1">logged 4h</span>
-                      </div>
-                      <p className="text-sm text-foreground/90">
-                        Camera tracking is finally matching the plate. Will push the USD to the farm tonight so lighting can pick it up tomorrow morning.
-                      </p>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
               )}
-
             </div>
           </div>
         </TabsContent>
@@ -983,27 +1357,51 @@ export default function DailyStandup() {
             {/* Renders nothing for roles without the broadcast_updates
                 capability (see store/permissions.ts) — no visibility
                 gating needed here. */}
-            <BroadcastComposer projects={PROJECTS.map((p) => ({ id: p.id, name: p.name }))} />
+            <BroadcastComposer
+              projects={PROJECTS.map((p) => ({ id: p.id, name: p.name }))}
+            />
             <BroadcastFeed broadcasts={broadcasts} />
           </div>
         </TabsContent>
 
         {/* --- NEW TAB: PAYROLL & ATTENDANCE --- */}
-        {['vfx_producer', 'production_manager', 'supervisor'].includes(currentUser.role) && (
+        {["vfx_producer", "production_manager", "supervisor"].includes(
+          currentUser.role,
+        ) && (
           <TabsContent value="payroll">
             <Card className="border-border/50 bg-card">
               <CardHeader className="flex flex-row items-center justify-between">
                 <div>
-                  <CardTitle className="text-xl">Studio Payroll & Attendance</CardTitle>
-                  <p className="text-sm text-muted-foreground mt-1">Monitor logged hours and active statuses for {isAllDepts ? 'the entire studio' : dept?.name}.</p>
+                  <CardTitle className="text-xl">
+                    Studio Payroll & Attendance
+                  </CardTitle>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Monitor logged hours and active statuses for{" "}
+                    {isAllDepts ? "the entire studio" : dept?.name}.
+                  </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" onClick={handleExportPayrollCSV}>Export CSV</Button>
-                  <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white" onClick={() => {
-                    const allMemberIds = new Set(team.map(m => m.id));
-                    setApprovedUsers(allMemberIds);
-                    toast({ title: 'Timesheets Approved', description: `Approved hours for ${team.length} employees.` });
-                  }}>Approve Timesheets</Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleExportPayrollCSV}
+                  >
+                    Export CSV
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="bg-amber-600 hover:bg-amber-700 text-white"
+                    onClick={() => {
+                      const allMemberIds = new Set(team.map((m) => m.id));
+                      setApprovedUsers(allMemberIds);
+                      toast({
+                        title: "Timesheets Approved",
+                        description: `Approved hours for ${team.length} employees.`,
+                      });
+                    }}
+                  >
+                    Approve Timesheets
+                  </Button>
                 </div>
               </CardHeader>
               <CardContent>
@@ -1020,51 +1418,101 @@ export default function DailyStandup() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
-                      {payrollRows.map(({ member, memberDept, totalHoursToday, isOverloaded, isApproved }) => {
-                        return (
-                          <tr key={member.id} className="hover:bg-muted/30 transition-colors">
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-3">
-                                <Avatar className="w-8 h-8">
-                                  <AvatarImage src={member.avatar} />
-                                  <AvatarFallback>{member.name.charAt(0)}</AvatarFallback>
-                                </Avatar>
-                                <span className="font-medium">{member.name}</span>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="text-sm">{member.title}</div>
-                              <div className="text-xs text-muted-foreground">{memberDept?.name}</div>
-                            </td>
-                            <td className="px-4 py-3 text-center">
-                              {member.status === 'active' ? (
-                                <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/20 text-[10px]">PUNCHED IN</Badge>
-                              ) : (
-                                <Badge variant="outline" className="bg-red-500/10 text-red-500 border-red-500/20 text-[10px]">AWAY</Badge>
-                              )}
-                            </td>
-                            <td className="px-4 py-3 text-center font-mono relative">
-                              <span className={totalHoursToday === 0 ? 'text-muted-foreground opacity-50' : (totalHoursToday > 8 ? 'text-amber-500 font-bold' : 'text-primary font-bold')}>
-                                {totalHoursToday}h
-                              </span>
-                              {isApproved && totalHoursToday > 0 && <CheckCircle2 className="w-3 h-3 text-green-500 absolute top-1/2 -translate-y-1/2 right-4" />}
-                            </td>
-                            <td className="px-4 py-3 text-center">
-                              <div className="flex items-center justify-center gap-2">
-                                <div className={`w-2 h-2 rounded-full ${isOverloaded ? 'bg-red-500' : 'bg-green-500'}`} />
-                                <span>{member.capacity}%</span>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                              <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => handleViewLogs(member.id, member.name)}>View Logs</Button>
-                            </td>
-                          </tr>
-                        );
-                      })}
+                      {payrollRows.map(
+                        ({
+                          member,
+                          memberDept,
+                          totalHoursToday,
+                          isOverloaded,
+                          isApproved,
+                        }) => {
+                          return (
+                            <tr
+                              key={member.id}
+                              className="hover:bg-muted/30 transition-colors"
+                            >
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-3">
+                                  <Avatar className="w-8 h-8">
+                                    <AvatarImage src={member.avatar} />
+                                    <AvatarFallback>
+                                      {member.name.charAt(0)}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <span className="font-medium">
+                                    {member.name}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="text-sm">{member.title}</div>
+                                <div className="text-xs text-muted-foreground">
+                                  {memberDept?.name}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                {member.status === "active" ? (
+                                  <Badge
+                                    variant="outline"
+                                    className="bg-green-500/10 text-green-500 border-green-500/20 text-[10px]"
+                                  >
+                                    PUNCHED IN
+                                  </Badge>
+                                ) : (
+                                  <Badge
+                                    variant="outline"
+                                    className="bg-red-500/10 text-red-500 border-red-500/20 text-[10px]"
+                                  >
+                                    AWAY
+                                  </Badge>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-center font-mono relative">
+                                <span
+                                  className={
+                                    totalHoursToday === 0
+                                      ? "text-muted-foreground opacity-50"
+                                      : totalHoursToday > 8
+                                        ? "text-amber-500 font-bold"
+                                        : "text-primary font-bold"
+                                  }
+                                >
+                                  {totalHoursToday}h
+                                </span>
+                                {isApproved && totalHoursToday > 0 && (
+                                  <CheckCircle2 className="w-3 h-3 text-green-500 absolute top-1/2 -translate-y-1/2 right-4" />
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                <div className="flex items-center justify-center gap-2">
+                                  <div
+                                    className={`w-2 h-2 rounded-full ${isOverloaded ? "bg-red-500" : "bg-green-500"}`}
+                                  />
+                                  <span>{member.capacity}%</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 text-xs"
+                                  onClick={() =>
+                                    handleViewLogs(member.id, member.name)
+                                  }
+                                >
+                                  View Logs
+                                </Button>
+                              </td>
+                            </tr>
+                          );
+                        },
+                      )}
                     </tbody>
                   </table>
                   {team.length === 0 && (
-                    <div className="p-8 text-center text-muted-foreground">No employees found in this view.</div>
+                    <div className="p-8 text-center text-muted-foreground">
+                      No employees found in this view.
+                    </div>
                   )}
                 </div>
               </CardContent>

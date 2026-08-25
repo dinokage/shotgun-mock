@@ -1,6 +1,13 @@
-import { useState } from 'react';
-import { cn } from '@/lib/utils';
-import type { Annotation, AnnotationTool, Point, SetAnnotations, SetSelectedAnnotationId, SetDraggingElement } from './types';
+import { useState } from "react";
+import { cn } from "@/lib/utils";
+import type {
+  Annotation,
+  AnnotationTool,
+  Point,
+  SetAnnotations,
+  SetSelectedAnnotationId,
+  SetDraggingElement,
+} from "./types";
 
 interface AnnotationCanvasProps {
   annotations: Annotation[];
@@ -65,15 +72,20 @@ export function AnnotationCanvas({
   onDraggingElementChange,
   onionSkin = false,
   ghosting = false,
-  selectionRingClassName = 'border-primary ring-2 ring-primary/50',
+  selectionRingClassName = "border-primary ring-2 ring-primary/50",
   readOnly = false,
 }: AnnotationCanvasProps) {
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentDrawStart, setCurrentDrawStart] = useState<Point | null>(null);
   const [currentPoints, setCurrentPoints] = useState<Point[]>([]);
-  const [tempRect, setTempRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [tempRect, setTempRect] = useState<{
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  } | null>(null);
 
-  const drawMode = !readOnly && tool !== 'select';
+  const drawMode = !readOnly && tool !== "select";
 
   const resetDrawState = () => {
     setIsDrawing(false);
@@ -82,23 +94,42 @@ export function AnnotationCanvas({
     setTempRect(null);
   };
 
-  const addAnnotation = (partial: Omit<Annotation, 'id' | 'frame' | 'startFrame' | 'endFrame'>) => {
+  const addAnnotation = (
+    partial: Omit<Annotation, "id" | "frame" | "startFrame" | "endFrame">,
+  ) => {
     const id = Date.now().toString();
     onAnnotationsChange((prev) => [
       ...prev,
-      { id, frame, startFrame: frame, endFrame: Math.min(frame + 60, maxFrames), ...partial },
+      {
+        id,
+        frame,
+        startFrame: frame,
+        endFrame: Math.min(frame + 60, maxFrames),
+        ...partial,
+      },
     ]);
     onSelectedAnnotationIdChange(id);
   };
 
   /** Renders one pen/arrow/rectangle annotation. Shared by the normal (in-window)
    * pass and the ghost-trail pass so both stay in sync visually. */
-  const renderShape = (a: Annotation, opacity: number, interactive: boolean, keySuffix = '') => {
+  const renderShape = (
+    a: Annotation,
+    opacity: number,
+    interactive: boolean,
+    keySuffix = "",
+  ) => {
     const key = `${a.id}${keySuffix}`;
-    const handleDelete = () => !readOnly && tool === 'select' && onAnnotationsChange((prev) => prev.filter((p) => p.id !== a.id));
-    const pointerClassName = interactive && !readOnly ? 'pointer-events-auto cursor-pointer' : 'pointer-events-none';
+    const handleDelete = () =>
+      !readOnly &&
+      tool === "select" &&
+      onAnnotationsChange((prev) => prev.filter((p) => p.id !== a.id));
+    const pointerClassName =
+      interactive && !readOnly
+        ? "pointer-events-auto cursor-pointer"
+        : "pointer-events-none";
 
-    if (a.type === 'rectangle' && a.w && a.h) {
+    if (a.type === "rectangle" && a.w && a.h) {
       return (
         <rect
           key={key}
@@ -115,8 +146,8 @@ export function AnnotationCanvas({
         />
       );
     }
-    if (a.type === 'pen' && a.points) {
-      const d = `M ${a.points.map((p) => `${p.x},${p.y}`).join(' L ')}`;
+    if (a.type === "pen" && a.points) {
+      const d = `M ${a.points.map((p) => `${p.x},${p.y}`).join(" L ")}`;
       return (
         <path
           key={key}
@@ -127,12 +158,15 @@ export function AnnotationCanvas({
           strokeLinecap="round"
           strokeLinejoin="round"
           style={{ opacity }}
-          className={cn(pointerClassName, interactive && 'hover:stroke-opacity-70')}
+          className={cn(
+            pointerClassName,
+            interactive && "hover:stroke-opacity-70",
+          )}
           onClick={interactive ? handleDelete : undefined}
         />
       );
     }
-    if (a.type === 'arrow' && a.points && a.points.length === 2) {
+    if (a.type === "arrow" && a.points && a.points.length === 2) {
       return (
         <line
           key={key}
@@ -143,7 +177,7 @@ export function AnnotationCanvas({
           stroke={a.color}
           strokeWidth={3}
           style={{ opacity }}
-          markerEnd={`url(#arrowhead-${a.color.replace('#', '')})`}
+          markerEnd={`url(#arrowhead-${a.color.replace("#", "")})`}
           className={pointerClassName}
           onClick={interactive ? handleDelete : undefined}
         />
@@ -158,7 +192,15 @@ export function AnnotationCanvas({
       <svg className="annotation-svg absolute inset-0 z-10 pointer-events-none w-full h-full">
         <defs>
           {colors.map((c) => (
-            <marker key={c} id={`arrowhead-${c.replace('#', '')}`} markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <marker
+              key={c}
+              id={`arrowhead-${c.replace("#", "")}`}
+              markerWidth="10"
+              markerHeight="7"
+              refX="9"
+              refY="3.5"
+              orient="auto"
+            >
               <polygon points="0 0, 10 3.5, 0 7" fill={c} />
             </marker>
           ))}
@@ -173,17 +215,23 @@ export function AnnotationCanvas({
             annotation on the same frame. */}
         {ghosting &&
           annotations
-            .filter((a) => a.type !== 'text')
+            .filter((a) => a.type !== "text")
             .map((a) => {
               const end = a.endFrame ?? a.frame + 60;
               const distance = frame - end;
-              if (distance < 1 || distance > GHOST_TRAIL_OPACITIES.length) return null;
-              return renderShape(a, GHOST_TRAIL_OPACITIES[distance - 1], false, `-ghost-${distance}`);
+              if (distance < 1 || distance > GHOST_TRAIL_OPACITIES.length)
+                return null;
+              return renderShape(
+                a,
+                GHOST_TRAIL_OPACITIES[distance - 1],
+                false,
+                `-ghost-${distance}`,
+              );
             })}
 
         {annotations
           .filter((a) => {
-            if (a.type === 'text') return false;
+            if (a.type === "text") return false;
             const start = a.startFrame ?? a.frame;
             const end = a.endFrame ?? a.frame + 60;
             // Onion skin fades both edges of the window by 3 frames. When
@@ -192,7 +240,9 @@ export function AnnotationCanvas({
             // onion skin's flat post-end fade here too would render the same
             // shape twice on frames (end, end+3].
             const postEnd = onionSkin && !ghosting ? end + 3 : end;
-            return onionSkin ? frame >= start - 3 && frame <= postEnd : frame >= start && frame <= end;
+            return onionSkin
+              ? frame >= start - 3 && frame <= postEnd
+              : frame >= start && frame <= end;
           })
           .map((a) => {
             const start = a.startFrame ?? a.frame;
@@ -203,21 +253,41 @@ export function AnnotationCanvas({
           })}
 
         {/* Temp (in-progress) drawing preview */}
-        {isDrawing && tool === 'pen' && currentPoints.length > 0 && (
-          <path d={`M ${currentPoints.map((p) => `${p.x},${p.y}`).join(' L ')}`} fill="none" stroke={color} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
-        )}
-        {isDrawing && tool === 'arrow' && currentDrawStart && currentPoints.length > 0 && (
-          <line
-            x1={currentDrawStart.x}
-            y1={currentDrawStart.y}
-            x2={currentPoints[currentPoints.length - 1].x}
-            y2={currentPoints[currentPoints.length - 1].y}
+        {isDrawing && tool === "pen" && currentPoints.length > 0 && (
+          <path
+            d={`M ${currentPoints.map((p) => `${p.x},${p.y}`).join(" L ")}`}
+            fill="none"
             stroke={color}
             strokeWidth={3}
-            markerEnd={`url(#arrowhead-${color.replace('#', '')})`}
+            strokeLinecap="round"
+            strokeLinejoin="round"
           />
         )}
-        {tempRect && <rect x={tempRect.x} y={tempRect.y} width={tempRect.w} height={tempRect.h} fill={`${color}20`} stroke={color} strokeWidth={2} />}
+        {isDrawing &&
+          tool === "arrow" &&
+          currentDrawStart &&
+          currentPoints.length > 0 && (
+            <line
+              x1={currentDrawStart.x}
+              y1={currentDrawStart.y}
+              x2={currentPoints[currentPoints.length - 1].x}
+              y2={currentPoints[currentPoints.length - 1].y}
+              stroke={color}
+              strokeWidth={3}
+              markerEnd={`url(#arrowhead-${color.replace("#", "")})`}
+            />
+          )}
+        {tempRect && (
+          <rect
+            x={tempRect.x}
+            y={tempRect.y}
+            width={tempRect.w}
+            height={tempRect.h}
+            fill={`${color}20`}
+            stroke={color}
+            strokeWidth={2}
+          />
+        )}
       </svg>
 
       {/* Pointer-driven drawing interaction surface */}
@@ -229,22 +299,31 @@ export function AnnotationCanvas({
             const x = e.clientX - rect.left;
             const y = e.clientY - rect.top;
 
-            if (tool === 'rectangle') {
+            if (tool === "rectangle") {
               setIsDrawing(true);
               setCurrentDrawStart({ x, y });
               setTempRect({ x, y, w: 0, h: 0 });
-            } else if (tool === 'pen' || tool === 'arrow') {
+            } else if (tool === "pen" || tool === "arrow") {
               setIsDrawing(true);
               setCurrentDrawStart({ x, y });
               setCurrentPoints([{ x, y }]);
             }
           }}
           onClick={(e) => {
-            if (tool === 'text') {
+            if (tool === "text") {
               const rect = e.currentTarget.getBoundingClientRect();
               const x = e.clientX - rect.left;
               const y = e.clientY - rect.top;
-              addAnnotation({ type: 'text', color, x, y, text: '', fontFamily: 'font-sans', fontSize: 14, backgroundColor: 'transparent' });
+              addAnnotation({
+                type: "text",
+                color,
+                x,
+                y,
+                text: "",
+                fontFamily: "font-sans",
+                fontSize: 14,
+                backgroundColor: "transparent",
+              });
             }
           }}
           onMouseMove={(e) => {
@@ -253,23 +332,42 @@ export function AnnotationCanvas({
             const x = e.clientX - rect.left;
             const y = e.clientY - rect.top;
 
-            if (tool === 'rectangle' && currentDrawStart) {
+            if (tool === "rectangle" && currentDrawStart) {
               const newX = Math.min(x, currentDrawStart.x);
               const newY = Math.min(y, currentDrawStart.y);
               const w = Math.abs(x - currentDrawStart.x);
               const h = Math.abs(y - currentDrawStart.y);
               setTempRect({ x: newX, y: newY, w, h });
-            } else if (tool === 'pen' || tool === 'arrow') {
+            } else if (tool === "pen" || tool === "arrow") {
               setCurrentPoints((prev) => [...prev, { x, y }]);
             }
           }}
           onMouseUp={() => {
-            if (tool === 'rectangle' && tempRect && tempRect.w > 5) {
-              addAnnotation({ type: 'rectangle', color, ...tempRect });
-            } else if (tool === 'pen' && currentPoints.length > 1) {
-              addAnnotation({ type: 'pen', color, x: 0, y: 0, points: currentPoints });
-            } else if (tool === 'arrow' && currentDrawStart && currentPoints.length > 1) {
-              addAnnotation({ type: 'arrow', color, x: 0, y: 0, points: [currentDrawStart, currentPoints[currentPoints.length - 1]] });
+            if (tool === "rectangle" && tempRect && tempRect.w > 5) {
+              addAnnotation({ type: "rectangle", color, ...tempRect });
+            } else if (tool === "pen" && currentPoints.length > 1) {
+              addAnnotation({
+                type: "pen",
+                color,
+                x: 0,
+                y: 0,
+                points: currentPoints,
+              });
+            } else if (
+              tool === "arrow" &&
+              currentDrawStart &&
+              currentPoints.length > 1
+            ) {
+              addAnnotation({
+                type: "arrow",
+                color,
+                x: 0,
+                y: 0,
+                points: [
+                  currentDrawStart,
+                  currentPoints[currentPoints.length - 1],
+                ],
+              });
             }
             resetDrawState();
           }}
@@ -281,10 +379,12 @@ export function AnnotationCanvas({
       <div className="absolute inset-0 z-30 pointer-events-none">
         {annotations
           .filter((a) => {
-            if (a.type !== 'text') return false;
+            if (a.type !== "text") return false;
             const start = a.startFrame ?? a.frame;
             const end = a.endFrame ?? a.frame + 60;
-            return onionSkin ? frame >= start - 3 && frame <= end + 3 : frame >= start && frame <= end;
+            return onionSkin
+              ? frame >= start - 3 && frame <= end + 3
+              : frame >= start && frame <= end;
           })
           .map((a) => {
             const start = a.startFrame ?? a.frame;
@@ -296,18 +396,35 @@ export function AnnotationCanvas({
               <div
                 key={a.id}
                 className={cn(
-                  'absolute rounded border-2 transition-colors',
-                  readOnly ? 'pointer-events-none' : 'pointer-events-auto',
-                  selectedAnnotationId === a.id ? selectionRingClassName : 'border-transparent',
-                  tool === 'select' && !readOnly && 'cursor-move',
+                  "absolute rounded border-2 transition-colors",
+                  readOnly ? "pointer-events-none" : "pointer-events-auto",
+                  selectedAnnotationId === a.id
+                    ? selectionRingClassName
+                    : "border-transparent",
+                  tool === "select" && !readOnly && "cursor-move",
                 )}
-                style={{ left: a.x, top: a.y, opacity, backgroundColor: a.backgroundColor !== 'transparent' ? a.backgroundColor : undefined }}
+                style={{
+                  left: a.x,
+                  top: a.y,
+                  opacity,
+                  backgroundColor:
+                    a.backgroundColor !== "transparent"
+                      ? a.backgroundColor
+                      : undefined,
+                }}
                 onMouseDown={(e) => {
                   if (readOnly) return;
-                  if (tool === 'select') {
+                  if (tool === "select") {
                     e.stopPropagation();
                     onSelectedAnnotationIdChange(a.id);
-                    onDraggingElementChange({ id: a.id, type: 'annotation', startX: e.clientX, startY: e.clientY, initialX: a.x, initialY: a.y });
+                    onDraggingElementChange({
+                      id: a.id,
+                      type: "annotation",
+                      startX: e.clientX,
+                      startY: e.clientY,
+                      initialX: a.x,
+                      initialY: a.y,
+                    });
                   }
                 }}
                 onClick={() => !readOnly && onSelectedAnnotationIdChange(a.id)}
@@ -322,28 +439,42 @@ export function AnnotationCanvas({
                   // which made these inputs invisible to the selector.
                   data-annotation-marker="text"
                   className={cn(
-                    'bg-transparent text-white font-medium focus:outline-none min-w-[120px] px-2 py-1',
-                    a.backgroundColor !== 'transparent' ? 'drop-shadow-none' : 'drop-shadow-md',
+                    "bg-transparent text-white font-medium focus:outline-none min-w-[120px] px-2 py-1",
+                    a.backgroundColor !== "transparent"
+                      ? "drop-shadow-none"
+                      : "drop-shadow-md",
                   )}
                   style={{
                     color: a.color,
-                    fontFamily: a.fontFamily === 'font-sans' ? 'Inter, sans-serif' : a.fontFamily === 'font-serif' ? 'Georgia, serif' : 'monospace',
+                    fontFamily:
+                      a.fontFamily === "font-sans"
+                        ? "Inter, sans-serif"
+                        : a.fontFamily === "font-serif"
+                          ? "Georgia, serif"
+                          : "monospace",
                     fontSize: `${a.fontSize}px`,
                   }}
                   readOnly={readOnly}
                   autoFocus={!readOnly}
                   defaultValue={a.text}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') e.currentTarget.blur();
+                    if (e.key === "Enter") e.currentTarget.blur();
                   }}
                   onBlur={(e) => {
                     if (readOnly) return;
                     const val = e.target.value.trim();
                     if (!val) {
-                      onAnnotationsChange((prev) => prev.filter((p) => p.id !== a.id));
-                      if (selectedAnnotationId === a.id) onSelectedAnnotationIdChange(null);
+                      onAnnotationsChange((prev) =>
+                        prev.filter((p) => p.id !== a.id),
+                      );
+                      if (selectedAnnotationId === a.id)
+                        onSelectedAnnotationIdChange(null);
                     } else {
-                      onAnnotationsChange((prev) => prev.map((p) => (p.id === a.id ? { ...p, text: val } : p)));
+                      onAnnotationsChange((prev) =>
+                        prev.map((p) =>
+                          p.id === a.id ? { ...p, text: val } : p,
+                        ),
+                      );
                     }
                   }}
                 />

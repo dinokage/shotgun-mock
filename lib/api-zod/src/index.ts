@@ -1,4 +1,4 @@
-export * from './generated/types';
+export * from "./generated/types";
 export {
   LoginBody,
   LoginResponse,
@@ -15,6 +15,6 @@ export {
   CreateTaskResponse,
   UpdateTaskParams,
   UpdateTaskBody,
-  UpdateTaskResponse
-} from './generated/api';
-export * from './generated/api';
+  UpdateTaskResponse,
+} from "./generated/api";
+export * from "./generated/api";

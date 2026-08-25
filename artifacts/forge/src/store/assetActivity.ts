@@ -1,5 +1,5 @@
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 /**
  * A record of the last time someone hit "Open in DCC" for an asset. There's
@@ -51,7 +51,7 @@ export const useAssetActivityStore = create<AssetActivityState>()(
         })),
     }),
     {
-      name: 'forge-asset-activity',
-    }
-  )
+      name: "forge-asset-activity",
+    },
+  ),
 );

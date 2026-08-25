@@ -1,7 +1,8 @@
 import * as argon2 from "argon2";
 import jwt from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET || "fallback_super_secret_jwt_key_for_dev";
+const JWT_SECRET =
+  process.env.JWT_SECRET || "fallback_super_secret_jwt_key_for_dev";
 
 export interface SessionPayload {
   userId: string;
@@ -13,7 +14,10 @@ export async function hashPassword(password: string): Promise<string> {
   return argon2.hash(password);
 }
 
-export async function verifyPassword(password: string, hash: string): Promise<boolean> {
+export async function verifyPassword(
+  password: string,
+  hash: string,
+): Promise<boolean> {
   try {
     return await argon2.verify(hash, password);
   } catch (err) {

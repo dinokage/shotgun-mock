@@ -1,40 +1,50 @@
-import { motion } from 'framer-motion';
-import { useUIStore } from '@/store/ui';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { stagger, dissolve } from '@/lib/motion';
+import { motion } from "framer-motion";
+import { useUIStore } from "@/store/ui";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { stagger, dissolve } from "@/lib/motion";
 
 type Shortcut = { keys: string[]; label: string };
-type ShortcutSection = { title: string; description?: string; shortcuts: Shortcut[] };
+type ShortcutSection = {
+  title: string;
+  description?: string;
+  shortcuts: Shortcut[];
+};
 
 // Every entry here corresponds to a handler that actually exists in the app
 // today (AppShell's global listener, or review.tsx's useHotkeys map) — this
 // is a cheatsheet, not an aspirational list.
 const SECTIONS: ShortcutSection[] = [
   {
-    title: 'Global',
+    title: "Global",
     shortcuts: [
-      { keys: ['⌘', 'K'], label: 'Open command palette / search' },
-      { keys: ['?'], label: 'Show this shortcuts list' },
-      { keys: ['Esc'], label: 'Close dialogs and panels' },
+      { keys: ["⌘", "K"], label: "Open command palette / search" },
+      { keys: ["?"], label: "Show this shortcuts list" },
+      { keys: ["Esc"], label: "Close dialogs and panels" },
     ],
   },
   {
-    title: 'Review Player',
-    description: 'Active on the Review page',
+    title: "Review Player",
+    description: "Active on the Review page",
     shortcuts: [
-      { keys: ['Space'], label: 'Play / pause' },
-      { keys: ['K'], label: 'Play / pause' },
-      { keys: ['←'], label: 'Step back one frame' },
-      { keys: ['→'], label: 'Step forward one frame' },
-      { keys: ['J'], label: 'Jump back 5 frames' },
-      { keys: ['L'], label: 'Jump forward 5 frames' },
-      { keys: ['1'], label: 'Select tool' },
-      { keys: ['2'], label: 'Pen tool' },
-      { keys: ['3'], label: 'Arrow tool' },
-      { keys: ['4'], label: 'Rectangle tool' },
-      { keys: ['5'], label: 'Text tool' },
-      { keys: ['Delete'], label: 'Delete selected annotation' },
-      { keys: ['Esc'], label: 'Deselect / switch to select tool' },
+      { keys: ["Space"], label: "Play / pause" },
+      { keys: ["K"], label: "Play / pause" },
+      { keys: ["←"], label: "Step back one frame" },
+      { keys: ["→"], label: "Step forward one frame" },
+      { keys: ["J"], label: "Jump back 5 frames" },
+      { keys: ["L"], label: "Jump forward 5 frames" },
+      { keys: ["1"], label: "Select tool" },
+      { keys: ["2"], label: "Pen tool" },
+      { keys: ["3"], label: "Arrow tool" },
+      { keys: ["4"], label: "Rectangle tool" },
+      { keys: ["5"], label: "Text tool" },
+      { keys: ["Delete"], label: "Delete selected annotation" },
+      { keys: ["Esc"], label: "Deselect / switch to select tool" },
     ],
   },
 ];
@@ -55,10 +65,15 @@ export function KeyboardShortcutsDialog() {
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Keyboard Shortcuts</DialogTitle>
-          <DialogDescription>Everything you can do without touching the mouse.</DialogDescription>
+          <DialogDescription>
+            Everything you can do without touching the mouse.
+          </DialogDescription>
         </DialogHeader>
 
-        <motion.div {...dissolve} className="space-y-5 max-h-[60vh] overflow-y-auto pr-1">
+        <motion.div
+          {...dissolve}
+          className="space-y-5 max-h-[60vh] overflow-y-auto pr-1"
+        >
           {SECTIONS.map((section) => (
             <div key={section.title}>
               <div className="mb-2 flex items-baseline gap-2">
@@ -66,7 +81,9 @@ export function KeyboardShortcutsDialog() {
                   {section.title}
                 </h3>
                 {section.description && (
-                  <span className="text-[10px] text-muted-foreground/70">{section.description}</span>
+                  <span className="text-[10px] text-muted-foreground/70">
+                    {section.description}
+                  </span>
                 )}
               </div>
               <div className="space-y-1">

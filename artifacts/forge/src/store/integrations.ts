@@ -1,5 +1,5 @@
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 /**
  * Persisted state for the DCC Integrations hub (/integrations).
@@ -14,7 +14,7 @@ import { persist } from 'zustand/middleware';
  */
 
 export interface IntegrationRuntime {
-  status: 'connected' | 'warning' | 'disconnected';
+  status: "connected" | "warning" | "disconnected";
   lastSync: string;
 }
 
@@ -26,10 +26,10 @@ export interface PathConfig {
 }
 
 const DEFAULT_PATH_CONFIG: PathConfig = {
-  winPath: 'Z:\\Projects\\Forge',
-  macPath: '/Volumes/Projects/Forge',
-  pythonInterpreter: '/usr/local/bin/python3',
-  apiUrl: 'https://api.forge-vfx.local/v1',
+  winPath: "Z:\\Projects\\Forge",
+  macPath: "/Volumes/Projects/Forge",
+  pythonInterpreter: "/usr/local/bin/python3",
+  apiUrl: "https://api.forge-vfx.local/v1",
 };
 
 interface IntegrationsState {
@@ -37,7 +37,7 @@ interface IntegrationsState {
   autoSync: Record<string, boolean>;
   pathConfig: PathConfig;
 
-  syncIntegration: (id: string, status?: IntegrationRuntime['status']) => void;
+  syncIntegration: (id: string, status?: IntegrationRuntime["status"]) => void;
   toggleAutoSync: (id: string, enabled: boolean) => void;
   savePathConfig: (config: PathConfig) => void;
 }
@@ -49,11 +49,11 @@ export const useIntegrationsStore = create<IntegrationsState>()(
       autoSync: {},
       pathConfig: DEFAULT_PATH_CONFIG,
 
-      syncIntegration: (id, status = 'connected') =>
+      syncIntegration: (id, status = "connected") =>
         set((state) => ({
           runtime: {
             ...state.runtime,
-            [id]: { status, lastSync: 'Just now' },
+            [id]: { status, lastSync: "Just now" },
           },
         })),
 
@@ -65,7 +65,7 @@ export const useIntegrationsStore = create<IntegrationsState>()(
       savePathConfig: (config) => set({ pathConfig: config }),
     }),
     {
-      name: 'forge-integrations-storage',
-    }
-  )
+      name: "forge-integrations-storage",
+    },
+  ),
 );

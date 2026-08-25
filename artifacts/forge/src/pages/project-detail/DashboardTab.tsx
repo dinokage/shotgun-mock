@@ -1,59 +1,87 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { useShotStore } from '@/store/shots';
-import { PlayCircle, History } from 'lucide-react';
-import { useAudit } from '@/hooks/useAudit';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+} from "recharts";
+import { useShotStore } from "@/store/shots";
+import { PlayCircle, History } from "lucide-react";
+import { useAudit } from "@/hooks/useAudit";
 
 const burndownData = [
-  { name: 'Week 1', planned: 247, actual: 247 },
-  { name: 'Week 2', planned: 210, actual: 220 },
-  { name: 'Week 3', planned: 180, actual: 195 },
-  { name: 'Week 4', planned: 150, actual: 160 },
-  { name: 'Week 5', planned: 120, actual: 140 },
-  { name: 'Week 6', planned: 90, actual: 110 },
-  { name: 'Week 7', planned: 60, actual: 80 },
-  { name: 'Week 8', planned: 30, actual: 78 }, // Current
+  { name: "Week 1", planned: 247, actual: 247 },
+  { name: "Week 2", planned: 210, actual: 220 },
+  { name: "Week 3", planned: 180, actual: 195 },
+  { name: "Week 4", planned: 150, actual: 160 },
+  { name: "Week 5", planned: 120, actual: 140 },
+  { name: "Week 6", planned: 90, actual: 110 },
+  { name: "Week 7", planned: 60, actual: 80 },
+  { name: "Week 8", planned: 30, actual: 78 }, // Current
 ];
 
 const COLORS = {
-  complete: 'hsl(134 60% 30%)',
-  'in-progress': 'hsl(28 72% 41%)',
-  bottleneck: 'hsl(0 54% 41%)',
-  todo: 'hsl(204 20% 45%)'
+  complete: "hsl(134 60% 30%)",
+  "in-progress": "hsl(28 72% 41%)",
+  bottleneck: "hsl(0 54% 41%)",
+  todo: "hsl(204 20% 45%)",
 };
 
 export default function DashboardTab({ project }: { project: any }) {
   const pieBase = [
-    { name: 'Complete', value: 98, fill: COLORS.complete },
-    { name: 'In Progress', value: 74, fill: COLORS['in-progress'] },
-    { name: 'Bottleneck', value: 25, fill: COLORS.bottleneck },
-    { name: 'To Do', value: 50, fill: COLORS.todo },
+    { name: "Complete", value: 98, fill: COLORS.complete },
+    { name: "In Progress", value: 74, fill: COLORS["in-progress"] },
+    { name: "Bottleneck", value: 25, fill: COLORS.bottleneck },
+    { name: "To Do", value: 50, fill: COLORS.todo },
   ];
   const pieBaseTotal = pieBase.reduce((sum, d) => sum + d.value, 0);
   const pieTarget = project.shotsCount ?? pieBaseTotal;
-  const pieData = pieBase.map(d => ({ ...d, value: Math.round((d.value / pieBaseTotal) * pieTarget) }));
-  const pieRoundingDrift = pieTarget - pieData.reduce((sum, d) => sum + d.value, 0);
+  const pieData = pieBase.map((d) => ({
+    ...d,
+    value: Math.round((d.value / pieBaseTotal) * pieTarget),
+  }));
+  const pieRoundingDrift =
+    pieTarget - pieData.reduce((sum, d) => sum + d.value, 0);
   pieData[0].value += pieRoundingDrift; // absorb rounding drift into the largest bucket
 
   const shots = useShotStore((state) => state.shots);
-  const projectShots = shots.filter(s => s.projectId === project.id).slice(0, 4);
+  const projectShots = shots
+    .filter((s) => s.projectId === project.id)
+    .slice(0, 4);
   const { data: auditData } = useAudit(project.id);
   const events = auditData || [];
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pb-8">
       <div className="lg:col-span-3 min-w-0">
-        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Latest Shots Previews</h3>
+        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">
+          Latest Shots Previews
+        </h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {projectShots.map(shot => (
-            <div key={shot.id} className="group relative aspect-video bg-muted rounded-lg overflow-hidden border border-border cursor-pointer hover:border-primary/50 transition-colors">
-              <img src={shot.thumbnail} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt={shot.name} />
+          {projectShots.map((shot) => (
+            <div
+              key={shot.id}
+              className="group relative aspect-video bg-muted rounded-lg overflow-hidden border border-border cursor-pointer hover:border-primary/50 transition-colors"
+            >
+              <img
+                src={shot.thumbnail}
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                alt={shot.name}
+              />
               <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                 <PlayCircle className="w-10 h-10 text-white drop-shadow-md" />
               </div>
               <div className="absolute bottom-2 left-2 right-2 flex justify-between items-center text-xs text-white drop-shadow-md font-medium">
                 <span>{shot.name}</span>
-                <span className="bg-black/60 px-1.5 py-0.5 rounded backdrop-blur-md">{shot.status}</span>
+                <span className="bg-black/60 px-1.5 py-0.5 rounded backdrop-blur-md">
+                  {shot.status}
+                </span>
               </div>
             </div>
           ))}
@@ -72,16 +100,48 @@ export default function DashboardTab({ project }: { project: any }) {
           </CardHeader>
           <CardContent className="h-[300px] min-w-0">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={burndownData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} />
-                <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }}
-                  itemStyle={{ color: 'hsl(var(--foreground))' }}
+              <LineChart
+                data={burndownData}
+                margin={{ top: 5, right: 20, bottom: 5, left: 0 }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="hsl(var(--border))"
                 />
-                <Line type="monotone" dataKey="planned" stroke="hsl(var(--muted-foreground))" strokeWidth={2} strokeDasharray="5 5" name="Planned Remaining" />
-                <Line type="monotone" dataKey="actual" stroke="hsl(var(--primary))" strokeWidth={3} name="Actual Remaining" />
+                <XAxis
+                  dataKey="name"
+                  stroke="hsl(var(--muted-foreground))"
+                  fontSize={12}
+                  tickLine={false}
+                />
+                <YAxis
+                  stroke="hsl(var(--muted-foreground))"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "hsl(var(--card))",
+                    borderColor: "hsl(var(--border))",
+                  }}
+                  itemStyle={{ color: "hsl(var(--foreground))" }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="planned"
+                  stroke="hsl(var(--muted-foreground))"
+                  strokeWidth={2}
+                  strokeDasharray="5 5"
+                  name="Planned Remaining"
+                />
+                <Line
+                  type="monotone"
+                  dataKey="actual"
+                  stroke="hsl(var(--primary))"
+                  strokeWidth={3}
+                  name="Actual Remaining"
+                />
               </LineChart>
             </ResponsiveContainer>
           </CardContent>
@@ -89,14 +149,16 @@ export default function DashboardTab({ project }: { project: any }) {
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { label: 'Overall Progress', value: `${project.progress ?? 0}%` },
-            { label: 'Shots Approved', value: '98 / 247' },
-            { label: 'Assets Approved', value: '45 / 84' },
-            { label: 'Current Velocity', value: '18 tasks/wk' },
+            { label: "Overall Progress", value: `${project.progress ?? 0}%` },
+            { label: "Shots Approved", value: "98 / 247" },
+            { label: "Assets Approved", value: "45 / 84" },
+            { label: "Current Velocity", value: "18 tasks/wk" },
           ].map((k, i) => (
             <Card key={i}>
               <CardContent className="p-4">
-                <div className="text-xs text-muted-foreground font-medium mb-1">{k.label}</div>
+                <div className="text-xs text-muted-foreground font-medium mb-1">
+                  {k.label}
+                </div>
                 <div className="text-xl font-bold">{k.value}</div>
               </CardContent>
             </Card>
@@ -120,13 +182,16 @@ export default function DashboardTab({ project }: { project: any }) {
                     {event.entityType} {event.action}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    by User {event.userId} on {new Date(event.createdAt).toLocaleDateString()}
+                    by User {event.userId} on{" "}
+                    {new Date(event.createdAt).toLocaleDateString()}
                   </div>
                 </div>
               </div>
             ))}
             {events.length === 0 && (
-              <div className="text-muted-foreground text-sm text-center py-4">No recent activity.</div>
+              <div className="text-muted-foreground text-sm text-center py-4">
+                No recent activity.
+              </div>
             )}
           </CardContent>
         </Card>
@@ -137,11 +202,14 @@ export default function DashboardTab({ project }: { project: any }) {
           </CardHeader>
           <CardContent className="space-y-4">
             {[
-              { t: 'SEQ_020 Lighting Pass', d: 'Oct 10' },
-              { t: 'Character Rigs Final', d: 'Oct 15' },
-              { t: 'Director Review Loop', d: 'Oct 18' },
+              { t: "SEQ_020 Lighting Pass", d: "Oct 10" },
+              { t: "Character Rigs Final", d: "Oct 15" },
+              { t: "Director Review Loop", d: "Oct 18" },
             ].map((item, i) => (
-              <div key={i} className="flex justify-between items-center text-sm border-b border-border pb-2 last:border-0 last:pb-0">
+              <div
+                key={i}
+                className="flex justify-between items-center text-sm border-b border-border pb-2 last:border-0 last:pb-0"
+              >
                 <span className="font-medium">{item.t}</span>
                 <span className="text-muted-foreground">{item.d}</span>
               </div>

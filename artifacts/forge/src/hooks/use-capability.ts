@@ -1,5 +1,9 @@
-import { useAuthStore } from '@/store/auth';
-import { usePermissionsStore, LEADERSHIP_ROLES, type CapabilityId } from '@/store/permissions';
+import { useAuthStore } from "@/store/auth";
+import {
+  usePermissionsStore,
+  LEADERSHIP_ROLES,
+  type CapabilityId,
+} from "@/store/permissions";
 
 /**
  * Gates a specific action against the editable Roles & Permissions matrix
@@ -11,7 +15,7 @@ export function useCapability(id: CapabilityId): boolean {
   const user = useAuthStore((s) => s.currentUser);
   if (!user) return false;
   // Fallback to true for admin just in case, but real RBAC handles admin fully
-  if (user.role === 'admin') return true; 
+  if (user.role === "admin") return true;
   // Read directly from the capabilities array returned by API
   return user.capabilities?.includes(id) ?? false;
 }

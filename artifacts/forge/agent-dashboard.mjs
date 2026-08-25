@@ -1,69 +1,87 @@
-import http from 'http';
-import fs from 'fs';
-import path from 'path';
-import os from 'os';
+import http from "http";
+import fs from "fs";
+import path from "path";
+import os from "os";
 
 const PORT = 3000;
-const BRAIN_DIR = path.join(os.homedir(), '.gemini', 'antigravity-cli', 'brain');
+const BRAIN_DIR = path.join(
+  os.homedir(),
+  ".gemini",
+  "antigravity-cli",
+  "brain",
+);
 
 function getAgents() {
   if (!fs.existsSync(BRAIN_DIR)) return [];
   const agents = [];
   const dirs = fs.readdirSync(BRAIN_DIR);
-  
+
   for (const dir of dirs) {
-    if (dir.startsWith('.')) continue; // skip hidden
-    const logPath = path.join(BRAIN_DIR, dir, '.system_generated', 'logs', 'transcript.jsonl');
-    
-    let lastActivity = 'Unknown';
-    let status = 'idle';
-    
+    if (dir.startsWith(".")) continue; // skip hidden
+    const logPath = path.join(
+      BRAIN_DIR,
+      dir,
+      ".system_generated",
+      "logs",
+      "transcript.jsonl",
+    );
+
+    let lastActivity = "Unknown";
+    let status = "idle";
+
     if (fs.existsSync(logPath)) {
       try {
-        const fileContent = fs.readFileSync(logPath, 'utf-8').trim();
-        const lines = fileContent.split('\n');
+        const fileContent = fs.readFileSync(logPath, "utf-8").trim();
+        const lines = fileContent.split("\n");
         if (lines.length > 0) {
           const lastLine = lines[lines.length - 1];
           try {
             const parsed = JSON.parse(lastLine);
             lastActivity = parsed.content || parsed.type;
-            
+
             // Basic heuristic for status
-            if (parsed.type === 'PLANNER_RESPONSE' && parsed.tool_calls && parsed.tool_calls.length > 0) {
-              status = 'running';
-            } else if (parsed.type === 'USER_INPUT') {
-              status = 'running';
-            } else if (parsed.type === 'PLANNER_RESPONSE' && (!parsed.tool_calls || parsed.tool_calls.length === 0)) {
-              status = 'idle';
+            if (
+              parsed.type === "PLANNER_RESPONSE" &&
+              parsed.tool_calls &&
+              parsed.tool_calls.length > 0
+            ) {
+              status = "running";
+            } else if (parsed.type === "USER_INPUT") {
+              status = "running";
+            } else if (
+              parsed.type === "PLANNER_RESPONSE" &&
+              (!parsed.tool_calls || parsed.tool_calls.length === 0)
+            ) {
+              status = "idle";
             }
           } catch (e) {
             lastActivity = lastLine.substring(0, 50);
           }
         }
       } catch (e) {
-        lastActivity = 'Error reading log';
+        lastActivity = "Error reading log";
       }
     }
-    
+
     agents.push({
       id: dir,
       status,
       lastActivity,
-      updatedAt: fs.statSync(path.join(BRAIN_DIR, dir)).mtime
+      updatedAt: fs.statSync(path.join(BRAIN_DIR, dir)).mtime,
     });
   }
-  
+
   return agents.sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 const server = http.createServer((req, res) => {
-  if (req.url === '/api/agents') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
+  if (req.url === "/api/agents") {
+    res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify(getAgents()));
     return;
   }
 
-  res.writeHead(200, { 'Content-Type': 'text/html' });
+  res.writeHead(200, { "Content-Type": "text/html" });
   res.end(`
     <!DOCTYPE html>
     <html>

@@ -1,24 +1,24 @@
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import { Role } from '@/data/mockData';
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import { Role } from "@/data/mockData";
 
 // --- Capability catalogue ----------------------------------------------------
 
 export const CAPABILITY_IDS = [
-  'create_tasks',
-  'edit_tasks',
-  'delete_tasks',
-  'assign_tasks',
-  'submit_reviews',
-  'approve_reviews',
-  'manage_members',
-  'manage_roles',
-  'view_financials',
-  'edit_financials',
-  'manage_pipeline',
-  'manage_licenses',
-  'manage_integrations',
-  'broadcast_updates',
+  "create_tasks",
+  "edit_tasks",
+  "delete_tasks",
+  "assign_tasks",
+  "submit_reviews",
+  "approve_reviews",
+  "manage_members",
+  "manage_roles",
+  "view_financials",
+  "edit_financials",
+  "manage_pipeline",
+  "manage_licenses",
+  "manage_integrations",
+  "broadcast_updates",
 ] as const;
 
 export type CapabilityId = (typeof CAPABILITY_IDS)[number];
@@ -31,36 +31,109 @@ export interface Capability {
 }
 
 export const CAPABILITIES: Capability[] = [
-  { id: 'create_tasks', label: 'Create Tasks', description: 'Add new tasks to a project pipeline.', category: 'Tasks' },
-  { id: 'edit_tasks', label: 'Edit Tasks', description: 'Modify task details, dates, and status.', category: 'Tasks' },
-  { id: 'delete_tasks', label: 'Delete Tasks', description: 'Permanently remove tasks.', category: 'Tasks' },
-  { id: 'assign_tasks', label: 'Assign Tasks', description: 'Assign or reassign tasks to other members.', category: 'Tasks' },
-  { id: 'submit_reviews', label: 'Submit for Review', description: 'Push a version into the review queue.', category: 'Reviews' },
-  { id: 'approve_reviews', label: 'Approve Reviews', description: 'Approve or request changes on a submission.', category: 'Reviews' },
-  { id: 'manage_members', label: 'Manage Members', description: 'Invite, remove, or edit studio members.', category: 'Team & Access' },
-  { id: 'manage_roles', label: 'Manage Roles & Permissions', description: 'Edit this permission scheme itself.', category: 'Team & Access' },
-  { id: 'view_financials', label: 'View Financials', description: 'See budgets, bids, and cost reports.', category: 'Financials' },
-  { id: 'edit_financials', label: 'Edit Budgets', description: 'Modify budgets, bids, and cost allocations.', category: 'Financials' },
-  { id: 'manage_pipeline', label: 'Manage Pipelines', description: 'Add or reorder department pipeline stages.', category: 'Studio Ops' },
-  { id: 'manage_licenses', label: 'Manage Licenses', description: 'Add license servers and adjust seat counts.', category: 'Studio Ops' },
-  { id: 'manage_integrations', label: 'Manage API & Integrations', description: 'Create API tokens and webhook endpoints.', category: 'Studio Ops' },
-  { id: 'broadcast_updates', label: 'Broadcast Status Updates', description: 'Post studio-wide or project status updates to teams and, optionally, the client portal.', category: 'Studio Ops' },
+  {
+    id: "create_tasks",
+    label: "Create Tasks",
+    description: "Add new tasks to a project pipeline.",
+    category: "Tasks",
+  },
+  {
+    id: "edit_tasks",
+    label: "Edit Tasks",
+    description: "Modify task details, dates, and status.",
+    category: "Tasks",
+  },
+  {
+    id: "delete_tasks",
+    label: "Delete Tasks",
+    description: "Permanently remove tasks.",
+    category: "Tasks",
+  },
+  {
+    id: "assign_tasks",
+    label: "Assign Tasks",
+    description: "Assign or reassign tasks to other members.",
+    category: "Tasks",
+  },
+  {
+    id: "submit_reviews",
+    label: "Submit for Review",
+    description: "Push a version into the review queue.",
+    category: "Reviews",
+  },
+  {
+    id: "approve_reviews",
+    label: "Approve Reviews",
+    description: "Approve or request changes on a submission.",
+    category: "Reviews",
+  },
+  {
+    id: "manage_members",
+    label: "Manage Members",
+    description: "Invite, remove, or edit studio members.",
+    category: "Team & Access",
+  },
+  {
+    id: "manage_roles",
+    label: "Manage Roles & Permissions",
+    description: "Edit this permission scheme itself.",
+    category: "Team & Access",
+  },
+  {
+    id: "view_financials",
+    label: "View Financials",
+    description: "See budgets, bids, and cost reports.",
+    category: "Financials",
+  },
+  {
+    id: "edit_financials",
+    label: "Edit Budgets",
+    description: "Modify budgets, bids, and cost allocations.",
+    category: "Financials",
+  },
+  {
+    id: "manage_pipeline",
+    label: "Manage Pipelines",
+    description: "Add or reorder department pipeline stages.",
+    category: "Studio Ops",
+  },
+  {
+    id: "manage_licenses",
+    label: "Manage Licenses",
+    description: "Add license servers and adjust seat counts.",
+    category: "Studio Ops",
+  },
+  {
+    id: "manage_integrations",
+    label: "Manage API & Integrations",
+    description: "Create API tokens and webhook endpoints.",
+    category: "Studio Ops",
+  },
+  {
+    id: "broadcast_updates",
+    label: "Broadcast Status Updates",
+    description:
+      "Post studio-wide or project status updates to teams and, optionally, the client portal.",
+    category: "Studio Ops",
+  },
 ];
 
-export const CAPABILITY_CATEGORIES = Array.from(new Set(CAPABILITIES.map((c) => c.category)));
+export const CAPABILITY_CATEGORIES = Array.from(
+  new Set(CAPABILITIES.map((c) => c.category)),
+);
 
 // --- Role scheme --------------------------------------------------------------
 
 export const ROLES_ORDER: Role[] = [
-  'vfx_producer',
-  'production_manager',
-  'coordinator',
-  'supervisor',
-  'lead',
-  'senior_artist',
-  'artist',
-  'junior_artist',
-  'client',
+  "vfx_producer",
+  "production_manager",
+  "coordinator",
+  "supervisor",
+  "lead",
+  "senior_artist",
+  "artist",
+  "junior_artist",
+  "client",
 ];
 
 // Single source of truth for "leadership" routes/UI (previously redeclared
@@ -69,7 +142,13 @@ export const ROLES_ORDER: Role[] = [
 // src/hooks/use-capability.ts for gating a specific action; reach for
 // LEADERSHIP_ROLES / useIsLeadership() only for coarse "is this person
 // studio leadership" checks that aren't really about one capability.
-export const LEADERSHIP_ROLES: Role[] = ['vfx_producer', 'production_manager', 'coordinator', 'supervisor', 'lead'];
+export const LEADERSHIP_ROLES: Role[] = [
+  "vfx_producer",
+  "production_manager",
+  "coordinator",
+  "supervisor",
+  "lead",
+];
 
 // Finer-grained subsets of LEADERSHIP_ROLES for the handful of places that
 // need to distinguish "studio-wide" leadership (can act across every
@@ -77,20 +156,27 @@ export const LEADERSHIP_ROLES: Role[] = ['vfx_producer', 'production_manager', '
 // within their own department only) — e.g. who a task can be assigned to,
 // or which dashboard variant renders. Derived from ROLES_ORDER so they stay
 // in sync with LEADERSHIP_ROLES automatically.
-export const STUDIO_LEADERSHIP_ROLES: Role[] = ROLES_ORDER.slice(0, ROLES_ORDER.indexOf('supervisor'));
+export const STUDIO_LEADERSHIP_ROLES: Role[] = ROLES_ORDER.slice(
+  0,
+  ROLES_ORDER.indexOf("supervisor"),
+);
 export const DEPARTMENT_LEADERSHIP_ROLES: Role[] = LEADERSHIP_ROLES.filter(
-  (role) => !STUDIO_LEADERSHIP_ROLES.includes(role)
+  (role) => !STUDIO_LEADERSHIP_ROLES.includes(role),
 );
 
 export type PermissionScheme = Record<Role, Record<CapabilityId, boolean>>;
 
-function caps(overrides: Partial<Record<CapabilityId, boolean>>): Record<CapabilityId, boolean> {
-  const base = Object.fromEntries(CAPABILITY_IDS.map((id) => [id, false])) as Record<CapabilityId, boolean>;
+function caps(
+  overrides: Partial<Record<CapabilityId, boolean>>,
+): Record<CapabilityId, boolean> {
+  const base = Object.fromEntries(
+    CAPABILITY_IDS.map((id) => [id, false]),
+  ) as Record<CapabilityId, boolean>;
   return { ...base, ...overrides };
 }
 
 export const DEFAULT_PERMISSION_SCHEME: PermissionScheme = {
-  admin: caps(Object.fromEntries(CAPABILITY_IDS.map(id => [id, true]))),
+  admin: caps(Object.fromEntries(CAPABILITY_IDS.map((id) => [id, true]))),
   producer: caps({
     create_tasks: true,
     edit_tasks: true,
@@ -185,7 +271,7 @@ export function schemeHasRoleManager(scheme: PermissionScheme): boolean {
 }
 
 export const PERMISSION_LOCKOUT_ERROR =
-  'At least one role must keep Manage Roles & Permissions access, or no one will be able to change permissions again.';
+  "At least one role must keep Manage Roles & Permissions access, or no one will be able to change permissions again.";
 
 export type SaveSchemeResult = { ok: true } | { ok: false; error: string };
 
@@ -193,7 +279,10 @@ interface PermissionsState {
   scheme: PermissionScheme;
   lastUpdated: string | null;
   updatedBy: string | null;
-  saveScheme: (scheme: PermissionScheme, updatedByName?: string) => SaveSchemeResult;
+  saveScheme: (
+    scheme: PermissionScheme,
+    updatedByName?: string,
+  ) => SaveSchemeResult;
   resetToDefaults: () => void;
 }
 
@@ -220,11 +309,11 @@ export const usePermissionsStore = create<PermissionsState>()(
         set({
           scheme: DEFAULT_PERMISSION_SCHEME,
           lastUpdated: new Date().toISOString(),
-          updatedBy: 'System (reset to defaults)',
+          updatedBy: "System (reset to defaults)",
         }),
     }),
     {
-      name: 'forge-permissions-storage',
+      name: "forge-permissions-storage",
       version: 2,
       // Migrate schemes persisted before broadcast_updates existed — zustand's
       // default merge is shallow, so a hydrated `scheme` replaces
@@ -238,12 +327,15 @@ export const usePermissionsStore = create<PermissionsState>()(
           const state = persistedState as { scheme?: PermissionScheme };
           if (state?.scheme) {
             state.scheme = Object.fromEntries(
-              ROLES_ORDER.map((role) => [role, caps(state.scheme![role] ?? {})])
+              ROLES_ORDER.map((role) => [
+                role,
+                caps(state.scheme![role] ?? {}),
+              ]),
             ) as PermissionScheme;
           }
         }
         return persistedState as PermissionsState;
       },
-    }
-  )
+    },
+  ),
 );

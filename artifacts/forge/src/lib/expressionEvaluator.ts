@@ -19,20 +19,29 @@
 export type ExprValue = number | boolean | string;
 
 type TokenType =
-  | 'number'
-  | 'string'
-  | 'ident'
-  | 'op'
-  | 'lparen'
-  | 'rparen'
-  | 'eof';
+  "number" | "string" | "ident" | "op" | "lparen" | "rparen" | "eof";
 
 interface Token {
   type: TokenType;
   value: string;
 }
 
-const OPERATORS = ['==', '!=', '>=', '<=', '&&', '||', '>', '<', '+', '-', '*', '/', '%', '!'];
+const OPERATORS = [
+  "==",
+  "!=",
+  ">=",
+  "<=",
+  "&&",
+  "||",
+  ">",
+  "<",
+  "+",
+  "-",
+  "*",
+  "/",
+  "%",
+  "!",
+];
 
 function tokenize(input: string): Token[] {
   const tokens: Token[] = [];
@@ -43,66 +52,67 @@ function tokenize(input: string): Token[] {
       i++;
       continue;
     }
-    if (ch === '(') {
-      tokens.push({ type: 'lparen', value: ch });
+    if (ch === "(") {
+      tokens.push({ type: "lparen", value: ch });
       i++;
       continue;
     }
-    if (ch === ')') {
-      tokens.push({ type: 'rparen', value: ch });
+    if (ch === ")") {
+      tokens.push({ type: "rparen", value: ch });
       i++;
       continue;
     }
     if (ch === '"' || ch === "'") {
       const quote = ch;
       let j = i + 1;
-      let str = '';
+      let str = "";
       while (j < input.length && input[j] !== quote) {
         str += input[j];
         j++;
       }
-      if (input[j] !== quote) throw new Error(`Unterminated string literal at position ${i}`);
-      tokens.push({ type: 'string', value: str });
+      if (input[j] !== quote)
+        throw new Error(`Unterminated string literal at position ${i}`);
+      tokens.push({ type: "string", value: str });
       i = j + 1;
       continue;
     }
-    if (/[0-9]/.test(ch) || (ch === '.' && /[0-9]/.test(input[i + 1] ?? ''))) {
+    if (/[0-9]/.test(ch) || (ch === "." && /[0-9]/.test(input[i + 1] ?? ""))) {
       let j = i;
-      let num = '';
+      let num = "";
       while (j < input.length && /[0-9.]/.test(input[j])) {
         num += input[j];
         j++;
       }
-      tokens.push({ type: 'number', value: num });
+      tokens.push({ type: "number", value: num });
       i = j;
       continue;
     }
     if (/[a-zA-Z_]/.test(ch)) {
       let j = i;
-      let ident = '';
+      let ident = "";
       while (j < input.length && /[a-zA-Z0-9_]/.test(input[j])) {
         ident += input[j];
         j++;
       }
-      tokens.push({ type: 'ident', value: ident });
+      tokens.push({ type: "ident", value: ident });
       i = j;
       continue;
     }
     const two = input.slice(i, i + 2);
     if (OPERATORS.includes(two)) {
-      tokens.push({ type: 'op', value: two });
+      tokens.push({ type: "op", value: two });
       i += 2;
       continue;
     }
     const one = input[i];
     if (OPERATORS.includes(one)) {
-      tokens.push({ type: 'op', value: one });
+      tokens.push({ type: "op", value: one });
       i += 1;
       continue;
     }
     throw new Error(`Unexpected character "${ch}" at position ${i}`);
   }
-  tokens.push({ type: 'eof', value: '' });
+  tokens.push({ type: "eof", value: "" });
   return tokens;
 }
 
@@ -124,12 +134,12 @@ class Parser {
 
   private expectOp(...ops: string[]): boolean {
     const t = this.peek();
-    return t.type === 'op' && ops.includes(t.value);
+    return t.type === "op" && ops.includes(t.value);
   }
 
   parse(scope: Record<string, ExprValue>): ExprValue {
     const result = this.parseOr(scope);
-    if (this.peek().type !== 'eof') {
+    if (this.peek().type !== "eof") {
       throw new Error(`Unexpected token "${this.peek().value}"`);
     }
     return result;
@@ -137,7 +147,7 @@ class Parser {
 
   private parseOr(scope: Record<string, ExprValue>): ExprValue {
     let left = this.parseAnd(scope);
-    while (this.expectOp('||')) {
+    while (this.expectOp("||")) {
       this.next();
       const right = this.parseAnd(scope);
       left = Boolean(left) || Boolean(right);
@@ -147,7 +157,7 @@ class Parser {
 
   private parseAnd(scope: Record<string, ExprValue>): ExprValue {
     let left = this.parseEquality(scope);
-    while (this.expectOp('&&')) {
+    while (this.expectOp("&&")) {
       this.next();
       const right = this.parseEquality(scope);
       left = Boolean(left) && Boolean(right);
@@ -157,35 +167,42 @@ class Parser {
 
   private parseEquality(scope: Record<string, ExprValue>): ExprValue {
     let left = this.parseComparison(scope);
-    while (this.expectOp('==', '!=')) {
+    while (this.expectOp("==", "!=")) {
       const op = this.next().value;
       const right = this.parseComparison(scope);
-      left = op === '==' ? left === right : left !== right;
+      left = op === "==" ? left === right : left !== right;
     }
     return left;
   }
 
   private parseComparison(scope: Record<string, ExprValue>): ExprValue {
     let left = this.parseAdditive(scope);
-    while (this.expectOp('>', '>=', '<', '<=')) {
+    while (this.expectOp(">", ">=", "<", "<=")) {
       const op = this.next().value;
       const right = this.parseAdditive(scope);
       const l = Number(left);
       const r = Number(right);
-      left = op === '>' ? l > r : op === '>=' ? l >= r : op === '<' ? l < r : l <= r;
+      left =
+        op === ">" ? l > r : op === ">=" ? l >= r : op === "<" ? l < r : l <= r;
     }
     return left;
   }
 
   private parseAdditive(scope: Record<string, ExprValue>): ExprValue {
     let left = this.parseTerm(scope);
-    while (this.expectOp('+', '-')) {
+    while (this.expectOp("+", "-")) {
       const op = this.next().value;
       const right = this.parseTerm(scope);
-      if (op === '+' && (typeof left === 'string' || typeof right === 'string')) {
+      if (
+        op === "+" &&
+        (typeof left === "string" || typeof right === "string")
+      ) {
         left = `${left}${right}`;
       } else {
-        left = op === '+' ? Number(left) + Number(right) : Number(left) - Number(right);
+        left =
+          op === "+"
+            ? Number(left) + Number(right)
+            : Number(left) - Number(right);
       }
     }
     return left;
@@ -193,22 +210,22 @@ class Parser {
 
   private parseTerm(scope: Record<string, ExprValue>): ExprValue {
     let left = this.parseUnary(scope);
-    while (this.expectOp('*', '/', '%')) {
+    while (this.expectOp("*", "/", "%")) {
       const op = this.next().value;
       const right = this.parseUnary(scope);
       const l = Number(left);
       const r = Number(right);
-      left = op === '*' ? l * r : op === '/' ? l / r : l % r;
+      left = op === "*" ? l * r : op === "/" ? l / r : l % r;
     }
     return left;
   }
 
   private parseUnary(scope: Record<string, ExprValue>): ExprValue {
-    if (this.expectOp('!')) {
+    if (this.expectOp("!")) {
       this.next();
       return !this.parseUnary(scope);
     }
-    if (this.expectOp('-')) {
+    if (this.expectOp("-")) {
       this.next();
       return -Number(this.parseUnary(scope));
     }
@@ -217,19 +234,20 @@ class Parser {
 
   private parsePrimary(scope: Record<string, ExprValue>): ExprValue {
     const t = this.next();
-    if (t.type === 'number') return parseFloat(t.value);
-    if (t.type === 'string') return t.value;
-    if (t.type === 'ident') {
-      if (t.value === 'true') return true;
-      if (t.value === 'false') return false;
+    if (t.type === "number") return parseFloat(t.value);
+    if (t.type === "string") return t.value;
+    if (t.type === "ident") {
+      if (t.value === "true") return true;
+      if (t.value === "false") return false;
       if (!(t.value in scope)) {
         throw new Error(`Unknown field reference "${t.value}"`);
       }
       return scope[t.value];
     }
-    if (t.type === 'lparen') {
+    if (t.type === "lparen") {
       const expr = this.parseOr(scope);
-      if (this.peek().type !== 'rparen') throw new Error('Expected closing ")"');
+      if (this.peek().type !== "rparen")
+        throw new Error('Expected closing ")"');
       this.next();
       return expr;
     }
@@ -243,7 +261,10 @@ export interface EvaluationResult {
 }
 
 /** Evaluate a small computed expression against a flat scope of field values. */
-export function evaluateExpression(expression: string, scope: Record<string, ExprValue>): EvaluationResult {
+export function evaluateExpression(
+  expression: string,
+  scope: Record<string, ExprValue>,
+): EvaluationResult {
   const trimmed = expression.trim();
   if (!trimmed) return { value: null, error: null };
   try {
@@ -252,7 +273,10 @@ export function evaluateExpression(expression: string, scope: Record<string, Exp
     const value = parser.parse(scope);
     return { value, error: null };
   } catch (e) {
-    return { value: null, error: e instanceof Error ? e.message : 'Invalid expression' };
+    return {
+      value: null,
+      error: e instanceof Error ? e.message : "Invalid expression",
+    };
   }
 }
 
@@ -262,7 +286,7 @@ export function extractFieldRefs(expression: string): string[] {
     const tokens = tokenize(expression);
     const refs = new Set<string>();
     for (const t of tokens) {
-      if (t.type === 'ident' && t.value !== 'true' && t.value !== 'false') {
+      if (t.type === "ident" && t.value !== "true" && t.value !== "false") {
         refs.add(t.value);
       }
     }
@@ -273,8 +297,9 @@ export function extractFieldRefs(expression: string): string[] {
 }
 
 export function formatExprValue(value: ExprValue | null): string {
-  if (value === null || value === undefined) return '—';
-  if (typeof value === 'boolean') return value ? 'true' : 'false';
-  if (typeof value === 'number') return Number.isInteger(value) ? String(value) : value.toFixed(2);
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "number")
+    return Number.isInteger(value) ? String(value) : value.toFixed(2);
   return value;
 }

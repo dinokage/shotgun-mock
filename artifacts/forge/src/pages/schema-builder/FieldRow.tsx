@@ -1,13 +1,24 @@
-import { useState } from 'react';
-import { motion } from 'framer-motion';
-import { useSortable } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Trash2, Plus, X, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { Input } from '@/components/ui/input';
-import { Switch } from '@/components/ui/switch';
-import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useState } from "react";
+import { motion } from "framer-motion";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
+  GripVertical,
+  Trash2,
+  Plus,
+  X,
+  AlertCircle,
+  CheckCircle2,
+} from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,25 +29,30 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
-import { cn } from '@/lib/utils';
-import { FieldTypePicker } from './FieldTypePicker';
-import { slugifyKey, RESERVED_KEYS, type EntityField, type FieldType } from '@/store/schema';
-import { evaluateExpression, formatExprValue } from '@/lib/expressionEvaluator';
-import { EASE_DISSOLVE, DURATION } from '@/lib/motion';
+} from "@/components/ui/alert-dialog";
+import { cn } from "@/lib/utils";
+import { FieldTypePicker } from "./FieldTypePicker";
+import {
+  slugifyKey,
+  RESERVED_KEYS,
+  type EntityField,
+  type FieldType,
+} from "@/store/schema";
+import { evaluateExpression, formatExprValue } from "@/lib/expressionEvaluator";
+import { EASE_DISSOLVE, DURATION } from "@/lib/motion";
 
 function sampleScopeValue(field: EntityField): string | number | boolean {
   switch (field.type) {
-    case 'number':
+    case "number":
       return field.defaultValue ? Number(field.defaultValue) : 10;
-    case 'boolean':
-      return field.defaultValue === 'true';
-    case 'single_select':
-      return field.defaultValue || field.options?.[0] || '';
-    case 'text':
-      return field.defaultValue || 'Sample';
+    case "boolean":
+      return field.defaultValue === "true";
+    case "single_select":
+      return field.defaultValue || field.options?.[0] || "";
+    case "text":
+      return field.defaultValue || "Sample";
     default:
-      return field.defaultValue || '';
+      return field.defaultValue || "";
   }
 }
 
@@ -51,8 +67,15 @@ export function FieldRow({
   onUpdate: (updates: Partial<EntityField>) => void;
   onRemove: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: field.id });
-  const [optionDraft, setOptionDraft] = useState('');
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: field.id });
+  const [optionDraft, setOptionDraft] = useState("");
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -61,8 +84,16 @@ export function FieldRow({
     zIndex: isDragging ? 10 : undefined,
   };
 
-  const takenKeys = siblingFields.filter((f) => f.id !== field.id).map((f) => f.key);
-  const usableFields = siblingFields.filter((f) => f.id !== field.id && f.type !== 'computed' && f.type !== 'date' && f.type !== 'multi_select');
+  const takenKeys = siblingFields
+    .filter((f) => f.id !== field.id)
+    .map((f) => f.key);
+  const usableFields = siblingFields.filter(
+    (f) =>
+      f.id !== field.id &&
+      f.type !== "computed" &&
+      f.type !== "date" &&
+      f.type !== "multi_select",
+  );
 
   const handleLabelChange = (label: string) => {
     // Keep the key in sync with the label until the user has manually
@@ -77,17 +108,20 @@ export function FieldRow({
   };
 
   const handleKeyChange = (rawKey: string) => {
-    const cleaned = rawKey.toLowerCase().replace(/[^a-z0-9_]/g, '');
-    onUpdate({ key: cleaned || 'field', keyManuallyEdited: true });
+    const cleaned = rawKey.toLowerCase().replace(/[^a-z0-9_]/g, "");
+    onUpdate({ key: cleaned || "field", keyManuallyEdited: true });
   };
 
   const handleTypeChange = (type: FieldType) => {
     const updates: Partial<EntityField> = { type };
-    if ((type === 'single_select' || type === 'multi_select') && !field.options) {
-      updates.options = ['Option A', 'Option B'];
+    if (
+      (type === "single_select" || type === "multi_select") &&
+      !field.options
+    ) {
+      updates.options = ["Option A", "Option B"];
     }
-    if (type === 'computed') {
-      updates.expression = field.expression ?? '';
+    if (type === "computed") {
+      updates.expression = field.expression ?? "";
       updates.defaultValue = undefined;
     } else if (type !== field.type) {
       // Default values are type-specific (e.g. 'true'/'false' for boolean,
@@ -105,7 +139,7 @@ export function FieldRow({
     const val = optionDraft.trim();
     if (!val) return;
     onUpdate({ options: [...(field.options ?? []), val] });
-    setOptionDraft('');
+    setOptionDraft("");
   };
 
   const removeOption = (index: number) => {
@@ -113,13 +147,18 @@ export function FieldRow({
   };
 
   const insertRef = (key: string) => {
-    const current = field.expression ?? '';
-    const needsSpace = current.length > 0 && !current.endsWith(' ');
-    onUpdate({ expression: `${current}${needsSpace ? ' ' : ''}${key} ` });
+    const current = field.expression ?? "";
+    const needsSpace = current.length > 0 && !current.endsWith(" ");
+    onUpdate({ expression: `${current}${needsSpace ? " " : ""}${key} ` });
   };
 
-  const scope = Object.fromEntries(usableFields.map((f) => [f.key, sampleScopeValue(f)]));
-  const evalResult = field.type === 'computed' ? evaluateExpression(field.expression ?? '', scope) : null;
+  const scope = Object.fromEntries(
+    usableFields.map((f) => [f.key, sampleScopeValue(f)]),
+  );
+  const evalResult =
+    field.type === "computed"
+      ? evaluateExpression(field.expression ?? "", scope)
+      : null;
 
   return (
     <motion.div
@@ -128,11 +167,18 @@ export function FieldRow({
       layout
       initial={{ opacity: 0, y: -8, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, x: -12, scale: 0.97, transition: { duration: DURATION.fast, ease: EASE_DISSOLVE } }}
+      exit={{
+        opacity: 0,
+        x: -12,
+        scale: 0.97,
+        transition: { duration: DURATION.fast, ease: EASE_DISSOLVE },
+      }}
       transition={{ duration: DURATION.base, ease: EASE_DISSOLVE }}
       className={cn(
-        'group rounded-lg border bg-card p-3 space-y-3',
-        isDragging ? 'border-primary shadow-lg cursor-grabbing' : 'border-border'
+        "group rounded-lg border bg-card p-3 space-y-3",
+        isDragging
+          ? "border-primary shadow-lg cursor-grabbing"
+          : "border-border",
       )}
     >
       <div className="flex items-start gap-2">
@@ -166,11 +212,13 @@ export function FieldRow({
                   <AlertCircle className="w-2.5 h-2.5" /> duplicate key
                 </span>
               )}
-              {!takenKeys.includes(field.key) && RESERVED_KEYS.includes(field.key) && (
-                <span className="text-[10px] text-red-500 flex items-center gap-0.5">
-                  <AlertCircle className="w-2.5 h-2.5" /> reserved word — unusable in expressions
-                </span>
-              )}
+              {!takenKeys.includes(field.key) &&
+                RESERVED_KEYS.includes(field.key) && (
+                  <span className="text-[10px] text-red-500 flex items-center gap-0.5">
+                    <AlertCircle className="w-2.5 h-2.5" /> reserved word —
+                    unusable in expressions
+                  </span>
+                )}
             </div>
           </div>
 
@@ -182,7 +230,9 @@ export function FieldRow({
                   <span className="text-[10px] text-muted-foreground">Req</span>
                   <Switch
                     checked={field.required}
-                    onCheckedChange={(checked) => onUpdate({ required: checked })}
+                    onCheckedChange={(checked) =>
+                      onUpdate({ required: checked })
+                    }
                     className="scale-[0.8]"
                   />
                 </div>
@@ -203,15 +253,21 @@ export function FieldRow({
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Delete field "{field.label || 'Untitled field'}"?</AlertDialogTitle>
+                  <AlertDialogTitle>
+                    Delete field "{field.label || "Untitled field"}"?
+                  </AlertDialogTitle>
                   <AlertDialogDescription>
-                    This removes the field from the entity type. Any computed fields referencing{' '}
-                    <span className="font-mono">{field.key}</span> will break. This action cannot be undone.
+                    This removes the field from the entity type. Any computed
+                    fields referencing{" "}
+                    <span className="font-mono">{field.key}</span> will break.
+                    This action cannot be undone.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={onRemove}>Delete</AlertDialogAction>
+                  <AlertDialogAction onClick={onRemove}>
+                    Delete
+                  </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
@@ -221,31 +277,45 @@ export function FieldRow({
 
       {/* Type-specific configuration */}
       <div className="pl-6 space-y-2">
-        {(field.type === 'text' || field.type === 'number' || field.type === 'date') && (
+        {(field.type === "text" ||
+          field.type === "number" ||
+          field.type === "date") && (
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-muted-foreground w-24 shrink-0">Default value</span>
+            <span className="text-[11px] text-muted-foreground w-24 shrink-0">
+              Default value
+            </span>
             <Input
-              type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
-              value={field.defaultValue ?? ''}
+              type={
+                field.type === "number"
+                  ? "number"
+                  : field.type === "date"
+                    ? "date"
+                    : "text"
+              }
+              value={field.defaultValue ?? ""}
               onChange={(e) => onUpdate({ defaultValue: e.target.value })}
-              placeholder={field.type === 'text' ? 'Optional…' : undefined}
+              placeholder={field.type === "text" ? "Optional…" : undefined}
               className="h-7 text-xs max-w-[220px]"
             />
           </div>
         )}
 
-        {field.type === 'boolean' && (
+        {field.type === "boolean" && (
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-muted-foreground w-24 shrink-0">Default value</span>
+            <span className="text-[11px] text-muted-foreground w-24 shrink-0">
+              Default value
+            </span>
             <Switch
-              checked={field.defaultValue === 'true'}
-              onCheckedChange={(checked) => onUpdate({ defaultValue: checked ? 'true' : 'false' })}
+              checked={field.defaultValue === "true"}
+              onCheckedChange={(checked) =>
+                onUpdate({ defaultValue: checked ? "true" : "false" })
+              }
               className="scale-[0.8]"
             />
           </div>
         )}
 
-        {(field.type === 'single_select' || field.type === 'multi_select') && (
+        {(field.type === "single_select" || field.type === "multi_select") && (
           <div className="space-y-1.5">
             <div className="flex items-center gap-2 flex-wrap">
               {(field.options ?? []).map((opt, i) => (
@@ -270,7 +340,7 @@ export function FieldRow({
                   value={optionDraft}
                   onChange={(e) => setOptionDraft(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
+                    if (e.key === "Enter") {
                       e.preventDefault();
                       addOption();
                     }
@@ -291,11 +361,13 @@ export function FieldRow({
           </div>
         )}
 
-        {field.type === 'computed' && (
+        {field.type === "computed" && (
           <div className="space-y-1.5">
-            <span className="text-[11px] text-muted-foreground">Expression</span>
+            <span className="text-[11px] text-muted-foreground">
+              Expression
+            </span>
             <Textarea
-              value={field.expression ?? ''}
+              value={field.expression ?? ""}
               onChange={(e) => onUpdate({ expression: e.target.value })}
               placeholder="e.g. complexity_score * screen_time_minutes * 12"
               className="font-mono text-xs min-h-[52px]"
@@ -303,7 +375,9 @@ export function FieldRow({
             />
             {usableFields.length > 0 && (
               <div className="flex items-center gap-1 flex-wrap">
-                <span className="text-[10px] text-muted-foreground/70 mr-0.5">Insert:</span>
+                <span className="text-[10px] text-muted-foreground/70 mr-0.5">
+                  Insert:
+                </span>
                 {usableFields.map((f) => (
                   <motion.button
                     key={f.id}
@@ -321,10 +395,10 @@ export function FieldRow({
             {field.expression?.trim() && (
               <div
                 className={cn(
-                  'flex items-center gap-1.5 text-[11px] rounded-md px-2 py-1 w-fit',
+                  "flex items-center gap-1.5 text-[11px] rounded-md px-2 py-1 w-fit",
                   evalResult?.error
-                    ? 'text-red-500 bg-red-500/10'
-                    : 'text-emerald-500 bg-emerald-500/10'
+                    ? "text-red-500 bg-red-500/10"
+                    : "text-emerald-500 bg-emerald-500/10",
                 )}
               >
                 {evalResult?.error ? (
@@ -333,7 +407,8 @@ export function FieldRow({
                   </>
                 ) : (
                   <>
-                    <CheckCircle2 className="w-3 h-3" /> Preview: {formatExprValue(evalResult?.value ?? null)}
+                    <CheckCircle2 className="w-3 h-3" /> Preview:{" "}
+                    {formatExprValue(evalResult?.value ?? null)}
                   </>
                 )}
               </div>
@@ -352,7 +427,7 @@ export function FieldRow({
         {field.description === undefined && (
           <button
             type="button"
-            onClick={() => onUpdate({ description: '' })}
+            onClick={() => onUpdate({ description: "" })}
             className="text-[10px] text-muted-foreground/60 hover:text-primary transition-colors"
           >
             + add helper text

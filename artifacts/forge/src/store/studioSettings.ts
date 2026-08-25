@@ -1,5 +1,5 @@
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 /**
  * Backs the Settings page tabs that previously either had no real state at
@@ -21,7 +21,7 @@ export interface SecuritySettings {
   ipAllowlist: string;
 }
 
-export type PipelineDept = 'VFX' | '3D' | '2D';
+export type PipelineDept = "VFX" | "3D" | "2D";
 
 export interface ApiKey {
   id: string;
@@ -51,23 +51,85 @@ export interface PendingInvite {
 }
 
 const DEFAULT_PIPELINE_STAGES: Record<PipelineDept, string[]> = {
-  VFX: ['Tracking', 'Roto', 'Paint', 'Compositing', 'Client Review', 'Final'],
-  '3D': ['Modeling', 'Rigging', 'Layout', 'Animation', 'Lighting', 'Rendering', 'Client Review'],
-  '2D': ['Storyboarding', 'Layout', 'Rough Anim', 'Clean Up', 'Color', 'Comp', 'Client Review'],
+  VFX: ["Tracking", "Roto", "Paint", "Compositing", "Client Review", "Final"],
+  "3D": [
+    "Modeling",
+    "Rigging",
+    "Layout",
+    "Animation",
+    "Lighting",
+    "Rendering",
+    "Client Review",
+  ],
+  "2D": [
+    "Storyboarding",
+    "Layout",
+    "Rough Anim",
+    "Clean Up",
+    "Color",
+    "Comp",
+    "Client Review",
+  ],
 };
 
 const DEFAULT_API_KEYS: ApiKey[] = [
-  { id: 'key-python-pipeline', name: 'Python Pipeline Script', lastUsed: '2 mins ago', expires: 'Never' },
-  { id: 'key-maya-integration', name: 'Maya Integration', lastUsed: '14 days ago', expires: 'Dec 31, 2025' },
+  {
+    id: "key-python-pipeline",
+    name: "Python Pipeline Script",
+    lastUsed: "2 mins ago",
+    expires: "Never",
+  },
+  {
+    id: "key-maya-integration",
+    name: "Maya Integration",
+    lastUsed: "14 days ago",
+    expires: "Dec 31, 2025",
+  },
 ];
 
 const DEFAULT_LICENSE_SERVERS: LicenseServer[] = [
-  { id: 'lic-maya', name: 'Autodesk Maya', type: 'Floating', used: 22, owned: 30 },
-  { id: 'lic-nuke', name: 'The Foundry Nuke', type: 'Node-locked', used: 15, owned: 15 },
-  { id: 'lic-houdini', name: 'SideFX Houdini', type: 'Floating', used: 28, owned: 40 },
-  { id: 'lic-arnold', name: 'Arnold Render', type: 'Render Node', used: 28, owned: 50 },
-  { id: 'lic-unreal', name: 'Unreal Engine', type: 'Enterprise', used: 27, owned: 30 },
-  { id: 'lic-substance', name: 'Substance Painter', type: 'Floating', used: 30, owned: 30 },
+  {
+    id: "lic-maya",
+    name: "Autodesk Maya",
+    type: "Floating",
+    used: 22,
+    owned: 30,
+  },
+  {
+    id: "lic-nuke",
+    name: "The Foundry Nuke",
+    type: "Node-locked",
+    used: 15,
+    owned: 15,
+  },
+  {
+    id: "lic-houdini",
+    name: "SideFX Houdini",
+    type: "Floating",
+    used: 28,
+    owned: 40,
+  },
+  {
+    id: "lic-arnold",
+    name: "Arnold Render",
+    type: "Render Node",
+    used: 28,
+    owned: 50,
+  },
+  {
+    id: "lic-unreal",
+    name: "Unreal Engine",
+    type: "Enterprise",
+    used: 27,
+    owned: 30,
+  },
+  {
+    id: "lic-substance",
+    name: "Substance Painter",
+    type: "Floating",
+    used: 30,
+    owned: 30,
+  },
 ];
 
 // Maya Chen (u2) is the studio's VFX Producer - the actual studio admin.
@@ -96,7 +158,7 @@ interface StudioSettingsState {
   addWebhookEndpoint: (url: string, event: string) => void;
 
   licenseServers: LicenseServer[];
-  addLicenseServer: (server: Omit<LicenseServer, 'id' | 'used'>) => void;
+  addLicenseServer: (server: Omit<LicenseServer, "id" | "used">) => void;
 
   pendingInvites: PendingInvite[];
   inviteMember: (email: string) => void;
@@ -106,18 +168,18 @@ export const useStudioSettingsStore = create<StudioSettingsState>()(
   persist(
     (set) => ({
       profile: {
-        studioName: 'Nebula Animation Co.',
-        industry: 'animation',
-        timezone: 'pst',
+        studioName: "Nebula Animation Co.",
+        industry: "animation",
+        timezone: "pst",
       },
       setProfile: (updates) =>
         set((state) => ({ profile: { ...state.profile, ...updates } })),
 
       security: {
         oktaConfigured: false,
-        oktaDomain: '',
+        oktaDomain: "",
         enforce2FA: false,
-        ipAllowlist: '',
+        ipAllowlist: "",
       },
       setSecurity: (updates) =>
         set((state) => ({ security: { ...state.security, ...updates } })),
@@ -141,7 +203,12 @@ export const useStudioSettingsStore = create<StudioSettingsState>()(
       generateApiKey: (name) =>
         set((state) => ({
           apiKeys: [
-            { id: `key-${Date.now()}`, name, lastUsed: 'Just now', expires: 'Never' },
+            {
+              id: `key-${Date.now()}`,
+              name,
+              lastUsed: "Just now",
+              expires: "Never",
+            },
             ...state.apiKeys,
           ],
         })),
@@ -171,12 +238,16 @@ export const useStudioSettingsStore = create<StudioSettingsState>()(
         set((state) => ({
           pendingInvites: [
             ...state.pendingInvites,
-            { id: `invite-${Date.now()}`, email, invitedAt: new Date().toISOString() },
+            {
+              id: `invite-${Date.now()}`,
+              email,
+              invitedAt: new Date().toISOString(),
+            },
           ],
         })),
     }),
     {
-      name: 'forge-studio-settings-storage',
-    }
-  )
+      name: "forge-studio-settings-storage",
+    },
+  ),
 );

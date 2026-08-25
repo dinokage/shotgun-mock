@@ -1,16 +1,16 @@
-import { Mic, MessageSquareOff, Play } from 'lucide-react';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { USERS } from '@/data/mockData';
-import { useReviewStore, type ReviewComment } from '@/store/reviews';
-import { cn } from '@/lib/utils';
+import { Mic, MessageSquareOff, Play } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { USERS } from "@/data/mockData";
+import { useReviewStore, type ReviewComment } from "@/store/reviews";
+import { cn } from "@/lib/utils";
 
-type WorkflowStatus = 'wip' | 'lead-review' | 'manager-review' | 'approved';
+type WorkflowStatus = "wip" | "lead-review" | "manager-review" | "approved";
 
 const WORKFLOW_STATUS_LABEL: Record<WorkflowStatus, string> = {
-  wip: 'Work in progress',
-  'lead-review': 'Awaiting Lead review',
-  'manager-review': 'Awaiting Manager review',
-  approved: 'Approved',
+  wip: "Work in progress",
+  "lead-review": "Awaiting Lead review",
+  "manager-review": "Awaiting Manager review",
+  approved: "Approved",
 };
 
 interface FeedbackListProps {
@@ -34,22 +34,29 @@ interface FeedbackListProps {
  * who just wants to read feedback on their submission, including on a small
  * screen where the full annotation tool doesn't fit.
  */
-export function FeedbackList({ versionLabel, workflowStatus, onJumpToFrame, className }: FeedbackListProps) {
+export function FeedbackList({
+  versionLabel,
+  workflowStatus,
+  onJumpToFrame,
+  className,
+}: FeedbackListProps) {
   // Same store the full Player reads from — this is a second render of the
   // existing data, not a separate/duplicated source of truth.
   const comments = useReviewStore((s) => s.comments);
 
   return (
-    <div className={cn('flex-1 overflow-y-auto bg-background', className)}>
+    <div className={cn("flex-1 overflow-y-auto bg-background", className)}>
       <div className="max-w-2xl mx-auto p-4 sm:p-6">
         <div className="flex items-center justify-between gap-3 mb-6 flex-wrap">
-          <h1 className="text-base sm:text-lg font-medium truncate min-w-0">{versionLabel}</h1>
+          <h1 className="text-base sm:text-lg font-medium truncate min-w-0">
+            {versionLabel}
+          </h1>
           <span
             className={cn(
-              'text-xs font-medium px-2 py-1 rounded-full border shrink-0',
-              workflowStatus === 'approved'
-                ? 'bg-accent-scope/10 text-accent-scope border-accent-scope/20'
-                : 'bg-accent-tally/10 text-accent-tally border-accent-tally/20',
+              "text-xs font-medium px-2 py-1 rounded-full border shrink-0",
+              workflowStatus === "approved"
+                ? "bg-accent-scope/10 text-accent-scope border-accent-scope/20"
+                : "bg-accent-tally/10 text-accent-tally border-accent-tally/20",
             )}
           >
             {WORKFLOW_STATUS_LABEL[workflowStatus]}
@@ -64,7 +71,11 @@ export function FeedbackList({ versionLabel, workflowStatus, onJumpToFrame, clas
         ) : (
           <ul className="space-y-4">
             {comments.map((comment) => (
-              <FeedbackListItem key={comment.id} comment={comment} onJumpToFrame={onJumpToFrame} />
+              <FeedbackListItem
+                key={comment.id}
+                comment={comment}
+                onJumpToFrame={onJumpToFrame}
+              />
             ))}
           </ul>
         )}
@@ -73,15 +84,29 @@ export function FeedbackList({ versionLabel, workflowStatus, onJumpToFrame, clas
   );
 }
 
-function FeedbackListItem({ comment, onJumpToFrame }: { comment: ReviewComment; onJumpToFrame?: (frame: number) => void }) {
+function FeedbackListItem({
+  comment,
+  onJumpToFrame,
+}: {
+  comment: ReviewComment;
+  onJumpToFrame?: (frame: number) => void;
+}) {
   const user = comment.fromClient ? null : USERS[comment.userIndex];
-  const displayName = comment.fromClient ? comment.fromClient.authorName : user?.name ?? 'Unknown';
+  const displayName = comment.fromClient
+    ? comment.fromClient.authorName
+    : (user?.name ?? "Unknown");
 
   return (
     <li className="flex gap-3">
       <Avatar className="w-10 h-10 shrink-0">
         {user && <AvatarImage src={user.avatar} />}
-        <AvatarFallback className={comment.fromClient ? 'bg-accent-scope/15 text-accent-scope' : undefined}>
+        <AvatarFallback
+          className={
+            comment.fromClient
+              ? "bg-accent-scope/15 text-accent-scope"
+              : undefined
+          }
+        >
           {displayName.charAt(0)}
         </AvatarFallback>
       </Avatar>
@@ -93,10 +118,16 @@ function FeedbackListItem({ comment, onJumpToFrame }: { comment: ReviewComment; 
               Client
             </span>
           )}
-          <span className="timecode text-xs text-muted-foreground ml-auto">F{String(comment.frame).padStart(3, '0')}</span>
+          <span className="timecode text-xs text-muted-foreground ml-auto">
+            F{String(comment.frame).padStart(3, "0")}
+          </span>
         </div>
 
-        {comment.text && <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap break-words">{comment.text}</p>}
+        {comment.text && (
+          <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap break-words">
+            {comment.text}
+          </p>
+        )}
 
         {comment.audioUrl && (
           <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
@@ -106,7 +137,12 @@ function FeedbackListItem({ comment, onJumpToFrame }: { comment: ReviewComment; 
                 fail silently here if the recording's blob: URL is dead (a
                 different browser session) — that's an existing limitation of
                 session-scoped blob URLs, not something this view can fix. */}
-            <audio controls preload="metadata" src={comment.audioUrl} className="h-8 max-w-full flex-1" />
+            <audio
+              controls
+              preload="metadata"
+              src={comment.audioUrl}
+              className="h-8 max-w-full flex-1"
+            />
           </div>
         )}
 

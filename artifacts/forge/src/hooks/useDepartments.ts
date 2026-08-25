@@ -1,5 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
-import { apiFetch } from '@/lib/apiClient';
+import { useQuery } from "@tanstack/react-query";
+import { apiFetch } from "@/lib/apiClient";
 
 export interface DepartmentDTO {
   id: string;
@@ -16,7 +16,7 @@ export interface DepartmentDTO {
 
 export function useDepartments() {
   return useQuery({
-    queryKey: ['departments'],
-    queryFn: () => apiFetch<DepartmentDTO[]>('/departments'),
+    queryKey: ["departments"],
+    queryFn: () => apiFetch<DepartmentDTO[]>("/departments"),
   });
 }

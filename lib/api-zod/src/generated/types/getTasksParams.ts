@@ -7,5 +7,5 @@
  */
 
 export type GetTasksParams = {
-projectId?: string;
+  projectId?: string;
 };

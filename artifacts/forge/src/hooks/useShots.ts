@@ -1,12 +1,12 @@
-import { useQuery } from '@tanstack/react-query';
-import { apiFetch } from '@/lib/apiClient';
+import { useQuery } from "@tanstack/react-query";
+import { apiFetch } from "@/lib/apiClient";
 
 export interface ShotDTO {
   id: string;
   name: string;
   description: string | null;
-  status: 'todo' | 'in_progress' | 'review' | 'approved' | 'omitted';
-  priority: 'low' | 'normal' | 'high' | 'urgent';
+  status: "todo" | "in_progress" | "review" | "approved" | "omitted";
+  priority: "low" | "normal" | "high" | "urgent";
   projectId: string;
   sequenceId: string | null;
   duration: number | null;
@@ -18,7 +18,10 @@ export interface ShotDTO {
 
 export function useShots(projectId?: string) {
   return useQuery({
-    queryKey: projectId ? ['shots', 'project', projectId] : ['shots'],
-    queryFn: () => apiFetch<ShotDTO[]>(projectId ? `/projects/${projectId}/shots` : '/shots'),
+    queryKey: projectId ? ["shots", "project", projectId] : ["shots"],
+    queryFn: () =>
+      apiFetch<ShotDTO[]>(
+        projectId ? `/projects/${projectId}/shots` : "/shots",
+      ),
   });
 }

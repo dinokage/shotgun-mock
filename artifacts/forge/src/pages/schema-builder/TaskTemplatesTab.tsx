@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
-import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
-import { useLocation } from 'wouter';
-import { addDays, format } from 'date-fns';
+import { useMemo, useState } from "react";
+import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
+import { useLocation } from "wouter";
+import { addDays, format } from "date-fns";
 import {
   DndContext,
   closestCenter,
@@ -10,13 +10,18 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
-} from '@dnd-kit/core';
-import { SortableContext, verticalListSortingStrategy, arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  arrayMove,
+  sortableKeyboardCoordinates,
+} from "@dnd-kit/sortable";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -24,7 +29,7 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from '@/components/ui/dialog';
+} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,15 +39,21 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+} from "@/components/ui/alert-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu';
+} from "@/components/ui/dropdown-menu";
 import {
   Plus,
   MoreVertical,
@@ -54,15 +65,15 @@ import {
   Rocket,
   Check,
   ArrowRight,
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { useSchemaStore } from '@/store/schema';
-import { useTasksStore } from '@/store/tasks';
-import { useAuthStore } from '@/store/auth';
-import { DEPARTMENTS, PROJECTS, type Task } from '@/data/mockData';
-import { TemplateTaskRow } from './TemplateTaskRow';
-import { useToast } from '@/hooks/use-toast';
-import { stagger, DURATION, EASE_DISSOLVE } from '@/lib/motion';
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useSchemaStore } from "@/store/schema";
+import { useTasksStore } from "@/store/tasks";
+import { useAuthStore } from "@/store/auth";
+import { DEPARTMENTS, PROJECTS, type Task } from "@/data/mockData";
+import { TemplateTaskRow } from "./TemplateTaskRow";
+import { useToast } from "@/hooks/use-toast";
+import { stagger, DURATION, EASE_DISSOLVE } from "@/lib/motion";
 
 export function TaskTemplatesTab() {
   const templates = useSchemaStore((s) => s.templates);
@@ -80,21 +91,31 @@ export function TaskTemplatesTab() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
 
-  const [selectedId, setSelectedId] = useState<string | null>(templates[0]?.id ?? null);
-  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(
+    templates[0]?.id ?? null,
+  );
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
   const [applyOpen, setApplyOpen] = useState(false);
-  const [applyProjectId, setApplyProjectId] = useState('');
+  const [applyProjectId, setApplyProjectId] = useState("");
   const [justApplied, setJustApplied] = useState(false);
 
-  const selected = useMemo(() => templates.find((t) => t.id === selectedId) ?? null, [templates, selectedId]);
+  const selected = useMemo(
+    () => templates.find((t) => t.id === selectedId) ?? null,
+    [templates, selectedId],
+  );
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
   );
 
   const handleCreate = () => {
-    const id = addTemplate({ name: 'New Template' });
+    const id = addTemplate({ name: "New Template" });
     setSelectedId(id);
   };
 
@@ -105,7 +126,7 @@ export function TaskTemplatesTab() {
       const remaining = templates.filter((t) => t.id !== id);
       setSelectedId(remaining[0]?.id ?? null);
     }
-    toast({ title: 'Template deleted' });
+    toast({ title: "Template deleted" });
   };
 
   const handleDuplicate = (id: string) => {
@@ -124,10 +145,11 @@ export function TaskTemplatesTab() {
     reorderTemplateTasks(selected.id, arrayMove(ids, oldIndex, newIndex));
   };
 
-  const totalHours = selected?.tasks.reduce((sum, t) => sum + t.estimatedHours, 0) ?? 0;
+  const totalHours =
+    selected?.tasks.reduce((sum, t) => sum + t.estimatedHours, 0) ?? 0;
 
   const openApplyDialog = () => {
-    setApplyProjectId('');
+    setApplyProjectId("");
     setJustApplied(false);
     setApplyOpen(true);
   };
@@ -148,21 +170,21 @@ export function TaskTemplatesTab() {
         projectId: applyProjectId,
         assigneeId,
         assignedById: currentUser.id,
-        status: 'todo',
+        status: "todo",
         priority: tt.priority,
-        dueDate: format(addDays(new Date(), (i + 1) * 7), 'yyyy-MM-dd'),
+        dueDate: format(addDays(new Date(), (i + 1) * 7), "yyyy-MM-dd"),
         estimatedHours: tt.estimatedHours,
         actualHours: 0,
-        tags: ['template'],
+        tags: ["template"],
         dependencies: [],
         checklist: [],
         comments: [],
         attachments: [],
-        department: dept?.name || 'General',
+        department: dept?.name || "General",
         createdAt: new Date().toISOString(),
         lastStatusUpdate: new Date().toISOString(),
         dailyLogs: [],
-        pipelinePhase: 'MAIN',
+        pipelinePhase: "MAIN",
         approvalHistory: [],
       };
       addTask(newTask);
@@ -170,7 +192,7 @@ export function TaskTemplatesTab() {
 
     setJustApplied(true);
     toast({
-      title: 'Template applied',
+      title: "Template applied",
       description: `Added ${sortedTasks.length} tasks from "${selected.name}" to ${project.name}.`,
     });
   };
@@ -180,7 +202,11 @@ export function TaskTemplatesTab() {
       {/* Template list */}
       <div className="space-y-3">
         <motion.div whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}>
-          <Button onClick={handleCreate} className="w-full gap-2 justify-start" variant="outline">
+          <Button
+            onClick={handleCreate}
+            className="w-full gap-2 justify-start"
+            variant="outline"
+          >
             <Plus className="w-4 h-4" /> New Template
           </Button>
         </motion.div>
@@ -189,24 +215,32 @@ export function TaskTemplatesTab() {
           <div className="space-y-2">
             <AnimatePresence initial={false}>
               {templates.map((tmpl, i) => {
-                const hours = tmpl.tasks.reduce((sum, t) => sum + t.estimatedHours, 0);
+                const hours = tmpl.tasks.reduce(
+                  (sum, t) => sum + t.estimatedHours,
+                  0,
+                );
                 return (
-                  <motion.div key={tmpl.id} layout {...stagger(i, 0.03)} exit={{ opacity: 0, x: -8 }}>
+                  <motion.div
+                    key={tmpl.id}
+                    layout
+                    {...stagger(i, 0.03)}
+                    exit={{ opacity: 0, x: -8 }}
+                  >
                     <div
                       role="button"
                       tabIndex={0}
                       onClick={() => setSelectedId(tmpl.id)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
+                        if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
                           setSelectedId(tmpl.id);
                         }
                       }}
                       className={cn(
-                        'w-full text-left rounded-lg border p-3 transition-colors group relative cursor-pointer',
+                        "w-full text-left rounded-lg border p-3 transition-colors group relative cursor-pointer",
                         tmpl.id === selectedId
-                          ? 'border-primary bg-primary/5 ring-1 ring-primary/20 hover:bg-primary/10'
-                          : 'border-border hover:border-primary/30 hover:bg-muted/30'
+                          ? "border-primary bg-primary/5 ring-1 ring-primary/20 hover:bg-primary/10"
+                          : "border-border hover:border-primary/30 hover:bg-muted/30",
                       )}
                     >
                       <div className="flex items-start gap-2.5">
@@ -214,10 +248,18 @@ export function TaskTemplatesTab() {
                           <ClipboardList className="w-4 h-4" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className="text-sm font-semibold truncate pr-5">{tmpl.name || 'Untitled'}</div>
+                          <div className="text-sm font-semibold truncate pr-5">
+                            {tmpl.name || "Untitled"}
+                          </div>
                           <div className="text-[11px] text-muted-foreground flex items-center gap-2">
-                            <span className="flex items-center gap-1"><ListChecks className="w-3 h-3" />{tmpl.tasks.length} tasks</span>
-                            <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{hours}h</span>
+                            <span className="flex items-center gap-1">
+                              <ListChecks className="w-3 h-3" />
+                              {tmpl.tasks.length} tasks
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {hours}h
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -233,12 +275,20 @@ export function TaskTemplatesTab() {
                             </button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onSelect={() => handleDuplicate(tmpl.id)} className="gap-2">
+                            <DropdownMenuItem
+                              onSelect={() => handleDuplicate(tmpl.id)}
+                              className="gap-2"
+                            >
                               <Copy className="w-3.5 h-3.5" /> Duplicate
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
-                              onSelect={() => setDeleteTarget({ id: tmpl.id, name: tmpl.name || 'Untitled' })}
+                              onSelect={() =>
+                                setDeleteTarget({
+                                  id: tmpl.id,
+                                  name: tmpl.name || "Untitled",
+                                })
+                              }
                               className="gap-2 text-red-500 focus:text-red-500"
                             >
                               <Trash2 className="w-3.5 h-3.5" /> Delete
@@ -266,7 +316,9 @@ export function TaskTemplatesTab() {
         {!selected ? (
           <div className="h-full min-h-[400px] flex flex-col items-center justify-center text-center text-muted-foreground border-2 border-dashed border-border rounded-lg gap-2">
             <ClipboardList className="w-8 h-8 opacity-40" />
-            <p className="text-sm">Select or create a template to define its task bundle.</p>
+            <p className="text-sm">
+              Select or create a template to define its task bundle.
+            </p>
           </div>
         ) : (
           <motion.div
@@ -282,18 +334,27 @@ export function TaskTemplatesTab() {
                   <div className="flex-1 min-w-[240px] space-y-2">
                     <Input
                       value={selected.name}
-                      onChange={(e) => updateTemplate(selected.id, { name: e.target.value })}
+                      onChange={(e) =>
+                        updateTemplate(selected.id, { name: e.target.value })
+                      }
                       className="text-lg font-bold h-9 border-transparent bg-transparent px-1.5 -ml-1.5 hover:border-input focus-visible:border-input focus-visible:bg-background"
                       placeholder="Template name (e.g. Standard Shot Pipeline)"
                     />
                     <Textarea
                       value={selected.description}
-                      onChange={(e) => updateTemplate(selected.id, { description: e.target.value })}
+                      onChange={(e) =>
+                        updateTemplate(selected.id, {
+                          description: e.target.value,
+                        })
+                      }
                       placeholder="When should this bundle be applied?"
                       className="text-xs min-h-[40px] resize-none border-transparent bg-transparent px-1.5 -ml-1.5 hover:border-input focus-visible:border-input focus-visible:bg-background"
                     />
                   </div>
-                  <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+                  <motion.div
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.97 }}
+                  >
                     <Button
                       className="gap-2"
                       disabled={selected.tasks.length === 0}
@@ -306,7 +367,8 @@ export function TaskTemplatesTab() {
 
                 <div className="flex items-center gap-2 text-xs text-muted-foreground border-t border-border pt-3">
                   <Badge variant="secondary" className="gap-1 font-normal">
-                    <ListChecks className="w-3 h-3" /> {selected.tasks.length} tasks
+                    <ListChecks className="w-3 h-3" /> {selected.tasks.length}{" "}
+                    tasks
                   </Badge>
                   <Badge variant="secondary" className="gap-1 font-normal">
                     <Clock className="w-3 h-3" /> {totalHours}h estimated total
@@ -319,12 +381,17 @@ export function TaskTemplatesTab() {
               <CardContent className="pt-6 space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-semibold">Tasks</h3>
-                  <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+                  <motion.div
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.97 }}
+                  >
                     <Button
                       size="sm"
                       variant="outline"
                       className="h-7 text-xs gap-1.5"
-                      onClick={() => addTemplateTask(selected.id, { title: 'New Task' })}
+                      onClick={() =>
+                        addTemplateTask(selected.id, { title: "New Task" })
+                      }
                     >
                       <Plus className="w-3 h-3" /> Add Task
                     </Button>
@@ -333,19 +400,35 @@ export function TaskTemplatesTab() {
 
                 {selected.tasks.length === 0 ? (
                   <div className="text-center py-10 text-xs text-muted-foreground border-2 border-dashed border-border rounded-lg">
-                    No tasks yet — add the pipeline steps that make up this bundle.
+                    No tasks yet — add the pipeline steps that make up this
+                    bundle.
                   </div>
                 ) : (
-                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                    <SortableContext items={selected.tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleDragEnd}
+                  >
+                    <SortableContext
+                      items={selected.tasks.map((t) => t.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
                       <div className="space-y-2">
                         <AnimatePresence initial={false}>
                           {selected.tasks.map((task) => (
                             <TemplateTaskRow
                               key={task.id}
                               task={task}
-                              onUpdate={(updates) => updateTemplateTask(selected.id, task.id, updates)}
-                              onRemove={() => removeTemplateTask(selected.id, task.id)}
+                              onUpdate={(updates) =>
+                                updateTemplateTask(
+                                  selected.id,
+                                  task.id,
+                                  updates,
+                                )
+                              }
+                              onRemove={() =>
+                                removeTemplateTask(selected.id, task.id)
+                              }
                             />
                           ))}
                         </AnimatePresence>
@@ -365,23 +448,37 @@ export function TaskTemplatesTab() {
           <DialogHeader>
             <DialogTitle>Apply "{selected?.name}" to a Project</DialogTitle>
             <DialogDescription>
-              This creates {selected?.tasks.length ?? 0} new tasks in the selected project, pre-filled with each
-              task's department, estimated hours, and priority from this template.
+              This creates {selected?.tasks.length ?? 0} new tasks in the
+              selected project, pre-filled with each task's department,
+              estimated hours, and priority from this template.
             </DialogDescription>
           </DialogHeader>
 
           <AnimatePresence mode="wait">
             {!justApplied ? (
-              <motion.div key="pick" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4 py-2">
+              <motion.div
+                key="pick"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="space-y-4 py-2"
+              >
                 <div className="space-y-2">
-                  <span className="text-xs font-medium text-muted-foreground">Project</span>
-                  <Select value={applyProjectId} onValueChange={setApplyProjectId}>
+                  <span className="text-xs font-medium text-muted-foreground">
+                    Project
+                  </span>
+                  <Select
+                    value={applyProjectId}
+                    onValueChange={setApplyProjectId}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Select a project…" />
                     </SelectTrigger>
                     <SelectContent>
                       {PROJECTS.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -398,7 +495,8 @@ export function TaskTemplatesTab() {
                   <Check className="w-5 h-5" />
                 </div>
                 <p className="text-sm font-medium">
-                  {selected?.tasks.length ?? 0} tasks added to {PROJECTS.find((p) => p.id === applyProjectId)?.name}
+                  {selected?.tasks.length ?? 0} tasks added to{" "}
+                  {PROJECTS.find((p) => p.id === applyProjectId)?.name}
                 </p>
               </motion.div>
             )}
@@ -407,14 +505,22 @@ export function TaskTemplatesTab() {
           <DialogFooter>
             {!justApplied ? (
               <>
-                <Button variant="outline" onClick={() => setApplyOpen(false)}>Cancel</Button>
-                <Button disabled={!applyProjectId} onClick={handleApply} className="gap-2">
+                <Button variant="outline" onClick={() => setApplyOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  disabled={!applyProjectId}
+                  onClick={handleApply}
+                  className="gap-2"
+                >
                   <Rocket className="w-4 h-4" /> Apply Template
                 </Button>
               </>
             ) : (
               <>
-                <Button variant="outline" onClick={() => setApplyOpen(false)}>Close</Button>
+                <Button variant="outline" onClick={() => setApplyOpen(false)}>
+                  Close
+                </Button>
                 <Button
                   className="gap-2"
                   onClick={() => {
@@ -431,12 +537,16 @@ export function TaskTemplatesTab() {
       </Dialog>
 
       {/* Delete template confirmation */}
-      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete "{deleteTarget?.name}"?</AlertDialogTitle>
             <AlertDialogDescription>
-              This permanently deletes this task template and all of its task definitions. This action cannot be undone.
+              This permanently deletes this task template and all of its task
+              definitions. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

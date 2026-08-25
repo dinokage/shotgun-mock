@@ -1,5 +1,5 @@
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 interface WorkspaceState {
   currentStudioId: string;
@@ -19,15 +19,16 @@ interface WorkspaceState {
 export const useWorkspaceStore = create<WorkspaceState>()(
   persist(
     (set) => ({
-      currentStudioId: 'studio1',
+      currentStudioId: "studio1",
       currentProjectId: null,
       activeDepartmentId: null,
       setStudio: (studioId) => set({ currentStudioId: studioId }),
       setProject: (projectId) => set({ currentProjectId: projectId }),
-      setActiveDepartment: (departmentId) => set({ activeDepartmentId: departmentId }),
+      setActiveDepartment: (departmentId) =>
+        set({ activeDepartmentId: departmentId }),
     }),
     {
-      name: 'workspace-storage',
-    }
-  )
+      name: "workspace-storage",
+    },
+  ),
 );

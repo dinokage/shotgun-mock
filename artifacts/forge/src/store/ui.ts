@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import { create } from "zustand";
 
 interface UIState {
   aiAssistantOpen: boolean;
@@ -48,7 +48,8 @@ interface UIState {
 
 export const useUIStore = create<UIState>((set) => ({
   aiAssistantOpen: false,
-  toggleAiAssistant: () => set((state) => ({ aiAssistantOpen: !state.aiAssistantOpen })),
+  toggleAiAssistant: () =>
+    set((state) => ({ aiAssistantOpen: !state.aiAssistantOpen })),
   setAiAssistantOpen: (open) => set({ aiAssistantOpen: open }),
 
   commandPaletteOpen: false,
@@ -61,7 +62,8 @@ export const useUIStore = create<UIState>((set) => ({
   setCreateTaskModalOpen: (open) => set({ createTaskModalOpen: open }),
 
   createTaskDefaultAssigneeId: null,
-  setCreateTaskDefaultAssigneeId: (userId) => set({ createTaskDefaultAssigneeId: userId }),
+  setCreateTaskDefaultAssigneeId: (userId) =>
+    set({ createTaskDefaultAssigneeId: userId }),
 
   createProjectModalOpen: false,
   setCreateProjectModalOpen: (open) => set({ createProjectModalOpen: open }),
@@ -71,11 +73,13 @@ export const useUIStore = create<UIState>((set) => ({
 
   sidebarCollapsed: false,
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
-  toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+  toggleSidebar: () =>
+    set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
 
   mobileNavOpen: false,
   setMobileNavOpen: (open) => set({ mobileNavOpen: open }),
-  toggleMobileNav: () => set((state) => ({ mobileNavOpen: !state.mobileNavOpen })),
+  toggleMobileNav: () =>
+    set((state) => ({ mobileNavOpen: !state.mobileNavOpen })),
 
   activeTaskDrawer: null,
   setActiveTaskDrawer: (taskId) => set({ activeTaskDrawer: taskId }),

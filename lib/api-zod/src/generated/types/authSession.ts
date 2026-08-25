@@ -5,8 +5,8 @@
  * Multi-tenant Production API for Forge
  * OpenAPI spec version: 1.0.0
  */
-import type { AuthSessionTenant } from './authSessionTenant';
-import type { AuthSessionUser } from './authSessionUser';
+import type { AuthSessionTenant } from "./authSessionTenant";
+import type { AuthSessionUser } from "./authSessionUser";
 
 export interface AuthSession {
   user: AuthSessionUser;

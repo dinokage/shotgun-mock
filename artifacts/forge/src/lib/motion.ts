@@ -41,15 +41,19 @@ export function stagger(index: number, step = 0.05) {
   return {
     initial: { opacity: 0, y: 6 },
     animate: { opacity: 1, y: 0 },
-    transition: { duration: DURATION.base, ease: EASE_DISSOLVE, delay: index * step },
+    transition: {
+      duration: DURATION.base,
+      ease: EASE_DISSOLVE,
+      delay: index * step,
+    },
   };
 }
 
 /** Drawers/panels sliding in from an edge. */
 export const slideInRight = {
-  initial: { x: '100%' },
+  initial: { x: "100%" },
   animate: { x: 0 },
-  exit: { x: '100%' },
+  exit: { x: "100%" },
   transition: { duration: DURATION.slow, ease: EASE_CUT },
 };
 

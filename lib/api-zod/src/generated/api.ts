@@ -5,119 +5,109 @@
  * Multi-tenant Production API for Forge
  * OpenAPI spec version: 1.0.0
  */
-import * as zod from 'zod';
-
+import * as zod from "zod";
 
 /**
  * @summary Login
  */
 export const LoginBody = zod.object({
-  "email": zod.string(),
-  "password": zod.string()
-})
+  email: zod.string(),
+  password: zod.string(),
+});
 
 export const LoginResponse = zod.object({
-  "user": zod.object({
-  "id": zod.string().optional(),
-  "name": zod.string().optional(),
-  "role": zod.string().optional(),
-  "capabilities": zod.array(zod.string()).optional()
-}),
-  "tenant": zod.object({
-  "id": zod.string().optional(),
-  "name": zod.string().optional()
-})
-})
-
+  user: zod.object({
+    id: zod.string().optional(),
+    name: zod.string().optional(),
+    role: zod.string().optional(),
+    capabilities: zod.array(zod.string()).optional(),
+  }),
+  tenant: zod.object({
+    id: zod.string().optional(),
+    name: zod.string().optional(),
+  }),
+});
 
 /**
  * @summary Logout
  */
-export const LogoutResponse = zod.unknown()
-
+export const LogoutResponse = zod.unknown();
 
 /**
  * @summary Get current session
  */
 export const MeResponse = zod.object({
-  "user": zod.object({
-  "id": zod.string().optional(),
-  "name": zod.string().optional(),
-  "role": zod.string().optional(),
-  "capabilities": zod.array(zod.string()).optional()
-}),
-  "tenant": zod.object({
-  "id": zod.string().optional(),
-  "name": zod.string().optional()
-})
-})
-
+  user: zod.object({
+    id: zod.string().optional(),
+    name: zod.string().optional(),
+    role: zod.string().optional(),
+    capabilities: zod.array(zod.string()).optional(),
+  }),
+  tenant: zod.object({
+    id: zod.string().optional(),
+    name: zod.string().optional(),
+  }),
+});
 
 /**
  * @summary List all projects for tenant
  */
 export const GetProjectsResponseItem = zod.object({
-  "id": zod.string(),
-  "name": zod.string(),
-  "status": zod.string()
-})
-export const GetProjectsResponse = zod.array(GetProjectsResponseItem)
-
+  id: zod.string(),
+  name: zod.string(),
+  status: zod.string(),
+});
+export const GetProjectsResponse = zod.array(GetProjectsResponseItem);
 
 export const CreateProjectBody = zod.object({
-  "name": zod.string()
-})
+  name: zod.string(),
+});
 
 export const CreateProjectResponse = zod.object({
-  "id": zod.string(),
-  "name": zod.string(),
-  "status": zod.string()
-})
-
+  id: zod.string(),
+  name: zod.string(),
+  status: zod.string(),
+});
 
 export const GetTasksQueryParams = zod.object({
-  "projectId": zod.coerce.string().optional()
-})
+  projectId: zod.coerce.string().optional(),
+});
 
 export const GetTasksResponseItem = zod.object({
-  "id": zod.string(),
-  "entityId": zod.string(),
-  "entityType": zod.string(),
-  "status": zod.string(),
-  "assignedTo": zod.string().optional()
-})
-export const GetTasksResponse = zod.array(GetTasksResponseItem)
-
+  id: zod.string(),
+  entityId: zod.string(),
+  entityType: zod.string(),
+  status: zod.string(),
+  assignedTo: zod.string().optional(),
+});
+export const GetTasksResponse = zod.array(GetTasksResponseItem);
 
 export const CreateTaskBody = zod.object({
-  "entityId": zod.string(),
-  "entityType": zod.string(),
-  "status": zod.string().optional()
-})
+  entityId: zod.string(),
+  entityType: zod.string(),
+  status: zod.string().optional(),
+});
 
 export const CreateTaskResponse = zod.object({
-  "id": zod.string(),
-  "entityId": zod.string(),
-  "entityType": zod.string(),
-  "status": zod.string(),
-  "assignedTo": zod.string().optional()
-})
-
+  id: zod.string(),
+  entityId: zod.string(),
+  entityType: zod.string(),
+  status: zod.string(),
+  assignedTo: zod.string().optional(),
+});
 
 export const UpdateTaskParams = zod.object({
-  "id": zod.coerce.string()
-})
+  id: zod.coerce.string(),
+});
 
 export const UpdateTaskBody = zod.object({
-  "status": zod.string().optional()
-})
+  status: zod.string().optional(),
+});
 
 export const UpdateTaskResponse = zod.object({
-  "id": zod.string(),
-  "entityId": zod.string(),
-  "entityType": zod.string(),
-  "status": zod.string(),
-  "assignedTo": zod.string().optional()
-})
-
-
+  id: zod.string(),
+  entityId: zod.string(),
+  entityType: zod.string(),
+  status: zod.string(),
+  assignedTo: zod.string().optional(),
+});

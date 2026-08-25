@@ -1,14 +1,14 @@
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import { Review, REVIEWS, Version, VERSIONS, SHOTS } from '@/data/mockData';
-import type { Annotation } from '@/components/shared/review';
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import { Review, REVIEWS, Version, VERSIONS, SHOTS } from "@/data/mockData";
+import type { Annotation } from "@/components/shared/review";
 
 /**
  * The single mock "version" both the internal review player and the client
  * review portal treat as the active session for Presentation Mode purposes.
  * This is a stand-in for a real per-shot/per-version review-session id.
  */
-export const PRESENTED_VERSION_ID = 'seq-020-sh-040-v003';
+export const PRESENTED_VERSION_ID = "seq-020-sh-040-v003";
 
 export interface PresentationState {
   /** Whether an internal reviewer currently has the floor. */
@@ -62,8 +62,18 @@ export interface ReviewComment {
 }
 
 const INITIAL_COMMENTS: ReviewComment[] = [
-  { id: 'c1', userIndex: 1, frame: 45, text: 'The rim light on the left side is blowing out a bit too much.' },
-  { id: 'c2', userIndex: 0, frame: 112, text: 'Agreed. Also, can we add a bit more falloff to the shadow here?' },
+  {
+    id: "c1",
+    userIndex: 1,
+    frame: 45,
+    text: "The rim light on the left side is blowing out a bit too much.",
+  },
+  {
+    id: "c2",
+    userIndex: 0,
+    frame: 112,
+    text: "Agreed. Also, can we add a bit more falloff to the shadow here?",
+  },
 ];
 
 /**
@@ -90,16 +100,16 @@ export interface ClientNote {
   annotations?: Annotation[];
 }
 
-const seedClientShot = SHOTS.find((s) => s.status === 'client-review');
+const seedClientShot = SHOTS.find((s) => s.status === "client-review");
 const INITIAL_CLIENT_NOTES: ClientNote[] = seedClientShot
   ? [
       {
-        id: 'cn1',
+        id: "cn1",
         shotId: seedClientShot.id,
         shotName: seedClientShot.name,
         frame: 88,
-        text: 'Loving the direction here — can we push the rim light a touch warmer to match the previous shot?',
-        authorName: 'Client Reviewer',
+        text: "Loving the direction here — can we push the rim light a touch warmer to match the previous shot?",
+        authorName: "Client Reviewer",
         createdAt: new Date(Date.now() - 1000 * 60 * 60 * 6).toISOString(),
         transferred: false,
         transferredAt: null,
@@ -111,8 +121,8 @@ const INITIAL_CLIENT_NOTES: ClientNote[] = seedClientShot
 interface ReviewState {
   reviews: Review[];
   versions: Version[];
-  addReview: (review: Omit<Review, 'id' | 'createdAt' | 'updatedAt'>) => void;
-  addVersion: (version: Omit<Version, 'id' | 'createdAt'>) => void;
+  addReview: (review: Omit<Review, "id" | "createdAt" | "updatedAt">) => void;
+  addVersion: (version: Omit<Version, "id" | "createdAt">) => void;
 
   /**
    * entityId (shot/asset id) -> id of the version a Rollback action made
@@ -127,18 +137,28 @@ interface ReviewState {
 
   presentation: PresentationState;
   /** Internal reviewer starts presenting a version, locking every other viewer's playhead to theirs. */
-  startPresentation: (params: { versionId: string; presenterId: string; presenterName: string; frame: number }) => void;
+  startPresentation: (params: {
+    versionId: string;
+    presenterId: string;
+    presenterName: string;
+    frame: number;
+  }) => void;
   /** Presenter ends the session, releasing all locked viewers. */
   stopPresentation: () => void;
   /** Presenter's playhead moved (scrub, play, jump-to-comment, etc) — pushed out to locked viewers. */
   setPresenterFrame: (frame: number) => void;
 
   comments: ReviewComment[];
-  addComment: (comment: Omit<ReviewComment, 'id'>) => void;
+  addComment: (comment: Omit<ReviewComment, "id">) => void;
 
   clientNotes: ClientNote[];
   /** A client leaves feedback in the portal — held in moderation, not yet visible internally. */
-  addClientNote: (note: Pick<ClientNote, 'shotId' | 'shotName' | 'frame' | 'text' | 'authorName' | 'annotations'>) => void;
+  addClientNote: (
+    note: Pick<
+      ClientNote,
+      "shotId" | "shotName" | "frame" | "text" | "authorName" | "annotations"
+    >,
+  ) => void;
   /** An internal reviewer explicitly publishes a client note into the shared `comments` stream. */
   transferClientNote: (id: string, transferredByUserName: string) => void;
 }
@@ -175,7 +195,10 @@ export const useReviewStore = create<ReviewState>()(
       currentVersionOverrides: {},
       rollbackToVersion: (entityId, versionId) =>
         set((state) => ({
-          currentVersionOverrides: { ...state.currentVersionOverrides, [entityId]: versionId },
+          currentVersionOverrides: {
+            ...state.currentVersionOverrides,
+            [entityId]: versionId,
+          },
         })),
 
       presentation: DEFAULT_PRESENTATION,
@@ -225,7 +248,14 @@ export const useReviewStore = create<ReviewState>()(
           const timestamp = new Date().toISOString();
           return {
             clientNotes: state.clientNotes.map((n) =>
-              n.id === id ? { ...n, transferred: true, transferredAt: timestamp, transferredByUserName } : n
+              n.id === id
+                ? {
+                    ...n,
+                    transferred: true,
+                    transferredAt: timestamp,
+                    transferredByUserName,
+                  }
+                : n,
             ),
             comments: [
               ...state.comments,
@@ -247,18 +277,18 @@ export const useReviewStore = create<ReviewState>()(
         }),
     }),
     {
-      name: 'forge-review-storage',
-    }
-  )
+      name: "forge-review-storage",
+    },
+  ),
 );
 
 // Keep every open tab/window in sync: zustand's `persist` middleware writes
 // to localStorage on change but doesn't listen for it, so a second tab
 // wouldn't otherwise notice the presenter moved. This is what makes
 // Presentation Mode "real" across tabs/sessions in this mock app.
-if (typeof window !== 'undefined') {
-  window.addEventListener('storage', (e) => {
-    if (e.key === 'forge-review-storage') {
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === "forge-review-storage") {
       useReviewStore.persist.rehydrate();
     }
   });

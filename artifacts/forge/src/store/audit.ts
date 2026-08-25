@@ -1,10 +1,10 @@
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import { AUDIT_EVENTS } from '@/data/mockData';
-import { useAssetStore } from './assets';
-import { useShotStore } from './shots';
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import { AUDIT_EVENTS } from "@/data/mockData";
+import { useAssetStore } from "./assets";
+import { useShotStore } from "./shots";
 
-type AuditEntityType = 'asset' | 'shot';
+type AuditEntityType = "asset" | "shot";
 
 /**
  * Walks every audit event for this entity newer than `timestamp` and builds
@@ -14,39 +14,50 @@ type AuditEntityType = 'asset' | 'shot';
  * keep getting overwritten means the last write — from the oldest
  * qualifying event — is the correct pre-rollback value.
  */
-function computeRollbackPatch(entityId: string, timestamp: string): Record<string, string> {
-  const laterEvents = AUDIT_EVENTS.filter((e) => e.entityId === entityId && e.timestamp > timestamp).sort((a, b) =>
-    a.timestamp < b.timestamp ? 1 : -1
-  );
+function computeRollbackPatch(
+  entityId: string,
+  timestamp: string,
+): Record<string, string> {
+  const laterEvents = AUDIT_EVENTS.filter(
+    (e) => e.entityId === entityId && e.timestamp > timestamp,
+  ).sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1));
 
   const patch: Record<string, string> = {};
   for (const event of laterEvents) {
     for (const [field, change] of Object.entries(event.changedFields)) {
-      const [before] = change.split('→').map((s) => s.trim());
+      const [before] = change.split("→").map((s) => s.trim());
       patch[field] = before;
     }
   }
   return patch;
 }
 
-function applyPatch(entityType: AuditEntityType, entityId: string, patch: Record<string, string>) {
+function applyPatch(
+  entityType: AuditEntityType,
+  entityId: string,
+  patch: Record<string, string>,
+) {
   if (Object.keys(patch).length === 0) return;
-  if (entityType === 'asset') {
+  if (entityType === "asset") {
     useAssetStore.getState().updateAsset(entityId, patch as any);
   } else {
     useShotStore.getState().updateShot(entityId, patch as any);
   }
 }
 
-function currentFieldValues(entityType: AuditEntityType, entityId: string, fields: string[]): Record<string, string> {
+function currentFieldValues(
+  entityType: AuditEntityType,
+  entityId: string,
+  fields: string[],
+): Record<string, string> {
   const entity =
-    entityType === 'asset'
+    entityType === "asset"
       ? useAssetStore.getState().assets.find((a) => a.id === entityId)
       : useShotStore.getState().shots.find((s) => s.id === entityId);
   if (!entity) return {};
   const values: Record<string, string> = {};
   for (const field of fields) {
-    values[field] = String((entity as any)[field] ?? '');
+    values[field] = String((entity as any)[field] ?? "");
   }
   return values;
 }
@@ -63,7 +74,11 @@ function currentFieldValues(entityType: AuditEntityType, entityId: string, field
 interface AuditState {
   rollbackPoints: Record<string, string>;
   entitySnapshots: Record<string, Record<string, string>>;
-  rollbackEntity: (entityId: string, entityType: AuditEntityType, timestamp: string) => void;
+  rollbackEntity: (
+    entityId: string,
+    entityType: AuditEntityType,
+    timestamp: string,
+  ) => void;
   clearRollback: (entityId: string, entityType: AuditEntityType) => void;
 }
 
@@ -88,7 +103,11 @@ export const useAuditStore = create<AuditState>()(
         }
 
         const patch = computeRollbackPatch(entityId, timestamp);
-        const freshValues = currentFieldValues(entityType, entityId, Object.keys(patch));
+        const freshValues = currentFieldValues(
+          entityType,
+          entityId,
+          Object.keys(patch),
+        );
         // Keep any previously-snapshotted fields the new patch doesn't
         // touch, and refresh the rest from the just-restored true state.
         const snapshot = { ...existingSnapshot, ...freshValues };
@@ -116,7 +135,7 @@ export const useAuditStore = create<AuditState>()(
       },
     }),
     {
-      name: 'forge-audit-storage',
-    }
-  )
+      name: "forge-audit-storage",
+    },
+  ),
 );

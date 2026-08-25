@@ -1,5 +1,5 @@
-import { useTasksStore } from '@/store/tasks';
-import { DailyLog } from '@/data/mockData';
+import { useTasksStore } from "@/store/tasks";
+import { DailyLog } from "@/data/mockData";
 
 /**
  * Timesheets used to be backed by its own independent, persisted `TimeLog[]`
@@ -31,7 +31,7 @@ function toTimeLog(taskId: string, index: number, log: DailyLog): TimeLog {
 }
 
 function parseLogId(id: string): { taskId: string; index: number } | null {
-  const sep = id.lastIndexOf('::');
+  const sep = id.lastIndexOf("::");
   if (sep === -1) return null;
   const index = Number(id.slice(sep + 2));
   if (Number.isNaN(index)) return null;
@@ -45,18 +45,29 @@ function parseLogId(id: string): { taskId: string; index: number } | null {
  */
 export function useTimesheetLogs(): TimeLog[] {
   const tasks = useTasksStore((state) => state.tasks);
-  return tasks.flatMap((task) => task.dailyLogs.map((log, index) => toTimeLog(task.id, index, log)));
+  return tasks.flatMap((task) =>
+    task.dailyLogs.map((log, index) => toTimeLog(task.id, index, log)),
+  );
 }
 
 /** Appends a new daily log entry to a task's canonical dailyLogs + actualHours. */
-export function addTimeLog(input: { taskId: string; userId: string; date: string; hours: number; notes: string }): void {
+export function addTimeLog(input: {
+  taskId: string;
+  userId: string;
+  date: string;
+  hours: number;
+  notes: string;
+}): void {
   const { taskId, userId, date, hours, notes } = input;
   const newLog: DailyLog = { date, hours, note: notes, userId };
   useTasksStore.getState().logTime(taskId, newLog);
 }
 
 /** Edits one previously logged entry in place and reconciles the task's actualHours. */
-export function updateTimeLog(id: string, updates: Partial<Pick<TimeLog, 'date' | 'hours' | 'notes'>>): void {
+export function updateTimeLog(
+  id: string,
+  updates: Partial<Pick<TimeLog, "date" | "hours" | "notes">>,
+): void {
   const parsed = parseLogId(id);
   if (!parsed) return;
   useTasksStore.getState().updateDailyLog(parsed.taskId, parsed.index, {

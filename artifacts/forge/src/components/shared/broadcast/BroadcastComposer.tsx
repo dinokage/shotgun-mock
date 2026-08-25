@@ -1,18 +1,24 @@
-import { useState } from 'react';
-import { Send } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useCapability } from '@/hooks/use-capability';
-import { useAuthStore } from '@/store/auth';
-import { useBroadcastsStore, type Broadcast } from '@/store/broadcasts';
-import { useToast } from '@/hooks/use-toast';
-import { cn } from '@/lib/utils';
+import { useState } from "react";
+import { Send } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useCapability } from "@/hooks/use-capability";
+import { useAuthStore } from "@/store/auth";
+import { useBroadcastsStore, type Broadcast } from "@/store/broadcasts";
+import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 
-const SEVERITY_OPTIONS: { value: Broadcast['severity']; label: string }[] = [
-  { value: 'info', label: 'Update' },
-  { value: 'success', label: 'Good news' },
-  { value: 'warning', label: 'Heads up' },
+const SEVERITY_OPTIONS: { value: Broadcast["severity"]; label: string }[] = [
+  { value: "info", label: "Update" },
+  { value: "success", label: "Good news" },
+  { value: "warning", label: "Heads up" },
 ];
 
 interface BroadcastComposerProps {
@@ -22,24 +28,32 @@ interface BroadcastComposerProps {
   className?: string;
 }
 
-export function BroadcastComposer({ projects, defaultProjectId, onPosted, className }: BroadcastComposerProps) {
+export function BroadcastComposer({
+  projects,
+  defaultProjectId,
+  onPosted,
+  className,
+}: BroadcastComposerProps) {
   // Gated here (not just at the call site) so this component is safe to
   // mount unconditionally — it renders nothing for anyone without the
   // 'broadcast_updates' capability (store/permissions.ts).
-  const canBroadcast = useCapability('broadcast_updates');
+  const canBroadcast = useCapability("broadcast_updates");
   const currentUser = useAuthStore((s) => s.currentUser);
   const addBroadcast = useBroadcastsStore((s) => s.addBroadcast);
   const { toast } = useToast();
 
-  const [text, setText] = useState('');
-  const [audience, setAudience] = useState<Broadcast['audience']>('internal');
-  const [projectId, setProjectId] = useState<string | undefined>(defaultProjectId);
-  const [severity, setSeverity] = useState<Broadcast['severity']>('info');
+  const [text, setText] = useState("");
+  const [audience, setAudience] = useState<Broadcast["audience"]>("internal");
+  const [projectId, setProjectId] = useState<string | undefined>(
+    defaultProjectId,
+  );
+  const [severity, setSeverity] = useState<Broadcast["severity"]>("info");
 
   if (!canBroadcast) return null;
 
-  const needsProject = audience === 'internal_and_client';
-  const canPost = text.trim().length > 0 && (!needsProject || !!projectId) && !!currentUser;
+  const needsProject = audience === "internal_and_client";
+  const canPost =
+    text.trim().length > 0 && (!needsProject || !!projectId) && !!currentUser;
 
   const handlePost = () => {
     if (!canPost || !currentUser) return;
@@ -52,21 +66,29 @@ export function BroadcastComposer({ projects, defaultProjectId, onPosted, classN
       text: text.trim(),
       timestamp: new Date().toISOString(),
       audience,
-      projectId: needsProject ? projectId ?? null : null,
+      projectId: needsProject ? (projectId ?? null) : null,
       severity,
     });
 
-    toast({ title: 'Update Posted', description: 'Your status update has been shared.' });
+    toast({
+      title: "Update Posted",
+      description: "Your status update has been shared.",
+    });
 
-    setText('');
-    setAudience('internal');
+    setText("");
+    setAudience("internal");
     setProjectId(defaultProjectId);
-    setSeverity('info');
+    setSeverity("info");
     onPosted?.();
   };
 
   return (
-    <div className={cn('rounded-lg border border-border bg-card p-3 sm:p-4 space-y-3', className)}>
+    <div
+      className={cn(
+        "rounded-lg border border-border bg-card p-3 sm:p-4 space-y-3",
+        className,
+      )}
+    >
       <Textarea
         placeholder="Share a status update with your team..."
         value={text}
@@ -77,19 +99,19 @@ export function BroadcastComposer({ projects, defaultProjectId, onPosted, classN
       <div className="flex flex-wrap gap-2">
         <Button
           type="button"
-          variant={audience === 'internal' ? 'default' : 'outline'}
+          variant={audience === "internal" ? "default" : "outline"}
           size="sm"
           className="touch-target"
-          onClick={() => setAudience('internal')}
+          onClick={() => setAudience("internal")}
         >
           Team only
         </Button>
         <Button
           type="button"
-          variant={audience === 'internal_and_client' ? 'default' : 'outline'}
+          variant={audience === "internal_and_client" ? "default" : "outline"}
           size="sm"
           className="touch-target"
-          onClick={() => setAudience('internal_and_client')}
+          onClick={() => setAudience("internal_and_client")}
         >
           Team + Client
         </Button>
@@ -111,7 +133,10 @@ export function BroadcastComposer({ projects, defaultProjectId, onPosted, classN
           </Select>
         )}
 
-        <Select value={severity} onValueChange={(v) => setSeverity(v as Broadcast['severity'])}>
+        <Select
+          value={severity}
+          onValueChange={(v) => setSeverity(v as Broadcast["severity"])}
+        >
           <SelectTrigger className="w-full sm:w-40">
             <SelectValue />
           </SelectTrigger>

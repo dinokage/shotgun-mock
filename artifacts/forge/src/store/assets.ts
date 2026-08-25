@@ -1,6 +1,6 @@
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import { ASSETS, Asset } from '@/data/mockData';
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import { ASSETS, Asset } from "@/data/mockData";
 
 interface AssetState {
   assets: Asset[];
@@ -11,10 +11,13 @@ interface AssetState {
 // Helper to lazily sync mutations to the backend without blocking the UI
 const syncBackend = async (id: string, updates: any) => {
   try {
-    const { apiFetch } = await import('@/lib/apiClient');
-    await apiFetch(`/assets/${id}`, { method: 'PUT', body: JSON.stringify(updates) });
+    const { apiFetch } = await import("@/lib/apiClient");
+    await apiFetch(`/assets/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(updates),
+    });
   } catch (err) {
-    console.error('Failed to sync asset mutation to backend', err);
+    console.error("Failed to sync asset mutation to backend", err);
   }
 };
 
@@ -25,13 +28,15 @@ export const useAssetStore = create<AssetState>()(
       setAssets: (assets) => set({ assets }),
       updateAsset: (id, updates) => {
         set((state) => ({
-          assets: state.assets.map((a) => (a.id === id ? { ...a, ...updates } : a)),
+          assets: state.assets.map((a) =>
+            a.id === id ? { ...a, ...updates } : a,
+          ),
         }));
         syncBackend(id, updates);
       },
     }),
     {
-      name: 'forge-asset-storage',
-    }
-  )
+      name: "forge-asset-storage",
+    },
+  ),
 );

@@ -1,5 +1,5 @@
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 /**
  * A single daily-standup update posted by a team member from the "My
@@ -53,10 +53,12 @@ export const useStandupsStore = create<StandupsState>()(
         set((state) =>
           state.playlist.includes(taskId)
             ? state
-            : { playlist: [...state.playlist, taskId] }
+            : { playlist: [...state.playlist, taskId] },
         ),
       removeFromPlaylist: (taskId) =>
-        set((state) => ({ playlist: state.playlist.filter((id) => id !== taskId) })),
+        set((state) => ({
+          playlist: state.playlist.filter((id) => id !== taskId),
+        })),
       setPlaylist: (taskIds) => set({ playlist: taskIds }),
       clearPlaylist: () => set({ playlist: [] }),
 
@@ -67,11 +69,13 @@ export const useStandupsStore = create<StandupsState>()(
           const next = current.includes(userId)
             ? current.filter((id) => id !== userId)
             : [...current, userId];
-          return { feedApprovals: { ...state.feedApprovals, [feedItemId]: next } };
+          return {
+            feedApprovals: { ...state.feedApprovals, [feedItemId]: next },
+          };
         }),
     }),
     {
-      name: 'forge-standup-storage',
-    }
-  )
+      name: "forge-standup-storage",
+    },
+  ),
 );

@@ -46,7 +46,7 @@ export type CreateProjectBody = {
 };
 
 export type GetTasksParams = {
-projectId?: string;
+  projectId?: string;
 };
 
 export type CreateTaskBody = {
@@ -58,4 +58,3 @@ export type CreateTaskBody = {
 export type UpdateTaskBody = {
   status?: string;
 };
-

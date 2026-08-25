@@ -1,8 +1,8 @@
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import { Notification, NOTIFICATIONS } from '@/data/mockData';
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import { Notification, NOTIFICATIONS } from "@/data/mockData";
 
-export type NotificationCategory = Notification['category'];
+export type NotificationCategory = Notification["category"];
 
 export interface NotificationChannelPrefs {
   /** Whether notifications in this category are generated/shown in-app at all. */
@@ -19,17 +19,52 @@ export interface NotificationPreferenceMeta {
 
 /** Drives the Notifications tab in Settings — one row per category. */
 export const NOTIFICATION_PREFERENCE_META: NotificationPreferenceMeta[] = [
-  { category: 'assignment', label: 'Task Assignments', description: 'When you are assigned a new task.' },
-  { category: 'workflow', label: 'Status & Workflow Changes', description: 'When a task or workflow you follow changes status.' },
-  { category: 'mention', label: 'Mentions (@)', description: 'When someone tags you in a comment or review.' },
-  { category: 'review', label: 'Review Requests', description: 'When someone requests your review on a submission.' },
-  { category: 'approval', label: 'Review Approvals', description: 'When your submission is approved by a Lead or Manager.' },
-  { category: 'publishing', label: 'Publishing', description: 'When an asset or shot you follow is published to production.' },
-  { category: 'handoff', label: 'Department Handoffs', description: 'When work is handed off to you from another department.' },
-  { category: 'system', label: 'System & Daily Digest', description: 'Studio system alerts and your morning summary.' },
+  {
+    category: "assignment",
+    label: "Task Assignments",
+    description: "When you are assigned a new task.",
+  },
+  {
+    category: "workflow",
+    label: "Status & Workflow Changes",
+    description: "When a task or workflow you follow changes status.",
+  },
+  {
+    category: "mention",
+    label: "Mentions (@)",
+    description: "When someone tags you in a comment or review.",
+  },
+  {
+    category: "review",
+    label: "Review Requests",
+    description: "When someone requests your review on a submission.",
+  },
+  {
+    category: "approval",
+    label: "Review Approvals",
+    description: "When your submission is approved by a Lead or Manager.",
+  },
+  {
+    category: "publishing",
+    label: "Publishing",
+    description: "When an asset or shot you follow is published to production.",
+  },
+  {
+    category: "handoff",
+    label: "Department Handoffs",
+    description: "When work is handed off to you from another department.",
+  },
+  {
+    category: "system",
+    label: "System & Daily Digest",
+    description: "Studio system alerts and your morning summary.",
+  },
 ];
 
-export type NotificationPreferences = Record<NotificationCategory, NotificationChannelPrefs>;
+export type NotificationPreferences = Record<
+  NotificationCategory,
+  NotificationChannelPrefs
+>;
 
 const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   assignment: { push: true, email: true },
@@ -52,10 +87,16 @@ interface NotificationState {
    * TopBar bell also filter by preference at render time, which covers the static
    * mock seed data and acts as a second guard for anything added dynamically.
    */
-  addNotification: (notification: Omit<Notification, 'id' | 'timestamp' | 'read'>) => void;
+  addNotification: (
+    notification: Omit<Notification, "id" | "timestamp" | "read">,
+  ) => void;
   markAsRead: (id: string) => void;
   markAllAsRead: () => void;
-  setPreferenceChannel: (category: NotificationCategory, channel: keyof NotificationChannelPrefs, value: boolean) => void;
+  setPreferenceChannel: (
+    category: NotificationCategory,
+    channel: keyof NotificationChannelPrefs,
+    value: boolean,
+  ) => void;
 }
 
 export const useNotificationStore = create<NotificationState>()(
@@ -79,7 +120,7 @@ export const useNotificationStore = create<NotificationState>()(
                 // with no date formatting, and the seed data uses relative-time
                 // strings like "2 mins ago". An ISO instant here would render
                 // as a raw timestamp instead of matching that convention.
-                timestamp: 'Just now',
+                timestamp: "Just now",
                 read: false,
               },
               ...state.notifications,
@@ -89,7 +130,7 @@ export const useNotificationStore = create<NotificationState>()(
       markAsRead: (id) =>
         set((state) => ({
           notifications: state.notifications.map((n) =>
-            n.id === id ? { ...n, read: true } : n
+            n.id === id ? { ...n, read: true } : n,
           ),
         })),
       markAllAsRead: () =>
@@ -108,7 +149,7 @@ export const useNotificationStore = create<NotificationState>()(
         })),
     }),
     {
-      name: 'forge-notification-storage',
-    }
-  )
+      name: "forge-notification-storage",
+    },
+  ),
 );

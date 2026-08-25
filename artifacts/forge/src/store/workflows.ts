@@ -1,14 +1,14 @@
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import type { Node, Edge } from '@xyflow/react';
-import { WORKFLOWS, WORKFLOW_RUNS } from '@/data/mockData';
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import type { Node, Edge } from "@xyflow/react";
+import { WORKFLOWS, WORKFLOW_RUNS } from "@/data/mockData";
 
 // --- Node contract -----------------------------------------------------
 // Loosely modeled on ftrack's "Actions" pattern: a node subscribes to a
 // discover condition (when does it fire / apply) and, when triggered,
 // produces a Message / Form / Widget-like result. Execution itself is out
 // of scope here - this only shapes the data the editor reads and writes.
-export type WorkflowNodeKind = 'trigger' | 'condition' | 'action';
+export type WorkflowNodeKind = "trigger" | "condition" | "action";
 
 export interface WorkflowNodeConfig {
   /** Human description of when this node fires/applies (the "discover" condition). */
@@ -48,105 +48,159 @@ const edgeStyle = { strokeWidth: 2 };
 const EXAMPLE_GRAPH: WorkflowGraph = {
   nodes: [
     {
-      id: 'trigger-1',
-      type: 'custom',
+      id: "trigger-1",
+      type: "custom",
       position: { x: 400, y: 50 },
       data: {
-        label: 'Asset Created',
-        description: 'Triggers when a new asset is added',
-        icon: 'Play',
-        color: 'green',
-        kind: 'trigger',
-        config: { discover: 'entity.type == "Asset"', eventType: 'Entity Created' },
+        label: "Asset Created",
+        description: "Triggers when a new asset is added",
+        icon: "Play",
+        color: "green",
+        kind: "trigger",
+        config: {
+          discover: 'entity.type == "Asset"',
+          eventType: "Entity Created",
+        },
       },
     },
     {
-      id: 'action-1',
-      type: 'custom',
+      id: "action-1",
+      type: "custom",
       position: { x: 400, y: 200 },
       data: {
-        label: 'Generate Proxy',
-        description: 'Create lightweight USD proxy',
-        icon: 'Box',
-        color: 'blue',
-        kind: 'action',
-        config: { actionType: 'Run Script', resultType: 'Message' },
+        label: "Generate Proxy",
+        description: "Create lightweight USD proxy",
+        icon: "Box",
+        color: "blue",
+        kind: "action",
+        config: { actionType: "Run Script", resultType: "Message" },
       },
     },
     {
-      id: 'cond-1',
-      type: 'custom',
+      id: "cond-1",
+      type: "custom",
       position: { x: 400, y: 350 },
       data: {
-        label: 'Is Character?',
-        description: 'Branch based on asset type',
-        icon: 'Workflow',
-        color: 'purple',
-        kind: 'condition',
+        label: "Is Character?",
+        description: "Branch based on asset type",
+        icon: "Workflow",
+        color: "purple",
+        kind: "condition",
         config: { expression: 'asset.category == "character"' },
       },
     },
     {
-      id: 'action-2a',
-      type: 'custom',
+      id: "action-2a",
+      type: "custom",
       position: { x: 200, y: 500 },
       data: {
-        label: 'Assign Rigging',
-        description: 'Create rigging task',
-        icon: 'UserPlus',
-        color: 'orange',
-        kind: 'action',
-        config: { actionType: 'Update Entity', resultType: 'Form' },
+        label: "Assign Rigging",
+        description: "Create rigging task",
+        icon: "UserPlus",
+        color: "orange",
+        kind: "action",
+        config: { actionType: "Update Entity", resultType: "Form" },
       },
     },
     {
-      id: 'action-2b',
-      type: 'custom',
+      id: "action-2b",
+      type: "custom",
       position: { x: 600, y: 500 },
       data: {
-        label: 'Assign Modeling',
-        description: 'Create modeling task',
-        icon: 'Paintbrush',
-        color: 'orange',
-        kind: 'action',
-        config: { actionType: 'Update Entity', resultType: 'Form' },
+        label: "Assign Modeling",
+        description: "Create modeling task",
+        icon: "Paintbrush",
+        color: "orange",
+        kind: "action",
+        config: { actionType: "Update Entity", resultType: "Form" },
       },
     },
     {
-      id: 'action-3',
-      type: 'custom',
+      id: "action-3",
+      type: "custom",
       position: { x: 400, y: 650 },
       data: {
-        label: 'Notify Supervisors',
-        description: 'Send Slack alert',
-        icon: 'Bell',
-        color: 'pink',
-        kind: 'action',
-        config: { actionType: 'Send Notification', resultType: 'Message' },
+        label: "Notify Supervisors",
+        description: "Send Slack alert",
+        icon: "Bell",
+        color: "pink",
+        kind: "action",
+        config: { actionType: "Send Notification", resultType: "Message" },
       },
     },
     {
-      id: 'action-4',
-      type: 'custom',
+      id: "action-4",
+      type: "custom",
       position: { x: 400, y: 800 },
       data: {
-        label: 'Require Review',
-        description: 'Auto-schedule initial review',
-        icon: 'CheckSquare',
-        color: 'cyan',
-        kind: 'action',
-        config: { actionType: 'Update Entity', resultType: 'Widget' },
+        label: "Require Review",
+        description: "Auto-schedule initial review",
+        icon: "CheckSquare",
+        color: "cyan",
+        kind: "action",
+        config: { actionType: "Update Entity", resultType: "Widget" },
       },
     },
   ],
   edges: [
-    { id: 'e1-2', source: 'trigger-1', target: 'action-1', type: 'smoothstep', animated: true, style: edgeStyle },
-    { id: 'e2-3', source: 'action-1', target: 'cond-1', type: 'smoothstep', animated: true, style: edgeStyle },
-    { id: 'e3-4a', source: 'cond-1', target: 'action-2a', type: 'smoothstep', label: 'Yes', animated: true, style: { ...edgeStyle, stroke: '#f97316' } },
-    { id: 'e3-4b', source: 'cond-1', target: 'action-2b', type: 'smoothstep', label: 'No', animated: true, style: { ...edgeStyle, stroke: '#f97316' } },
-    { id: 'e4a-5', source: 'action-2a', target: 'action-3', type: 'smoothstep', animated: true, style: edgeStyle },
-    { id: 'e4b-5', source: 'action-2b', target: 'action-3', type: 'smoothstep', animated: true, style: edgeStyle },
-    { id: 'e5-6', source: 'action-3', target: 'action-4', type: 'smoothstep', animated: true, style: edgeStyle },
+    {
+      id: "e1-2",
+      source: "trigger-1",
+      target: "action-1",
+      type: "smoothstep",
+      animated: true,
+      style: edgeStyle,
+    },
+    {
+      id: "e2-3",
+      source: "action-1",
+      target: "cond-1",
+      type: "smoothstep",
+      animated: true,
+      style: edgeStyle,
+    },
+    {
+      id: "e3-4a",
+      source: "cond-1",
+      target: "action-2a",
+      type: "smoothstep",
+      label: "Yes",
+      animated: true,
+      style: { ...edgeStyle, stroke: "#f97316" },
+    },
+    {
+      id: "e3-4b",
+      source: "cond-1",
+      target: "action-2b",
+      type: "smoothstep",
+      label: "No",
+      animated: true,
+      style: { ...edgeStyle, stroke: "#f97316" },
+    },
+    {
+      id: "e4a-5",
+      source: "action-2a",
+      target: "action-3",
+      type: "smoothstep",
+      animated: true,
+      style: edgeStyle,
+    },
+    {
+      id: "e4b-5",
+      source: "action-2b",
+      target: "action-3",
+      type: "smoothstep",
+      animated: true,
+      style: edgeStyle,
+    },
+    {
+      id: "e5-6",
+      source: "action-3",
+      target: "action-4",
+      type: "smoothstep",
+      animated: true,
+      style: edgeStyle,
+    },
   ],
   updatedAt: new Date(0).toISOString(),
 };
@@ -158,14 +212,14 @@ function createDefaultGraph(workflowId: string): WorkflowGraph {
     nodes: [
       {
         id: `trigger-${workflowId}`,
-        type: 'custom',
+        type: "custom",
         position: { x: 360, y: 80 },
         data: {
-          label: meta?.trigger ?? 'Manual Trigger',
-          description: 'Starting point for this workflow',
-          icon: 'Play',
-          color: 'green',
-          kind: 'trigger',
+          label: meta?.trigger ?? "Manual Trigger",
+          description: "Starting point for this workflow",
+          icon: "Play",
+          color: "green",
+          kind: "trigger",
           // eventType must be one of the editor's fixed Event Type options
           // ('Status Changed' / 'Entity Created' / 'Schedule Reached') - it's
           // a different, constrained vocabulary from wf.trigger's free-text
@@ -175,7 +229,10 @@ function createDefaultGraph(workflowId: string): WorkflowGraph {
           // non-custom-built workflow's trigger node showing blank/unselected
           // the moment it was opened. Match defaultConfigFor('trigger')'s
           // default instead, same as any newly-dragged-in trigger node gets.
-          config: { discover: 'entity.type == "Task"', eventType: 'Entity Created' },
+          config: {
+            discover: 'entity.type == "Task"',
+            eventType: "Entity Created",
+          },
         },
       },
     ],
@@ -187,7 +244,7 @@ function createDefaultGraph(workflowId: string): WorkflowGraph {
 function seedGraphs(): Record<string, WorkflowGraph> {
   const seeded: Record<string, WorkflowGraph> = {};
   for (const wf of WORKFLOWS) {
-    seeded[wf.id] = wf.id === 'wf1' ? EXAMPLE_GRAPH : createDefaultGraph(wf.id);
+    seeded[wf.id] = wf.id === "wf1" ? EXAMPLE_GRAPH : createDefaultGraph(wf.id);
   }
   return seeded;
 }
@@ -197,7 +254,7 @@ function seedGraphs(): Record<string, WorkflowGraph> {
 // local component state, which meant a refresh silently reverted "Approve
 // Step" and the header badge never actually reflected completion. This is
 // now a real, persisted mutation on the run itself.
-export type WorkflowRunLogStatus = 'success' | 'info' | 'error' | 'warning';
+export type WorkflowRunLogStatus = "success" | "info" | "error" | "warning";
 
 export interface WorkflowRunLogEntry {
   timestamp: string;
@@ -209,7 +266,7 @@ export interface WorkflowRunLogEntry {
 export interface WorkflowRunState {
   id: string;
   workflowId: string;
-  status: 'running' | 'completed' | 'failed' | 'paused';
+  status: "running" | "completed" | "failed" | "paused";
   currentNode: string;
   logs: WorkflowRunLogEntry[];
 }
@@ -228,14 +285,24 @@ function seedRunForWorkflow(workflowId: string): WorkflowRunState {
   // happens to appear first for this workflow" - not actually the most
   // recent one as this function's own doc comment promises. Sort by
   // startedAt so the fallback genuinely is the latest run.
-  const byMostRecent = [...candidates].sort((a, b) => (a.startedAt < b.startedAt ? 1 : a.startedAt > b.startedAt ? -1 : 0));
+  const byMostRecent = [...candidates].sort((a, b) =>
+    a.startedAt < b.startedAt ? 1 : a.startedAt > b.startedAt ? -1 : 0,
+  );
   const pick =
-    candidates.find((r) => r.status === 'running' && r.currentNode === 'Review Gate') ??
-    candidates.find((r) => r.status === 'running') ??
+    candidates.find(
+      (r) => r.status === "running" && r.currentNode === "Review Gate",
+    ) ??
+    candidates.find((r) => r.status === "running") ??
     byMostRecent[0];
 
   if (!pick) {
-    return { id: `wr-${workflowId}-none`, workflowId, status: 'completed', currentNode: 'Done', logs: [] };
+    return {
+      id: `wr-${workflowId}-none`,
+      workflowId,
+      status: "completed",
+      currentNode: "Done",
+      logs: [],
+    };
   }
 
   return {
@@ -270,14 +337,19 @@ interface WorkflowsState {
   /** Approves the run's current gate node: marks it complete and the run finished. No-op if the run isn't waiting on a gate. */
   approveRunStep: (workflowId: string, approverName: string) => void;
   /** Rejects the run's current gate node: marks the run failed, mirroring the rejected-run shape already present in mock data. */
-  rejectRunStep: (workflowId: string, reviewerName: string, reason?: string) => void;
+  rejectRunStep: (
+    workflowId: string,
+    reviewerName: string,
+    reason?: string,
+  ) => void;
 }
 
 export const useWorkflowsStore = create<WorkflowsState>()(
   persist(
     (set, get) => ({
       graphs: seedGraphs(),
-      getGraph: (workflowId) => get().graphs[workflowId] ?? createDefaultGraph(workflowId),
+      getGraph: (workflowId) =>
+        get().graphs[workflowId] ?? createDefaultGraph(workflowId),
       saveGraph: (workflowId, nodes, edges) =>
         set((state) => ({
           graphs: {
@@ -289,32 +361,20 @@ export const useWorkflowsStore = create<WorkflowsState>()(
         set((state) => ({
           graphs: {
             ...state.graphs,
-            [workflowId]: workflowId === 'wf1' ? EXAMPLE_GRAPH : createDefaultGraph(workflowId),
+            [workflowId]:
+              workflowId === "wf1"
+                ? EXAMPLE_GRAPH
+                : createDefaultGraph(workflowId),
           },
         })),
 
       runs: seedRuns(),
-      getRun: (workflowId) => get().runs[workflowId] ?? seedRunForWorkflow(workflowId),
+      getRun: (workflowId) =>
+        get().runs[workflowId] ?? seedRunForWorkflow(workflowId),
       approveRunStep: (workflowId, approverName) =>
         set((state) => {
           const run = state.runs[workflowId] ?? seedRunForWorkflow(workflowId);
-          if (run.status !== 'running') return state;
-          const gateNode = run.currentNode;
-          const timestamp = new Date().toTimeString().slice(0, 8);
-          const logs: WorkflowRunLogEntry[] = [
-            ...run.logs,
-            { timestamp, node: gateNode, message: `Manual approval received from ${approverName}.`, status: 'success' },
-            { timestamp, node: gateNode, message: `${gateNode} completed successfully.`, status: 'success' },
-            { timestamp, node: 'Workflow', message: 'WORKFLOW FINISHED.', status: 'success' },
-          ];
-          return {
-            runs: { ...state.runs, [workflowId]: { ...run, status: 'completed', currentNode: 'Done', logs } },
-          };
-        }),
-      rejectRunStep: (workflowId, reviewerName, reason) =>
-        set((state) => {
-          const run = state.runs[workflowId] ?? seedRunForWorkflow(workflowId);
-          if (run.status !== 'running') return state;
+          if (run.status !== "running") return state;
           const gateNode = run.currentNode;
           const timestamp = new Date().toTimeString().slice(0, 8);
           const logs: WorkflowRunLogEntry[] = [
@@ -322,18 +382,67 @@ export const useWorkflowsStore = create<WorkflowsState>()(
             {
               timestamp,
               node: gateNode,
-              message: reason ? `Review rejected by ${reviewerName}: ${reason}` : `Review rejected by ${reviewerName}.`,
-              status: 'error',
+              message: `Manual approval received from ${approverName}.`,
+              status: "success",
             },
-            { timestamp, node: 'Workflow', message: `WORKFLOW HALTED — rejected at ${gateNode}.`, status: 'error' },
+            {
+              timestamp,
+              node: gateNode,
+              message: `${gateNode} completed successfully.`,
+              status: "success",
+            },
+            {
+              timestamp,
+              node: "Workflow",
+              message: "WORKFLOW FINISHED.",
+              status: "success",
+            },
           ];
           return {
-            runs: { ...state.runs, [workflowId]: { ...run, status: 'failed', logs } },
+            runs: {
+              ...state.runs,
+              [workflowId]: {
+                ...run,
+                status: "completed",
+                currentNode: "Done",
+                logs,
+              },
+            },
+          };
+        }),
+      rejectRunStep: (workflowId, reviewerName, reason) =>
+        set((state) => {
+          const run = state.runs[workflowId] ?? seedRunForWorkflow(workflowId);
+          if (run.status !== "running") return state;
+          const gateNode = run.currentNode;
+          const timestamp = new Date().toTimeString().slice(0, 8);
+          const logs: WorkflowRunLogEntry[] = [
+            ...run.logs,
+            {
+              timestamp,
+              node: gateNode,
+              message: reason
+                ? `Review rejected by ${reviewerName}: ${reason}`
+                : `Review rejected by ${reviewerName}.`,
+              status: "error",
+            },
+            {
+              timestamp,
+              node: "Workflow",
+              message: `WORKFLOW HALTED — rejected at ${gateNode}.`,
+              status: "error",
+            },
+          ];
+          return {
+            runs: {
+              ...state.runs,
+              [workflowId]: { ...run, status: "failed", logs },
+            },
           };
         }),
     }),
     {
-      name: 'forge-workflow-storage',
-    }
-  )
+      name: "forge-workflow-storage",
+    },
+  ),
 );

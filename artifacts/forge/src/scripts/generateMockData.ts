@@ -1,5 +1,5 @@
-import fs from 'fs';
-import path from 'path';
+import fs from "fs";
+import path from "path";
 
 // Let's generate a new mockData.ts string
 const content = `
@@ -248,6 +248,6 @@ export const USER_STATUS = USERS.reduce((acc, u) => {
 
 `;
 
-const targetPath = path.resolve(process.cwd(), 'src/data/mockData.ts');
+const targetPath = path.resolve(process.cwd(), "src/data/mockData.ts");
 fs.writeFileSync(targetPath, content);
 console.log(`Done writing to ${targetPath}`);

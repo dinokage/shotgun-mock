@@ -1,25 +1,60 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
-import { PROJECTS, TASKS, REVIEWS, PUBLISH_LOGS, DEPARTMENTS, USERS, TIME_LOGS, SHOTS, Project, isTaskDone } from '@/data/mockData';
-import { BarChart3, TrendingUp, Clock, CheckCircle2, AlertTriangle, Users, Download, ArrowUpRight, ArrowDownRight, Flame, Lock } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
-import { Link } from 'wouter';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useEffect, useMemo, useState } from 'react';
-import { useAuthStore } from '@/store/auth';
-import { useCapability } from '@/hooks/use-capability';
-import { hashString, seededFraction } from '@/lib/seededMock';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+  EmptyDescription,
+} from "@/components/ui/empty";
+import {
+  PROJECTS,
+  TASKS,
+  REVIEWS,
+  PUBLISH_LOGS,
+  DEPARTMENTS,
+  USERS,
+  TIME_LOGS,
+  SHOTS,
+  Project,
+  isTaskDone,
+} from "@/data/mockData";
+import {
+  BarChart3,
+  TrendingUp,
+  Clock,
+  CheckCircle2,
+  AlertTriangle,
+  Users,
+  Download,
+  ArrowUpRight,
+  ArrowDownRight,
+  Flame,
+  Lock,
+} from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { Link } from "wouter";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useEffect, useMemo, useState } from "react";
+import { useAuthStore } from "@/store/auth";
+import { useCapability } from "@/hooks/use-capability";
+import { hashString, seededFraction } from "@/lib/seededMock";
 
 // Fictional "today" this studio's books are closed against - matches the
 // anchor financials.tsx uses. The mock dataset (task/review/publish
 // timestamps) lives in and around mid-2024, so the date-range filter below
 // is anchored there too instead of drifting with the real-world calendar.
-const MOCK_TODAY = new Date('2024-10-15');
+const MOCK_TODAY = new Date("2024-10-15");
 
-const DATE_RANGE_DAYS = { '7d': 7, '30d': 30, '90d': 90 } as const;
+const DATE_RANGE_DAYS = { "7d": 7, "30d": 30, "90d": 90 } as const;
 type DateRangeKey = keyof typeof DATE_RANGE_DAYS;
 
 function withinRange(iso: string, start: Date, end: Date): boolean {
@@ -36,7 +71,11 @@ function withinRange(iso: string, start: Date, end: Date): boolean {
  * hashString/seededFraction live in src/lib/seededMock.ts, shared with
  * financials.tsx so the two pages' bid-vs-actual math can't drift apart.
  */
-function getProjectBidMargin(p: Project): { bids: number; actuals: number; rate: number } {
+function getProjectBidMargin(p: Project): {
+  bids: number;
+  actuals: number;
+  rate: number;
+} {
   const seed = hashString(p.id);
   const bids = 150 + (seed % 1200); // stable bid-hours estimate per project, 150-1349h
   const jitter = seededFraction(seed, 41); // stable per-project value in [0,1)
@@ -46,7 +85,7 @@ function getProjectBidMargin(p: Project): { bids: number; actuals: number; rate:
   const jitterSpread = (jitter - 0.5) * 0.3; // +/-15%, keeps similar-risk projects visually distinct
 
   let burnRatio = progressFactor * (0.8 + riskPremium) + jitterSpread;
-  if (p.status === 'COMPLETE') burnRatio = 0.95 + jitter * 0.25; // wrapped shows land near/over their bid
+  if (p.status === "COMPLETE") burnRatio = 0.95 + jitter * 0.25; // wrapped shows land near/over their bid
   burnRatio = Math.max(0.1, Math.min(1.5, burnRatio));
 
   const actuals = Math.max(1, Math.round(bids * burnRatio));
@@ -61,8 +100,14 @@ function getProjectBidMargin(p: Project): { bids: number; actuals: number; rate:
  * in TimeClockWidget.tsx) so the logged-in user's own Timecards row never
  * contradicts the header's live PUNCHED IN indicator.
  */
-function usePunchedInSession(userId: string | undefined): { hours: number; since: string | null } {
-  const [session, setSession] = useState<{ hours: number; since: string | null }>({ hours: 0, since: null });
+function usePunchedInSession(userId: string | undefined): {
+  hours: number;
+  since: string | null;
+} {
+  const [session, setSession] = useState<{
+    hours: number;
+    since: string | null;
+  }>({ hours: 0, since: null });
 
   useEffect(() => {
     if (!userId) {
@@ -76,7 +121,10 @@ function usePunchedInSession(userId: string | undefined): { hours: number; since
         return;
       }
       const startMs = parseInt(startTime, 10);
-      setSession({ hours: Math.max(0, (Date.now() - startMs) / 3600000), since: new Date(startMs).toISOString() });
+      setSession({
+        hours: Math.max(0, (Date.now() - startMs) / 3600000),
+        since: new Date(startMs).toISOString(),
+      });
     };
     compute();
     const interval = setInterval(compute, 30000);
@@ -90,9 +138,9 @@ export default function Analytics() {
   const { toast } = useToast();
   const { currentUser } = useAuthStore();
   const punchedInSession = usePunchedInSession(currentUser?.id);
-  const canViewFinancials = useCapability('view_financials');
+  const canViewFinancials = useCapability("view_financials");
 
-  const [dateRange, setDateRange] = useState<DateRangeKey>('30d');
+  const [dateRange, setDateRange] = useState<DateRangeKey>("30d");
 
   // Current period is [MOCK_TODAY - N days, MOCK_TODAY]; previous period is
   // the N days immediately before that, so every KPI's trend arrow is a real
@@ -108,54 +156,99 @@ export default function Analytics() {
     const prevEnd = new Date(curStart.getTime() - 1);
     const prevStart = new Date(curStart);
     prevStart.setDate(prevStart.getDate() - days);
-    return { currentStart: curStart, previousStart: prevStart, previousEnd: prevEnd };
+    return {
+      currentStart: curStart,
+      previousStart: prevStart,
+      previousEnd: prevEnd,
+    };
   }, [dateRange]);
 
   const filteredTasks = useMemo(
-    () => TASKS.filter(t => withinRange(t.createdAt, currentStart, MOCK_TODAY)),
-    [currentStart]
+    () =>
+      TASKS.filter((t) => withinRange(t.createdAt, currentStart, MOCK_TODAY)),
+    [currentStart],
   );
   const filteredReviews = useMemo(
-    () => REVIEWS.filter(r => withinRange(r.createdAt, currentStart, MOCK_TODAY)),
-    [currentStart]
+    () =>
+      REVIEWS.filter((r) => withinRange(r.createdAt, currentStart, MOCK_TODAY)),
+    [currentStart],
   );
   const filteredPublishLogs = useMemo(
-    () => PUBLISH_LOGS.filter(p => withinRange(p.publishedAt, currentStart, MOCK_TODAY)),
-    [currentStart]
+    () =>
+      PUBLISH_LOGS.filter((p) =>
+        withinRange(p.publishedAt, currentStart, MOCK_TODAY),
+      ),
+    [currentStart],
   );
 
   const previousTasks = useMemo(
-    () => TASKS.filter(t => withinRange(t.createdAt, previousStart, previousEnd)),
-    [previousStart, previousEnd]
+    () =>
+      TASKS.filter((t) => withinRange(t.createdAt, previousStart, previousEnd)),
+    [previousStart, previousEnd],
   );
   const previousReviews = useMemo(
-    () => REVIEWS.filter(r => withinRange(r.createdAt, previousStart, previousEnd)),
-    [previousStart, previousEnd]
+    () =>
+      REVIEWS.filter((r) =>
+        withinRange(r.createdAt, previousStart, previousEnd),
+      ),
+    [previousStart, previousEnd],
   );
   const previousPublishLogs = useMemo(
-    () => PUBLISH_LOGS.filter(p => withinRange(p.publishedAt, previousStart, previousEnd)),
-    [previousStart, previousEnd]
+    () =>
+      PUBLISH_LOGS.filter((p) =>
+        withinRange(p.publishedAt, previousStart, previousEnd),
+      ),
+    [previousStart, previousEnd],
   );
 
-  function periodStats(tasks: typeof TASKS, reviews: typeof REVIEWS, publishLogs: typeof PUBLISH_LOGS) {
+  function periodStats(
+    tasks: typeof TASKS,
+    reviews: typeof REVIEWS,
+    publishLogs: typeof PUBLISH_LOGS,
+  ) {
     const total = tasks.length;
-    const done = tasks.filter(t => isTaskDone(t.status)).length;
+    const done = tasks.filter((t) => isTaskDone(t.status)).length;
     const velocity = total > 0 ? (done / total) * 100 : 0;
-    const approvalRate = reviews.length > 0 ? (reviews.filter(r => r.status === 'approved').length / reviews.length) * 100 : 0;
-    const avgReviewTime = reviews.length > 0
-      ? reviews.reduce((acc, r) => acc + (new Date(r.updatedAt).getTime() - new Date(r.createdAt).getTime()) / 3600000, 0) / reviews.length
-      : 0;
-    const publishSuccess = publishLogs.length > 0 ? (publishLogs.filter(p => p.status === 'success').length / publishLogs.length) * 100 : 0;
-    return { total, done, velocity, approvalRate, avgReviewTime, publishSuccess };
+    const approvalRate =
+      reviews.length > 0
+        ? (reviews.filter((r) => r.status === "approved").length /
+            reviews.length) *
+          100
+        : 0;
+    const avgReviewTime =
+      reviews.length > 0
+        ? reviews.reduce(
+            (acc, r) =>
+              acc +
+              (new Date(r.updatedAt).getTime() -
+                new Date(r.createdAt).getTime()) /
+                3600000,
+            0,
+          ) / reviews.length
+        : 0;
+    const publishSuccess =
+      publishLogs.length > 0
+        ? (publishLogs.filter((p) => p.status === "success").length /
+            publishLogs.length) *
+          100
+        : 0;
+    return {
+      total,
+      done,
+      velocity,
+      approvalRate,
+      avgReviewTime,
+      publishSuccess,
+    };
   }
 
   const current = useMemo(
     () => periodStats(filteredTasks, filteredReviews, filteredPublishLogs),
-    [filteredTasks, filteredReviews, filteredPublishLogs]
+    [filteredTasks, filteredReviews, filteredPublishLogs],
   );
   const previous = useMemo(
     () => periodStats(previousTasks, previousReviews, previousPublishLogs),
-    [previousTasks, previousReviews, previousPublishLogs]
+    [previousTasks, previousReviews, previousPublishLogs],
   );
 
   const avgReviewTime = current.avgReviewTime;
@@ -167,42 +260,66 @@ export default function Analytics() {
   // moved; whether that movement is colored green ("good") depends on the
   // metric - a shrinking Avg Review Time is an improvement, so unlike the
   // other three (where up = good), it needs up = bad / down = good.
-  function trend(currentValue: number, previousValue: number, lowerIsBetter = false) {
+  function trend(
+    currentValue: number,
+    previousValue: number,
+    lowerIsBetter = false,
+  ) {
     const delta = currentValue - previousValue;
-    const dir: 'up' | 'down' = delta >= 0 ? 'up' : 'down';
+    const dir: "up" | "down" = delta >= 0 ? "up" : "down";
     const good = lowerIsBetter ? delta <= 0 : delta >= 0;
     return { delta, dir, good };
   }
 
   const velocityTrend = trend(current.velocity, previous.velocity);
-  const reviewTimeTrend = trend(current.avgReviewTime, previous.avgReviewTime, true);
+  const reviewTimeTrend = trend(
+    current.avgReviewTime,
+    previous.avgReviewTime,
+    true,
+  );
   const approvalTrend = trend(current.approvalRate, previous.approvalRate);
   const publishTrend = trend(current.publishSuccess, previous.publishSuccess);
 
   const kpis = [
     {
-      label: 'Total Velocity', value: `${velocity}%`,
-      change: `${velocityTrend.delta >= 0 ? '+' : ''}${Math.round(velocityTrend.delta)}%`,
-      dir: velocityTrend.dir, good: velocityTrend.good,
-      icon: TrendingUp, color: 'text-blue-500', bg: 'bg-blue-500/10',
+      label: "Total Velocity",
+      value: `${velocity}%`,
+      change: `${velocityTrend.delta >= 0 ? "+" : ""}${Math.round(velocityTrend.delta)}%`,
+      dir: velocityTrend.dir,
+      good: velocityTrend.good,
+      icon: TrendingUp,
+      color: "text-blue-500",
+      bg: "bg-blue-500/10",
     },
     {
-      label: 'Avg Review Time', value: `${avgReviewTime.toFixed(1)}h`,
-      change: `${reviewTimeTrend.delta >= 0 ? '+' : ''}${reviewTimeTrend.delta.toFixed(1)}h`,
-      dir: reviewTimeTrend.dir, good: reviewTimeTrend.good,
-      icon: Clock, color: 'text-purple-500', bg: 'bg-purple-500/10',
+      label: "Avg Review Time",
+      value: `${avgReviewTime.toFixed(1)}h`,
+      change: `${reviewTimeTrend.delta >= 0 ? "+" : ""}${reviewTimeTrend.delta.toFixed(1)}h`,
+      dir: reviewTimeTrend.dir,
+      good: reviewTimeTrend.good,
+      icon: Clock,
+      color: "text-purple-500",
+      bg: "bg-purple-500/10",
     },
     {
-      label: 'Approval Rate', value: `${approvalRate}%`,
-      change: `${approvalTrend.delta >= 0 ? '+' : ''}${Math.round(approvalTrend.delta)}%`,
-      dir: approvalTrend.dir, good: approvalTrend.good,
-      icon: CheckCircle2, color: 'text-green-500', bg: 'bg-green-500/10',
+      label: "Approval Rate",
+      value: `${approvalRate}%`,
+      change: `${approvalTrend.delta >= 0 ? "+" : ""}${Math.round(approvalTrend.delta)}%`,
+      dir: approvalTrend.dir,
+      good: approvalTrend.good,
+      icon: CheckCircle2,
+      color: "text-green-500",
+      bg: "bg-green-500/10",
     },
     {
-      label: 'Publish Success', value: `${publishSuccess}%`,
-      change: `${publishTrend.delta >= 0 ? '+' : ''}${Math.round(publishTrend.delta)}%`,
-      dir: publishTrend.dir, good: publishTrend.good,
-      icon: AlertTriangle, color: 'text-orange-500', bg: 'bg-orange-500/10',
+      label: "Publish Success",
+      value: `${publishSuccess}%`,
+      change: `${publishTrend.delta >= 0 ? "+" : ""}${Math.round(publishTrend.delta)}%`,
+      dir: publishTrend.dir,
+      good: publishTrend.good,
+      icon: AlertTriangle,
+      color: "text-orange-500",
+      bg: "bg-orange-500/10",
     },
   ];
 
@@ -212,67 +329,90 @@ export default function Analytics() {
   // onto USERS by array index.
   const contributorCounts = useMemo(() => {
     const counts = new Map<string, number>();
-    filteredTasks.forEach(t => {
-      if (isTaskDone(t.status)) counts.set(t.assigneeId, (counts.get(t.assigneeId) || 0) + 1);
+    filteredTasks.forEach((t) => {
+      if (isTaskDone(t.status))
+        counts.set(t.assigneeId, (counts.get(t.assigneeId) || 0) + 1);
     });
-    filteredReviews.forEach(r => {
-      if (r.status === 'approved') counts.set(r.reviewerId, (counts.get(r.reviewerId) || 0) + 1);
+    filteredReviews.forEach((r) => {
+      if (r.status === "approved")
+        counts.set(r.reviewerId, (counts.get(r.reviewerId) || 0) + 1);
     });
     return counts;
   }, [filteredTasks, filteredReviews]);
 
   const topContributors = useMemo(
-    () => USERS
-      .map(u => ({ user: u, count: contributorCounts.get(u.id) || 0 }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 5),
-    [contributorCounts]
+    () =>
+      USERS.map((u) => ({ user: u, count: contributorCounts.get(u.id) || 0 }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5),
+    [contributorCounts],
   );
 
   // Generate mock chart data
   const deliveryData = [
-    { week: 'W1', planned: 12, actual: 10 }, { week: 'W2', planned: 15, actual: 14 },
-    { week: 'W3', planned: 18, actual: 20 }, { week: 'W4', planned: 22, actual: 19 },
-    { week: 'W5', planned: 25, actual: 23 }, { week: 'W6', planned: 20, actual: 22 },
-    { week: 'W7', planned: 28, actual: 26 }, { week: 'W8', planned: 30, actual: 28 },
+    { week: "W1", planned: 12, actual: 10 },
+    { week: "W2", planned: 15, actual: 14 },
+    { week: "W3", planned: 18, actual: 20 },
+    { week: "W4", planned: 22, actual: 19 },
+    { week: "W5", planned: 25, actual: 23 },
+    { week: "W6", planned: 20, actual: 22 },
+    { week: "W7", planned: 28, actual: 26 },
+    { week: "W8", planned: 30, actual: 28 },
   ];
 
-  const maxDelivery = Math.max(...deliveryData.flatMap(d => [d.planned, d.actual]));
+  const maxDelivery = Math.max(
+    ...deliveryData.flatMap((d) => [d.planned, d.actual]),
+  );
 
   function toCSV(rows: (string | number)[][]): string {
     return rows
-      .map(row => row.map(cell => {
-        const s = String(cell);
-        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-      }).join(','))
-      .join('\n');
+      .map((row) =>
+        row
+          .map((cell) => {
+            const s = String(cell);
+            return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+          })
+          .join(","),
+      )
+      .join("\n");
   }
 
   // Real CSV export of the data currently on screen (respects the selected
   // date range), not a window.print() call disguised as "Export".
   function handleExport() {
     const rows: (string | number)[][] = [
-      ['Forge Analytics Export', `Range: ${dateRange === '7d' ? 'Last 7 Days' : dateRange === '30d' ? 'Last 30 Days' : 'Last 90 Days'}`],
+      [
+        "Forge Analytics Export",
+        `Range: ${dateRange === "7d" ? "Last 7 Days" : dateRange === "30d" ? "Last 30 Days" : "Last 90 Days"}`,
+      ],
       [],
-      ['KPI', 'Value', 'Change vs. prior period'],
-      ...kpis.map(k => [k.label, k.value, k.change]),
+      ["KPI", "Value", "Change vs. prior period"],
+      ...kpis.map((k) => [k.label, k.value, k.change]),
       [],
-      ['Top Contributors', 'Role', 'Completed (tasks + approved reviews)'],
-      ...topContributors.map(c => [c.user.name, c.user.role, c.count]),
+      ["Top Contributors", "Role", "Completed (tasks + approved reviews)"],
+      ...topContributors.map((c) => [c.user.name, c.user.role, c.count]),
       [],
-      ['Task', 'Department', 'Status', 'Bid (hrs)', 'Actual (hrs)'],
-      ...filteredTasks.map(t => [t.title, t.department, t.status, t.estimatedHours || 0, t.actualHours || 0]),
+      ["Task", "Department", "Status", "Bid (hrs)", "Actual (hrs)"],
+      ...filteredTasks.map((t) => [
+        t.title,
+        t.department,
+        t.status,
+        t.estimatedHours || 0,
+        t.actualHours || 0,
+      ]),
     ];
-    const blob = new Blob([toCSV(rows)], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob([toCSV(rows)], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
     a.download = `forge-analytics-${dateRange}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    toast({ description: `Exported ${filteredTasks.length} tasks and ${topContributors.length} contributor rows as CSV.` });
+    toast({
+      description: `Exported ${filteredTasks.length} tasks and ${topContributors.length} contributor rows as CSV.`,
+    });
   }
 
   return (
@@ -280,18 +420,27 @@ export default function Analytics() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Analytics</h1>
-          <p className="text-muted-foreground mt-1">Executive production dashboard</p>
+          <p className="text-muted-foreground mt-1">
+            Executive production dashboard
+          </p>
         </div>
         <div className="flex gap-2">
-          <Select value={dateRange} onValueChange={(v) => setDateRange(v as DateRangeKey)}>
-            <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+          <Select
+            value={dateRange}
+            onValueChange={(v) => setDateRange(v as DateRangeKey)}
+          >
+            <SelectTrigger className="w-32">
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="7d">Last 7 Days</SelectItem>
               <SelectItem value="30d">Last 30 Days</SelectItem>
               <SelectItem value="90d">Last 90 Days</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" className="gap-2" onClick={handleExport}><Download className="w-4 h-4" /> Export</Button>
+          <Button variant="outline" className="gap-2" onClick={handleExport}>
+            <Download className="w-4 h-4" /> Export
+          </Button>
         </div>
       </div>
 
@@ -301,16 +450,26 @@ export default function Analytics() {
           <Card key={i} className="hover:shadow-md transition-shadow">
             <CardContent className="p-5">
               <div className="flex items-center justify-between mb-3">
-                <div className={`w-10 h-10 rounded-xl ${kpi.bg} flex items-center justify-center`}>
+                <div
+                  className={`w-10 h-10 rounded-xl ${kpi.bg} flex items-center justify-center`}
+                >
                   <kpi.icon className={`w-5 h-5 ${kpi.color}`} />
                 </div>
-                <div className={`flex items-center gap-1 text-xs font-medium ${kpi.good ? 'text-green-500' : 'text-red-500'}`}>
-                  {kpi.dir === 'up' ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+                <div
+                  className={`flex items-center gap-1 text-xs font-medium ${kpi.good ? "text-green-500" : "text-red-500"}`}
+                >
+                  {kpi.dir === "up" ? (
+                    <ArrowUpRight className="w-3 h-3" />
+                  ) : (
+                    <ArrowDownRight className="w-3 h-3" />
+                  )}
                   {kpi.change}
                 </div>
               </div>
               <div className="text-3xl font-bold">{kpi.value}</div>
-              <div className="text-xs text-muted-foreground mt-1">{kpi.label}</div>
+              <div className="text-xs text-muted-foreground mt-1">
+                {kpi.label}
+              </div>
             </CardContent>
           </Card>
         ))}
@@ -322,271 +481,474 @@ export default function Analytics() {
           <TabsTrigger
             value="financials"
             disabled={!canViewFinancials}
-            title={canViewFinancials ? undefined : "Your role doesn't include View Financials"}
+            title={
+              canViewFinancials
+                ? undefined
+                : "Your role doesn't include View Financials"
+            }
           >
-            {!canViewFinancials && <Lock className="w-3 h-3 mr-1.5" />} Bid Margins
+            {!canViewFinancials && <Lock className="w-3 h-3 mr-1.5" />} Bid
+            Margins
           </TabsTrigger>
           <TabsTrigger value="timecards">Timecards & Tracking</TabsTrigger>
         </TabsList>
 
         <TabsContent value="production" className="space-y-6 mt-0">
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <div className="xl:col-span-2 space-y-6">
-          {/* Bidding vs Actuals (Burn Rate) */}
-          <Card className="border-orange-500/30 shadow-[0_0_15px_rgba(249,115,22,0.1)]">
-            <CardHeader className="pb-3 bg-orange-500/5">
-              <CardTitle className="text-lg flex items-center gap-2 text-orange-500"><Flame className="w-5 h-5" /> Bidding vs Actuals (Burn Rate)</CardTitle>
-            </CardHeader>
-            <CardContent className="pt-4 space-y-5">
-              {filteredTasks.length === 0 ? (
-                <Empty className="border-0 py-4">
-                  <EmptyHeader>
-                    <EmptyMedia variant="icon">
-                      <Flame />
-                    </EmptyMedia>
-                    <EmptyTitle>No tasks in this range</EmptyTitle>
-                    <EmptyDescription>Try a wider date range.</EmptyDescription>
-                  </EmptyHeader>
-                </Empty>
-              ) : filteredTasks.slice(0, 5).map(task => {
-                const bids = task.estimatedHours || 40;
-                const actuals = task.actualHours || ((hashString(task.id) % 40) + 10); // Deterministic fallback if undefined
-                const burnRate = Math.round((actuals / bids) * 100);
-                const isOverBudget = actuals > bids;
-                
-                const shot = SHOTS.find(s => s.id === task.shotId);
-                const project = PROJECTS.find(p => p.id === shot?.projectId);
+            <div className="xl:col-span-2 space-y-6">
+              {/* Bidding vs Actuals (Burn Rate) */}
+              <Card className="border-orange-500/30 shadow-[0_0_15px_rgba(249,115,22,0.1)]">
+                <CardHeader className="pb-3 bg-orange-500/5">
+                  <CardTitle className="text-lg flex items-center gap-2 text-orange-500">
+                    <Flame className="w-5 h-5" /> Bidding vs Actuals (Burn Rate)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-4 space-y-5">
+                  {filteredTasks.length === 0 ? (
+                    <Empty className="border-0 py-4">
+                      <EmptyHeader>
+                        <EmptyMedia variant="icon">
+                          <Flame />
+                        </EmptyMedia>
+                        <EmptyTitle>No tasks in this range</EmptyTitle>
+                        <EmptyDescription>
+                          Try a wider date range.
+                        </EmptyDescription>
+                      </EmptyHeader>
+                    </Empty>
+                  ) : (
+                    filteredTasks.slice(0, 5).map((task) => {
+                      const bids = task.estimatedHours || 40;
+                      const actuals =
+                        task.actualHours || (hashString(task.id) % 40) + 10; // Deterministic fallback if undefined
+                      const burnRate = Math.round((actuals / bids) * 100);
+                      const isOverBudget = actuals > bids;
 
-                return (
-                  <div key={task.id} className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <div>
-                        <span className="font-medium">{task.department} Task</span>
-                        <div className="text-[10px] text-muted-foreground">{project?.name} - {shot?.name}</div>
-                      </div>
-                      <div className="flex gap-4 items-center">
-                        <span className="text-muted-foreground">Bid: {bids}h</span>
-                        <span className={isOverBudget ? 'text-red-500 font-bold' : 'text-green-500 font-bold'}>Actual: {actuals}h</span>
-                      </div>
-                    </div>
-                    <div className="relative h-4 bg-muted rounded-full overflow-hidden">
-                      <div className="absolute top-0 bottom-0 left-0 bg-blue-500/40 rounded-full" style={{ width: `100%` }} />
-                      <div className={`absolute top-0 bottom-0 left-0 rounded-full transition-all duration-700 ${isOverBudget ? 'bg-red-500' : 'bg-green-500'}`} style={{ width: `${Math.min(burnRate, 100)}%` }} />
-                      {isOverBudget && <div className="absolute top-0 bottom-0 right-0 bg-red-600 animate-pulse" style={{ width: `${Math.min(burnRate - 100, 100)}%` }} />}
-                    </div>
-                    <div className="flex justify-between text-[10px]">
-                      <span className="text-muted-foreground">Burn Rate: <span className={isOverBudget ? 'text-red-500' : 'text-foreground'}>{burnRate}%</span></span>
-                      {isOverBudget ? (
-                        <span className="text-red-500 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Over budget by {actuals - bids}h</span>
-                      ) : (
-                        <span className="text-green-500 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Under budget by {bids - actuals}h</span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </CardContent>
-          </Card>
-
-          {/* Delivery Trends - CSS Chart */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Delivery Trends</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-end gap-3 h-48">
-                {deliveryData.map((d, i) => (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                    <div className="flex gap-0.5 items-end h-40 w-full">
-                      <div className="flex-1 bg-primary/20 rounded-t-sm transition-all duration-500" style={{ height: `${(d.planned / maxDelivery) * 100}%` }} />
-                      <div className="flex-1 bg-primary rounded-t-sm transition-all duration-500" style={{ height: `${(d.actual / maxDelivery) * 100}%` }} />
-                    </div>
-                    <span className="text-[10px] text-muted-foreground">{d.week}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="flex items-center gap-4 mt-4 text-xs text-muted-foreground">
-                <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-sm bg-primary/20" /> Planned</div>
-                <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-sm bg-primary" /> Actual</div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Department Capacity Heatmap */}
-          <Card>
-            <CardHeader className="pb-3 flex flex-row items-center justify-between">
-              <CardTitle className="text-lg">Department Capacity</CardTitle>
-              <div className="flex items-center gap-4 text-[10px] text-muted-foreground">
-                <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded bg-green-500/20 border border-green-500/50" /> Available</div>
-                <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded bg-yellow-500/20 border border-yellow-500/50" /> Heavy</div>
-                <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded bg-red-500/20 border border-red-500/50" /> Overloaded</div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto custom-scrollbar pb-2">
-                <table className="w-full min-w-[600px] text-xs">
-                  <thead>
-                    <tr>
-                      <th className="text-left font-medium text-muted-foreground pb-2 w-32">Department</th>
-                      {['W1', 'W2', 'W3', 'W4', 'W5', 'W6', 'W7', 'W8'].map(w => (
-                        <th key={w} className="text-center font-medium text-muted-foreground pb-2 w-16">{w}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {DEPARTMENTS.slice(0, 6).map((dept, i) => {
-                      // Deterministic capacity curve per week (0-150%), seeded per dept+week
-                      const baseLoad = [80, 95, 60, 110, 40, 85][i];
-                      const weekLoads = Array.from({ length: 8 }).map((_, w) => {
-                        return Math.max(0, baseLoad + Math.sin(w) * 30 + seededFraction(i, w) * 20);
-                      });
+                      const shot = SHOTS.find((s) => s.id === task.shotId);
+                      const project = PROJECTS.find(
+                        (p) => p.id === shot?.projectId,
+                      );
 
                       return (
-                        <tr key={dept.id} className="border-t border-border group">
-                          <td className="py-2">
-                            <Link href={`/departments/${dept.id}`}>
-                              <div className="flex items-center gap-2 cursor-pointer hover:bg-muted/50 p-1 rounded-md -ml-1 transition-colors">
-                                <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: dept.color }} />
-                                <span className="font-medium text-foreground group-hover:text-primary transition-colors flex items-center gap-1">
-                                  {dept.name} <ArrowUpRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                </span>
+                        <div key={task.id} className="space-y-2">
+                          <div className="flex justify-between text-sm">
+                            <div>
+                              <span className="font-medium">
+                                {task.department} Task
+                              </span>
+                              <div className="text-[10px] text-muted-foreground">
+                                {project?.name} - {shot?.name}
                               </div>
-                            </Link>
-                          </td>
-                          {weekLoads.map((load, w) => {
-                            let color = 'bg-green-500/10 text-green-600 border-green-500/30';
-                            if (load > 110) color = 'bg-red-500/10 text-red-600 border-red-500/30';
-                            else if (load > 85) color = 'bg-yellow-500/10 text-yellow-600 border-yellow-500/30';
-                            return (
-                              <td key={w} className="p-1">
-                                <div 
-                                  className={`h-8 rounded flex items-center justify-center font-mono text-[10px] border transition-colors hover:border-primary/50 cursor-help ${color}`}
-                                  title={`${dept.name} Week ${w+1}: ${Math.round(load)}% Capacity`}
-                                >
-                                  {Math.round(load)}%
-                                </div>
-                              </td>
-                            );
-                          })}
-                        </tr>
+                            </div>
+                            <div className="flex gap-4 items-center">
+                              <span className="text-muted-foreground">
+                                Bid: {bids}h
+                              </span>
+                              <span
+                                className={
+                                  isOverBudget
+                                    ? "text-red-500 font-bold"
+                                    : "text-green-500 font-bold"
+                                }
+                              >
+                                Actual: {actuals}h
+                              </span>
+                            </div>
+                          </div>
+                          <div className="relative h-4 bg-muted rounded-full overflow-hidden">
+                            <div
+                              className="absolute top-0 bottom-0 left-0 bg-blue-500/40 rounded-full"
+                              style={{ width: `100%` }}
+                            />
+                            <div
+                              className={`absolute top-0 bottom-0 left-0 rounded-full transition-all duration-700 ${isOverBudget ? "bg-red-500" : "bg-green-500"}`}
+                              style={{ width: `${Math.min(burnRate, 100)}%` }}
+                            />
+                            {isOverBudget && (
+                              <div
+                                className="absolute top-0 bottom-0 right-0 bg-red-600 animate-pulse"
+                                style={{
+                                  width: `${Math.min(burnRate - 100, 100)}%`,
+                                }}
+                              />
+                            )}
+                          </div>
+                          <div className="flex justify-between text-[10px]">
+                            <span className="text-muted-foreground">
+                              Burn Rate:{" "}
+                              <span
+                                className={
+                                  isOverBudget
+                                    ? "text-red-500"
+                                    : "text-foreground"
+                                }
+                              >
+                                {burnRate}%
+                              </span>
+                            </span>
+                            {isOverBudget ? (
+                              <span className="text-red-500 flex items-center gap-1">
+                                <AlertTriangle className="w-3 h-3" /> Over
+                                budget by {actuals - bids}h
+                              </span>
+                            ) : (
+                              <span className="text-green-500 flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3" /> Under
+                                budget by {bids - actuals}h
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
+                    })
+                  )}
+                </CardContent>
+              </Card>
 
-          {/* Review Statistics */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Review Statistics</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-4 gap-6">
-                {[
-                  { label: 'Avg Rounds', value: '1.6', sub: 'per shot' },
-                  { label: 'First-Pass Rate', value: '42%', sub: 'approved on v001' },
-                  { label: 'Avg Turnaround', value: '4.2h', sub: 'from submit to decision' },
-                  { label: 'Active Reviewers', value: '12', sub: 'this week' },
-                ].map((s, i) => (
-                  <div key={i} className="text-center">
-                    <div className="text-2xl font-bold">{s.value}</div>
-                    <div className="text-xs text-muted-foreground">{s.label}</div>
-                    <div className="text-[10px] text-muted-foreground/60 mt-0.5">{s.sub}</div>
+              {/* Delivery Trends - CSS Chart */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg">Delivery Trends</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-end gap-3 h-48">
+                    {deliveryData.map((d, i) => (
+                      <div
+                        key={i}
+                        className="flex-1 flex flex-col items-center gap-1"
+                      >
+                        <div className="flex gap-0.5 items-end h-40 w-full">
+                          <div
+                            className="flex-1 bg-primary/20 rounded-t-sm transition-all duration-500"
+                            style={{
+                              height: `${(d.planned / maxDelivery) * 100}%`,
+                            }}
+                          />
+                          <div
+                            className="flex-1 bg-primary rounded-t-sm transition-all duration-500"
+                            style={{
+                              height: `${(d.actual / maxDelivery) * 100}%`,
+                            }}
+                          />
+                        </div>
+                        <span className="text-[10px] text-muted-foreground">
+                          {d.week}
+                        </span>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Right column */}
-        <div className="space-y-6">
-          {/* Project Forecast */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Project Forecast</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              {PROJECTS.slice(0, 5).map(proj => {
-                const risk = proj.riskScore;
-                return (
-                  <div key={proj.id} className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="font-medium">{proj.name}</span>
-                      <Badge variant={risk > 50 ? 'destructive' : risk > 30 ? 'secondary' : 'outline'} className="text-[10px]">
-                        {risk > 50 ? 'High Risk' : risk > 30 ? 'Medium' : 'Low Risk'}
-                      </Badge>
+                  <div className="flex items-center gap-4 mt-4 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-3 h-3 rounded-sm bg-primary/20" />{" "}
+                      Planned
                     </div>
-                    <div className="relative h-5 bg-muted rounded-full overflow-hidden">
-                      <div className="absolute top-0 bottom-0 left-0 bg-primary/30 rounded-full" style={{ width: `${Math.min(proj.progress + 20, 100)}%` }} />
-                      <div className="absolute top-0 bottom-0 left-0 bg-primary rounded-full" style={{ width: `${proj.progress}%` }} />
-                    </div>
-                    <div className="flex justify-between text-[10px] text-muted-foreground">
-                      <span>{proj.progress}% complete</span>
-                      <span>Due {new Date(proj.dueDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-3 h-3 rounded-sm bg-primary" /> Actual
                     </div>
                   </div>
-                );
-              })}
-            </CardContent>
-          </Card>
+                </CardContent>
+              </Card>
 
-          {/* Publishing Statistics */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Publishing Statistics</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {[
-                  { label: 'Total Published', value: filteredPublishLogs.filter(p => p.status === 'success').length, color: 'text-green-500' },
-                  { label: 'Failed', value: filteredPublishLogs.filter(p => p.status === 'failed').length, color: 'text-red-500' },
-                  { label: 'Avg Duration', value: '3m 45s', color: 'text-blue-500' },
-                  { label: 'Validation Pass Rate', value: `${publishSuccess}%`, color: publishSuccess > 90 ? 'text-green-500' : 'text-yellow-500' },
-                ].map((s, i) => (
-                  <div key={i} className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">{s.label}</span>
-                    <span className={`font-bold ${s.color}`}>{s.value}</span>
+              {/* Department Capacity Heatmap */}
+              <Card>
+                <CardHeader className="pb-3 flex flex-row items-center justify-between">
+                  <CardTitle className="text-lg">Department Capacity</CardTitle>
+                  <div className="flex items-center gap-4 text-[10px] text-muted-foreground">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded bg-green-500/20 border border-green-500/50" />{" "}
+                      Available
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded bg-yellow-500/20 border border-yellow-500/50" />{" "}
+                      Heavy
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded bg-red-500/20 border border-red-500/50" />{" "}
+                      Overloaded
+                    </div>
                   </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto custom-scrollbar pb-2">
+                    <table className="w-full min-w-[600px] text-xs">
+                      <thead>
+                        <tr>
+                          <th className="text-left font-medium text-muted-foreground pb-2 w-32">
+                            Department
+                          </th>
+                          {["W1", "W2", "W3", "W4", "W5", "W6", "W7", "W8"].map(
+                            (w) => (
+                              <th
+                                key={w}
+                                className="text-center font-medium text-muted-foreground pb-2 w-16"
+                              >
+                                {w}
+                              </th>
+                            ),
+                          )}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {DEPARTMENTS.slice(0, 6).map((dept, i) => {
+                          // Deterministic capacity curve per week (0-150%), seeded per dept+week
+                          const baseLoad = [80, 95, 60, 110, 40, 85][i];
+                          const weekLoads = Array.from({ length: 8 }).map(
+                            (_, w) => {
+                              return Math.max(
+                                0,
+                                baseLoad +
+                                  Math.sin(w) * 30 +
+                                  seededFraction(i, w) * 20,
+                              );
+                            },
+                          );
 
-          {/* Top Contributors */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg flex items-center gap-2"><Users className="w-5 h-5" /> Top Contributors</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {topContributors.every(c => c.count === 0) ? (
-                <Empty className="border-0 py-4">
-                  <EmptyHeader>
-                    <EmptyMedia variant="icon">
-                      <Users />
-                    </EmptyMedia>
-                    <EmptyTitle>No completions in this range</EmptyTitle>
-                    <EmptyDescription>Try a wider date range.</EmptyDescription>
-                  </EmptyHeader>
-                </Empty>
-              ) : topContributors.map((c, i) => (
-                <div key={c.user.id} className="flex items-center gap-3">
-                  <span className="text-xs text-muted-foreground w-4">#{i + 1}</span>
-                  <div className="w-7 h-7 rounded-full overflow-hidden">
-                    <img src={c.user.avatar} alt={c.user.name} className="w-full h-full object-cover" />
+                          return (
+                            <tr
+                              key={dept.id}
+                              className="border-t border-border group"
+                            >
+                              <td className="py-2">
+                                <Link href={`/departments/${dept.id}`}>
+                                  <div className="flex items-center gap-2 cursor-pointer hover:bg-muted/50 p-1 rounded-md -ml-1 transition-colors">
+                                    <div
+                                      className="w-2 h-2 rounded-full shrink-0"
+                                      style={{ backgroundColor: dept.color }}
+                                    />
+                                    <span className="font-medium text-foreground group-hover:text-primary transition-colors flex items-center gap-1">
+                                      {dept.name}{" "}
+                                      <ArrowUpRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    </span>
+                                  </div>
+                                </Link>
+                              </td>
+                              {weekLoads.map((load, w) => {
+                                let color =
+                                  "bg-green-500/10 text-green-600 border-green-500/30";
+                                if (load > 110)
+                                  color =
+                                    "bg-red-500/10 text-red-600 border-red-500/30";
+                                else if (load > 85)
+                                  color =
+                                    "bg-yellow-500/10 text-yellow-600 border-yellow-500/30";
+                                return (
+                                  <td key={w} className="p-1">
+                                    <div
+                                      className={`h-8 rounded flex items-center justify-center font-mono text-[10px] border transition-colors hover:border-primary/50 cursor-help ${color}`}
+                                      title={`${dept.name} Week ${w + 1}: ${Math.round(load)}% Capacity`}
+                                    >
+                                      {Math.round(load)}%
+                                    </div>
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
-                  <div className="flex-1">
-                    <div className="text-sm font-medium">{c.user.name}</div>
-                    <div className="text-[10px] text-muted-foreground">{c.user.role}</div>
+                </CardContent>
+              </Card>
+
+              {/* Review Statistics */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg">Review Statistics</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-4 gap-6">
+                    {[
+                      { label: "Avg Rounds", value: "1.6", sub: "per shot" },
+                      {
+                        label: "First-Pass Rate",
+                        value: "42%",
+                        sub: "approved on v001",
+                      },
+                      {
+                        label: "Avg Turnaround",
+                        value: "4.2h",
+                        sub: "from submit to decision",
+                      },
+                      {
+                        label: "Active Reviewers",
+                        value: "12",
+                        sub: "this week",
+                      },
+                    ].map((s, i) => (
+                      <div key={i} className="text-center">
+                        <div className="text-2xl font-bold">{s.value}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {s.label}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground/60 mt-0.5">
+                          {s.sub}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <span className="text-sm font-bold">{c.count} tasks</span>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Right column */}
+            <div className="space-y-6">
+              {/* Project Forecast */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg">Project Forecast</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  {PROJECTS.slice(0, 5).map((proj) => {
+                    const risk = proj.riskScore;
+                    return (
+                      <div key={proj.id} className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span className="font-medium">{proj.name}</span>
+                          <Badge
+                            variant={
+                              risk > 50
+                                ? "destructive"
+                                : risk > 30
+                                  ? "secondary"
+                                  : "outline"
+                            }
+                            className="text-[10px]"
+                          >
+                            {risk > 50
+                              ? "High Risk"
+                              : risk > 30
+                                ? "Medium"
+                                : "Low Risk"}
+                          </Badge>
+                        </div>
+                        <div className="relative h-5 bg-muted rounded-full overflow-hidden">
+                          <div
+                            className="absolute top-0 bottom-0 left-0 bg-primary/30 rounded-full"
+                            style={{
+                              width: `${Math.min(proj.progress + 20, 100)}%`,
+                            }}
+                          />
+                          <div
+                            className="absolute top-0 bottom-0 left-0 bg-primary rounded-full"
+                            style={{ width: `${proj.progress}%` }}
+                          />
+                        </div>
+                        <div className="flex justify-between text-[10px] text-muted-foreground">
+                          <span>{proj.progress}% complete</span>
+                          <span>
+                            Due{" "}
+                            {new Date(proj.dueDate).toLocaleDateString(
+                              "en-US",
+                              { month: "short", year: "numeric" },
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+
+              {/* Publishing Statistics */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg">
+                    Publishing Statistics
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {[
+                      {
+                        label: "Total Published",
+                        value: filteredPublishLogs.filter(
+                          (p) => p.status === "success",
+                        ).length,
+                        color: "text-green-500",
+                      },
+                      {
+                        label: "Failed",
+                        value: filteredPublishLogs.filter(
+                          (p) => p.status === "failed",
+                        ).length,
+                        color: "text-red-500",
+                      },
+                      {
+                        label: "Avg Duration",
+                        value: "3m 45s",
+                        color: "text-blue-500",
+                      },
+                      {
+                        label: "Validation Pass Rate",
+                        value: `${publishSuccess}%`,
+                        color:
+                          publishSuccess > 90
+                            ? "text-green-500"
+                            : "text-yellow-500",
+                      },
+                    ].map((s, i) => (
+                      <div key={i} className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">{s.label}</span>
+                        <span className={`font-bold ${s.color}`}>
+                          {s.value}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Top Contributors */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Users className="w-5 h-5" /> Top Contributors
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {topContributors.every((c) => c.count === 0) ? (
+                    <Empty className="border-0 py-4">
+                      <EmptyHeader>
+                        <EmptyMedia variant="icon">
+                          <Users />
+                        </EmptyMedia>
+                        <EmptyTitle>No completions in this range</EmptyTitle>
+                        <EmptyDescription>
+                          Try a wider date range.
+                        </EmptyDescription>
+                      </EmptyHeader>
+                    </Empty>
+                  ) : (
+                    topContributors.map((c, i) => (
+                      <div key={c.user.id} className="flex items-center gap-3">
+                        <span className="text-xs text-muted-foreground w-4">
+                          #{i + 1}
+                        </span>
+                        <div className="w-7 h-7 rounded-full overflow-hidden">
+                          <img
+                            src={c.user.avatar}
+                            alt={c.user.name}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <div className="text-sm font-medium">
+                            {c.user.name}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground">
+                            {c.user.role}
+                          </div>
+                        </div>
+                        <span className="text-sm font-bold">
+                          {c.count} tasks
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </CardContent>
+              </Card>
+            </div>
           </div>
         </TabsContent>
 
@@ -601,75 +963,121 @@ export default function Analytics() {
                     </EmptyMedia>
                     <EmptyTitle>Bid margins access restricted</EmptyTitle>
                     <EmptyDescription>
-                      Your role doesn't include View Financials in the current Roles &amp; Permissions scheme. Ask a
-                      producer or manager to grant access under Settings &gt; Roles.
+                      Your role doesn't include View Financials in the current
+                      Roles &amp; Permissions scheme. Ask a producer or manager
+                      to grant access under Settings &gt; Roles.
                     </EmptyDescription>
                   </EmptyHeader>
                 </Empty>
               </CardContent>
             </Card>
           ) : (
-          <div className="grid grid-cols-1 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-xl flex items-center gap-2"><Flame className="text-orange-500" /> Bid vs. Delivered Profitability</CardTitle>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Won bid hours vs. hours actually delivered, per project. For live budget spend and burn-rate tracking, see the{' '}
-                  <Link href="/financials"><span className="text-primary hover:underline cursor-pointer">Financials dashboard</span></Link>.
-                </p>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead>
-                      <tr className="border-b border-border/50 text-muted-foreground">
-                        <th className="pb-3 font-medium">Project</th>
-                        <th className="pb-3 font-medium text-right">Estimated Bid (hrs)</th>
-                        <th className="pb-3 font-medium text-right">Actual Burn (hrs)</th>
-                        <th className="pb-3 font-medium text-right">Avg Rate ($)</th>
-                        <th className="pb-3 font-medium text-right">Bid Value ($)</th>
-                        <th className="pb-3 font-medium text-right">Actual Cost ($)</th>
-                        <th className="pb-3 font-medium text-right">Profit Margin</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/50">
-                      {PROJECTS.map((proj) => {
-                        const { bids, actuals, rate } = getProjectBidMargin(proj);
-                        const bidValue = bids * rate;
-                        const actualCost = actuals * rate;
-                        const profit = bidValue - actualCost;
-                        const margin = Math.round((profit / bidValue) * 100);
-                        const isLoss = margin < 0;
+            <div className="grid grid-cols-1 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-xl flex items-center gap-2">
+                    <Flame className="text-orange-500" /> Bid vs. Delivered
+                    Profitability
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Won bid hours vs. hours actually delivered, per project. For
+                    live budget spend and burn-rate tracking, see the{" "}
+                    <Link href="/financials">
+                      <span className="text-primary hover:underline cursor-pointer">
+                        Financials dashboard
+                      </span>
+                    </Link>
+                    .
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead>
+                        <tr className="border-b border-border/50 text-muted-foreground">
+                          <th className="pb-3 font-medium">Project</th>
+                          <th className="pb-3 font-medium text-right">
+                            Estimated Bid (hrs)
+                          </th>
+                          <th className="pb-3 font-medium text-right">
+                            Actual Burn (hrs)
+                          </th>
+                          <th className="pb-3 font-medium text-right">
+                            Avg Rate ($)
+                          </th>
+                          <th className="pb-3 font-medium text-right">
+                            Bid Value ($)
+                          </th>
+                          <th className="pb-3 font-medium text-right">
+                            Actual Cost ($)
+                          </th>
+                          <th className="pb-3 font-medium text-right">
+                            Profit Margin
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/50">
+                        {PROJECTS.map((proj) => {
+                          const { bids, actuals, rate } =
+                            getProjectBidMargin(proj);
+                          const bidValue = bids * rate;
+                          const actualCost = actuals * rate;
+                          const profit = bidValue - actualCost;
+                          const margin = Math.round((profit / bidValue) * 100);
+                          const isLoss = margin < 0;
 
-                        return (
-                          <tr key={proj.id} className="hover:bg-muted/30 transition-colors">
-                            <td className="py-4 font-medium">{proj.name}</td>
-                            <td className="py-4 text-right tabular-nums">{bids}h</td>
-                            <td className="py-4 text-right tabular-nums text-muted-foreground">{actuals}h</td>
-                            <td className="py-4 text-right tabular-nums">${rate}/h</td>
-                            <td className="py-4 text-right tabular-nums">${bidValue.toLocaleString()}</td>
-                            <td className="py-4 text-right tabular-nums">${actualCost.toLocaleString()}</td>
-                            <td className="py-4 text-right">
-                              <Badge variant="outline" className={isLoss ? 'bg-red-500/10 text-red-500 border-red-500/20' : 'bg-green-500/10 text-green-500 border-green-500/20'}>
-                                {isLoss ? '' : '+'}{margin}%
-                              </Badge>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+                          return (
+                            <tr
+                              key={proj.id}
+                              className="hover:bg-muted/30 transition-colors"
+                            >
+                              <td className="py-4 font-medium">{proj.name}</td>
+                              <td className="py-4 text-right tabular-nums">
+                                {bids}h
+                              </td>
+                              <td className="py-4 text-right tabular-nums text-muted-foreground">
+                                {actuals}h
+                              </td>
+                              <td className="py-4 text-right tabular-nums">
+                                ${rate}/h
+                              </td>
+                              <td className="py-4 text-right tabular-nums">
+                                ${bidValue.toLocaleString()}
+                              </td>
+                              <td className="py-4 text-right tabular-nums">
+                                ${actualCost.toLocaleString()}
+                              </td>
+                              <td className="py-4 text-right">
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    isLoss
+                                      ? "bg-red-500/10 text-red-500 border-red-500/20"
+                                      : "bg-green-500/10 text-green-500 border-green-500/20"
+                                  }
+                                >
+                                  {isLoss ? "" : "+"}
+                                  {margin}%
+                                </Badge>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           )}
         </TabsContent>
 
         <TabsContent value="timecards" className="space-y-6 mt-0">
           <Card>
             <CardHeader>
-              <CardTitle className="text-xl flex items-center gap-2"><Clock className="text-blue-500 w-5 h-5" /> Artist Timecards</CardTitle>
+              <CardTitle className="text-xl flex items-center gap-2">
+                <Clock className="text-blue-500 w-5 h-5" /> Artist Timecards
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
@@ -679,17 +1087,30 @@ export default function Analytics() {
                       <th className="pb-3 font-medium">Artist</th>
                       <th className="pb-3 font-medium">Department</th>
                       <th className="pb-3 font-medium text-center">Status</th>
-                      <th className="pb-3 font-medium text-right">Today (hrs)</th>
-                      <th className="pb-3 font-medium text-right">This Week (hrs)</th>
-                      <th className="pb-3 font-medium text-right">Utilization</th>
+                      <th className="pb-3 font-medium text-right">
+                        Today (hrs)
+                      </th>
+                      <th className="pb-3 font-medium text-right">
+                        This Week (hrs)
+                      </th>
+                      <th className="pb-3 font-medium text-right">
+                        Utilization
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/50">
                     {USERS.map((user, i) => {
                       // Filter all logs for the user to compute actual hours, or mock it if missing
-                      const userLogs = TIME_LOGS.filter(l => l.userId === user.id);
-                      const actualHours = userLogs.reduce((acc, l) => acc + l.hours, 0);
-                      const dept = DEPARTMENTS.find(d => d.id === user.departmentId);
+                      const userLogs = TIME_LOGS.filter(
+                        (l) => l.userId === user.id,
+                      );
+                      const actualHours = userLogs.reduce(
+                        (acc, l) => acc + l.hours,
+                        0,
+                      );
+                      const dept = DEPARTMENTS.find(
+                        (d) => d.id === user.departmentId,
+                      );
                       const isCurrentUser = currentUser?.id === user.id;
 
                       // Mock additional status since our TimeLog interface is very simple.
@@ -699,44 +1120,92 @@ export default function Analytics() {
                       // row must actually check punchedInSession.since, not just identity,
                       // or a currentUser who is punched OUT would still show PUNCHED IN here.
                       const mockStatus = isCurrentUser
-                        ? (punchedInSession.since ? 'punched-in' : 'offline')
-                        : (i % 3 === 0 ? 'punched-in' : 'offline');
-                      const punchedInAt = mockStatus === 'punched-in'
-                        ? (isCurrentUser ? punchedInSession.since! : new Date().toISOString())
-                        : undefined;
-                      const baseHoursToday = actualHours > 0 ? actualHours : (i % 2 === 0 ? 6.5 : 0);
-                      const baseHoursWeek = actualHours > 0 ? actualHours * 5 : (i % 2 === 0 ? 32.5 : 0);
-                      const totalHoursToday = isCurrentUser ? baseHoursToday + punchedInSession.hours : baseHoursToday;
-                      const totalHoursWeek = isCurrentUser ? baseHoursWeek + punchedInSession.hours : baseHoursWeek;
+                        ? punchedInSession.since
+                          ? "punched-in"
+                          : "offline"
+                        : i % 3 === 0
+                          ? "punched-in"
+                          : "offline";
+                      const punchedInAt =
+                        mockStatus === "punched-in"
+                          ? isCurrentUser
+                            ? punchedInSession.since!
+                            : new Date().toISOString()
+                          : undefined;
+                      const baseHoursToday =
+                        actualHours > 0 ? actualHours : i % 2 === 0 ? 6.5 : 0;
+                      const baseHoursWeek =
+                        actualHours > 0
+                          ? actualHours * 5
+                          : i % 2 === 0
+                            ? 32.5
+                            : 0;
+                      const totalHoursToday = isCurrentUser
+                        ? baseHoursToday + punchedInSession.hours
+                        : baseHoursToday;
+                      const totalHoursWeek = isCurrentUser
+                        ? baseHoursWeek + punchedInSession.hours
+                        : baseHoursWeek;
 
                       const todayHrs = totalHoursToday.toFixed(1);
                       const weekHrs = totalHoursWeek.toFixed(1);
                       const util = Math.round((Number(weekHrs) / 40) * 100);
                       const isOver = util > 100;
-                      
+
                       return (
-                        <tr key={user.id} className="hover:bg-muted/30 transition-colors">
+                        <tr
+                          key={user.id}
+                          className="hover:bg-muted/30 transition-colors"
+                        >
                           <td className="py-4 font-medium flex items-center gap-3">
                             <div className="w-8 h-8 rounded-full overflow-hidden shrink-0">
-                              <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
+                              <img
+                                src={user.avatar}
+                                alt={user.name}
+                                className="w-full h-full object-cover"
+                              />
                             </div>
                             <div>
                               <div>{user.name}</div>
-                              <div className="text-[10px] text-muted-foreground">{user.role}</div>
+                              <div className="text-[10px] text-muted-foreground">
+                                {user.role}
+                              </div>
                             </div>
                           </td>
                           <td className="py-4">
-                            <Badge variant="secondary" className="text-[10px]">{dept?.name || user.departmentId}</Badge>
-                          </td>
-                          <td className="py-4 text-center">
-                            <Badge variant="outline" className={mockStatus === 'punched-in' ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-muted text-muted-foreground'}>
-                              {mockStatus === 'punched-in' ? `PUNCHED IN${punchedInAt ? ` (${new Date(punchedInAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})` : ''}` : 'OFFLINE'}
+                            <Badge variant="secondary" className="text-[10px]">
+                              {dept?.name || user.departmentId}
                             </Badge>
                           </td>
-                          <td className="py-4 text-right tabular-nums font-medium">{todayHrs}h</td>
-                          <td className="py-4 text-right tabular-nums">{weekHrs}h</td>
+                          <td className="py-4 text-center">
+                            <Badge
+                              variant="outline"
+                              className={
+                                mockStatus === "punched-in"
+                                  ? "bg-green-500/10 text-green-500 border-green-500/20"
+                                  : "bg-muted text-muted-foreground"
+                              }
+                            >
+                              {mockStatus === "punched-in"
+                                ? `PUNCHED IN${punchedInAt ? ` (${new Date(punchedInAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})` : ""}`
+                                : "OFFLINE"}
+                            </Badge>
+                          </td>
+                          <td className="py-4 text-right tabular-nums font-medium">
+                            {todayHrs}h
+                          </td>
+                          <td className="py-4 text-right tabular-nums">
+                            {weekHrs}h
+                          </td>
                           <td className="py-4 text-right">
-                            <Badge variant="outline" className={isOver ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' : 'bg-blue-500/10 text-blue-500 border-blue-500/20'}>
+                            <Badge
+                              variant="outline"
+                              className={
+                                isOver
+                                  ? "bg-orange-500/10 text-orange-500 border-orange-500/20"
+                                  : "bg-blue-500/10 text-blue-500 border-blue-500/20"
+                              }
+                            >
                               {util}%
                             </Badge>
                           </td>
