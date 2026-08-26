@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { tenantAuthMiddleware } from "../middleware/tenant";
+import { requireCapability } from "../middleware/rbac";
 import { hashPassword } from "../lib/auth";
 import * as crypto from "crypto";
 
@@ -25,7 +26,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-router.post("/", async (req, res) => {
+router.post("/", requireCapability("manage_members"), async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const { email, name, password, roleId, title } = req.body;
