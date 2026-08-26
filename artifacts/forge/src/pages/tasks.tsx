@@ -45,9 +45,7 @@ export default function Tasks() {
 
   const [view, setView] = useState<ViewMode>(() => {
     const role = useAuthStore.getState().currentUser?.role;
-    return role && ["artist", "senior_artist", "junior_artist"].includes(role)
-      ? "kanban"
-      : "list";
+    return role === "artist" ? "kanban" : "list";
   });
 
   const [myTasksOnly, setMyTasksOnly] = useState(false);
@@ -86,9 +84,7 @@ export default function Tasks() {
     );
   };
 
-  const isArtist = currentUser
-    ? ["artist", "senior_artist", "junior_artist"].includes(currentUser.role)
-    : true;
+  const isArtist = currentUser ? currentUser.role === "artist" : true;
   const forceMyTasksOnly = isArtist;
   const currentUserId = currentUser?.id || "";
   const isLeadOrSupervisor =

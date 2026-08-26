@@ -23,13 +23,12 @@ import { useAuthStore } from "@/store/auth";
 import { useDepartmentPipelineStore } from "@/store/departments";
 import { useCapability } from "@/hooks/use-capability";
 import { useDepartments } from "@/hooks/useDepartments";
+import { useDepartmentScope } from "@/hooks/useDepartmentScope";
 
 export default function Departments() {
   const prefersReducedMotion = useReducedMotion();
   const { currentUser } = useAuthStore();
-  const isGlobalManager =
-    currentUser &&
-    ["vfx_producer", "production_manager", "admin"].includes(currentUser.role);
+  const isGlobalManager = useDepartmentScope().scoped === false;
   const canManagePipeline = useCapability("manage_pipeline");
 
   const { data: DEPARTMENTS = [], isLoading } = useDepartments();

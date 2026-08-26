@@ -27,7 +27,11 @@ import { PriorityChip } from "@/components/shared/PriorityChip";
 import { useUIStore } from "@/store/ui";
 import { useAuthStore } from "@/store/auth";
 import { useCapability } from "@/hooks/use-capability";
-import { STUDIO_LEADERSHIP_ROLES } from "@/store/permissions";
+import {
+  STUDIO_LEADERSHIP_ROLES,
+  LEADERSHIP_ROLES,
+  DEPARTMENT_LEADERSHIP_ROLES,
+} from "@/store/permissions";
 
 export default function Profile() {
   const { id } = useParams<{ id?: string }>();
@@ -59,10 +63,8 @@ export default function Profile() {
     !!currentUser &&
     (isMe ||
       (() => {
-        const isArtist = ["senior_artist", "artist", "junior_artist"].includes(
-          currentUser.role,
-        );
-        const isDeptLeadership = ["supervisor", "lead"].includes(
+        const isArtist = currentUser.role === "artist";
+        const isDeptLeadership = DEPARTMENT_LEADERSHIP_ROLES.includes(
           currentUser.role,
         );
 
@@ -70,12 +72,7 @@ export default function Profile() {
           return user.departmentId === currentUser.departmentId;
         }
         if (isDeptLeadership) {
-          const targetIsLeadership = [
-            "vfx_producer",
-            "production_manager",
-            "supervisor",
-            "lead",
-          ].includes(user.role);
+          const targetIsLeadership = LEADERSHIP_ROLES.includes(user.role);
           return (
             user.departmentId === currentUser.departmentId || targetIsLeadership
           );
@@ -84,7 +81,7 @@ export default function Profile() {
           // Clients only see their studio points of contact, not the internal roster.
           return STUDIO_LEADERSHIP_ROLES.includes(user.role);
         }
-        // Studio leadership (vfx_producer, production_manager, coordinator) sees everyone.
+        // Studio leadership (admin/production_head) sees everyone.
         return true;
       })());
 

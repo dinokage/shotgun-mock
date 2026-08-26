@@ -38,6 +38,7 @@ import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { fadeInUp } from "@/lib/motion";
 import { useIsLeadership } from "@/hooks/use-capability";
+import { DEPARTMENT_LEADERSHIP_ROLES } from "@/store/permissions";
 import {
   Empty,
   EmptyHeader,
@@ -165,8 +166,8 @@ export default function Chat() {
     }
     return source.sort((a, b) => {
       // Sort leadership to top
-      const aIsLead = ["supervisor", "lead"].includes(a.role);
-      const bIsLead = ["supervisor", "lead"].includes(b.role);
+      const aIsLead = DEPARTMENT_LEADERSHIP_ROLES.includes(a.role);
+      const bIsLead = DEPARTMENT_LEADERSHIP_ROLES.includes(b.role);
       if (aIsLead && !bIsLead) return -1;
       if (!aIsLead && bIsLead) return 1;
       return a.name.localeCompare(b.name);
@@ -485,9 +486,10 @@ export default function Chat() {
                           <span className="text-xs text-muted-foreground">
                             {format(new Date(msg.timestamp), "h:mm a")}
                           </span>
-                          {["supervisor", "lead"].includes(
-                            user?.role || "",
-                          ) && (
+                          {!!user &&
+                            DEPARTMENT_LEADERSHIP_ROLES.includes(
+                              user.role,
+                            ) && (
                             <span className="text-[10px] uppercase font-bold text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded ml-1">
                               Lead
                             </span>
@@ -648,7 +650,7 @@ export default function Chat() {
               </div>
               <div className="space-y-1">
                 {deptUsers
-                  .filter((u) => ["supervisor", "lead"].includes(u.role))
+                  .filter((u) => DEPARTMENT_LEADERSHIP_ROLES.includes(u.role))
                   .map((u) => (
                     <div
                       key={u.id}
@@ -688,7 +690,7 @@ export default function Chat() {
               </div>
               <div className="space-y-1">
                 {deptUsers
-                  .filter((u) => !["supervisor", "lead"].includes(u.role))
+                  .filter((u) => !DEPARTMENT_LEADERSHIP_ROLES.includes(u.role))
                   .map((u) => (
                     <div
                       key={u.id}

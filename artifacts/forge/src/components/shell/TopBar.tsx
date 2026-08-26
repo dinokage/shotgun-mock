@@ -29,6 +29,8 @@ import { useAuthStore } from "@/store/auth";
 import { useNotificationStore } from "@/store/notifications";
 import { useWorkspaceStore } from "@/store/workspace";
 import { useCapability } from "@/hooks/use-capability";
+import { useDepartmentScope } from "@/hooks/useDepartmentScope";
+import { DEPARTMENT_LEADERSHIP_ROLES } from "@/store/permissions";
 import { Link, useLocation } from "wouter";
 import { TimeClockWidget } from "@/components/shared/TimeClockWidget";
 import { USERS } from "@/data/mockData";
@@ -45,6 +47,7 @@ export function TopBar() {
   const { currentUser, logout } = useAuthStore();
   const { activeDepartmentId, setActiveDepartment } = useWorkspaceStore();
   const canAssignTasks = useCapability("assign_tasks");
+  const isUnscoped = useDepartmentScope().scoped === false;
   const [, setLocation] = useLocation();
   const notifications = useNotificationStore((s) => s.notifications);
   const notificationPreferences = useNotificationStore((s) => s.preferences);
@@ -64,9 +67,7 @@ export function TopBar() {
   // reset on switchUser, so it must stay gated on role here — otherwise a
   // producer's department filter would leak into whichever department badge
   // renders next after switching to a non-global-role demo user.
-  const isGlobalRole = ["vfx_producer", "production_manager"].includes(
-    currentUser.role,
-  );
+  const isGlobalRole = isUnscoped;
   const dept = DEPARTMENTS.find(
     (d) =>
       d.id ===
@@ -144,13 +145,13 @@ export function TopBar() {
         ) : (
           <div
             className={`hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs shadow-sm transition-all shrink-0 ${
-              ["coordinator", "supervisor", "lead"].includes(currentUser.role)
+              DEPARTMENT_LEADERSHIP_ROLES.includes(currentUser.role)
                 ? "bg-accent-tally/10 border-accent-tally/20 text-accent-tally"
                 : "bg-muted/50 border-border text-muted-foreground"
             }`}
           >
             <Shield
-              className={`w-3.5 h-3.5 shrink-0 ${["coordinator", "supervisor", "lead"].includes(currentUser.role) ? "text-accent-tally" : "text-muted-foreground"}`}
+              className={`w-3.5 h-3.5 shrink-0 ${DEPARTMENT_LEADERSHIP_ROLES.includes(currentUser.role) ? "text-accent-tally" : "text-muted-foreground"}`}
             />
             <span className="font-semibold truncate">
               {ROLE_LABELS[currentUser.role] || currentUser.title}

@@ -37,6 +37,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
 import { useAuthStore } from "@/store/auth";
+import {
+  LEADERSHIP_ROLES,
+  DEPARTMENT_LEADERSHIP_ROLES,
+} from "@/store/permissions";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "wouter";
@@ -146,13 +150,7 @@ export function TaskDrawer() {
   const checklistDone = task.checklist.filter((c) => c.done).length;
   const checklistTotal = task.checklist.length;
 
-  const isLeadership = [
-    "supervisor",
-    "lead",
-    "vfx_producer",
-    "production_manager",
-    "coordinator",
-  ].includes(currentUser.role);
+  const isLeadership = LEADERSHIP_ROLES.includes(currentUser.role);
   const isAssignee = currentUser.id === task.assigneeId;
   const currentDept = DEPARTMENTS.find((d) => d.name === task.department);
   const nextDept = currentDept ? getNextDepartment(currentDept.id) : null;
@@ -409,7 +407,7 @@ export function TaskDrawer() {
                   lead/supervisor review" here. Supervisor is included
                   alongside Lead (previously Lead-only, which didn't match
                   how the studio's approval chain actually runs). */}
-              {["lead", "supervisor"].includes(currentUser.role) &&
+              {DEPARTMENT_LEADERSHIP_ROLES.includes(currentUser.role) &&
                 currentUser.departmentId === currentDept?.id &&
                 ["review", "lead-review"].includes(task.status) && (
                   <div className="flex w-full gap-2">
@@ -460,9 +458,7 @@ export function TaskDrawer() {
                   on exactly this status) - previously this chain dead-ended
                   at an internal 'approved' status with no path to the client
                   portal at all. */}
-              {["vfx_producer", "production_manager", "coordinator"].includes(
-                currentUser.role,
-              ) &&
+              {["production_head", "producer"].includes(currentUser.role) &&
                 task.status === "manager-review" &&
                 (clientSendConfirmOpen ? (
                   <div className="w-full rounded-md border border-accent-tally/30 bg-accent-tally/5 p-3 space-y-3">

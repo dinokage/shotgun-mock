@@ -47,6 +47,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useAuthStore } from "@/store/auth";
+import { useIsLeadership } from "@/hooks/use-capability";
 import { useToast } from "@/hooks/use-toast";
 import {
   PROJECTS,
@@ -467,6 +468,7 @@ function GroupSection({
 
 export default function TrackingGrid() {
   const { currentUser } = useAuthStore();
+  const isLeadership = useIsLeadership();
   const { toast } = useToast();
 
   const [search, setSearchState] = useState("");
@@ -802,16 +804,7 @@ export default function TrackingGrid() {
     });
   };
 
-  if (
-    !currentUser ||
-    ![
-      "vfx_producer",
-      "production_manager",
-      "coordinator",
-      "supervisor",
-      "lead",
-    ].includes(currentUser.role)
-  ) {
+  if (!currentUser || !isLeadership) {
     return (
       <div className="p-8 flex flex-col items-center justify-center h-full text-muted-foreground">
         <TableProperties className="w-16 h-16 mb-4 opacity-20" />

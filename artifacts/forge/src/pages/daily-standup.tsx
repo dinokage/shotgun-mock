@@ -11,6 +11,10 @@ import { useStandupsStore } from "@/store/standups";
 import { useBroadcastsStore } from "@/store/broadcasts";
 import { useUIStore } from "@/store/ui";
 import { useIsLeadership } from "@/hooks/use-capability";
+import {
+  STUDIO_LEADERSHIP_ROLES,
+  DEPARTMENT_LEADERSHIP_ROLES,
+} from "@/store/permissions";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import {
   BroadcastComposer,
@@ -260,11 +264,10 @@ export default function DailyStandup() {
     .filter((update) => {
       if (!currentUser) return false;
       // RBAC: Main production managers see everything.
-      if (["vfx_producer", "production_manager"].includes(currentUser.role))
-        return true;
+      if (STUDIO_LEADERSHIP_ROLES.includes(currentUser.role)) return true;
 
       // RBAC: Dept managers/leads see their dept + their own updates
-      if (["supervisor", "lead", "coordinator"].includes(currentUser.role)) {
+      if (DEPARTMENT_LEADERSHIP_ROLES.includes(currentUser.role)) {
         return (
           update.user?.departmentId === currentUser.departmentId ||
           update.userId === currentUser.id
@@ -528,7 +531,7 @@ export default function DailyStandup() {
           <TabsTrigger value="broadcasts" className="flex items-center gap-2">
             <Radio className="w-4 h-4" /> Broadcasts
           </TabsTrigger>
-          {["vfx_producer", "production_manager", "supervisor"].includes(
+          {["production_head", "producer"].includes(
             currentUser.role,
           ) && (
             <TabsTrigger
@@ -1139,7 +1142,7 @@ export default function DailyStandup() {
               ))}
 
               {/* Mock Feed Item 1 (With Image/Video) */}
-              {(["vfx_producer", "production_manager"].includes(
+              {(STUDIO_LEADERSHIP_ROLES.includes(
                 currentUser.role,
               ) ||
                 currentUser.departmentId === USERS[2]?.departmentId) && (
@@ -1306,7 +1309,7 @@ export default function DailyStandup() {
               )}
 
               {/* Mock Feed Item 2 (Text Only) */}
-              {(["vfx_producer", "production_manager"].includes(
+              {(STUDIO_LEADERSHIP_ROLES.includes(
                 currentUser.role,
               ) ||
                 currentUser.departmentId === USERS[1]?.departmentId) && (
@@ -1365,7 +1368,7 @@ export default function DailyStandup() {
         </TabsContent>
 
         {/* --- NEW TAB: PAYROLL & ATTENDANCE --- */}
-        {["vfx_producer", "production_manager", "supervisor"].includes(
+        {["production_head", "producer"].includes(
           currentUser.role,
         ) && (
           <TabsContent value="payroll">

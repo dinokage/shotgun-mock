@@ -40,6 +40,10 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useHotkeys } from "@/hooks/use-hotkeys";
 import { useCapability } from "@/hooks/use-capability";
+import {
+  LEADERSHIP_ROLES,
+  DEPARTMENT_LEADERSHIP_ROLES,
+} from "@/store/permissions";
 import { Link, useSearch } from "wouter";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -240,23 +244,13 @@ function VoiceNotePlayer({ comment }: { comment: ReviewComment }) {
 
 export default function Review() {
   const { currentUser } = useAuthStore();
-  const isManager =
-    currentUser &&
-    [
-      "vfx_producer",
-      "production_manager",
-      "coordinator",
-      "supervisor",
-      "lead",
-    ].includes(currentUser.role);
+  const isManager = currentUser && LEADERSHIP_ROLES.includes(currentUser.role);
 
   const isLead =
-    currentUser && ["lead", "supervisor"].includes(currentUser.role);
+    currentUser && DEPARTMENT_LEADERSHIP_ROLES.includes(currentUser.role);
   const isProd =
     currentUser &&
-    ["vfx_producer", "production_manager", "coordinator"].includes(
-      currentUser.role,
-    );
+    ["production_head", "producer"].includes(currentUser.role);
   const canPresent = Boolean(isLead || isProd);
   // Submitting/approving a review is a specific, editable capability (Settings >
   // Roles & Permissions) rather than a hardcoded role list — isLead/isProd above

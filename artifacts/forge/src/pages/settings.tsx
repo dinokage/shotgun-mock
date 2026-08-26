@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -48,7 +48,7 @@ import {
   Terminal,
   Copy,
   Check,
-  RotateCcw,
+  X,
   ShieldCheck,
   AlertTriangle,
 } from "lucide-react";
@@ -56,14 +56,10 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/store/auth";
 import { useCapability } from "@/hooks/use-capability";
 import {
-  usePermissionsStore,
   CAPABILITIES,
   CAPABILITY_CATEGORIES,
   ROLES_ORDER,
   DEFAULT_PERMISSION_SCHEME,
-  schemeHasRoleManager,
-  PERMISSION_LOCKOUT_ERROR,
-  type PermissionScheme,
 } from "@/store/permissions";
 import {
   useNotificationStore,
@@ -82,14 +78,6 @@ export default function Settings() {
   const setNotificationPreference = useNotificationStore(
     (s) => s.setPreferenceChannel,
   );
-  const permissionScheme = usePermissionsStore((s) => s.scheme);
-  const savePermissionScheme = usePermissionsStore((s) => s.saveScheme);
-  const resetPermissionsToDefaults = usePermissionsStore(
-    (s) => s.resetToDefaults,
-  );
-  const permissionsLastUpdated = usePermissionsStore((s) => s.lastUpdated);
-  const permissionsUpdatedBy = usePermissionsStore((s) => s.updatedBy);
-
   const profile = useStudioSettingsStore((s) => s.profile);
   const setProfile = useStudioSettingsStore((s) => s.setProfile);
   const security = useStudioSettingsStore((s) => s.security);
@@ -242,81 +230,9 @@ export default function Settings() {
     });
   };
 
-  const [permissionDraft, setPermissionDraft] =
-    useState<PermissionScheme>(permissionScheme);
-  const [justSavedPermissions, setJustSavedPermissions] = useState(false);
-  const [permissionSaveError, setPermissionSaveError] = useState<string | null>(
-    null,
-  );
-
-  // Keep the local draft in sync whenever the persisted scheme changes underneath
-  // us (e.g. after a save, a reset, or a hydration from another tab).
-  useEffect(() => {
-    setPermissionDraft(permissionScheme);
-  }, [permissionScheme]);
-
-  const isPermissionsDirty = useMemo(
-    () => JSON.stringify(permissionDraft) !== JSON.stringify(permissionScheme),
-    [permissionDraft, permissionScheme],
-  );
-
-  // Live signal so the lockout warning shows as soon as the draft would leave
-  // no role with Manage Roles & Permissions, not only after a blocked save.
-  const draftHasRoleManager = useMemo(
-    () => schemeHasRoleManager(permissionDraft),
-    [permissionDraft],
-  );
-
-  const toggleCapability = (
-    role: (typeof ROLES_ORDER)[number],
-    capabilityId: string,
-  ) => {
-    setPermissionSaveError(null);
-    setPermissionDraft((prev) => ({
-      ...prev,
-      [role]: {
-        ...prev[role],
-        [capabilityId]:
-          !prev[role][capabilityId as keyof (typeof prev)[typeof role]],
-      },
-    }));
-  };
-
-  const handleDiscardPermissionChanges = () => {
-    setPermissionSaveError(null);
-    setPermissionDraft(permissionScheme);
-  };
-
-  const handleResetPermissionsToDefaults = () => {
-    setPermissionSaveError(null);
-    setPermissionDraft(DEFAULT_PERMISSION_SCHEME);
-  };
-
-  const handleSavePermissions = () => {
-    const result = savePermissionScheme(permissionDraft, currentUser?.name);
-    if (!result.ok) {
-      // Blocked in the store itself (not just here) so this can't be
-      // bypassed — surface the same message inline.
-      setPermissionSaveError(result.error);
-      toast({
-        title: "Cannot save permission scheme",
-        description: result.error,
-        variant: "destructive",
-      });
-      return;
-    }
-    setPermissionSaveError(null);
-    setJustSavedPermissions(true);
-    toast({
-      title: "Permission scheme saved",
-      description: "Role capabilities have been updated across the studio.",
-    });
-    window.setTimeout(() => setJustSavedPermissions(false), 1800);
-  };
-
   // Role-scoped tab visibility: derived from the current user's real capabilities
-  // in the (editable) permission scheme, not a hardcoded role list. Notifications
-  // is a personal preference, so it's always visible to anyone who reaches this page
+  // (fixed per-role in DEFAULT_PERMISSION_SCHEME), not a hardcoded role list.
+  // Notifications is a personal preference, so it's always visible to anyone who reaches this page
   // (see App.tsx's route-level LeadershipGuard, which must not wrap /settings or
   // non-leadership members can never reach this tab at all).
   const canManageRoles = useCapability("manage_roles");
@@ -763,43 +679,16 @@ export default function Settings() {
                     <div>
                       <CardTitle>Roles & Permissions</CardTitle>
                       <CardDescription>
-                        Define what each role is allowed to do across Forge.
-                        Toggle a capability on or off for a role, then save to
-                        apply it studio-wide.
+                        What each role is allowed to do across Forge.
                       </CardDescription>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <AnimatePresence>
-                      {isPermissionsDirty && (
-                        <motion.div
-                          initial={{ opacity: 0, x: 8 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          exit={{ opacity: 0, x: 8 }}
-                          transition={{ duration: 0.15 }}
-                        >
-                          <Badge
-                            variant="outline"
-                            className="text-amber-500 border-amber-500/40 bg-amber-500/10"
-                          >
-                            Unsaved changes
-                          </Badge>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
                 </CardHeader>
                 <CardContent className="space-y-4 pt-6">
-                  {permissionsLastUpdated && (
-                    <p className="text-xs text-muted-foreground">
-                      Last saved{" "}
-                      {new Date(permissionsLastUpdated).toLocaleString()}
-                      {permissionsUpdatedBy
-                        ? ` by ${permissionsUpdatedBy}`
-                        : ""}
-                      .
-                    </p>
-                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Role capabilities are fixed for this release — contact an
+                    administrator to request a change.
+                  </p>
 
                   <TooltipProvider delayDuration={200}>
                     <div className="overflow-x-auto border border-border rounded-lg">
@@ -853,26 +742,26 @@ export default function Settings() {
                                     </Tooltip>
                                   </td>
                                   {ROLES_ORDER.map((role) => {
-                                    const checked =
-                                      permissionDraft[role]?.[cap.id] ?? false;
+                                    const granted =
+                                      DEFAULT_PERMISSION_SCHEME[role]?.[
+                                        cap.id
+                                      ] ?? false;
                                     return (
                                       <td
                                         key={role}
                                         className="p-3 text-center"
                                       >
-                                        <motion.div
-                                          className="inline-flex"
-                                          whileHover={{ scale: 1.08 }}
-                                          whileTap={{ scale: 0.92 }}
-                                        >
-                                          <Switch
-                                            checked={checked}
-                                            onCheckedChange={() =>
-                                              toggleCapability(role, cap.id)
-                                            }
-                                            aria-label={`${cap.label} for ${ROLE_LABELS[role]}`}
+                                        {granted ? (
+                                          <Check
+                                            className="w-4 h-4 mx-auto text-primary"
+                                            aria-label={`${cap.label} granted for ${ROLE_LABELS[role]}`}
                                           />
-                                        </motion.div>
+                                        ) : (
+                                          <X
+                                            className="w-4 h-4 mx-auto text-muted-foreground/30"
+                                            aria-label={`${cap.label} not granted for ${ROLE_LABELS[role]}`}
+                                          />
+                                        )}
                                       </td>
                                     );
                                   })}
@@ -884,85 +773,6 @@ export default function Settings() {
                       </table>
                     </div>
                   </TooltipProvider>
-
-                  <AnimatePresence>
-                    {(!draftHasRoleManager || permissionSaveError) && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 4 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: 4 }}
-                        transition={{ duration: 0.15 }}
-                        className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive"
-                        role="alert"
-                      >
-                        <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                        <span>
-                          {permissionSaveError ?? PERMISSION_LOCKOUT_ERROR}
-                        </span>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  <div className="pt-2 flex items-center justify-end gap-2">
-                    <AnimatePresence>
-                      {isPermissionsDirty && (
-                        <motion.div
-                          initial={{ opacity: 0, y: 4 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: 4 }}
-                          transition={{ duration: 0.15 }}
-                        >
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={handleDiscardPermissionChanges}
-                          >
-                            Discard Changes
-                          </Button>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-2"
-                      onClick={handleResetPermissionsToDefaults}
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" /> Reset to Defaults
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={handleSavePermissions}
-                      disabled={!isPermissionsDirty || !draftHasRoleManager}
-                      className="gap-2 min-w-[160px]"
-                    >
-                      <AnimatePresence mode="wait" initial={false}>
-                        {justSavedPermissions ? (
-                          <motion.span
-                            key="saved"
-                            className="flex items-center gap-2"
-                            initial={{ opacity: 0, scale: 0.7 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.7 }}
-                            transition={{ duration: 0.2, ease: "easeOut" }}
-                          >
-                            <Check className="w-4 h-4" /> Saved
-                          </motion.span>
-                        ) : (
-                          <motion.span
-                            key="save"
-                            className="flex items-center gap-2"
-                            initial={{ opacity: 0, scale: 0.7 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.7 }}
-                            transition={{ duration: 0.2, ease: "easeOut" }}
-                          >
-                            Save Permission Scheme
-                          </motion.span>
-                        )}
-                      </AnimatePresence>
-                    </Button>
-                  </div>
                 </CardContent>
               </Card>
             )}

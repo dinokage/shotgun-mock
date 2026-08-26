@@ -30,7 +30,11 @@ import {
   EmptyTitle,
   EmptyDescription,
 } from "@/components/ui/empty";
-import { STUDIO_LEADERSHIP_ROLES } from "@/store/permissions";
+import {
+  STUDIO_LEADERSHIP_ROLES,
+  LEADERSHIP_ROLES,
+  DEPARTMENT_LEADERSHIP_ROLES,
+} from "@/store/permissions";
 
 export default function People() {
   const prefersReducedMotion = useReducedMotion();
@@ -43,10 +47,10 @@ export default function People() {
     if (!currentUser) return [];
 
     // RBAC Rules for Roster Visibility
-    const isDeptLeadership = ["supervisor", "lead"].includes(currentUser.role);
-    const isArtist = ["senior_artist", "artist", "junior_artist"].includes(
+    const isDeptLeadership = DEPARTMENT_LEADERSHIP_ROLES.includes(
       currentUser.role,
     );
+    const isArtist = currentUser.role === "artist";
     const isClient = currentUser.role === "client";
 
     return USERS.filter((u) => {
@@ -55,12 +59,7 @@ export default function People() {
         return false; // Artists only see their own department
       }
       if (isDeptLeadership) {
-        const uIsLeadership = [
-          "vfx_producer",
-          "production_manager",
-          "supervisor",
-          "lead",
-        ].includes(u.role);
+        const uIsLeadership = LEADERSHIP_ROLES.includes(u.role);
         if (u.departmentId !== currentUser.departmentId && !uIsLeadership) {
           return false; // Dept Leads see their dept + all other leads/producers
         }

@@ -34,6 +34,7 @@ import { useAuthStore } from "@/store/auth";
 import { useUIStore } from "@/store/ui";
 import { useTasksStore } from "@/store/tasks";
 import { useCapability } from "@/hooks/use-capability";
+import { useDepartmentScope } from "@/hooks/useDepartmentScope";
 import { useToast } from "@/hooks/use-toast";
 import {
   DropdownMenu,
@@ -65,6 +66,7 @@ export default function DepartmentDetail() {
   const canAssignTasks = useCapability("assign_tasks");
   const canEditTasks = useCapability("edit_tasks");
   const canManagePipeline = useCapability("manage_pipeline");
+  const isGlobalManager = useDepartmentScope().scoped === false;
 
   if (!dept) {
     return (
@@ -74,9 +76,6 @@ export default function DepartmentDetail() {
     );
   }
 
-  const isGlobalManager =
-    currentUser &&
-    ["vfx_producer", "production_manager"].includes(currentUser.role);
   if (!isGlobalManager && currentUser?.departmentId !== dept.id) {
     return (
       <div className="p-6 max-w-[1400px] mx-auto text-center mt-20">
@@ -94,11 +93,9 @@ export default function DepartmentDetail() {
   const team = USERS.filter((u) => u.departmentId === dept.id).sort((a, b) => {
     // Sort by role hierarchy
     const roleWeight = {
-      supervisor: 5,
-      lead: 4,
-      senior_artist: 3,
-      artist: 2,
-      junior_artist: 1,
+      producer: 3,
+      lead: 2,
+      artist: 1,
     } as Record<string, number>;
     return (roleWeight[b.role] || 0) - (roleWeight[a.role] || 0);
   });
