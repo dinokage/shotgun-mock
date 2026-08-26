@@ -157,12 +157,15 @@ router.patch("/:id", requireCapability("manage_members"), async (req, res) => {
       return res.status(400).json({ error: "No valid fields to update" });
     }
 
-    await db.update(usersTable).set(updates).where(eq(usersTable.id, userId));
+    await db
+      .update(usersTable)
+      .set(updates)
+      .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.id, userId)));
 
     const [updated] = await db
       .select()
       .from(usersTable)
-      .where(eq(usersTable.id, userId));
+      .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.id, userId)));
     const { hashedPassword: _omit, ...user } = updated;
     return res.json(user);
   } catch (err) {
