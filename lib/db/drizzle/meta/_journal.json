@@ -8,6 +8,13 @@
       "when": 1787725749103,
       "tag": "0000_eminent_talos",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1787741205039,
+      "tag": "0001_cloudy_veda",
+      "breakpoints": true
     }
   ]
 }

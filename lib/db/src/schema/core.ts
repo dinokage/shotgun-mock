@@ -1,5 +1,6 @@
 import { pgTable, text, timestamp, boolean, jsonb } from "drizzle-orm/pg-core";
 import { tenantRolesTable } from "./rbac";
+import { departmentsTable } from "./departments";
 
 export const tenantsTable = pgTable("tenants", {
   id: text("id").primaryKey(), // Using uuid strings or cuid
@@ -26,6 +27,9 @@ export const usersTable = pgTable("users", {
   roleId: text("role_id")
     .notNull()
     .references(() => tenantRolesTable.id, { onDelete: "cascade" }),
+  departmentId: text("department_id").references(() => departmentsTable.id, {
+    onDelete: "set null",
+  }),
   // Globally unique, not per-tenant: this schema has no tenant-membership
   // junction, so one user row is definitionally one tenant. Login
   // (routes/auth.ts) looks users up by email BEFORE any tenant context exists,
