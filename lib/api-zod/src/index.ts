@@ -16,5 +16,9 @@ export {
   UpdateTaskParams,
   UpdateTaskBody,
   UpdateTaskResponse,
+  GetUsersResponseItem,
+  GetUsersResponse,
+  CreateUserBody,
+  CreateUserResponse,
 } from "./generated/api";
 export * from "./generated/api";

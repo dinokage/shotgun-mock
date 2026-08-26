@@ -111,3 +111,53 @@ export const UpdateTaskResponse = zod.object({
   status: zod.string(),
   assignedTo: zod.string().optional(),
 });
+
+/**
+ * @summary List all users for tenant
+ */
+export const GetUsersResponseItem = zod
+  .object({
+    id: zod.string(),
+    tenantId: zod.string(),
+    roleId: zod.string(),
+    email: zod.string(),
+    name: zod.string(),
+    title: zod.string().optional(),
+    avatar: zod.string().optional(),
+    status: zod.string().optional(),
+    createdAt: zod.coerce.date(),
+    deletedAt: zod.coerce.date().optional(),
+  })
+  .describe(
+    "A tenant user. `hashedPassword` is never included in API responses.",
+  );
+export const GetUsersResponse = zod.array(GetUsersResponseItem);
+
+/**
+ * Requires the `manage_members` capability. `roleId` must reference a role belonging to the caller's own tenant, and `email` must not already be in use by any existing user.
+ * @summary Create a user in the caller's tenant
+ */
+export const CreateUserBody = zod.object({
+  email: zod.string(),
+  name: zod.string(),
+  password: zod.string(),
+  roleId: zod.string(),
+  title: zod.string().optional(),
+});
+
+export const CreateUserResponse = zod
+  .object({
+    id: zod.string(),
+    tenantId: zod.string(),
+    roleId: zod.string(),
+    email: zod.string(),
+    name: zod.string(),
+    title: zod.string().optional(),
+    avatar: zod.string().optional(),
+    status: zod.string().optional(),
+    createdAt: zod.coerce.date(),
+    deletedAt: zod.coerce.date().optional(),
+  })
+  .describe(
+    "A tenant user. `hashedPassword` is never included in API responses.",
+  );

@@ -28,7 +28,11 @@ export default defineConfig({
       mode: "split",
       baseUrl: "/api",
       clean: true,
-      prettier: true,
+      // orval >= 8 replaced the boolean `prettier` option with `formatter`.
+      // Leaving it as `prettier: true` silently generated UNFORMATTED output,
+      // which both fails `pnpm run lint` and breaks CI's Drift Check (which
+      // regenerates and requires a clean `git status`).
+      formatter: "prettier",
       override: {
         fetch: {
           includeHttpResponseReturnType: false,
@@ -54,7 +58,11 @@ export default defineConfig({
       schemas: { path: "generated/types", type: "typescript" },
       mode: "split",
       clean: true,
-      prettier: true,
+      // orval >= 8 replaced the boolean `prettier` option with `formatter`.
+      // Leaving it as `prettier: true` silently generated UNFORMATTED output,
+      // which both fails `pnpm run lint` and breaks CI's Drift Check (which
+      // regenerates and requires a clean `git status`).
+      formatter: "prettier",
       override: {
         zod: {
           coerce: {

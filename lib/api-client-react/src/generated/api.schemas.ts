@@ -36,6 +36,29 @@ export interface Task {
   assignedTo?: string;
 }
 
+/**
+ * A tenant user. `hashedPassword` is never included in API responses.
+ */
+export interface User {
+  id: string;
+  tenantId: string;
+  roleId: string;
+  email: string;
+  name: string;
+  title?: string;
+  avatar?: string;
+  status?: string;
+  createdAt: string;
+  deletedAt?: string;
+}
+
+/**
+ * Standard error response body returned by the API.
+ */
+export interface ApiError {
+  error: string;
+}
+
 export type LoginBody = {
   email: string;
   password: string;
@@ -57,4 +80,12 @@ export type CreateTaskBody = {
 
 export type UpdateTaskBody = {
   status?: string;
+};
+
+export type CreateUserBody = {
+  email: string;
+  name: string;
+  password: string;
+  roleId: string;
+  title?: string;
 };

@@ -12,6 +12,7 @@ tags:
   - name: assets
   - name: shots
   - name: tasks
+  - name: users
   - name: versions
 paths:
   /auth/login:
@@ -161,6 +162,67 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Task"
+  /users:
+    get:
+      operationId: getUsers
+      tags: [users]
+      summary: List all users for tenant
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+    post:
+      operationId: createUser
+      tags: [users]
+      summary: Create a user in the caller's tenant
+      description: >-
+        Requires the `manage_members` capability. `roleId` must reference a role
+        belonging to the caller's own tenant, and `email` must not already be in
+        use by any existing user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, name, password, roleId]
+              properties:
+                email:
+                  type: string
+                name:
+                  type: string
+                password:
+                  type: string
+                roleId:
+                  type: string
+                title:
+                  type: string
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: >-
+            Missing a required field, or `roleId` does not belong to the
+            caller's tenant.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: A user with this email already exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
 
 components:
   schemas:
@@ -212,3 +274,40 @@ components:
         assignedTo:
           type: string
       required: [id, entityId, entityType, status]
+    User:
+      type: object
+      description: >-
+        A tenant user. `hashedPassword` is never included in API responses.
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        roleId:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        title:
+          type: string
+        avatar:
+          type: string
+        status:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        deletedAt:
+          type: string
+          format: date-time
+      required: [id, tenantId, roleId, email, name, createdAt]
+    # Named ApiError, not Error, so the generated TypeScript type does not
+    # shadow the global `Error` interface in consumers of the generated code.
+    ApiError:
+      type: object
+      description: Standard error response body returned by the API.
+      properties:
+        error:
+          type: string
+      required: [error]

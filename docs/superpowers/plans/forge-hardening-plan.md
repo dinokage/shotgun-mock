@@ -13,7 +13,7 @@ no capability/role check on that endpoint at all.
 
 Investigating that finding surfaced the actual root cause: `requireCapability`
 in `artifacts/api-server/src/middleware/rbac.ts` is a stub. It only checks
-that the caller *has a role* (`req.roleId` is truthy) — it never queries
+that the caller _has a role_ (`req.roleId` is truthy) — it never queries
 whether that role actually holds the capability being checked. So even
 mounting `requireCapability(...)` on a route today would not fix anything;
 it would just let every authenticated user through unconditionally, same as
@@ -90,7 +90,7 @@ escalation path.
 2. In `artifacts/api-server/src/routes/users.ts`, apply
    `requireCapability("manage_members")` to the `POST /` route only (not
    `GET /` — any authenticated tenant member is allowed to list their own
-   tenant's colleagues; only *creating* a user is the privilege-sensitive
+   tenant's colleagues; only _creating_ a user is the privilege-sensitive
    operation). `"manage_members"` is the exact capability id already used
    for this purpose in `scripts/src/seed.ts`'s role definitions — do not
    invent a new capability name.
@@ -108,6 +108,7 @@ apply it to the one route that actually needs it right now. Do not add
 elsewhere is a product decision, not a bug fix).
 
 **Verify:**
+
 - `pnpm run typecheck` passes.
 - Write/extend a test or a short manual trace (whichever this codebase's
   existing conventions support — check for an existing test setup under
@@ -124,7 +125,7 @@ elsewhere is a product decision, not a bug fix).
 **Files:** `docker-compose.yml`, `package.json` (repo root)
 
 **Problem A:** `docker-compose.yml`'s `api` service `depends_on: [db]` only
-waits for the `db` container to *start*, not for Postgres to actually be
+waits for the `db` container to _start_, not for Postgres to actually be
 ready to accept connections. On a cold `docker-compose up`, `api` can attempt
 its migration step before Postgres is accepting connections, causing a
 crash/restart cycle on first boot (it recovers via `restart: unless-stopped`,
@@ -162,6 +163,7 @@ locally against the same version.
    prints (e.g. `pnpm@11.20.0`), not a guess.
 
 **Verify:**
+
 - `docker-compose config` (or equivalent YAML validation — `docker` may not
   be installed in this sandbox; if the `docker` CLI is unavailable, validate
   the YAML is well-formed via any available YAML parser, and note in your
