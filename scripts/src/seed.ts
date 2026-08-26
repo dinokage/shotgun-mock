@@ -23,11 +23,22 @@ async function main() {
   const mockHashedPassword =
     "$argon2id$v=19$m=65536,p=4,t=3$S47zo5bxYnFgICAP+3cAQw$YvpNw85sWi6M9sj+QHapnopiNw+B2iFV8nSG0vNEZSA";
 
-  const tenantId = crypto.randomUUID();
   await db
     .insert(tenantsTable)
-    .values({ id: tenantId, name: "Acme VFX", slug: "acme" })
+    .values({ id: crypto.randomUUID(), name: "Acme VFX", slug: "acme" })
     .onConflictDoNothing();
+
+  // Mirror the role-insertion pattern below: onConflictDoNothing() alone
+  // doesn't tell us the id of a tenant that already existed, so re-query by
+  // the unique slug to get the real row's id whether it was just inserted or
+  // already there. Without this, a locally-generated tenantId that never
+  // actually got persisted (because the slug already existed) would orphan
+  // every downstream insert with a foreign-key violation.
+  const [insertedTenant] = await db
+    .select()
+    .from(tenantsTable)
+    .where(eq(tenantsTable.slug, "acme"));
+  const tenantId = insertedTenant.id;
 
   await db
     .insert(projectsTable)
