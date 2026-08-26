@@ -1,4 +1,5 @@
 import { pgTable, text, timestamp, boolean, jsonb } from "drizzle-orm/pg-core";
+import { tenantRolesTable } from "./rbac";
 
 export const tenantsTable = pgTable("tenants", {
   id: text("id").primaryKey(), // Using uuid strings or cuid
@@ -22,8 +23,15 @@ export const usersTable = pgTable("users", {
   tenantId: text("tenant_id")
     .notNull()
     .references(() => tenantsTable.id, { onDelete: "cascade" }),
-  roleId: text("role_id").notNull(), // FK to tenant_roles in rbac.ts
-  email: text("email").notNull(),
+  roleId: text("role_id")
+    .notNull()
+    .references(() => tenantRolesTable.id, { onDelete: "cascade" }),
+  // Globally unique, not per-tenant: this schema has no tenant-membership
+  // junction, so one user row is definitionally one tenant. Login
+  // (routes/auth.ts) looks users up by email BEFORE any tenant context exists,
+  // so a cross-tenant duplicate would make which row Postgres returns
+  // undefined — and one tenant's password checked against another's hash.
+  email: text("email").notNull().unique(),
   hashedPassword: text("hashed_password").notNull(),
   name: text("name").notNull(),
   title: text("title"),
