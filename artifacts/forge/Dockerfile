@@ -1,4 +1,10 @@
-FROM node:22-alpine AS builder
+
+# node:22-alpine (musl libc) fails to build here: pnpm-lock.yaml only has
+# @rollup/rollup-linux-x64-musl marked unresolved ("-"), so Vite's build
+# (which uses Rollup) crashes with "Cannot find module
+# @rollup/rollup-linux-x64-musl". node:22-slim (Debian, glibc) uses the
+# already-resolved @rollup/rollup-linux-x64-gnu instead.
+FROM node:22-slim AS builder
 WORKDIR /app
 
 # Copy root workspace configurations

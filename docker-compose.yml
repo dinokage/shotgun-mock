@@ -53,9 +53,15 @@ services:
       - "${API_PORT:-3001}:3001"
     # The runner image is a pruned `pnpm deploy` output, not a pnpm workspace,
     # so `pnpm --filter "@workspace/db" ...` has no workspace root to resolve
-    # against here — run the db package's own script directly instead.
+    # against here. Even `pnpm run migrate` (via `--filter`-free `pnpm run`
+    # inside /app/prod/db) fails: `pnpm deploy --legacy` copies package.json
+    # verbatim with its "catalog:" version specifiers unresolved, and with no
+    # pnpm-workspace.yaml here to resolve them against, pnpm's pre-script
+    # dependency check fails with ERR_PNPM_CATALOG_ENTRY_NOT_FOUND_FOR_SPEC —
+    # even though node_modules was already correctly installed at build time.
+    # Invoke the already-installed tsx binary directly to skip pnpm entirely.
     command: >
-      sh -c "cd /app/prod/db && pnpm run migrate && cd /app/prod/api-server && node --enable-source-maps ./dist/index.mjs"
+      sh -c "cd /app/prod/db && ./node_modules/.bin/tsx src/migrate.ts && cd /app/prod/api-server && node --enable-source-maps ./dist/index.mjs"
 
   web:
     build:

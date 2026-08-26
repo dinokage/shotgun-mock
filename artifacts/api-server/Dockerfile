@@ -1,9 +1,11 @@
 FROM node:22-alpine AS builder
 WORKDIR /app
 
-# Copy root workspace configurations
+# Copy root workspace configurations. tsconfig.json (not just
+# tsconfig.base.json) is required here: the api-spec codegen step below runs
+# `tsc --build` against the root project-reference graph.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY tsconfig.base.json ./
+COPY tsconfig.base.json tsconfig.json ./
 
 # Enable pnpm. `corepack install` (no args) activates exactly the version
 # pinned by the root package.json's "packageManager" field, making that pin the
@@ -13,9 +15,14 @@ COPY tsconfig.base.json ./
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 RUN corepack enable && corepack install
 
-# Copy packages that api-server depends on
+# Copy packages that api-server depends on.
+# lib/api-client-react is not an api-server runtime dependency, but the
+# api-spec codegen step below regenerates BOTH orval outputs (api-zod and
+# api-client-react) from one shared orval.config.ts, so its source directory
+# must be present in the build context or that step fails with ENOENT.
 COPY lib/db ./lib/db
 COPY lib/api-zod ./lib/api-zod
+COPY lib/api-client-react ./lib/api-client-react
 COPY lib/api-spec ./lib/api-spec
 COPY artifacts/api-server ./artifacts/api-server
 
@@ -52,9 +59,13 @@ RUN pnpm --filter "@workspace/api-server" run build
 # run via `tsx`, and `dotenv` is used for local `.env` loading — both are
 # devDependencies, so pruning them here would break migrations at container
 # startup (see docker-compose.yml's api command).
-RUN pnpm --filter "@workspace/api-server" deploy --prod /prod/api-server
-RUN pnpm --filter "@workspace/db" deploy /prod/db
-RUN pnpm --filter "@workspace/api-zod" deploy --prod /prod/api-zod
+# --legacy: pnpm v10+'s `deploy` refuses non-injected workspace dependencies
+# by default (ERR_PNPM_DEPLOY_NONINJECTED_WORKSPACE) unless
+# inject-workspace-packages=true is set repo-wide; --legacy keeps the
+# original (pre-v10) deploy behavior scoped to just these commands instead.
+RUN pnpm --filter "@workspace/api-server" deploy --prod --legacy /prod/api-server
+RUN pnpm --filter "@workspace/db" deploy --legacy /prod/db
+RUN pnpm --filter "@workspace/api-zod" deploy --prod --legacy /prod/api-zod
 
 FROM node:22-alpine AS runner
 WORKDIR /app
