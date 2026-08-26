@@ -1,6 +1,12 @@
 import { Router } from "express";
 import { db, usersTable, tenantRolesTable, departmentsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
+
+// Mirrors STUDIO_LEADERSHIP_ROLES in artifacts/forge/src/store/permissions.ts
+// -- the only roster rows an external client has any legitimate reason to
+// see (their studio points of contact), matching what people.tsx/profile.tsx
+// already filter down to on the frontend.
+const STUDIO_LEADERSHIP_ROLES = ["admin", "production_head"];
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability } from "../middleware/rbac";
 import { hashPassword } from "../lib/auth";
@@ -16,15 +22,17 @@ router.get("/", async (req, res) => {
 
     // The client portal is review-only (spec: client feedback routes to the
     // Production Head, who reassigns internally) -- an external client has no
-    // legitimate reason to read the studio's internal staff roster, so this
-    // is the one role explicitly excluded from an otherwise tenant-wide read.
+    // legitimate reason to read the full internal staff roster. They do
+    // legitimately need their studio points of contact (people.tsx/
+    // profile.tsx already filter to STUDIO_LEADERSHIP_ROLES for a client on
+    // the frontend), so scope the query itself rather than blocking the
+    // whole endpoint -- a full 403 would otherwise fall through fetchMe()'s
+    // `.catch(() => [])` and leave the client looking at stale mock names.
     const [callerRole] = await db
       .select({ name: tenantRolesTable.name })
       .from(tenantRolesTable)
       .where(eq(tenantRolesTable.id, req.roleId!));
-    if (callerRole?.name === "client") {
-      return res.status(403).json({ error: "Forbidden" });
-    }
+    const isClient = callerRole?.name === "client";
 
     const users = await db
       .select({
@@ -42,7 +50,14 @@ router.get("/", async (req, res) => {
       })
       .from(usersTable)
       .leftJoin(tenantRolesTable, eq(usersTable.roleId, tenantRolesTable.id))
-      .where(eq(usersTable.tenantId, tenantId));
+      .where(
+        isClient
+          ? and(
+              eq(usersTable.tenantId, tenantId),
+              inArray(tenantRolesTable.name, STUDIO_LEADERSHIP_ROLES),
+            )
+          : eq(usersTable.tenantId, tenantId),
+      );
     return res.json(users);
   } catch (err) {
     req.log.error(err, "Failed to fetch users");

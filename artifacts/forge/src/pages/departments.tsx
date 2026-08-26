@@ -50,7 +50,11 @@ export default function Departments() {
       DEPARTMENTS.some((d) => d.id === id),
     ).length;
     if (resolvedCount === 0) {
+      // Match store/departments.ts's own DEFAULT_PIPELINE_ORDER: Production
+      // Management (pipelineOrder 0) is studio overhead, not a pipeline
+      // stage, and was never meant to appear in this strip.
       const liveOrder = [...DEPARTMENTS]
+        .filter((d) => d.pipelineOrder > 0)
         .sort((a, b) => a.pipelineOrder - b.pipelineOrder)
         .map((d) => d.id);
       if (liveOrder.length > 0) setPipelineOrder(liveOrder);
