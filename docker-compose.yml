@@ -14,10 +14,20 @@ services:
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-forge}"]
+      # -h 127.0.0.1 forces a TCP check. Without it, pg_isready connects over
+      # the unix socket and can succeed against the temporary, socket-only
+      # server the postgres image runs during first-time initdb — reporting
+      # "healthy" before the real server accepts connections. start_period
+      # gives initdb room on a completely fresh volume.
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -h 127.0.0.1 -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-forge}",
+        ]
       interval: 5s
       timeout: 5s
       retries: 10
+      start_period: 10s
 
   api:
     build:
@@ -29,13 +39,18 @@ services:
       db:
         condition: service_healthy
     environment:
+      # PORT is deliberately NOT set here: the container's internal listening
+      # port is fixed at 3001 by the Dockerfile's `ENV PORT=3001`, which is what
+      # artifacts/forge/nginx.conf's `proxy_pass http://api:3001/api/` targets.
+      # Container-to-container traffic never goes through the host port mapping,
+      # so API_PORT below only controls host-side exposure.
       - NODE_ENV=production
-      - PORT=${API_PORT:-3001}
       - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-forge}
       - JWT_SECRET=${JWT_SECRET:-super-secret-jwt-key}
       - CORS_ORIGIN=${CORS_ORIGIN:-*}
     ports:
-      - "${API_PORT:-3001}:${API_PORT:-3001}"
+      # <configurable host port>:<fixed container port>
+      - "${API_PORT:-3001}:3001"
     # The runner image is a pruned `pnpm deploy` output, not a pnpm workspace,
     # so `pnpm --filter "@workspace/db" ...` has no workspace root to resolve
     # against here — run the db package's own script directly instead.

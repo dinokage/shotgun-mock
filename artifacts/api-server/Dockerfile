@@ -1,12 +1,17 @@
 FROM node:22-alpine AS builder
 WORKDIR /app
 
-# Enable pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
-
 # Copy root workspace configurations
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY tsconfig.base.json ./
+
+# Enable pnpm. `corepack install` (no args) activates exactly the version
+# pinned by the root package.json's "packageManager" field, making that pin the
+# single source of truth — `corepack prepare pnpm@latest --activate` would
+# silently override it. It also pre-downloads pnpm here rather than leaving the
+# first shim invocation to do it, which corepack refuses to do unprompted.
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+RUN corepack enable && corepack install
 
 # Copy packages that api-server depends on
 COPY lib/db ./lib/db
@@ -29,6 +34,11 @@ RUN pnpm --filter "@workspace/api-spec" run codegen
 # drizzle-kit generate only diffs the TS schema against ./drizzle — it never
 # connects to a database — but drizzle.config.ts requires DATABASE_URL to be
 # set just to load, so we pass a placeholder here when generating.
+# While migrations remain uncommitted, lib/db/src/migrate.ts's "object already
+# exists" guard is what stops the regenerate-and-replay cycle from crash-looping
+# this container. That guard is a safety net, NOT a fix: it cannot distinguish
+# "already applied" from "a real new migration is needed", so it will silently
+# skip genuine schema changes. See forge-final.md §5 step 3.
 RUN if [ ! -d "lib/db/drizzle" ]; then \
       DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder" \
       pnpm --filter "@workspace/db" run generate; \
@@ -54,8 +64,18 @@ COPY --from=builder /app/artifacts/api-server/dist /app/prod/api-server/dist
 COPY --from=builder /app/lib/db/drizzle /app/prod/db/drizzle
 COPY --from=builder /app/lib/db/src/migrate.ts /app/prod/db/src/migrate.ts
 
-# We need pnpm available in the final image to run migrations easily, or we can just use node
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# We need pnpm available in the final image to run migrations easily, or we can just use node.
+# The runner's /app/prod tree is a pruned `pnpm deploy` output with no
+# "packageManager" field of its own, so plain `corepack enable` would leave
+# corepack with no pin and force it to download a pnpm at container start.
+# Instead, read the pinned version out of the root package.json (still the
+# single source of truth) and pre-install/activate exactly that one at build
+# time, so startup needs no network.
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+COPY --from=builder /app/package.json /tmp/root-package.json
+RUN corepack enable \
+    && corepack install -g "$(node -p "require('/tmp/root-package.json').packageManager")" \
+    && rm /tmp/root-package.json
 WORKDIR /app/prod/api-server
 
 EXPOSE 3001
