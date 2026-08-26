@@ -64,8 +64,38 @@ export const useAuthStore = create<AuthState>()((set) => ({
         SHOTS.push(...shots);
       }
       if (deps.length > 0) {
+        // The API's department rows (id/tenantId/name/abbr/pipeline/
+        // pipelineOrder/color/icon/createdAt) don't match the mock
+        // Department shape's field names (abbreviation/description/
+        // studioId/supervisorId/leadId) -- pushing them through untranslated
+        // left every consumer of those mock-only fields silently reading
+        // undefined. Normalize here, once, the same way mockData.ts's own
+        // generator derives supervisorId/leadId from each department's real
+        // members (this runs after USERS is hydrated above, so `.role` is
+        // already populated).
+        const normalizedDeps = (deps as any[]).map((d) => {
+          const producer = USERS.find(
+            (u: any) => u.departmentId === d.id && u.role === "producer",
+          );
+          const lead = USERS.find(
+            (u: any) => u.departmentId === d.id && u.role === "lead",
+          );
+          return {
+            id: d.id,
+            name: d.name,
+            abbreviation: d.abbr,
+            color: d.color,
+            supervisorId: producer?.id || "",
+            leadId: lead?.id || producer?.id || "",
+            studioId: d.tenantId,
+            description: `${d.pipeline} pipeline`,
+            icon: d.icon,
+            pipeline: d.pipeline,
+            pipelineOrder: d.pipelineOrder,
+          };
+        });
         DEPARTMENTS.length = 0;
-        DEPARTMENTS.push(...deps);
+        DEPARTMENTS.push(...normalizedDeps);
       }
 
       // Hydrate stores (ignoring those that don't have direct setters if any,

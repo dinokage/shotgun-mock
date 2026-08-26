@@ -7,7 +7,7 @@ import {
   tenantRolesTable,
   tenantRoleCapabilitiesTable,
 } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import * as crypto from "crypto";
 
 async function main() {
@@ -190,10 +190,19 @@ async function main() {
         .values({ id: roleId, tenantId, name: roleDef.name, isSystemDefault: true })
         .onConflictDoNothing();
 
+      // Scope by tenantId too, not just name: tenant_roles has no unique
+      // constraint on (tenant_id, name), and an unscoped query here could
+      // resolve to another tenant's "admin" row, silently binding this
+      // tenant's users to a foreign tenant's capability set.
       const [insertedRole] = await db
         .select()
         .from(tenantRolesTable)
-        .where(eq(tenantRolesTable.name, roleDef.name));
+        .where(
+          and(
+            eq(tenantRolesTable.name, roleDef.name),
+            eq(tenantRolesTable.tenantId, tenantId),
+          ),
+        );
       roleIdByName[roleDef.name] = insertedRole.id;
 
       for (const cap of roleDef.capabilities) {

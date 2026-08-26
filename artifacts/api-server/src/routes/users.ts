@@ -13,14 +13,40 @@ router.use(tenantAuthMiddleware);
 router.get("/", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
+
+    // The client portal is review-only (spec: client feedback routes to the
+    // Production Head, who reassigns internally) -- an external client has no
+    // legitimate reason to read the studio's internal staff roster, so this
+    // is the one role explicitly excluded from an otherwise tenant-wide read.
+    const [callerRole] = await db
+      .select({ name: tenantRolesTable.name })
+      .from(tenantRolesTable)
+      .where(eq(tenantRolesTable.id, req.roleId!));
+    if (callerRole?.name === "client") {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
     const users = await db
-      .select()
+      .select({
+        id: usersTable.id,
+        tenantId: usersTable.tenantId,
+        roleId: usersTable.roleId,
+        role: tenantRolesTable.name,
+        departmentId: usersTable.departmentId,
+        email: usersTable.email,
+        name: usersTable.name,
+        title: usersTable.title,
+        avatar: usersTable.avatar,
+        status: usersTable.status,
+        createdAt: usersTable.createdAt,
+      })
       .from(usersTable)
+      .leftJoin(tenantRolesTable, eq(usersTable.roleId, tenantRolesTable.id))
       .where(eq(usersTable.tenantId, tenantId));
-    res.json(users.map(({ hashedPassword, ...user }) => user));
+    return res.json(users);
   } catch (err) {
     req.log.error(err, "Failed to fetch users");
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 

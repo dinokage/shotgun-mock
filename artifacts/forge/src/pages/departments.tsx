@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { stagger } from "@/lib/motion";
 import { Link } from "wouter";
@@ -36,6 +36,27 @@ export default function Departments() {
   const [isEditing, setIsEditing] = useState(false);
   const pipelineOrder = useDepartmentPipelineStore((s) => s.pipelineOrder);
   const moveInPipeline = useDepartmentPipelineStore((s) => s.moveInPipeline);
+  const setPipelineOrder = useDepartmentPipelineStore((s) => s.setPipelineOrder);
+
+  // The persisted pipeline order was seeded (at module load, before this
+  // department list had ever loaded) from mockData's placeholder ids
+  // ("dept1"...), which never match the real backend's UUID department ids.
+  // Once real departments arrive, self-heal the persisted order so both the
+  // strip and the "Customize Here" reorder (which mutates this same order by
+  // id) work against ids that actually resolve.
+  useEffect(() => {
+    if (DEPARTMENTS.length === 0) return;
+    const resolvedCount = pipelineOrder.filter((id) =>
+      DEPARTMENTS.some((d) => d.id === id),
+    ).length;
+    if (resolvedCount === 0) {
+      const liveOrder = [...DEPARTMENTS]
+        .sort((a, b) => a.pipelineOrder - b.pipelineOrder)
+        .map((d) => d.id);
+      if (liveOrder.length > 0) setPipelineOrder(liveOrder);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [DEPARTMENTS]);
 
   if (isLoading) return <div className="p-6">Loading departments...</div>;
 

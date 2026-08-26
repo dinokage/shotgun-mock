@@ -218,7 +218,7 @@ export default function AdminPanel() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {users.map((u: any) => (
+              {users.map((u) => (
                 <TableRow key={u.id}>
                   <TableCell>{u.name}</TableCell>
                   <TableCell>{u.email}</TableCell>
