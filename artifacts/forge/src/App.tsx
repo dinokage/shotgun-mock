@@ -50,6 +50,7 @@ import IntegrationsHub from "@/pages/integrations";
 import Notifications from "@/pages/notifications";
 import FinancialDashboard from "@/pages/financials";
 import SchemaBuilder from "@/pages/schema-builder";
+import AdminPanel from "@/pages/admin";
 
 import { queryClient } from "@/lib/queryClient";
 
@@ -218,6 +219,11 @@ function Router() {
               <Route path="/tracking" component={TrackingGrid} />
               <Route path="/timesheets" component={Timesheets} />
               <Route path="/notifications" component={Notifications} />
+              <Route path="/admin">
+                <LeadershipGuard>
+                  <AdminPanel />
+                </LeadershipGuard>
+              </Route>
               <Route component={NotFound} />
             </Switch>
           </AppShell>

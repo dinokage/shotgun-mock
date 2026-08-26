@@ -31,6 +31,7 @@ import {
   Boxes,
   DollarSign,
   Truck,
+  ShieldCheck,
 } from "lucide-react";
 import { useUIStore } from "@/store/ui";
 import { useWorkspaceStore } from "@/store/workspace";
@@ -149,6 +150,12 @@ const ALL_NAV: NavItem[] = [
     icon: History,
     href: "/audit",
     capabilities: ["manage_roles"],
+  },
+  {
+    label: "Admin Panel",
+    icon: ShieldCheck,
+    href: "/admin",
+    capabilities: ["manage_members"],
   },
 ];
 
