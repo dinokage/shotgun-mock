@@ -87,7 +87,7 @@ function generateAccessCode(): string {
  * content immediately, built from real approved/published shots rather than
  * placeholder rows. */
 function buildSeedDeliveries(): Delivery[] {
-  const producer = USERS.find((u) => u.role === "vfx_producer");
+  const producer = USERS.find((u) => u.role === "production_head");
   const deliveries: Delivery[] = [];
 
   const candidateProjects = PROJECTS.filter(

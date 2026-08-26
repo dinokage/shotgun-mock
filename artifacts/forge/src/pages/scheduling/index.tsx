@@ -114,7 +114,7 @@ export default function Scheduling() {
       USERS.find(
         (u) =>
           u.departmentId === dept.id &&
-          (u.role === "supervisor" || u.role === "lead"),
+          (u.role === "producer" || u.role === "lead"),
       ) ?? USERS[0];
     const now = new Date().toISOString();
     const importedCount = 3;

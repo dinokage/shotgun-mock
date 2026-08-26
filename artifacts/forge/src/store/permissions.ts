@@ -125,14 +125,11 @@ export const CAPABILITY_CATEGORIES = Array.from(
 // --- Role scheme --------------------------------------------------------------
 
 export const ROLES_ORDER: Role[] = [
-  "vfx_producer",
-  "production_manager",
-  "coordinator",
-  "supervisor",
+  "admin",
+  "production_head",
+  "producer",
   "lead",
-  "senior_artist",
   "artist",
-  "junior_artist",
   "client",
 ];
 
@@ -143,26 +140,19 @@ export const ROLES_ORDER: Role[] = [
 // LEADERSHIP_ROLES / useIsLeadership() only for coarse "is this person
 // studio leadership" checks that aren't really about one capability.
 export const LEADERSHIP_ROLES: Role[] = [
-  "vfx_producer",
-  "production_manager",
-  "coordinator",
-  "supervisor",
+  "admin",
+  "production_head",
+  "producer",
   "lead",
 ];
 
 // Finer-grained subsets of LEADERSHIP_ROLES for the handful of places that
 // need to distinguish "studio-wide" leadership (can act across every
-// department) from "department-scoped" leadership (supervisor/lead, act
+// department) from "department-scoped" leadership (producer/lead, act
 // within their own department only) — e.g. who a task can be assigned to,
-// or which dashboard variant renders. Derived from ROLES_ORDER so they stay
-// in sync with LEADERSHIP_ROLES automatically.
-export const STUDIO_LEADERSHIP_ROLES: Role[] = ROLES_ORDER.slice(
-  0,
-  ROLES_ORDER.indexOf("supervisor"),
-);
-export const DEPARTMENT_LEADERSHIP_ROLES: Role[] = LEADERSHIP_ROLES.filter(
-  (role) => !STUDIO_LEADERSHIP_ROLES.includes(role),
-);
+// or which dashboard variant renders.
+export const STUDIO_LEADERSHIP_ROLES: Role[] = ["admin", "production_head"];
+export const DEPARTMENT_LEADERSHIP_ROLES: Role[] = ["producer", "lead"];
 
 export type PermissionScheme = Record<Role, Record<CapabilityId, boolean>>;
 
@@ -177,62 +167,26 @@ function caps(
 
 export const DEFAULT_PERMISSION_SCHEME: PermissionScheme = {
   admin: caps(Object.fromEntries(CAPABILITY_IDS.map((id) => [id, true]))),
+  production_head: caps({
+    create_tasks: true,
+    edit_tasks: true,
+    delete_tasks: true,
+    assign_tasks: true,
+    submit_reviews: true,
+    approve_reviews: true,
+    view_financials: true,
+    edit_financials: true,
+    manage_pipeline: true,
+    broadcast_updates: true,
+  }),
   producer: caps({
     create_tasks: true,
     edit_tasks: true,
-    delete_tasks: true,
-    assign_tasks: true,
-    submit_reviews: true,
-    approve_reviews: true,
-    manage_members: true,
-    manage_roles: true,
-    view_financials: true,
-    broadcast_updates: true,
-  }),
-  vfx_producer: caps({
-    create_tasks: true,
-    edit_tasks: true,
-    delete_tasks: true,
-    assign_tasks: true,
-    submit_reviews: true,
-    approve_reviews: true,
-    manage_members: true,
-    manage_roles: true,
-    view_financials: true,
-    edit_financials: true,
-    manage_pipeline: true,
-    manage_licenses: true,
-    manage_integrations: true,
-    broadcast_updates: true,
-  }),
-  production_manager: caps({
-    create_tasks: true,
-    edit_tasks: true,
-    delete_tasks: true,
-    assign_tasks: true,
-    submit_reviews: true,
-    approve_reviews: true,
-    manage_members: true,
-    view_financials: true,
-    edit_financials: true,
-    manage_pipeline: true,
-    manage_licenses: true,
-    broadcast_updates: true,
-  }),
-  coordinator: caps({
-    create_tasks: true,
-    edit_tasks: true,
-    assign_tasks: true,
-    submit_reviews: true,
-    view_financials: true,
-  }),
-  supervisor: caps({
-    create_tasks: true,
-    edit_tasks: true,
     assign_tasks: true,
     submit_reviews: true,
     approve_reviews: true,
     manage_pipeline: true,
+    broadcast_updates: true,
   }),
   lead: caps({
     create_tasks: true,
@@ -241,16 +195,8 @@ export const DEFAULT_PERMISSION_SCHEME: PermissionScheme = {
     submit_reviews: true,
     approve_reviews: true,
   }),
-  senior_artist: caps({
-    create_tasks: true,
-    edit_tasks: true,
-    submit_reviews: true,
-  }),
   artist: caps({
     edit_tasks: true,
-    submit_reviews: true,
-  }),
-  junior_artist: caps({
     submit_reviews: true,
   }),
   client: caps({
@@ -314,25 +260,17 @@ export const usePermissionsStore = create<PermissionsState>()(
     }),
     {
       name: "forge-permissions-storage",
-      version: 2,
-      // Migrate schemes persisted before broadcast_updates existed — zustand's
-      // default merge is shallow, so a hydrated `scheme` replaces
-      // DEFAULT_PERMISSION_SCHEME wholesale rather than backfilling the new
-      // key per-role. Without this, every role (including
-      // vfx_producer/production_manager) would read broadcast_updates as
-      // undefined -> false, silently disabling the feature for anyone who'd
-      // already used the app. Same bug class as the tasks.ts v2 migration.
+      version: 3,
       migrate(persistedState: unknown, fromVersion: number) {
-        if (fromVersion < 2) {
-          const state = persistedState as { scheme?: PermissionScheme };
-          if (state?.scheme) {
-            state.scheme = Object.fromEntries(
-              ROLES_ORDER.map((role) => [
-                role,
-                caps(state.scheme![role] ?? {}),
-              ]),
-            ) as PermissionScheme;
-          }
+        if (fromVersion < 3) {
+          // The role set itself changed (9 roles -> 6); an old persisted
+          // scheme has no entries for the new role keys at all, so there is
+          // nothing meaningful to migrate forward — reset to defaults.
+          return {
+            scheme: DEFAULT_PERMISSION_SCHEME,
+            lastUpdated: null,
+            updatedBy: null,
+          } as PermissionsState;
         }
         return persistedState as PermissionsState;
       },

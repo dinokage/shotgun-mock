@@ -249,9 +249,7 @@ export default function ProductionDashboard() {
 
           // Department-scoped artists, for the "Assign Artists" quick action below.
           const deptArtists = USERS.filter(
-            (u) =>
-              u.departmentId === dept.id &&
-              (u.role === "artist" || u.role === "junior_artist"),
+            (u) => u.departmentId === dept.id && u.role === "artist",
           );
 
           return (

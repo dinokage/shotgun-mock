@@ -7,47 +7,28 @@
 // --- Types -------------------------------------------------------------------
 
 export type Role =
-  | "vfx_producer"
-  | "production_manager"
-  | "coordinator"
-  | "supervisor"
-  | "lead"
-  | "senior_artist"
-  | "artist"
-  | "junior_artist"
-  | "client"
-  | "producer"
-  | "production_manager"
   | "admin"
-  | "artist"
+  | "production_head"
+  | "producer"
   | "lead"
-  | "supervisor";
+  | "artist"
+  | "client";
 
 export const ROLE_HIERARCHY: Record<Role, number> = {
-  admin: 10,
-  producer: 9,
-  vfx_producer: 8,
-  production_manager: 7,
-  coordinator: 6,
-  supervisor: 5,
-  lead: 4,
-  senior_artist: 3,
-  artist: 2,
-  junior_artist: 1,
+  admin: 5,
+  production_head: 4,
+  producer: 3,
+  lead: 2,
+  artist: 1,
   client: 0,
 };
 
 export const ROLE_LABELS: Record<Role, string> = {
   admin: "System Admin",
+  production_head: "Production Head",
   producer: "Producer",
-  vfx_producer: "VFX Producer",
-  production_manager: "Production Manager",
-  coordinator: "Production Coordinator",
-  supervisor: "Supervisor",
   lead: "Lead",
-  senior_artist: "Senior Artist",
   artist: "Artist",
-  junior_artist: "Junior Artist",
   client: "Client",
 };
 
@@ -802,35 +783,35 @@ const USER_DEFS: {
   // === Production Management (dept 0) ===
   {
     name: "Maya Chen",
-    role: "vfx_producer",
+    role: "production_head",
     deptIdx: 0,
     title: "VFX Producer",
     skills: ["Budgeting", "Client Relations", "Scheduling"],
   },
   {
     name: "Ethan Brooks",
-    role: "production_manager",
+    role: "producer",
     deptIdx: 0,
     title: "VFX Production Manager",
     skills: ["Show Management", "Resource Planning", "Shotgun"],
   },
   {
     name: "Sofia Reyes",
-    role: "production_manager",
+    role: "producer",
     deptIdx: 0,
     title: "VFX Production Manager",
     skills: ["Bidding", "Scheduling", "ftrack"],
   },
   {
     name: "Kofi Mensah",
-    role: "coordinator",
+    role: "lead",
     deptIdx: 0,
     title: "Production Coordinator",
     skills: ["Dailies", "Tracking", "Communication"],
   },
   {
     name: "Ava Sterling",
-    role: "coordinator",
+    role: "lead",
     deptIdx: 0,
     title: "Production Coordinator",
     skills: ["Vendor Management", "Data Wrangling"],
@@ -839,7 +820,7 @@ const USER_DEFS: {
   // === Concept & Previs -> dept 17 '2D Animation / Motion Graphics' (closest current dept for concept/storyboard/2D previs work; there's no standalone Previs dept in the current DEPT_DEFINITIONS) ===
   {
     name: "Luca Moretti",
-    role: "supervisor",
+    role: "producer",
     deptIdx: 16,
     title: "Concept/Previs Supervisor",
     skills: ["Storyboarding", "Maya", "Unreal Engine"],
@@ -860,7 +841,7 @@ const USER_DEFS: {
   },
   {
     name: "Clara Werner",
-    role: "junior_artist",
+    role: "artist",
     deptIdx: 16,
     title: "Jr. Previs Artist",
     skills: ["Maya", "Storyboarding"],
@@ -869,7 +850,7 @@ const USER_DEFS: {
   // === Tracking -> dept 9 'Matchmove / Camera Tracking' ===
   {
     name: "Rafi Solomonov",
-    role: "supervisor",
+    role: "producer",
     deptIdx: 8,
     title: "Tracking Supervisor",
     skills: ["3DEqualizer", "PFTrack", "SynthEyes"],
@@ -890,7 +871,7 @@ const USER_DEFS: {
   },
   {
     name: "Leila Karimi",
-    role: "junior_artist",
+    role: "artist",
     deptIdx: 8,
     title: "Jr. Tracking Artist",
     skills: ["PFTrack", "Maya"],
@@ -899,7 +880,7 @@ const USER_DEFS: {
   // === Layout -> dept 5 'Layout' ===
   {
     name: "Yuki Tanaka",
-    role: "supervisor",
+    role: "producer",
     deptIdx: 4,
     title: "Layout Supervisor",
     skills: ["Maya", "Cinematography", "Previz"],
@@ -920,7 +901,7 @@ const USER_DEFS: {
   },
   {
     name: "Theo Beaumont",
-    role: "junior_artist",
+    role: "artist",
     deptIdx: 4,
     title: "Jr. Layout Artist",
     skills: ["Maya", "Previs"],
@@ -929,7 +910,7 @@ const USER_DEFS: {
   // === Modelling -> dept 2 'Modeling' ===
   {
     name: "Priya Nair",
-    role: "supervisor",
+    role: "producer",
     deptIdx: 1,
     title: "Modelling Supervisor",
     skills: ["ZBrush", "Maya", "Hard Surface"],
@@ -943,7 +924,7 @@ const USER_DEFS: {
   },
   {
     name: "Mia Rodriguez",
-    role: "senior_artist",
+    role: "artist",
     deptIdx: 1,
     title: "Senior Modeller",
     skills: ["ZBrush", "Maya", "Substance"],
@@ -957,7 +938,7 @@ const USER_DEFS: {
   },
   {
     name: "Dante Costa",
-    role: "junior_artist",
+    role: "artist",
     deptIdx: 1,
     title: "Jr. Modeller",
     skills: ["Maya", "Blender"],
@@ -966,7 +947,7 @@ const USER_DEFS: {
   // === Texture / Surfacing -> dept 3 'Texturing / LookDev' ===
   {
     name: "Aisha Diallo",
-    role: "supervisor",
+    role: "producer",
     deptIdx: 2,
     title: "Surfacing Supervisor",
     skills: ["Substance Painter", "Mari", "Look Dev"],
@@ -980,7 +961,7 @@ const USER_DEFS: {
   },
   {
     name: "Zara Ahmed",
-    role: "senior_artist",
+    role: "artist",
     deptIdx: 2,
     title: "Senior Surfacing Artist",
     skills: ["Mari", "Substance", "Katana"],
@@ -994,7 +975,7 @@ const USER_DEFS: {
   },
   {
     name: "Lucas Mendes",
-    role: "junior_artist",
+    role: "artist",
     deptIdx: 2,
     title: "Jr. Texture Artist",
     skills: ["Substance Painter"],
@@ -1003,7 +984,7 @@ const USER_DEFS: {
   // === Rigging -> dept 4 'Rigging' ===
   {
     name: "Diego Vargas",
-    role: "supervisor",
+    role: "producer",
     deptIdx: 3,
     title: "Rigging Supervisor",
     skills: ["Maya", "Python", "mGear"],
@@ -1017,7 +998,7 @@ const USER_DEFS: {
   },
   {
     name: "Hana Kim",
-    role: "senior_artist",
+    role: "artist",
     deptIdx: 3,
     title: "Senior Rigger",
     skills: ["Maya", "Python", "Muscle Systems"],
@@ -1033,7 +1014,7 @@ const USER_DEFS: {
   // === Animation -> dept 6 'Animation' ===
   {
     name: "Akira Suzuki",
-    role: "supervisor",
+    role: "producer",
     deptIdx: 5,
     title: "Animation Supervisor",
     skills: ["Maya", "Acting", "Motion Capture"],
@@ -1047,7 +1028,7 @@ const USER_DEFS: {
   },
   {
     name: "Felix Braun",
-    role: "senior_artist",
+    role: "artist",
     deptIdx: 5,
     title: "Senior Animator",
     skills: ["Maya", "Body Mechanics", "Facial Anim"],
@@ -1068,7 +1049,7 @@ const USER_DEFS: {
   },
   {
     name: "Sakura Ito",
-    role: "junior_artist",
+    role: "artist",
     deptIdx: 5,
     title: "Jr. Animator",
     skills: ["Maya"],
@@ -1077,7 +1058,7 @@ const USER_DEFS: {
   // === Creature FX / Tech Anim -> dept 11 'Creature Effects (CFX)' ===
   {
     name: "Ryo Watanabe",
-    role: "supervisor",
+    role: "producer",
     deptIdx: 10,
     title: "Creature FX Supervisor",
     skills: ["Houdini", "Maya", "Cloth Sim"],
@@ -1091,7 +1072,7 @@ const USER_DEFS: {
   },
   {
     name: "Marcus Singh",
-    role: "senior_artist",
+    role: "artist",
     deptIdx: 10,
     title: "Senior CFX Artist",
     skills: ["Houdini", "Maya", "Muscle Sim"],
@@ -1107,7 +1088,7 @@ const USER_DEFS: {
   // === FX (Effects) -> dept 12 'FX Simulations' ===
   {
     name: "Amara Kone",
-    role: "supervisor",
+    role: "producer",
     deptIdx: 11,
     title: "FX Supervisor",
     skills: ["Houdini", "Maya", "Pyro"],
@@ -1121,7 +1102,7 @@ const USER_DEFS: {
   },
   {
     name: "Fatima Al-Rashid",
-    role: "senior_artist",
+    role: "artist",
     deptIdx: 11,
     title: "Senior FX Artist",
     skills: ["Houdini", "Destruction", "RBD"],
@@ -1135,7 +1116,7 @@ const USER_DEFS: {
   },
   {
     name: "Tariq Patel",
-    role: "junior_artist",
+    role: "artist",
     deptIdx: 11,
     title: "Jr. FX Artist",
     skills: ["Houdini"],
@@ -1144,7 +1125,7 @@ const USER_DEFS: {
   // === Lighting -> dept 7 'Lighting' ===
   {
     name: "Mikhail Petrov",
-    role: "supervisor",
+    role: "producer",
     deptIdx: 6,
     title: "Lighting/CG Supervisor",
     skills: ["Katana", "Arnold", "RenderMan"],
@@ -1158,7 +1139,7 @@ const USER_DEFS: {
   },
   {
     name: "Ingrid Olsen",
-    role: "senior_artist",
+    role: "artist",
     deptIdx: 6,
     title: "Senior Lighting TD",
     skills: ["Katana", "Arnold", "V-Ray"],
@@ -1174,7 +1155,7 @@ const USER_DEFS: {
   // === Compositing -> dept 18 'Compositing' ===
   {
     name: "Dante Rivera",
-    role: "supervisor",
+    role: "producer",
     deptIdx: 17,
     title: "Compositing Supervisor",
     skills: ["Nuke", "Flame", "Color Science"],
@@ -1188,7 +1169,7 @@ const USER_DEFS: {
   },
   {
     name: "Chen Wei",
-    role: "senior_artist",
+    role: "artist",
     deptIdx: 17,
     title: "Senior Compositor",
     skills: ["Nuke", "Flame", "CG Integration"],
@@ -1209,7 +1190,7 @@ const USER_DEFS: {
   },
   {
     name: "Dylan O'Brien",
-    role: "junior_artist",
+    role: "artist",
     deptIdx: 17,
     title: "Jr. Compositor",
     skills: ["Nuke"],
@@ -1218,7 +1199,7 @@ const USER_DEFS: {
   // === Rotopaint -> dept 14 'Rotoscoping (Roto)' ===
   {
     name: "Priscilla Mendes",
-    role: "supervisor",
+    role: "producer",
     deptIdx: 13,
     title: "Rotopaint Supervisor",
     skills: ["Nuke", "Silhouette", "Mocha"],
@@ -1239,7 +1220,7 @@ const USER_DEFS: {
   },
   {
     name: "Viktor Novak",
-    role: "junior_artist",
+    role: "artist",
     deptIdx: 13,
     title: "Jr. Roto Artist",
     skills: ["Nuke"],
@@ -1248,7 +1229,7 @@ const USER_DEFS: {
   // === DMP -> dept 16 'Digital Matte Painting (DMP)' ===
   {
     name: "Gabriela Santos",
-    role: "supervisor",
+    role: "producer",
     deptIdx: 15,
     title: "DMP Supervisor",
     skills: ["Photoshop", "Nuke", "Maya"],
@@ -1269,7 +1250,7 @@ const USER_DEFS: {
   },
   {
     name: "Jamal Williams",
-    role: "junior_artist",
+    role: "artist",
     deptIdx: 15,
     title: "Jr. Matte Painter",
     skills: ["Photoshop"],
@@ -1300,7 +1281,7 @@ for (let i = 1; i < DEPT_DEFINITIONS.length; i++) {
   const deptName = DEPT_DEFINITIONS[i].name;
   USER_DEFS.push({
     name: getName(),
-    role: "supervisor",
+    role: "producer",
     deptIdx: i,
     title: `${deptName} Manager`,
     skills: [deptName],
@@ -1321,21 +1302,24 @@ for (let i = 1; i < DEPT_DEFINITIONS.length; i++) {
   });
   USER_DEFS.push({
     name: getName(),
-    role: "junior_artist",
+    role: "artist",
     deptIdx: i,
     title: `Jr. ${deptName} Artist`,
     skills: [deptName],
   });
 }
 
-// The VFX Producer is the top of the reporting chain (Production Managers and
-// department Supervisors report directly to them). Derive their id from
-// wherever they actually land in USER_DEFS rather than hardcoding 'u1' /
-// index 0 — that literal was the 'External Client' placeholder at index 0,
-// not the real VFX Producer (Maya Chen), and would silently break again if
-// USER_DEFS is ever reordered.
-const vfxProducerIdx = USER_DEFS.findIndex((u) => u.role === "vfx_producer");
-const vfxProducerId = vfxProducerIdx >= 0 ? `u${vfxProducerIdx + 1}` : "u1";
+// The Production Head is the top of the reporting chain (department
+// producers report directly to them). Derive their id from wherever they
+// actually land in USER_DEFS rather than hardcoding 'u1' / index 0 — that
+// literal was the 'External Client' placeholder at index 0, not the real
+// Production Head (Maya Chen), and would silently break again if USER_DEFS
+// is ever reordered.
+const productionHeadIdx = USER_DEFS.findIndex(
+  (u) => u.role === "production_head",
+);
+const productionHeadId =
+  productionHeadIdx >= 0 ? `u${productionHeadIdx + 1}` : "u1";
 
 export const USERS: User[] = USER_DEFS.map((def, i) => {
   const deptId = `dept${def.deptIdx + 1}`;
@@ -1343,30 +1327,24 @@ export const USERS: User[] = USER_DEFS.map((def, i) => {
   if (userLicenses.length === 0)
     userLicenses.push(possibleLicenses[i % possibleLicenses.length]);
 
-  // Determine supervisor ID: artists report to lead, leads report to supervisor, supervisors report to producer
+  // Determine reporting chain: artists report to their dept's lead, leads
+  // report to their dept's producer, and producers report to the studio's
+  // Production Head. Dept 0 (Production Management) has its own
+  // producer/lead pair too (ex Production Manager / Coordinator) and its
+  // producer(s) also report up to the Production Head.
   let supervisorId: string | undefined;
-  if (
-    def.role === "junior_artist" ||
-    def.role === "artist" ||
-    def.role === "senior_artist"
-  ) {
-    // Report to lead of same dept
+  if (def.role === "artist") {
     const lead = USER_DEFS.findIndex(
       (u) => u.deptIdx === def.deptIdx && u.role === "lead",
     );
     supervisorId = lead >= 0 ? `u${lead + 1}` : undefined;
   } else if (def.role === "lead") {
-    const sup = USER_DEFS.findIndex(
-      (u) => u.deptIdx === def.deptIdx && u.role === "supervisor",
+    const prod = USER_DEFS.findIndex(
+      (u) => u.deptIdx === def.deptIdx && u.role === "producer",
     );
-    supervisorId = sup >= 0 ? `u${sup + 1}` : undefined;
-  } else if (def.role === "supervisor") {
-    supervisorId = vfxProducerId; // Reports to VFX Producer
-  } else if (def.role === "coordinator") {
-    const pm = USER_DEFS.findIndex((u) => u.role === "production_manager");
-    supervisorId = pm >= 0 ? `u${pm + 1}` : vfxProducerId;
-  } else if (def.role === "production_manager") {
-    supervisorId = vfxProducerId; // Reports to VFX Producer
+    supervisorId = prod >= 0 ? `u${prod + 1}` : productionHeadId;
+  } else if (def.role === "producer") {
+    supervisorId = productionHeadId; // Reports to Production Head
   }
 
   return {
@@ -1393,27 +1371,26 @@ export const USERS: User[] = USER_DEFS.map((def, i) => {
 
 export const DEPARTMENTS: Department[] = DEPT_DEFINITIONS.map((d, i) => {
   const deptId = `dept${i + 1}`;
-  const supervisor = USERS.find(
-    (u) => u.departmentId === deptId && u.role === "supervisor",
+  const producer = USERS.find(
+    (u) => u.departmentId === deptId && u.role === "producer",
   );
   const lead = USERS.find(
     (u) => u.departmentId === deptId && u.role === "lead",
   );
 
-  // Production Management (dept 0) is staffed by producers/PMs/coordinators, not a
-  // 'supervisor'/'lead' role, so both lookups above miss for it — same as every other
-  // department would if it somehow had no one in those roles. That used to fall back to
-  // USERS[0].id, which was a harmless placeholder while index 0 held a coordinator, but
-  // now holds the External Client (see the USER_DEFS comment above), so this fallback was
-  // making the client the "head" of Production Management. Fall back to the VFX Producer —
-  // the real top of the reporting chain — instead of a hardcoded index.
+  // Every department (including dept 0, Production Management, whose
+  // producer/lead are the ex Production Manager / Coordinator) should have
+  // its own producer/lead, so both lookups above should always hit. Fall
+  // back to the Production Head — the real top of the reporting chain —
+  // instead of a hardcoded index, same as the USERS reporting-chain build
+  // above, in case a department somehow has neither.
   return {
     id: deptId,
     name: d.name,
     abbreviation: d.abbr,
     color: d.color,
-    supervisorId: supervisor?.id || vfxProducerId,
-    leadId: lead?.id || supervisor?.id || vfxProducerId,
+    supervisorId: producer?.id || productionHeadId,
+    leadId: lead?.id || producer?.id || productionHeadId,
     studioId: "studio1",
     description: d.desc,
     icon: d.icon,
@@ -2089,37 +2066,33 @@ for (let i = 0; i < 300; i++) {
 
   // Find artists in this department for assignment
   const deptArtists = USERS.filter(
-    (u) =>
-      u.departmentId === dept.id &&
-      ["artist", "senior_artist", "junior_artist"].includes(u.role),
+    (u) => u.departmentId === dept.id && u.role === "artist",
   );
   const assignee =
     deptArtists.length > 0
       ? deptArtists[i % deptArtists.length]
       : USERS[i % USERS.length];
 
-  // Supervisor or lead assigns the task
-  const deptSupervisor = USERS.find(
-    (u) => u.departmentId === dept.id && u.role === "supervisor",
+  // Producer or lead assigns the task
+  const deptProducer = USERS.find(
+    (u) => u.departmentId === dept.id && u.role === "producer",
   );
   const deptLead = USERS.find(
     (u) => u.departmentId === dept.id && u.role === "lead",
   );
-  // Production Management (dept 0) has no 'supervisor'/'lead' role — it's producers, PMs
-  // and coordinators — so both lookups above miss for its Review/QC check/Prep delivery
-  // tasks. That used to fall back to USERS[0], which was harmless while index 0 held a
-  // coordinator, but now holds the External Client, so every one of those tasks ended up
-  // "assigned by" the client. Fall back to a production manager in the department, then
-  // the VFX Producer, so admin tasks are always assigned by a real internal user.
-  const deptProductionManager = USERS.find(
-    (u) => u.departmentId === dept.id && u.role === "production_manager",
-  );
-  const internalAssignerFallback =
-    deptProductionManager || USERS.find((u) => u.id === vfxProducerId)!;
+  // Every department (including dept 0, Production Management, whose
+  // producer is the ex Production Manager) should have its own producer, so
+  // the lookup above should always hit. Fall back to the Production Head —
+  // the real top of the reporting chain — so admin tasks are always
+  // assigned by a real internal user rather than USERS[0] (the External
+  // Client).
+  const internalAssignerFallback = USERS.find(
+    (u) => u.id === productionHeadId,
+  )!;
   const assigner =
     i % 2 === 0
-      ? deptSupervisor || internalAssignerFallback
-      : deptLead || deptSupervisor || internalAssignerFallback;
+      ? deptProducer || internalAssignerFallback
+      : deptLead || deptProducer || internalAssignerFallback;
 
   // Generate daily logs. An unassigned task (self-serve pool, assigneeId '') can't have
   // logged hours yet — same reasoning as checklistDoneCount() zeroing out an unassigned
