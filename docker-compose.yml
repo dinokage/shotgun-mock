@@ -30,8 +30,11 @@ services:
       - CORS_ORIGIN=${CORS_ORIGIN:-*}
     ports:
       - "${API_PORT:-3001}:${API_PORT:-3001}"
+    # The runner image is a pruned `pnpm deploy` output, not a pnpm workspace,
+    # so `pnpm --filter "@workspace/db" ...` has no workspace root to resolve
+    # against here — run the db package's own script directly instead.
     command: >
-      sh -c "pnpm --filter '@workspace/db' run migrate && node --enable-source-maps ./dist/index.mjs"
+      sh -c "cd /app/prod/db && pnpm run migrate && cd /app/prod/api-server && node --enable-source-maps ./dist/index.mjs"
 
   web:
     build:

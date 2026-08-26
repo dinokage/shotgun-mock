@@ -6,7 +6,7 @@
   },
   "deploy": {
     "startCommand": "pnpm --filter \"@workspace/api-server\" start",
-    "healthcheckPath": "/health",
+    "healthcheckPath": "/api/healthz",
     "healthcheckTimeout": 100
   }
 }

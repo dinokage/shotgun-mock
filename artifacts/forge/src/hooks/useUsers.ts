@@ -6,8 +6,7 @@ export type UserDTO = User;
 export function useUsers() {
   return useQuery<UserDTO[]>({
     queryKey: ["users"],
-    queryFn: async () =>
-      (await apiFetch<{ users: UserDTO[] }>("/api/users")).users,
+    queryFn: async () => apiFetch<UserDTO[]>("/users"),
     staleTime: 60000,
   });
 }
