@@ -7,6 +7,7 @@ declare global {
       tenantId?: string;
       userId?: string;
       roleId?: string;
+      departmentId?: string | null;
     }
   }
 }
@@ -46,6 +47,7 @@ export function tenantAuthMiddleware(
   req.tenantId = session.tenantId;
   req.userId = session.userId;
   req.roleId = session.roleId;
+  req.departmentId = session.departmentId;
 
   next();
 }

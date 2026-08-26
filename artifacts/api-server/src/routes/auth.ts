@@ -50,6 +50,7 @@ authRouter.post("/login", async (req, res) => {
       userId: user.id,
       tenantId: user.tenantId,
       roleId: user.roleId,
+      departmentId: user.departmentId,
     };
 
     const token = signSession(sessionPayload);
@@ -65,6 +66,7 @@ authRouter.post("/login", async (req, res) => {
         id: user.id,
         name: user.name,
         role: role?.name || "admin",
+        departmentId: user.departmentId,
         capabilities,
       },
       tenant: {
@@ -115,6 +117,7 @@ authRouter.get("/me", async (req, res) => {
       id: user.id,
       name: user.name,
       role: role?.name || "admin",
+      departmentId: user.departmentId,
       capabilities,
     },
     tenant: {

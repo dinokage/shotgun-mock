@@ -4,6 +4,7 @@ import { authRouter } from "./auth";
 import { projectsRouter } from "./projects";
 import { tasksRouter } from "./tasks";
 import usersRouter from "./users";
+import departmentsRouter from "./departments";
 
 const router = Router();
 
@@ -14,5 +15,6 @@ router.use("/auth", authRouter);
 router.use("/projects", projectsRouter);
 router.use("/tasks", tasksRouter);
 router.use("/users", usersRouter);
+router.use("/departments", departmentsRouter);
 
 export default router;

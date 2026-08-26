@@ -8,6 +8,7 @@ export interface SessionPayload {
   userId: string;
   tenantId: string;
   roleId: string;
+  departmentId: string | null;
 }
 
 export async function hashPassword(password: string): Promise<string> {

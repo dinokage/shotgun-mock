@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, usersTable, tenantRolesTable } from "@workspace/db";
+import { db, usersTable, tenantRolesTable, departmentsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability } from "../middleware/rbac";
@@ -27,7 +27,7 @@ router.get("/", async (req, res) => {
 router.post("/", requireCapability("manage_members"), async (req, res) => {
   try {
     const tenantId = req.tenantId!;
-    const { email, name, password, roleId, title } = req.body;
+    const { email, name, password, roleId, departmentId, title } = req.body;
 
     if (!email || !name || !password || !roleId) {
       return res
@@ -53,6 +53,21 @@ router.post("/", requireCapability("manage_members"), async (req, res) => {
       return res.status(400).json({ error: "Invalid roleId" });
     }
 
+    if (departmentId) {
+      const [dept] = await db
+        .select()
+        .from(departmentsTable)
+        .where(
+          and(
+            eq(departmentsTable.id, departmentId),
+            eq(departmentsTable.tenantId, tenantId),
+          ),
+        );
+      if (!dept) {
+        return res.status(400).json({ error: "Invalid departmentId" });
+      }
+    }
+
     // usersTable.email is globally unique. Reject duplicates here so the caller
     // gets a clean 409 rather than a raw constraint-violation 500, and so login
     // (which looks users up by email with no tenant scoping) can never become
@@ -73,6 +88,7 @@ router.post("/", requireCapability("manage_members"), async (req, res) => {
         id: crypto.randomUUID(),
         tenantId,
         roleId,
+        departmentId: departmentId ?? null,
         email,
         name,
         title,
@@ -84,6 +100,73 @@ router.post("/", requireCapability("manage_members"), async (req, res) => {
     return res.status(201).json(user);
   } catch (err) {
     req.log.error(err, "Failed to create user");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.patch("/:id", requireCapability("manage_members"), async (req, res) => {
+  try {
+    const tenantId = req.tenantId!;
+    // Cast needed: combining requireCapability() (typed against the generic,
+    // path-agnostic Express Request) with this route's "/:id" path typing
+    // makes TS widen req.params.id to `string | string[]` for overload
+    // resolution purposes, even though a plain ":id" segment is always a
+    // single string at runtime.
+    const userId = req.params.id as string;
+    const { roleId, departmentId } = req.body;
+
+    const [existing] = await db
+      .select()
+      .from(usersTable)
+      .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.id, userId)));
+    if (!existing) return res.status(404).json({ error: "Not found" });
+
+    const updates: Partial<typeof usersTable.$inferInsert> = {};
+
+    if (roleId !== undefined) {
+      const [role] = await db
+        .select()
+        .from(tenantRolesTable)
+        .where(
+          and(
+            eq(tenantRolesTable.id, roleId),
+            eq(tenantRolesTable.tenantId, tenantId),
+          ),
+        );
+      if (!role) return res.status(400).json({ error: "Invalid roleId" });
+      updates.roleId = roleId;
+    }
+
+    if (departmentId !== undefined) {
+      if (departmentId !== null) {
+        const [dept] = await db
+          .select()
+          .from(departmentsTable)
+          .where(
+            and(
+              eq(departmentsTable.id, departmentId),
+              eq(departmentsTable.tenantId, tenantId),
+            ),
+          );
+        if (!dept) return res.status(400).json({ error: "Invalid departmentId" });
+      }
+      updates.departmentId = departmentId;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: "No valid fields to update" });
+    }
+
+    await db.update(usersTable).set(updates).where(eq(usersTable.id, userId));
+
+    const [updated] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.id, userId));
+    const { hashedPassword: _omit, ...user } = updated;
+    return res.json(user);
+  } catch (err) {
+    req.log.error(err, "Failed to update user");
     return res.status(500).json({ error: "Internal server error" });
   }
 });
