@@ -96,9 +96,9 @@ export default function Departments() {
                   <Link href={`/departments/${dept.id}`}>
                     <div
                       className={`px-3 py-1.5 rounded-full text-[11px] font-semibold cursor-pointer transition-transform text-white hover:scale-105 ${isEditing ? "pr-8" : ""}`}
-                      style={{ backgroundColor: dept.color }}
+                      style={{ backgroundColor: dept.color ?? undefined }}
                     >
-                      {dept.abbreviation}
+                      {dept.abbr}
                     </div>
                   </Link>
 
@@ -164,10 +164,11 @@ export default function Departments() {
                   const members = USERS.filter(
                     (u) => u.departmentId === dept.id,
                   );
-                  const supervisor = USERS.find(
-                    (u) => u.id === dept.supervisorId,
-                  );
-                  const lead = USERS.find((u) => u.id === dept.leadId);
+                  // Departments don't track a designated supervisor/lead as
+                  // their own field (no such backend concept exists) --
+                  // derive it from the department's real member list instead.
+                  const supervisor = members.find((u) => u.role === "producer");
+                  const lead = members.find((u) => u.role === "lead");
                   const deptTasks = TASKS.filter(
                     (t) => t.department === dept.name,
                   );
@@ -197,16 +198,16 @@ export default function Departments() {
                               <div className="flex items-center gap-3">
                                 <div
                                   className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-xs shadow-lg"
-                                  style={{ backgroundColor: dept.color }}
+                                  style={{ backgroundColor: dept.color ?? undefined }}
                                 >
-                                  {dept.abbreviation}
+                                  {dept.abbr}
                                 </div>
                                 <div>
                                   <h3 className="font-semibold text-sm group-hover:text-primary transition-colors">
                                     {dept.name}
                                   </h3>
                                   <p className="text-[11px] text-muted-foreground">
-                                    {dept.description}
+                                    {dept.pipeline} pipeline
                                   </p>
                                 </div>
                               </div>
@@ -226,7 +227,7 @@ export default function Departments() {
                                 <div className="flex items-center gap-2 flex-1 min-w-0">
                                   <Avatar
                                     className="w-7 h-7 border-2"
-                                    style={{ borderColor: dept.color }}
+                                    style={{ borderColor: dept.color ?? undefined }}
                                   >
                                     <AvatarImage src={supervisor.avatar} />
                                     <AvatarFallback className="text-[10px]">
@@ -247,7 +248,11 @@ export default function Departments() {
                                 <div className="flex items-center gap-2 flex-1 min-w-0">
                                   <Avatar
                                     className="w-7 h-7 border-2"
-                                    style={{ borderColor: dept.color + "80" }}
+                                    style={{
+                                      borderColor: dept.color
+                                        ? dept.color + "80"
+                                        : undefined,
+                                    }}
                                   >
                                     <AvatarImage src={lead.avatar} />
                                     <AvatarFallback className="text-[10px]">
@@ -312,7 +317,7 @@ export default function Departments() {
                                   className="h-1.5 rounded-full"
                                   style={{
                                     width: `${completionRate}%`,
-                                    backgroundColor: dept.color,
+                                    backgroundColor: dept.color ?? undefined,
                                   }}
                                 />
                               </div>

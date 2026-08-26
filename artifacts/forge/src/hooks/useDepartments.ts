@@ -3,20 +3,20 @@ import { apiFetch } from "@/lib/apiClient";
 
 export interface DepartmentDTO {
   id: string;
+  tenantId: string;
   name: string;
-  abbreviation: string;
-  description: string;
-  color: string;
+  abbr: string;
   pipeline: string;
   pipelineOrder: number;
-  studioId: string;
-  supervisorId: string | null;
-  leadId: string | null;
+  color: string | null;
+  icon: string | null;
+  createdAt: string;
 }
 
 export function useDepartments() {
-  return useQuery({
+  return useQuery<DepartmentDTO[]>({
     queryKey: ["departments"],
     queryFn: () => apiFetch<DepartmentDTO[]>("/departments"),
+    staleTime: 60000,
   });
 }
