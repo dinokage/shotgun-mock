@@ -196,7 +196,7 @@ export default function People() {
                     </div>
 
                     <div className="mt-4 flex flex-wrap gap-1">
-                      {user.skills.slice(0, 3).map((skill) => (
+                      {(user.skills ?? []).slice(0, 3).map((skill) => (
                         <span
                           key={skill}
                           className="px-1.5 py-0.5 bg-muted rounded-md text-[10px]"
@@ -204,7 +204,7 @@ export default function People() {
                           {skill}
                         </span>
                       ))}
-                      {user.skills.length > 3 && (
+                      {(user.skills?.length ?? 0) > 3 && (
                         <span className="px-1.5 py-0.5 bg-muted rounded-md text-[10px]">
                           +{user.skills.length - 3}
                         </span>

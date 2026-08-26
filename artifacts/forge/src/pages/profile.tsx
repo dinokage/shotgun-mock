@@ -261,7 +261,7 @@ export default function Profile() {
                 <div className="flex items-center gap-2 text-sm">
                   <Clock className="w-4 h-4 text-yellow-500" /> Capacity
                 </div>
-                <div className="font-semibold">{user.capacity}%</div>
+                <div className="font-semibold">{user.capacity ?? 0}%</div>
               </div>
             </CardContent>
           </Card>
@@ -275,7 +275,7 @@ export default function Profile() {
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-2">
-                {user.skills.map((skill) => (
+                {(user.skills ?? []).map((skill) => (
                   <Badge
                     key={skill}
                     variant="secondary"
@@ -284,10 +284,10 @@ export default function Profile() {
                     {skill}
                   </Badge>
                 ))}
-                {user.licenses
+                {(user.licenses ?? [])
                   .filter(
                     (license) =>
-                      !user.skills.some(
+                      !(user.skills ?? []).some(
                         (skill) =>
                           skill.toLowerCase() === license.toLowerCase(),
                       ),
@@ -366,7 +366,7 @@ export default function Profile() {
                       const isWeekend = d.getDay() === 0 || d.getDay() === 6;
                       const load = isWeekend
                         ? 0
-                        : user.capacity + Math.sin(i) * 30;
+                        : (user.capacity ?? 0) + Math.sin(i) * 30;
                       let color = "bg-green-500";
                       if (load > 110) color = "bg-red-500";
                       else if (load > 85) color = "bg-yellow-500";

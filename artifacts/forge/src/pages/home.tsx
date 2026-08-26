@@ -829,17 +829,17 @@ function SupervisorDashboard({ currentUser }: { currentUser: User }) {
                         <span className="font-medium">{member.name}</span>
                         <span
                           className={
-                            member.capacity > 90
+                            (member.capacity ?? 0) > 90
                               ? "text-red-500"
                               : "text-muted-foreground"
                           }
                         >
-                          {member.capacity}% Booked
+                          {member.capacity ?? 0}% Booked
                         </span>
                       </div>
                       <Progress
-                        value={member.capacity}
-                        className={`h-1.5 ${member.capacity > 90 ? "bg-red-500/20 [&>div]:bg-red-500" : ""}`}
+                        value={member.capacity ?? 0}
+                        className={`h-1.5 ${(member.capacity ?? 0) > 90 ? "bg-red-500/20 [&>div]:bg-red-500" : ""}`}
                       />
                     </div>
                   ))}

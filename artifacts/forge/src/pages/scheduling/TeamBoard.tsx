@@ -289,7 +289,8 @@ export default function TeamBoard() {
       .filter((col) => showEmpty || col.tasks.length > 0)
       .sort(
         (a, b) =>
-          b.tasks.length - a.tasks.length || b.user.capacity - a.user.capacity,
+          b.tasks.length - a.tasks.length ||
+          (b.user.capacity ?? 0) - (a.user.capacity ?? 0),
       );
   }, [filteredTasks, departmentFilter, showEmpty]);
 

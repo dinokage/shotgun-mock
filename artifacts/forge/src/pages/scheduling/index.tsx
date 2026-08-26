@@ -85,7 +85,11 @@ export default function Scheduling() {
           u.id !== task.assigneeId,
       )
         .filter((u) => !dept || u.departmentId === dept.id)
-        .sort((a, b) => a.capacity - b.capacity);
+        .sort(
+          (a, b) =>
+            (a.capacity ?? Number.POSITIVE_INFINITY) -
+            (b.capacity ?? Number.POSITIVE_INFINITY),
+        );
       const replacement = candidates[0];
       if (replacement) reassignTask(task.id, replacement.id);
       updateTaskStatus(task.id, "in-progress");

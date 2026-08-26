@@ -245,16 +245,16 @@ export default function TeamCalendar() {
                           <div className="flex items-center gap-1">
                             <div className="w-12 h-1.5 bg-muted rounded-full overflow-hidden">
                               <motion.div
-                                className={`h-full ${user.capacity > 90 ? "bg-red-500" : user.capacity > 75 ? "bg-yellow-500" : "bg-green-500"}`}
+                                className={`h-full ${(user.capacity ?? 0) > 90 ? "bg-red-500" : (user.capacity ?? 0) > 75 ? "bg-yellow-500" : "bg-green-500"}`}
                                 initial={{ width: 0 }}
                                 animate={{
-                                  width: `${Math.min(user.capacity, 100)}%`,
+                                  width: `${Math.min(user.capacity ?? 0, 100)}%`,
                                 }}
                                 transition={{ duration: 0.7, ease: "easeOut" }}
                               />
                             </div>
                             <span className="text-[9px] font-mono">
-                              {user.capacity}%
+                              {user.capacity ?? 0}%
                             </span>
                           </div>
                         )}

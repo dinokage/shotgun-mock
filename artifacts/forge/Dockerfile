@@ -36,7 +36,11 @@ FROM nginx:alpine
 # docker-compose.yml's `context: .`), not against this Dockerfile's directory,
 # so nginx.conf must be referenced by its full repo-relative path.
 COPY artifacts/forge/nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=builder /app/artifacts/forge/dist /usr/share/nginx/html
+# vite.config.ts sets outDir to "dist/public" (not "dist") — copying "dist"
+# itself leaves index.html nested one level too deep for nginx to find, so
+# it silently falls through to serving its own built-in stock welcome page
+# instead of the app, with no error anywhere in the chain.
+COPY --from=builder /app/artifacts/forge/dist/public /usr/share/nginx/html
 
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]

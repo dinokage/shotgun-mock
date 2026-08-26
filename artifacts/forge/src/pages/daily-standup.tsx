@@ -297,7 +297,7 @@ export default function DailyStandup() {
           member,
           memberDept,
           totalHoursToday,
-          isOverloaded: member.capacity > 95,
+          isOverloaded: (member.capacity ?? 0) > 95,
           isApproved: approvedUsers.has(member.id),
         };
       }),
@@ -443,7 +443,7 @@ export default function DailyStandup() {
         memberDept?.name ?? "",
         member.status === "active" ? "Punched In" : "Away",
         totalHoursToday,
-        member.capacity,
+        member.capacity ?? 0,
         isApproved ? "Yes" : "No",
       ],
     );
@@ -554,7 +554,7 @@ export default function DailyStandup() {
                     </CardHeader>
                     <CardContent className="space-y-3">
                       {team.map((member) => {
-                        const isOverloaded = member.capacity > 95;
+                        const isOverloaded = (member.capacity ?? 0) > 95;
                         const isAway = member.status !== "active";
 
                         return (
@@ -583,7 +583,7 @@ export default function DailyStandup() {
                                       <div
                                         className={`w-1.5 h-1.5 rounded-full ${isOverloaded ? "bg-red-500" : "bg-green-500"}`}
                                       />
-                                      Cap: {member.capacity}%
+                                      Cap: {member.capacity ?? 0}%
                                     </>
                                   )}
                                 </div>
@@ -1488,7 +1488,7 @@ export default function DailyStandup() {
                                   <div
                                     className={`w-2 h-2 rounded-full ${isOverloaded ? "bg-red-500" : "bg-green-500"}`}
                                   />
-                                  <span>{member.capacity}%</span>
+                                  <span>{member.capacity ?? 0}%</span>
                                 </div>
                               </td>
                               <td className="px-4 py-3 text-right">

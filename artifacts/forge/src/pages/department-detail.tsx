@@ -327,11 +327,11 @@ export default function DepartmentDetail() {
                 <CardContent className="p-6">
                   {/* Just a visualization mock of skills distribution */}
                   <div className="space-y-4">
-                    {Array.from(new Set(team.flatMap((u) => u.skills)))
+                    {Array.from(new Set(team.flatMap((u) => u.skills ?? [])))
                       .slice(0, 5)
                       .map((skill) => {
                         const usersWithSkill = team.filter((u) =>
-                          u.skills.includes(skill),
+                          u.skills?.includes(skill),
                         ).length;
                         const percentage = Math.round(
                           (usersWithSkill / team.length) * 100,
@@ -398,7 +398,7 @@ export default function DepartmentDetail() {
                   </div>
 
                   <div className="flex flex-wrap gap-1 mb-4">
-                    {member.skills.slice(0, 2).map((s) => (
+                    {(member.skills ?? []).slice(0, 2).map((s) => (
                       <span
                         key={s}
                         className="px-1.5 py-0.5 bg-muted rounded text-[9px] text-muted-foreground"
@@ -406,9 +406,9 @@ export default function DepartmentDetail() {
                         {s}
                       </span>
                     ))}
-                    {member.skills.length > 2 && (
+                    {(member.skills?.length ?? 0) > 2 && (
                       <span className="px-1.5 py-0.5 bg-muted rounded text-[9px] text-muted-foreground">
-                        +{member.skills.length - 2}
+                        +{(member.skills?.length ?? 0) - 2}
                       </span>
                     )}
                   </div>
@@ -418,11 +418,11 @@ export default function DepartmentDetail() {
                     <div className="font-semibold flex items-center gap-2">
                       <div className="w-12 h-1.5 bg-muted rounded-full overflow-hidden">
                         <div
-                          className={`h-full rounded-full ${member.capacity > 90 ? "bg-red-500" : member.capacity > 75 ? "bg-yellow-500" : "bg-green-500"}`}
-                          style={{ width: `${member.capacity}%` }}
+                          className={`h-full rounded-full ${(member.capacity ?? 0) > 90 ? "bg-red-500" : (member.capacity ?? 0) > 75 ? "bg-yellow-500" : "bg-green-500"}`}
+                          style={{ width: `${member.capacity ?? 0}%` }}
                         />
                       </div>
-                      {member.capacity}%
+                      {member.capacity ?? 0}%
                     </div>
                   </div>
                 </CardContent>
