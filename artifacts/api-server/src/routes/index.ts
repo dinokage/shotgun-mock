@@ -12,6 +12,7 @@ import { shotsRouter } from "./shots";
 import { assetsRouter } from "./assets";
 import { versionsRouter } from "./versions";
 import { reviewsRouter } from "./reviews";
+import { dailyLogsRouter } from "./daily-logs";
 
 const router = Router();
 
@@ -30,5 +31,6 @@ router.use("/shots", shotsRouter);
 router.use("/assets", assetsRouter);
 router.use("/versions", versionsRouter);
 router.use("/reviews", reviewsRouter);
+router.use("/daily-logs", dailyLogsRouter);
 
 export default router;
