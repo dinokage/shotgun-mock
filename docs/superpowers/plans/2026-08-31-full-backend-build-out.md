@@ -1685,7 +1685,7 @@ tasksRouter.post("/:id/checklist", async (req, res) => {
     const [created] = await db
       .select()
       .from(taskChecklistItemsTable)
-      .where(eq(taskChecklistItemsTable.id, newId));
+      .where(and(eq(taskChecklistItemsTable.tenantId, tenantId), eq(taskChecklistItemsTable.id, newId)));
     return res.status(201).json(created);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -1767,7 +1767,7 @@ tasksRouter.post("/:id/comments", async (req, res) => {
     const [created] = await db
       .select()
       .from(taskCommentsTable)
-      .where(eq(taskCommentsTable.id, newId));
+      .where(and(eq(taskCommentsTable.tenantId, tenantId), eq(taskCommentsTable.id, newId)));
     return res.status(201).json(created);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -1814,7 +1814,7 @@ tasksRouter.post("/:id/dependencies", async (req, res) => {
     const [created] = await db
       .select()
       .from(taskDependenciesTable)
-      .where(eq(taskDependenciesTable.id, newId));
+      .where(and(eq(taskDependenciesTable.tenantId, tenantId), eq(taskDependenciesTable.id, newId)));
     return res.status(201).json(created);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -1858,7 +1858,7 @@ tasksRouter.post("/:id/attachments", async (req, res) => {
     const [created] = await db
       .select()
       .from(taskAttachmentsTable)
-      .where(eq(taskAttachmentsTable.id, newId));
+      .where(and(eq(taskAttachmentsTable.tenantId, tenantId), eq(taskAttachmentsTable.id, newId)));
     return res.status(201).json(created);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -1904,7 +1904,7 @@ tasksRouter.post("/:id/approval-events", async (req, res) => {
     const [created] = await db
       .select()
       .from(taskApprovalEventsTable)
-      .where(eq(taskApprovalEventsTable.id, newId));
+      .where(and(eq(taskApprovalEventsTable.tenantId, tenantId), eq(taskApprovalEventsTable.id, newId)));
     return res.status(201).json(created);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
