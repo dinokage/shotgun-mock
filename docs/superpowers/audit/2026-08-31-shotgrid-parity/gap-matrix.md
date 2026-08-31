@@ -6,21 +6,23 @@
 
 **Page-matching approach:** each of the 19 ShotGrid catalog pages was matched to the Forge page whose purpose is the closest equivalent (may differ in name/scope — e.g. ShotGrid's per-project "Schedule" ≈ Forge's global `scheduling/index.tsx` resourcing hub). Several catalog pages are the same underlying ShotGrid screen captured in a different demo project/theme/admin-surface (per the catalog's own merge notes); each still gets its own row below since the catalog kept them as separate sections.
 
+**Status heuristic (applied uniformly across both tables below):** Present/Yes is used only when the Forge equivalent matches closely — the central function and control set are comparable, with no material core-workflow gap. Partial is used whenever Forge offers *some* functional substitute for the ShotGrid item, even if that substitute uses a different UI pattern, is scoped differently, or is less complete than ShotGrid's — this includes discrete `Select` filters standing in for a unified `Filter` panel, and a whole page whose full catalog control set (search/sort/filter/etc., and, where applicable, an embedded Gantt chart) is entirely absent per forge-inventory, even when the page's broad conceptual purpose is otherwise matched. Missing/No is used only when no functional substitute exists at all — neither the control nor anything serving its purpose is documented on the matched Forge page (or no Forge page exists to match).
+
 ---
 
 ## Feature Parity Matrix
 
-**Summary:** 19 ShotGrid pages compared — Present: 6, Partial: 9, Missing: 3, Deferred (known, by design): 1.
+**Summary:** 19 ShotGrid pages compared — Present: 4, Partial: 11, Missing: 3, Deferred (known, by design): 1.
 
 | ShotGrid Page/Feature | Forge Equivalent | Status | Notes |
 |---|---|---|---|
 | Projects | `projects.tsx` | Present | Real backend (`useProjects()` → `GET /projects`). Core browse/list function matches (search, `statusFilter`, `typeFilter`, List/Card `view` toggle) — no `Sort`/`Group`/`Fields`/`More` toolbar or dedicated `Filter` panel (toolbar-level gaps, not central to the page). |
 | Schedule | `scheduling/index.tsx` | Partial | Frontend-mock. ShotGrid's Schedule page is defined by a per-project task-list + Gantt-chart timeline; Forge has no Gantt chart anywhere and instead offers a separate global resourcing hub (Team Board / Team Calendar / Capacity Forecast) with `departmentFilter`/`projectFilter`/`pipelineFilter` selects per sub-view. Structurally different, not just missing toolbar buttons. |
-| Inbox | `notifications.tsx` | Present | Frontend-mock (`useNotificationStore`). Core purpose (list, mark-read, mark-all-read, deep-link to source entity) matches; per forge-inventory, the page has no dropdowns/filters/search at all, so ShotGrid's `All Types` filter and `Search Inbox…` box have no counterpart. |
+| Inbox | `notifications.tsx` | Partial | Frontend-mock (`useNotificationStore`). Core purpose (list, mark-read, mark-all-read, deep-link to source entity) matches; per forge-inventory, the page has no dropdowns/filters/search at all, so ShotGrid's `All Types` filter and `Search Inbox…` box have no counterpart. |
 | My Tasks | `tasks.tsx` | Present | Real backend for the task list (`useTasks()`/`useUpdateTask()`). Core function (assigned-task list, search, project/department filters, my-tasks/needs-review toggles, List/Kanban view) matches and is arguably richer in places (Kanban, role-aware defaults). No explicit `Sort` control, and no "Create Versions" modal/flow anywhere on this page. |
 | Assets | `assets.tsx` | Present | Frontend-mock (`useAssetStore`; the real `useAssets()` hook exists but is unused dead code per forge-inventory Errors Found). Core browse/search/filter/create function matches (search, `typeFilter`, `statusFilter`, `projectFilter`, `mineOnly`, Grid/List view). No `Sort`/`More`/dedicated `Filter` panel. |
 | Sequences | — (no Forge page) | Missing | No page in the 38-page Forge inventory serves a standalone Sequences entity (list, detail, sub-tabs for Shots/Tasks/Assets/Notes). `shots.tsx`'s grid view groups shots by sequence name as a display mode, but there is no Sequence entity page, detail view, or per-sequence task rollup. |
-| Shot Detail | `shot-detail.tsx` | Present | Frontend-mock (`useShotStore`, `useReviewStore`, static mock data). Core structure (shot info + Tasks/Versions/Assets-style tabs) matches ShotGrid's Tasks/Versions/Assets sub-tab bar. Per forge-inventory, the page has zero dropdown/filter/sort controls, so ShotGrid's embedded task list's `Sort`/`Group`/`Fields`/`More`/`Gantt Display`/`Search Tasks…`/`Filter` have no counterpart, and there is no embedded Gantt chart. |
+| Shot Detail | `shot-detail.tsx` | Partial | Frontend-mock (`useShotStore`, `useReviewStore`, static mock data). Core structure (shot info + Tasks/Versions/Assets-style tabs) matches ShotGrid's Tasks/Versions/Assets sub-tab bar. Per forge-inventory, the page has zero dropdown/filter/sort controls, so ShotGrid's embedded task list's `Sort`/`Group`/`Fields`/`More`/`Gantt Display`/`Search Tasks…`/`Filter` have no counterpart, and there is no embedded Gantt chart. |
 | Review | `review.tsx` | Partial | Frontend-mock (`useTasksStore`, `useReviewStore`, `useNotificationStore`). The player/annotation/compare-mode functionality is present and arguably richer than ShotGrid's static Version Player screen, but forge-inventory explicitly notes "no search/status/sort control was found for the review queue list itself" — a central browsing workflow for ShotGrid's playlist + Versions-grid page, not a decorative toolbar gap. |
 | Version Player (Media Review Lightbox) | `review.tsx` | Deferred (known, by design) | The catalog page itself lists no dropdown/filter controls to compare, and `review.tsx` is a genuinely comparable frame-accurate review/annotation/notes player. The substantive remaining gap — real backend persistence for reviews/notes/annotations, vs. Forge's frontend-mock `useReviewStore` — is explicitly named as intentional/staged scope in `forge-final.md` §6 ("reviews" and "notes" both listed). |
 | Assets (Demo: Animation project — classic dark theme) | `assets.tsx` | Partial | Same base page as "Assets" above, but this batch's screenshots showcase real, substantial ShotGrid features absent from Forge entirely: an advanced faceted Filter side-panel (Type/Status/Shots checkboxes with counts), a "Save Page As" / "My Filters" saved-filter system, and a "Project Pages" nav flyout with Favorites/Recently Viewed. None of these exist on `assets.tsx`. |
@@ -38,7 +40,7 @@
 
 ## Dropdown/Filter Parity
 
-**Summary:** 18 of the 19 ShotGrid catalog pages have at least one dropdown/filter/sort control (Version Player (Media Review Lightbox) has none listed in the catalog — "None visible on this screen" — and is excluded from this table). 125 controls compared across those 18 pages — Yes: 5, Partial: 9, No: 111.
+**Summary:** 18 of the 19 ShotGrid catalog pages have at least one dropdown/filter/sort control (Version Player (Media Review Lightbox) has none listed in the catalog — "None visible on this screen" — and is excluded from this table). 125 controls compared across those 18 pages — Yes: 5, Partial: 10, No: 110.
 
 | ShotGrid Page | ShotGrid Control | Forge Page | Forge Has It? | Notes |
 |---|---|---|---|---|
@@ -57,7 +59,7 @@
 | Inbox | All Types | `notifications.tsx` | No | notifications.tsx has no dropdowns/filters/sort documented at all |
 | Inbox | Search Inbox… | `notifications.tsx` | No | same as above |
 | My Tasks | Sort | `tasks.tsx` | No | no explicit Sort control; status pill row used instead |
-| My Tasks | Filter | `tasks.tsx` | No | no dedicated Filter toggle; status pill row + `projectFilter`/`departmentFilter`/`myTasksOnly`/`needsReviewOnly` serve a similar purpose but aren't the same control |
+| My Tasks | Filter | `tasks.tsx` | Partial | no dedicated Filter toggle; status pill row + `projectFilter`/`departmentFilter`/`myTasksOnly`/`needsReviewOnly` serve a similar purpose but aren't the same control |
 | My Tasks | Search My Tasks… | `tasks.tsx` | Yes | `search` text field on task title |
 | My Tasks | Projects (nav mega-menu) | `tasks.tsx` | No | no Projects nav mega-menu documented on this page |
 | My Tasks | Link (Create Versions modal field) | `tasks.tsx` | No | no Create-Versions dialog found on `tasks.tsx` |
