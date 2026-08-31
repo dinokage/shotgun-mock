@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import {
   tasksTable,
   usersTable,
+  tenantRolesTable,
   taskChecklistItemsTable,
   taskDependenciesTable,
   taskCommentsTable,
@@ -40,6 +41,30 @@ async function taskInTenant(id: string, tenantId: string) {
     .where(and(eq(tasksTable.id, id), eq(tasksTable.tenantId, tenantId)));
   return !!row;
 }
+
+// The approval-events table is an append-only audit trail (see the schema
+// comment in tasks-detail.ts) — its whole purpose is to record who approved
+// what and in what capacity. Accepting `byRole` from the request body would
+// let any caller write a false audit record (e.g. claim they acted as
+// "lead" while actually an "artist"), so the role is always looked up
+// server-side from the caller's own session (req.roleId), never trusted
+// from the client.
+async function roleNameForCaller(roleId: string, tenantId: string) {
+  const [row] = await db
+    .select({ name: tenantRolesTable.name })
+    .from(tenantRolesTable)
+    .where(and(eq(tenantRolesTable.id, roleId), eq(tenantRolesTable.tenantId, tenantId)));
+  return row?.name;
+}
+
+const APPROVAL_EVENT_ACTIONS = [
+  "submitted-for-lead-review",
+  "submitted-for-manager-review",
+  "approved",
+  "changes-requested",
+  "rejected",
+  "published",
+] as const;
 
 export const tasksRouter = Router();
 
@@ -401,11 +426,14 @@ tasksRouter.post("/:id/approval-events", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const userId = req.userId!;
-    const { action, byRole } = req.body;
-    if (!action || !byRole)
-      return res.status(400).json({ error: "Missing action or byRole" });
+    const roleId = req.roleId!;
+    const { action } = req.body;
+    if (!action || !(APPROVAL_EVENT_ACTIONS as readonly string[]).includes(action))
+      return res.status(400).json({ error: "Missing or invalid action" });
     if (!(await taskInTenant(req.params.id, tenantId)))
       return res.status(404).json({ error: "Not found" });
+    const byRole = await roleNameForCaller(roleId, tenantId);
+    if (!byRole) return res.status(400).json({ error: "Invalid role" });
     const newId = crypto.randomUUID();
     await db.insert(taskApprovalEventsTable).values({
       id: newId,

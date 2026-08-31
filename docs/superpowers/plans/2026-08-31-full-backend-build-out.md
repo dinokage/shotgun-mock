@@ -1493,7 +1493,7 @@ git commit -m "feat(api): add daily logs route"
 **Interfaces:**
 - Produces: extends existing `GET/POST/PUT` on `/api/tasks` for the new enriched fields; adds `GET/POST /api/tasks/:id/checklist`, `PUT /api/tasks/:id/checklist/:itemId`; `GET/POST /api/tasks/:id/comments`; `GET/POST /api/tasks/:id/dependencies`; `GET/POST /api/tasks/:id/attachments`; `GET/POST /api/tasks/:id/approval-events`.
 
-- [ ] **Step 1: Read the current `artifacts/api-server/src/routes/tasks.ts` in full** (it's short, ~80 lines) to confirm the exact current `GET`/`POST`/`PUT` handlers before extending them — this task modifies existing handlers, not just appends. Add `usersTable` to the file's existing `@workspace/db/schema` import, and add this helper near the top of the file (after the imports, before the router handlers) — it's used by Steps 2, 3, and the nested sub-resource routes below: a DB foreign key only verifies a referenced row exists, not who owns it, so every foreign key accepted from a request body needs an explicit tenant-ownership check before use (same pattern already applied in `routes/shots.ts`, `routes/versions.ts`, `routes/reviews.ts`):
+- [ ] **Step 1: Read the current `artifacts/api-server/src/routes/tasks.ts` in full** (it's short, ~80 lines) to confirm the exact current `GET`/`POST`/`PUT` handlers before extending them — this task modifies existing handlers, not just appends. Add `usersTable` and `tenantRolesTable` to the file's existing `@workspace/db/schema` import, and add these helpers near the top of the file (after the imports, before the router handlers) — used by Steps 2, 3, and the nested sub-resource routes below: a DB foreign key only verifies a referenced row exists, not who owns it, so every foreign key accepted from a request body needs an explicit tenant-ownership check before use (same pattern already applied in `routes/shots.ts`, `routes/versions.ts`, `routes/reviews.ts`):
 
 ```typescript
 async function userInTenant(id: string, tenantId: string) {
@@ -1519,6 +1519,30 @@ async function taskInTenant(id: string, tenantId: string) {
     .where(and(eq(tasksTable.id, id), eq(tasksTable.tenantId, tenantId)));
   return !!row;
 }
+
+// The approval-events table is an append-only audit trail (see the schema
+// comment in tasks-detail.ts) — its whole purpose is to record who approved
+// what and in what capacity. Accepting `byRole` from the request body would
+// let any caller write a false audit record (e.g. claim they acted as
+// "lead" while actually an "artist"), so the role is always looked up
+// server-side from the caller's own session (req.roleId), never trusted
+// from the client.
+async function roleNameForCaller(roleId: string, tenantId: string) {
+  const [row] = await db
+    .select({ name: tenantRolesTable.name })
+    .from(tenantRolesTable)
+    .where(and(eq(tenantRolesTable.id, roleId), eq(tenantRolesTable.tenantId, tenantId)));
+  return row?.name;
+}
+
+const APPROVAL_EVENT_ACTIONS = [
+  "submitted-for-lead-review",
+  "submitted-for-manager-review",
+  "approved",
+  "changes-requested",
+  "rejected",
+  "published",
+] as const;
 ```
 
 - [ ] **Step 2: Extend the existing `POST /` handler** to accept the new enriched fields (`title`, `description`, `priority`, `department`, `pipelinePhase`, `dueDate`, `estimatedHours`) alongside the existing `entityId`/`entityType`/`status`:
@@ -1887,11 +1911,14 @@ tasksRouter.post("/:id/approval-events", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const userId = req.userId!;
-    const { action, byRole } = req.body;
-    if (!action || !byRole)
-      return res.status(400).json({ error: "Missing action or byRole" });
+    const roleId = req.roleId!;
+    const { action } = req.body;
+    if (!action || !(APPROVAL_EVENT_ACTIONS as readonly string[]).includes(action))
+      return res.status(400).json({ error: "Missing or invalid action" });
     if (!(await taskInTenant(req.params.id, tenantId)))
       return res.status(404).json({ error: "Not found" });
+    const byRole = await roleNameForCaller(roleId, tenantId);
+    if (!byRole) return res.status(400).json({ error: "Invalid role" });
     const newId = crypto.randomUUID();
     await db.insert(taskApprovalEventsTable).values({
       id: newId,
