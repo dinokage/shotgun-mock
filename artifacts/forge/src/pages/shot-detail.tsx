@@ -12,7 +12,7 @@ import {
   EmptyDescription,
 } from "@/components/ui/empty";
 import { PROJECTS, USERS, TASKS, ASSETS, AUDIT_EVENTS } from "@/data/mockData";
-import { useShotStore } from "@/store/shots";
+import { useShots } from "@/hooks/useShots";
 import { useReviewStore } from "@/store/reviews";
 import { useUIStore } from "@/store/ui";
 import {
@@ -29,11 +29,17 @@ import {
 
 export default function ShotDetail() {
   const [, params] = useRoute("/shots/:id");
-  const liveShots = useShotStore((state) => state.shots);
+  const { data: liveShots = [], isLoading } = useShots();
   const liveVersions = useReviewStore((state) => state.versions);
   const setActiveTaskDrawer = useUIStore((state) => state.setActiveTaskDrawer);
 
   const shot = liveShots.find((s) => s.id === params?.id);
+  if (isLoading)
+    return (
+      <div className="p-6 text-center text-muted-foreground">
+        Loading shot...
+      </div>
+    );
   if (!shot)
     return (
       <div className="p-6 text-center text-muted-foreground">
