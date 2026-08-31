@@ -1457,7 +1457,7 @@ dailyLogsRouter.post("/", async (req, res) => {
     await db
       .update(tasksTable)
       .set({ actualHours: task.actualHours + hours })
-      .where(eq(tasksTable.id, taskId));
+      .where(and(eq(tasksTable.tenantId, tenantId), eq(tasksTable.id, taskId)));
 
     const [created] = await db
       .select()
