@@ -85,7 +85,7 @@
   - `Entity Pipeline` — fixed label showing "Shot"
   - Underlying Tracking Settings Steps tab not interactable (obscured by the modal)
 
-## Project Overview (Drednots project)
+## Overview (Drednots project)
 
 ### WhatsApp Image 2026-08-26 at 19.21.09.jpeg
 - **ShotGrid page/screen:** Overview (project: "Drednots")
