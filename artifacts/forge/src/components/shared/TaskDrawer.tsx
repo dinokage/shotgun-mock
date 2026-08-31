@@ -17,6 +17,8 @@ import {
   useTaskDependencies,
   useTaskAttachments,
   useAddTaskApprovalEvent,
+  useDailyLogs,
+  useAddDailyLog,
   type TaskDependencyDTO,
 } from "@/hooks/useTasks";
 import { useShots } from "@/hooks/useShots";
@@ -110,6 +112,8 @@ export function TaskDrawer() {
   const addApprovalEventMutation = useAddTaskApprovalEvent(
     activeTaskDrawer ?? undefined,
   );
+  const { data: dailyLogs = [] } = useDailyLogs(activeTaskDrawer ?? undefined);
+  const addDailyLogMutation = useAddDailyLog();
   const { data: liveShots = [] } = useShots();
   const { data: liveAssets = [] } = useAssets();
   const updateShotStatus = useShotStore((state) => state.updateShot);
@@ -117,6 +121,9 @@ export function TaskDrawer() {
   const [commentText, setCommentText] = useState("");
   const [showMentions, setShowMentions] = useState(false);
   const [mentionQuery, setMentionQuery] = useState("");
+  const [logFormOpen, setLogFormOpen] = useState(false);
+  const [logHours, setLogHours] = useState("8");
+  const [logNote, setLogNote] = useState("");
 
   // "Approve & Send to Client" forwards a shot to the external, unauthenticated
   // client portal (client-review.tsx) in one action — a one-way door that
@@ -130,6 +137,37 @@ export function TaskDrawer() {
   if (!task) return null;
 
   const assignee = USERS.find((u) => u.id === task.assignedTo);
+
+  const handleAddDailyLog = () => {
+    const hoursNum = parseFloat(logHours);
+    if (!hoursNum || hoursNum <= 0) {
+      toast({
+        title: "Missing Info",
+        description: "Enter valid hours.",
+        variant: "destructive",
+      });
+      return;
+    }
+    addDailyLogMutation.mutate(
+      {
+        taskId: task.id,
+        date: new Date().toISOString().slice(0, 10),
+        hours: hoursNum,
+        note: logNote.trim() || "No notes provided.",
+      },
+      {
+        onSuccess: () => {
+          toast({
+            title: "Log Submitted",
+            description: "Your daily update has been recorded successfully.",
+          });
+          setLogFormOpen(false);
+          setLogHours("8");
+          setLogNote("");
+        },
+      },
+    );
+  };
 
   const handleCommentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
@@ -590,12 +628,89 @@ export function TaskDrawer() {
                     </Button>
                   </div>
                 ))}
-              {/* Daily time-logging (Log Daily Time / Recent Logs) is
-                  pending Task 19's daily-logs nested resource wiring — the
-                  mock store's inline task.dailyLogs no longer has a real
-                  backend equivalent reachable from this task's hooks, so
-                  this action and its UI are omitted here rather than left
-                  reading/writing a field that doesn't exist on TaskDTO. */}
+            </div>
+
+            {/* Daily Time Logging — /daily-logs, keyed by this task's id
+                (hooks/useTasks.ts's useDailyLogs/useAddDailyLog). */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-sm font-semibold flex items-center gap-1.5">
+                  <Clock className="w-4 h-4" /> Daily Time Logs
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setLogFormOpen((prev) => !prev)}
+                >
+                  {logFormOpen ? "Cancel" : "Log Daily Time"}
+                </Button>
+              </div>
+              {logFormOpen && (
+                <div className="space-y-2.5 mb-3 p-3 rounded-md border border-border bg-muted/20">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">
+                      Hours Spent
+                    </label>
+                    <input
+                      type="number"
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                      value={logHours}
+                      onChange={(e) => setLogHours(e.target.value)}
+                      min="0"
+                      max="24"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">
+                      Notes
+                    </label>
+                    <textarea
+                      className="w-full h-16 bg-background border border-input rounded-md p-2.5 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-primary"
+                      placeholder="What did you accomplish today?"
+                      value={logNote}
+                      onChange={(e) => setLogNote(e.target.value)}
+                    />
+                  </div>
+                  <Button size="sm" className="w-full" onClick={handleAddDailyLog}>
+                    Submit Log
+                  </Button>
+                </div>
+              )}
+              {dailyLogs.length > 0 ? (
+                <div className="space-y-2">
+                  {dailyLogs
+                    .slice()
+                    .reverse()
+                    .slice(0, 5)
+                    .map((log) => {
+                      const loggedBy = USERS.find((u) => u.id === log.userId);
+                      return (
+                        <div
+                          key={log.id}
+                          className="p-2.5 rounded-md border border-border bg-muted/20 text-sm"
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-medium">
+                              {loggedBy?.name ?? "Unknown"} — {log.hours}h
+                            </span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {new Date(log.date).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground italic">
+                            "{log.note}"
+                          </p>
+                        </div>
+                      );
+                    })}
+                </div>
+              ) : (
+                !logFormOpen && (
+                  <p className="text-sm text-muted-foreground">
+                    No time logged yet.
+                  </p>
+                )
+              )}
             </div>
 
             <Separator />

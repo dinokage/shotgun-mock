@@ -50,6 +50,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Image as ImageIcon, Video, Paperclip, Send } from "lucide-react";
 import { apiClient } from "@/lib/apiClient";
+import { useDailyLogs, useAddDailyLog } from "@/hooks/useTasks";
 import { fadeInUp, DURATION } from "@/lib/motion";
 import {
   Empty,
@@ -146,11 +147,47 @@ function PlaylistItem({
   );
 }
 
+// One "Recent Progress & Daily Logs" row. Daily logs are a real backend
+// resource keyed by taskId (see hooks/useTasks.ts's useDailyLogs), not an
+// inline field on the mock Task object anymore, so each row fetches its own
+// task's logs and renders nothing if that task has none logged yet.
+function DailyLogRow({ task }: { task: any }) {
+  const { data: logs = [] } = useDailyLogs(task.id);
+  if (logs.length === 0) return null;
+  const assignee = USERS.find((u) => u.id === task.assigneeId);
+  const latestLog = logs[logs.length - 1];
+  return (
+    <div className="p-4 hover:bg-muted/30 transition-colors">
+      <div className="flex items-start gap-4">
+        <Avatar className="w-8 h-8 mt-1">
+          <AvatarImage src={assignee?.avatar} />
+        </Avatar>
+        <div className="flex-1">
+          <div className="flex items-center justify-between mb-1">
+            <div className="font-medium text-sm">
+              <span className="text-muted-foreground mr-1">
+                {assignee?.name} logged
+              </span>
+              {latestLog.hours}h on {task.title}
+            </div>
+            <span className="text-xs text-muted-foreground">
+              {new Date(latestLog.date).toLocaleDateString()}
+            </span>
+          </div>
+          <div className="text-sm bg-muted/50 p-2.5 rounded-md text-muted-foreground italic border-l-2 border-primary">
+            "{latestLog.note}"
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function DailyStandup() {
   const { currentUser } = useAuthStore();
   const tasks = useTasksStore((s) => s.tasks);
-  const updateTask = useTasksStore((s) => s.updateTask);
   const updateTaskStatus = useTasksStore((s) => s.updateTaskStatus);
+  const addDailyLog = useAddDailyLog();
   const standupUpdates = useStandupsStore((s) => s.updates);
   const addStandupUpdate = useStandupsStore((s) => s.addUpdate);
   const playlistIds = useStandupsStore((s) => s.playlist);
@@ -386,28 +423,26 @@ export default function DailyStandup() {
       });
       return;
     }
-    const task = tasks.find((t) => t.id === resolvedTaskId);
-    if (!task) return;
-    updateTask(task.id, {
-      dailyLogs: [
-        ...task.dailyLogs,
-        {
-          date: new Date().toISOString().slice(0, 10),
-          hours: hoursNum,
-          note: logNote.trim() || "No notes provided.",
-          userId: currentUser.id,
+    addDailyLog.mutate(
+      {
+        taskId: resolvedTaskId,
+        date: new Date().toISOString().slice(0, 10),
+        hours: hoursNum,
+        note: logNote.trim() || "No notes provided.",
+      },
+      {
+        onSuccess: () => {
+          toast({
+            title: "Log Submitted",
+            description: "Your daily update has been recorded successfully.",
+          });
+          setLogDialogOpen(false);
+          setLogTaskId("");
+          setLogHours("8");
+          setLogNote("");
         },
-      ],
-      actualHours: task.actualHours + hoursNum,
-    });
-    toast({
-      title: "Log Submitted",
-      description: "Your daily update has been recorded successfully.",
-    });
-    setLogDialogOpen(false);
-    setLogTaskId("");
-    setLogHours("8");
-    setLogNote("");
+      },
+    );
   };
 
   const handleViewLogs = (memberId: string, memberName: string) => {
@@ -749,50 +784,23 @@ export default function DailyStandup() {
                     <Card className="border-border/50">
                       <CardContent className="p-0">
                         <div className="divide-y divide-border">
+                          {/* Daily logs are a real, per-task backend resource
+                              now (useDailyLogs), not an inline task.dailyLogs
+                              array, so which tasks actually have logs can't
+                              be known before fetching. Each candidate task
+                              (dept-filtered, capped at 8) gets its own
+                              DailyLogRow, which fetches that task's logs and
+                              renders nothing if there are none — so this list
+                              may show fewer than 8 rows even when more than 8
+                              tasks in the department have logged time. */}
                           {tasks
                             .filter(
-                              (t) =>
-                                (isAllDepts || t.department === dept?.name) &&
-                                t.dailyLogs.length > 0,
+                              (t) => isAllDepts || t.department === dept?.name,
                             )
                             .slice(0, 8)
-                            .map((task) => {
-                              const assignee = USERS.find(
-                                (u) => u.id === task.assigneeId,
-                              );
-                              const latestLog =
-                                task.dailyLogs[task.dailyLogs.length - 1];
-                              return (
-                                <div
-                                  key={task.id}
-                                  className="p-4 hover:bg-muted/30 transition-colors"
-                                >
-                                  <div className="flex items-start gap-4">
-                                    <Avatar className="w-8 h-8 mt-1">
-                                      <AvatarImage src={assignee?.avatar} />
-                                    </Avatar>
-                                    <div className="flex-1">
-                                      <div className="flex items-center justify-between mb-1">
-                                        <div className="font-medium text-sm">
-                                          <span className="text-muted-foreground mr-1">
-                                            {assignee?.name} logged
-                                          </span>
-                                          {latestLog.hours}h on {task.title}
-                                        </div>
-                                        <span className="text-xs text-muted-foreground">
-                                          {new Date(
-                                            latestLog.date,
-                                          ).toLocaleDateString()}
-                                        </span>
-                                      </div>
-                                      <div className="text-sm bg-muted/50 p-2.5 rounded-md text-muted-foreground italic border-l-2 border-primary">
-                                        "{latestLog.note}"
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
+                            .map((task) => (
+                              <DailyLogRow key={task.id} task={task} />
+                            ))}
                         </div>
                       </CardContent>
                     </Card>

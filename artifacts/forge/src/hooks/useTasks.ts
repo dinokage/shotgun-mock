@@ -275,3 +275,39 @@ export function useAddTaskApprovalEvent(taskId: string | undefined) {
       }),
   });
 }
+
+// ---------------------------------------------------------------------------
+// Daily logs — /daily-logs?taskId=... (top-level resource, not nested under
+// /tasks/:id — see artifacts/api-server/src/routes/daily-logs.ts)
+// ---------------------------------------------------------------------------
+
+export interface DailyLogDTO {
+  id: string;
+  tenantId: string;
+  taskId: string;
+  userId: string;
+  date: string;
+  hours: number;
+  note: string;
+  createdAt: string;
+}
+
+export function useDailyLogs(taskId: string | undefined) {
+  return useQuery<DailyLogDTO[]>({
+    queryKey: ["daily-logs", taskId ?? "none"],
+    queryFn: async () => apiClient.get<DailyLogDTO[]>(`/daily-logs?taskId=${taskId}`),
+    enabled: !!taskId,
+  });
+}
+
+export function useAddDailyLog() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { taskId: string; date: string; hours: number; note?: string }) =>
+      apiClient.post<DailyLogDTO>("/daily-logs", body),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["daily-logs", variables.taskId] });
+      queryClient.invalidateQueries({ queryKey: ["tasks"] }); // actualHours changed
+    },
+  });
+}
