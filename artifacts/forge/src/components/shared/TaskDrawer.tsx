@@ -165,6 +165,13 @@ export function TaskDrawer() {
           setLogHours("8");
           setLogNote("");
         },
+        onError: () => {
+          toast({
+            title: "Log Failed",
+            description: "Couldn't record your update. Please try again.",
+            variant: "destructive",
+          });
+        },
       },
     );
   };
@@ -631,19 +638,24 @@ export function TaskDrawer() {
             </div>
 
             {/* Daily Time Logging — /daily-logs, keyed by this task's id
-                (hooks/useTasks.ts's useDailyLogs/useAddDailyLog). */}
+                (hooks/useTasks.ts's useDailyLogs/useAddDailyLog). Gated the
+                same way the pre-Task-18 mock-store version was: only the
+                assignee can log time, and only while the task is actively
+                in progress. */}
             <div>
               <div className="flex items-center justify-between mb-3">
                 <div className="text-sm font-semibold flex items-center gap-1.5">
                   <Clock className="w-4 h-4" /> Daily Time Logs
                 </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setLogFormOpen((prev) => !prev)}
-                >
-                  {logFormOpen ? "Cancel" : "Log Daily Time"}
-                </Button>
+                {isAssignee && task.status === "in-progress" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setLogFormOpen((prev) => !prev)}
+                  >
+                    {logFormOpen ? "Cancel" : "Log Daily Time"}
+                  </Button>
+                )}
               </div>
               {logFormOpen && (
                 <div className="space-y-2.5 mb-3 p-3 rounded-md border border-border bg-muted/20">

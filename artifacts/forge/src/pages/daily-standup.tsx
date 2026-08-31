@@ -441,6 +441,14 @@ export default function DailyStandup() {
           setLogHours("8");
           setLogNote("");
         },
+        onError: () => {
+          toast({
+            title: "Log Failed",
+            description:
+              "Couldn't record your update — the selected task may not exist on the backend yet.",
+            variant: "destructive",
+          });
+        },
       },
     );
   };

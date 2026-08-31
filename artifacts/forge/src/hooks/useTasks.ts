@@ -297,6 +297,7 @@ export function useDailyLogs(taskId: string | undefined) {
     queryKey: ["daily-logs", taskId ?? "none"],
     queryFn: async () => apiClient.get<DailyLogDTO[]>(`/daily-logs?taskId=${taskId}`),
     enabled: !!taskId,
+    staleTime: 5000,
   });
 }
 
