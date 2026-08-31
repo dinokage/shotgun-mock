@@ -6,6 +6,8 @@ import { tasksRouter } from "./tasks";
 import usersRouter from "./users";
 import departmentsRouter from "./departments";
 import rolesRouter from "./roles";
+import { episodesRouter } from "./episodes";
+import { sequencesRouter } from "./sequences";
 
 const router = Router();
 
@@ -18,5 +20,7 @@ router.use("/tasks", tasksRouter);
 router.use("/users", usersRouter);
 router.use("/departments", departmentsRouter);
 router.use("/roles", rolesRouter);
+router.use("/episodes", episodesRouter);
+router.use("/sequences", sequencesRouter);
 
 export default router;
