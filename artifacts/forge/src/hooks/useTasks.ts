@@ -301,6 +301,20 @@ export function useDailyLogs(taskId: string | undefined) {
   });
 }
 
+// Same shape as useDailyLogs, but filtered by userId instead of taskId —
+// GET /daily-logs supports both query filters independently (see route).
+// Used by pages that need one member's logged hours across all of their
+// tasks (e.g. the Daily Standup payroll table) without fetching every
+// task's logs individually.
+export function useDailyLogsByUser(userId: string | undefined) {
+  return useQuery<DailyLogDTO[]>({
+    queryKey: ["daily-logs", "user", userId ?? "none"],
+    queryFn: async () => apiClient.get<DailyLogDTO[]>(`/daily-logs?userId=${userId}`),
+    enabled: !!userId,
+    staleTime: 5000,
+  });
+}
+
 export function useAddDailyLog() {
   const queryClient = useQueryClient();
   return useMutation({
