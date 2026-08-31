@@ -120,10 +120,37 @@ export const tasksTable = pgTable("tasks", {
     .references(() => tenantsTable.id, { onDelete: "cascade" }),
   entityId: text("entity_id").notNull(), // Can be an asset id or shot id
   entityType: text("entity_type").notNull(), // 'asset' | 'shot'
+  title: text("title").notNull().default(""),
+  description: text("description").notNull().default(""),
   assignedTo: text("assigned_to"), // FK to usersTable.id
   status: text("status").notNull().default("ready"),
+  priority: text("priority").notNull().default("medium"),
+  department: text("department"),
+  pipelinePhase: text("pipeline_phase"),
+  weeklyRating: text("weekly_rating"),
+  tags: jsonb("tags").$type<string[]>().notNull().default([]),
+  estimatedHours: integer("estimated_hours").notNull().default(0),
+  actualHours: integer("actual_hours").notNull().default(0),
   startDate: timestamp("start_date"),
   dueDate: timestamp("due_date"),
+  lastStatusUpdate: timestamp("last_status_update").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const dailyLogsTable = pgTable("daily_logs", {
+  id: text("id").primaryKey(),
+  tenantId: text("tenant_id")
+    .notNull()
+    .references(() => tenantsTable.id, { onDelete: "cascade" }),
+  taskId: text("task_id")
+    .notNull()
+    .references(() => tasksTable.id, { onDelete: "cascade" }),
+  userId: text("user_id")
+    .notNull()
+    .references(() => usersTable.id, { onDelete: "cascade" }),
+  date: text("date").notNull(), // ISO date string, e.g. "2026-08-31"
+  hours: integer("hours").notNull(),
+  note: text("note").notNull().default(""),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
