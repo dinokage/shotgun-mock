@@ -318,7 +318,7 @@ export default function Tasks() {
 
       <div className="flex-1 overflow-hidden">
         {view === "kanban" ? (
-          <KanbanView tasks={filtered as any} />
+          <KanbanView tasks={filtered} />
         ) : isMobile ? (
           <div className="rounded-md border border-border overflow-y-auto h-full p-3 space-y-3">
             {filtered.slice(0, 100).map((task) => {
