@@ -2261,7 +2261,7 @@ git commit -m "feat(frontend): wire Tasks pages and nested sub-resources to the 
 **Files:**
 - Modify: `artifacts/forge/src/hooks/useTasks.ts` (add `useDailyLogs`/`useAddDailyLog`)
 - Modify: `artifacts/forge/src/pages/daily-standup.tsx` (the "Log Update" dialog and the Recent Progress & Daily Logs list, which today read/write `task.dailyLogs` on the mock `Task` object via `store/tasks.ts`'s `updateTask`)
-- Modify: `artifacts/forge/src/pages/task-detail.tsx` (if it has its own daily-log UI separate from the standup page's)
+- Modify: `artifacts/forge/src/components/shared/TaskDrawer.tsx` (its real path — NOT `pages/task-detail.tsx`, which does not exist in this repo; Task 18 confirmed this and correctly deferred TaskDrawer's own "Log Daily Time" button/inline form to this task, since it needs the `useDailyLogs`/`useAddDailyLog` hooks this task adds. Task 18 left a clear comment marking exactly where the removed UI was, referencing this task.)
 
 **Interfaces:**
 - Produces: `useDailyLogs(taskId)`, `useAddDailyLog(taskId)`.
@@ -2342,12 +2342,14 @@ const handleLogUpdateSubmit = () => {
 
 - [ ] **Step 3: Update the "Recent Progress & Daily Logs" list rendering** to read from `useDailyLogs` per-task instead of `task.dailyLogs` — this list currently iterates `tasks.filter((t) => t.dailyLogs.length > 0)`; since daily logs are no longer embedded on the task object, fetch logs per visible task (or add a `GET /api/daily-logs?taskId=...` call per row, batched via `Promise.all` in a small local effect, or — simpler — extend the `GET /api/tasks` response is NOT changed by this plan, so query each relevant task's logs individually via `useDailyLogs(taskId)` called from a small per-row subcomponent, matching the pattern of components that need per-item data already used elsewhere in this file for per-member data via `USERS.find(...)`).
 
-- [ ] **Step 4: Verify.** `pnpm run typecheck`, then browser check: submit a daily log from the Daily Standup page, confirm it appears in Recent Progress & Daily Logs after reload, confirm the task's actualHours updated.
+- [ ] **Step 4: Re-wire `TaskDrawer.tsx`'s "Log Daily Time" button and inline form.** Task 18 removed this UI entirely (rather than leave it reading/writing the now-nonexistent `task.dailyLogs` field) and left a comment at the removal site reading "Daily time-logging (Log Daily Time / Recent Logs) is pending Task 19's daily-logs nested resource wiring" — find that comment and replace it with a working implementation: the "Log Daily Time" button (toggles `logFormOpen`), the inline form (hours/note inputs, submit calling `useAddDailyLog()` with the drawer's current `task.id`), and a "Recent Logs" list rendering `useDailyLogs(task.id)`'s `data`. Follow the same submit-handler shape as Step 2 above, and the same per-task-hook rendering pattern as Step 3 above.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Verify.** `pnpm run typecheck`, then browser check: submit a daily log from the Daily Standup page, confirm it appears in Recent Progress & Daily Logs after reload, confirm the task's actualHours updated. Also open a task in `TaskDrawer` and confirm "Log Daily Time" works and shows recent logs.
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add artifacts/forge/src/hooks/useTasks.ts artifacts/forge/src/pages/daily-standup.tsx artifacts/forge/src/pages/task-detail.tsx
+git add artifacts/forge/src/hooks/useTasks.ts artifacts/forge/src/pages/daily-standup.tsx artifacts/forge/src/components/shared/TaskDrawer.tsx
 git commit -m "feat(frontend): wire daily task logs to the real backend"
 ```
 
