@@ -159,10 +159,20 @@ export const versionsTable = pgTable("versions", {
   tenantId: text("tenant_id")
     .notNull()
     .references(() => tenantsTable.id, { onDelete: "cascade" }),
-  taskId: text("task_id")
-    .notNull()
-    .references(() => tasksTable.id, { onDelete: "cascade" }),
+  entityId: text("entity_id").notNull(),
+  entityType: text("entity_type").notNull(), // 'shot' | 'asset'
+  versionNumber: text("version_number").notNull().default("v001"),
+  taskId: text("task_id").references(() => tasksTable.id, {
+    onDelete: "set null",
+  }),
   mediaUrl: text("media_url").notNull(),
   status: text("status").notNull().default("pending_review"),
+  notes: text("notes").notNull().default(""),
+  thumbnail: text("thumbnail"),
+  derivedFromId: text("derived_from_id"),
+  fileSize: text("file_size").notNull().default("0MB"),
+  createdById: text("created_by_id").references(() => usersTable.id, {
+    onDelete: "set null",
+  }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
