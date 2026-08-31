@@ -2203,17 +2203,45 @@ git commit -m "feat(frontend): persist review annotations to the real backend, f
 - Modify: `artifacts/forge/src/pages/tasks.tsx`, `artifacts/forge/src/pages/task-detail.tsx`, `artifacts/forge/src/components/shell/TaskDrawer.tsx`
 
 **Interfaces:**
-- Produces: `useTasks(projectId?)`, `useUpdateTask()`, `useTaskChecklist(taskId)`, `useAddChecklistItem(taskId)`, `useToggleChecklistItem(taskId)`, `useTaskComments(taskId)`, `useAddTaskComment(taskId)`, `useTaskDependencies(taskId)`, `useTaskAttachments(taskId)`, `useTaskApprovalEvents(taskId)`.
+- Produces: `useTasks()`, `useUpdateTask()`, `useTaskChecklist(taskId)`, `useAddChecklistItem(taskId)`, `useToggleChecklistItem(taskId)`, `useTaskComments(taskId)`, `useAddTaskComment(taskId)`, `useTaskDependencies(taskId)`, `useTaskAttachments(taskId)`, `useTaskApprovalEvents(taskId)`.
 
-- [ ] **Step 1: Create `artifacts/forge/src/hooks/useTasks.ts`** with the core `useTasks`/`useUpdateTask` pair (same pattern as Task 15's `useShots.ts`, `TaskDTO` matching the enriched `tasksTable` from Task 4) plus the five nested-resource hook pairs, each following `useReviews.ts`'s `useAnnotations`/`useCreateAnnotation` pattern from Task 17 but pointed at `/tasks/:id/checklist`, `/tasks/:id/comments`, `/tasks/:id/dependencies`, `/tasks/:id/attachments`, `/tasks/:id/approval-events` respectively. For the checklist toggle specifically, add a `useToggleChecklistItem(taskId)` mutation calling `apiClient.put(\`/tasks/${taskId}/checklist/${itemId}\`, { done })`.
+**IMPORTANT — corrected field mapping (this section originally claimed
+`TaskDTO`'s fields match the mock `Task` interface one-for-one; that claim
+is WRONG and was caught by the controller before dispatch — do not trust
+that claim if you see it repeated anywhere else).** The real `tasksTable`
+schema (`lib/db/src/schema/production.ts`) and the mock `Task` interface
+(`artifacts/forge/src/data/mockData.ts`) diverge on several fields:
 
-- [ ] **Step 2: Wire `tasks.tsx`, `task-detail.tsx`, and `TaskDrawer.tsx`.** Read all three files first (the existing `useTasksStore` from `store/tasks.ts` has ~10 mutation methods per this session's earlier inspection — `updateTask`, `updateTaskStatus`, and several more for checklist/comments/dependencies). For each store method, map it to the corresponding new hook:
+| Mock `Task` field | Real `tasksTable` equivalent |
+|---|---|
+| `assetId` / `shotId` (two optional fields) | `entityId` + `entityType: "asset" \| "shot"` (one field pair covers both) |
+| `assigneeId` | `assignedTo` |
+| `assignedById` | **does not exist server-side** — no "who assigned this" column. Any UI that reads `task.assignedById` needs to either hide that field or fall back to a sensible default (e.g. omit the "assigned by" line); do not invent a fake value. |
+| `projectId` | **does not exist server-side** — a task's project is only reachable indirectly via its `entityId`→shot/asset→`projectId`. `GET /api/tasks` (already-shipped, from Task 8, unmodified by Task 14) has NO `projectId` query filter — it returns all of the tenant's tasks unconditionally. Do not add one now (that needs a join through shots/assets and is out of scope for this task); `useTasks()` takes no arguments. If a page needs project-scoped tasks, filter client-side against `useShots()`/`useAssets()`'s already-fetched data by matching `entityId`. |
+| `checklist` / `comments` / `attachments` / `dependencies` / `approvalHistory` / `dailyLogs` (inline arrays on the mock `Task` object) | **not present on `TaskDTO` at all** — these are the five separate nested-resource endpoints this task's hooks already cover (`useTaskChecklist`, `useTaskComments`, etc.). Any page code that reads e.g. `task.checklist` directly must be rewritten to call `useTaskChecklist(task.id)` instead — this is not a rename, it's a structural change from an inline field to a separate fetched resource. |
+
+`TaskDTO`'s real field set (matching `tasksTable` exactly) is: `id,
+tenantId, entityId, entityType, title, description, assignedTo, status,
+priority, department, pipelinePhase, weeklyRating, tags, estimatedHours,
+actualHours, startDate, dueDate, lastStatusUpdate, createdAt` (all
+nullable except id/tenantId/entityId/entityType/title/description/status/
+priority/tags/estimatedHours/actualHours/lastStatusUpdate/createdAt, per
+the schema's `.notNull()` markers — `assignedTo`/`department`/
+`pipelinePhase`/`weeklyRating`/`startDate`/`dueDate` are nullable).
+
+- [ ] **Step 1: Create `artifacts/forge/src/hooks/useTasks.ts`** with the core `useTasks()`/`useUpdateTask()` pair (same structural pattern as Task 15's `useShots.ts` — query + update mutation with `staleTime`/`onSuccess: invalidateQueries` — but `useTasks()` takes no `projectId` argument, per the correction above; `TaskDTO` is the corrected field list above, not the mock `Task` interface) plus the five nested-resource hook pairs, each following `useReviews.ts`'s `useAnnotations`/`useCreateAnnotation` pattern from Task 17 but pointed at `/tasks/:id/checklist`, `/tasks/:id/comments`, `/tasks/:id/dependencies`, `/tasks/:id/attachments`, `/tasks/:id/approval-events` respectively. For the checklist toggle specifically, add a `useToggleChecklistItem(taskId)` mutation calling `apiClient.put(\`/tasks/${taskId}/checklist/${itemId}\`, { done })`.
+
+- [ ] **Step 2: Wire `tasks.tsx`, `task-detail.tsx`, and `TaskDrawer.tsx`.** Read all three files first (the existing `useTasksStore` from `store/tasks.ts` has ~10 mutation methods per this session's earlier inspection — `updateTask`, `updateTaskStatus`, and several more for checklist/comments/dependencies). For each store method AND each field read, map it to the corresponding new hook or corrected field name per the table above:
   - `tasks` (read) → `useTasks()`'s `data`.
   - `updateTask(id, updates)` / `updateTaskStatus(id, status)` → `useUpdateTask()`'s `.mutate({ id, ...updates })` / `.mutate({ id, status })`.
   - Any checklist-toggle store method → `useToggleChecklistItem(taskId).mutate({ itemId, done })`.
   - Any comment-add store method → `useAddTaskComment(taskId).mutate({ text })`.
   - Any dependency-add store method → the dependencies hook's create mutation.
-  - Apply this same "identify the store method, map to the matching hook call" transformation to every remaining `useTasksStore` call site in these three files — the field names on `TaskDTO` match the existing mock `Task` interface's names one-for-one (both come from the same source: `artifacts/forge/src/data/mockData.ts`'s `Task` interface, which the schema in Task 4/5 was built to mirror), so no field-name translation is needed, only store-call-to-hook-call translation.
+  - `task.assetId`/`task.shotId` reads → `task.entityId` (with `task.entityType` to disambiguate which kind it is).
+  - `task.assigneeId` reads → `task.assignedTo`.
+  - `task.checklist`/`.comments`/`.attachments`/`.dependencies`/`.approvalHistory` reads → the corresponding `useTaskChecklist(task.id)`/etc. hook's `data`, called at the point of use (e.g. inside `TaskDrawer.tsx`'s expanded-task view), not as a field access on the task object itself.
+  - `task.assignedById` / `task.projectId` reads: no real backend equivalent exists (see table above) — omit the UI element that displayed it, or resolve it client-side (project: via the task's shot/asset lookup) rather than reading a nonexistent field.
+  - Apply this same "identify the store method or field read, map to the matching hook call or corrected field name" transformation to every remaining `useTasksStore` call site in these three files.
 
 - [ ] **Step 3: Verify.** `pnpm run typecheck`, then browser check at `http://localhost/tasks`: create/update a task, toggle a checklist item, add a comment, reload, confirm persistence.
 
