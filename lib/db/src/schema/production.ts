@@ -14,6 +14,33 @@ export const projectsTable = pgTable("projects", {
   deletedAt: timestamp("deleted_at"),
 });
 
+export const episodesTable = pgTable("episodes", {
+  id: text("id").primaryKey(),
+  tenantId: text("tenant_id")
+    .notNull()
+    .references(() => tenantsTable.id, { onDelete: "cascade" }),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projectsTable.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const sequencesTable = pgTable("sequences", {
+  id: text("id").primaryKey(),
+  tenantId: text("tenant_id")
+    .notNull()
+    .references(() => tenantsTable.id, { onDelete: "cascade" }),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projectsTable.id, { onDelete: "cascade" }),
+  episodeId: text("episode_id").references(() => episodesTable.id, {
+    onDelete: "set null",
+  }),
+  name: text("name").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const assetsTable = pgTable("assets", {
   id: text("id").primaryKey(),
   tenantId: text("tenant_id")
