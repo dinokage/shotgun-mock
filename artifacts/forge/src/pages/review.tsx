@@ -99,6 +99,7 @@ import {
 import {
   useAnnotations,
   useCreateAnnotation,
+  useUpdateAnnotation,
   useDeleteAnnotation,
 } from "@/hooks/useReviews";
 
@@ -351,31 +352,34 @@ export default function Review() {
   // already used above for Presentation Mode syncing).
   const { data: annotations = [] } = useAnnotations(PRESENTED_VERSION_ID);
   const createAnnotation = useCreateAnnotation(PRESENTED_VERSION_ID);
+  const updateAnnotation = useUpdateAnnotation(PRESENTED_VERSION_ID);
   const deleteAnnotation = useDeleteAnnotation(PRESENTED_VERSION_ID);
   // Bridges the shared AnnotationCanvas's raw dispatch-style API (and this
   // page's own resize/drag handlers, which were all written against a local
   // useState<Annotation[]>) onto the server-backed list above. Ids added by
   // the updater become createAnnotation.mutate calls; ids dropped become
-  // deleteAnnotation.mutate calls. In-place edits to an already-committed
-  // annotation (resize handles, dragging, the Properties panel's text/color/
-  // frame-range fields) have no backend update endpoint yet — see
-  // useReviews.ts, which only exposes create/list/delete — so those diffs
-  // are intentionally not persisted here; they still render for this
-  // session but revert on the next annotations refetch.
+  // deleteAnnotation.mutate calls; ids present in both but with changed
+  // fields (resize handles, dragging, the Properties panel's text/color/
+  // frame-range fields) become updateAnnotation.mutate calls against
+  // PUT /reviews/annotations/:id.
   const applyAnnotationsUpdate: SetAnnotations = (update) => {
     const prevList = annotations;
     const nextList =
       typeof update === "function"
         ? (update as (prev: Annotation[]) => Annotation[])(prevList)
         : update;
-    const prevIds = new Set(prevList.map((a) => a.id));
+    const prevById = new Map(prevList.map((a) => [a.id, a]));
     const nextIds = new Set(nextList.map((a) => a.id));
-    nextList
-      .filter((a) => !prevIds.has(a.id))
-      .forEach((a) => {
+    nextList.forEach((a) => {
+      const prev = prevById.get(a.id);
+      if (!prev) {
         const { id, ...rest } = a;
         createAnnotation.mutate(rest);
-      });
+      } else if (JSON.stringify(prev) !== JSON.stringify(a)) {
+        const { id, ...rest } = a;
+        updateAnnotation.mutate({ id, ...rest });
+      }
+    });
     prevList
       .filter((a) => !nextIds.has(a.id))
       .forEach((a) => deleteAnnotation.mutate(a.id));

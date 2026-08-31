@@ -157,6 +157,57 @@ reviewsRouter.post("/:versionId/annotations", async (req, res) => {
   }
 });
 
+// Whitelisted patchable fields — every column an in-place annotation edit
+// (resize handle, canvas drag, or the Properties panel's per-field editors)
+// can legitimately update. Deliberately excludes id/tenantId/versionId/
+// createdById/createdAt/type — type is structural (rect/pen/arrow/text),
+// not something a resize/drag/property edit changes.
+const ANNOTATION_PATCHABLE_FIELDS = [
+  "frame",
+  "color",
+  "x",
+  "y",
+  "w",
+  "h",
+  "points",
+  "text",
+  "startFrame",
+  "endFrame",
+  "fontFamily",
+  "fontSize",
+  "backgroundColor",
+] as const;
+
+reviewsRouter.put("/annotations/:id", async (req, res) => {
+  try {
+    const tenantId = req.tenantId!;
+    const { id } = req.params;
+    const [existing] = await db
+      .select()
+      .from(annotationsTable)
+      .where(and(eq(annotationsTable.tenantId, tenantId), eq(annotationsTable.id, id)));
+    if (!existing) return res.status(404).json({ error: "Not found" });
+
+    const updates: Record<string, unknown> = {};
+    for (const field of ANNOTATION_PATCHABLE_FIELDS) {
+      if (field in req.body) updates[field] = req.body[field];
+    }
+
+    await db
+      .update(annotationsTable)
+      .set(updates)
+      .where(and(eq(annotationsTable.tenantId, tenantId), eq(annotationsTable.id, id)));
+
+    const [updated] = await db
+      .select()
+      .from(annotationsTable)
+      .where(and(eq(annotationsTable.tenantId, tenantId), eq(annotationsTable.id, id)));
+    return res.json(updated);
+  } catch (err) {
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 reviewsRouter.delete("/annotations/:id", async (req, res) => {
   try {
     const tenantId = req.tenantId!;

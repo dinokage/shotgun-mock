@@ -22,6 +22,16 @@ export function useCreateAnnotation(versionId: string | undefined) {
   });
 }
 
+export function useUpdateAnnotation(versionId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string } & Partial<Annotation>) =>
+      apiClient.put<Annotation>(`/reviews/annotations/${id}`, body),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["annotations", versionId ?? "none"] }),
+  });
+}
+
 export function useDeleteAnnotation(versionId: string | undefined) {
   const queryClient = useQueryClient();
   return useMutation({

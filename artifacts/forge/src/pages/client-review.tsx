@@ -53,6 +53,7 @@ import {
 import {
   useAnnotations,
   useCreateAnnotation,
+  useUpdateAnnotation,
   useDeleteAnnotation,
 } from "@/hooks/useReviews";
 
@@ -121,26 +122,31 @@ export default function ClientReview() {
   // Mode's lock check above).
   const { data: annotations = [] } = useAnnotations(PRESENTED_VERSION_ID);
   const createAnnotation = useCreateAnnotation(PRESENTED_VERSION_ID);
+  const updateAnnotation = useUpdateAnnotation(PRESENTED_VERSION_ID);
   const deleteAnnotation = useDeleteAnnotation(PRESENTED_VERSION_ID);
   // Bridges AnnotationCanvas's raw dispatch-style API onto the server-backed
   // list above — added ids become createAnnotation.mutate calls, dropped
-  // ids become deleteAnnotation.mutate calls. In-place edits to an
-  // already-committed annotation have no backend update endpoint yet (see
-  // useReviews.ts) and are intentionally not persisted here.
+  // ids become deleteAnnotation.mutate calls, and ids present in both but
+  // with changed fields become updateAnnotation.mutate calls against
+  // PUT /reviews/annotations/:id.
   const applyAnnotationsUpdate: SetAnnotations = (update) => {
     const prevList = annotations;
     const nextList =
       typeof update === "function"
         ? (update as (prev: Annotation[]) => Annotation[])(prevList)
         : update;
-    const prevIds = new Set(prevList.map((a) => a.id));
+    const prevById = new Map(prevList.map((a) => [a.id, a]));
     const nextIds = new Set(nextList.map((a) => a.id));
-    nextList
-      .filter((a) => !prevIds.has(a.id))
-      .forEach((a) => {
+    nextList.forEach((a) => {
+      const prev = prevById.get(a.id);
+      if (!prev) {
         const { id, ...rest } = a;
         createAnnotation.mutate(rest);
-      });
+      } else if (JSON.stringify(prev) !== JSON.stringify(a)) {
+        const { id, ...rest } = a;
+        updateAnnotation.mutate({ id, ...rest });
+      }
+    });
     prevList
       .filter((a) => !nextIds.has(a.id))
       .forEach((a) => deleteAnnotation.mutate(a.id));
