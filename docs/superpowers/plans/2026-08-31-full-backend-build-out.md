@@ -2355,6 +2355,61 @@ git commit -m "feat(frontend): wire daily task logs to the real backend"
 
 ---
 
+## Task 19a: Migrate Daily Standup page's task list off the mock store
+
+**Why this task exists:** Task 19's review found that `daily-standup.tsx`'s
+`tasks`/`myTasks`/`memberTasks` arrays are still sourced from
+`useTasksStore` (`store/tasks.ts`), whose mock task ids (`t1`, `t2`, ...)
+never match a real tenant task's `crypto.randomUUID()` id. Every real
+`POST /daily-logs` from this page 400s silently (Task 19 added an
+`onError` toast, so the failure is now visible, but the log never
+persists), and the "Recent Progress & Daily Logs" list never has anything
+to show. Task 19's own file list never included migrating this page's
+underlying task source — only its log-submission dialog and log-list
+rendering — so that gap survived Task 19 as-scoped and needs its own task.
+
+**Depends on:** Task 18 (`useTasks()`/`useUpdateTask()`), Task 19
+(`useDailyLogs`/`useAddDailyLog`, already in `useTasks.ts`).
+
+**Explicitly OUT of scope:** the Daily Standup page's live-updates feed
+(`useStandupsStore`, the "Live sync failed" banner, `BroadcastComposer`/
+`BroadcastFeed`) — that is separate, pre-existing (currently mocked)
+functionality in this worktree, unrelated to task/daily-log data, and its
+real-backend wiring already exists uncommitted in a different checkout
+from an earlier session (flagged in this plan's own preflight scan,
+Finding 2) — reconciling those two is a future merge concern, not this
+task's job. Do not touch `useStandupsStore` or the standup-feed rendering
+at all.
+
+**Files:**
+- Modify: `artifacts/forge/src/pages/daily-standup.tsx` only.
+
+**Field mapping**: use the exact same corrected table Task 18 established
+(re-read `.superpowers/sdd/2026-08-31-full-backend-build-out/task-18-brief.md`
+or the plan's own Task 18 section above for the full table) — the
+short version: `assigneeId` → `assignedTo`, no `projectId`/`assignedById`
+fields exist on real `TaskDTO`, and there is no inline `dailyLogs` array
+(it's the separate `useDailyLogs(taskId)` hook Task 19 already added).
+
+- [ ] **Step 1: Replace the task data source.** Remove `import { useTasksStore } from "@/store/tasks";` and the two lines `const tasks = useTasksStore((s) => s.tasks);` / `const updateTaskStatus = useTasksStore((s) => s.updateTaskStatus);`. Add `import { useTasks, useUpdateTask } from "@/hooks/useTasks";`, then `const { data: tasks = [] } = useTasks();` and `const updateTaskMutation = useUpdateTask();`. Every call site of `updateTaskStatus(taskId, status)` becomes `updateTaskMutation.mutate({ id: taskId, status })`.
+
+- [ ] **Step 2: Fix every `.assigneeId` read to `.assignedTo`.** Grep the file for `.assigneeId` — every occurrence that reads a *task's* assignee (not a member/user object's own field) needs this rename: the `myTasks` filter (`tasks.filter((t) => t.assigneeId === currentUser.id)`), the `tasksWithLogs`/`memberTasks` filters inside `payrollRows` and `handleViewLogs`, and any inline task-card rendering that reads `task.assigneeId` for avatar lookups. `.title`, `.status`, `.department` fields already match `TaskDTO` one-for-one (confirmed by Task 18's corrected mapping) — those don't need translation.
+
+- [ ] **Step 3: Rework `payrollRows`'s `totalHoursToday` aggregation** (currently: for each member's tasks, filter each task's inline `.dailyLogs` array by today's date and sum hours). The inline array no longer exists. `GET /api/daily-logs` (already-shipped, `artifacts/api-server/src/routes/daily-logs.ts`) supports an optional `userId` query filter in addition to `taskId` — the cleanest fix is a new hook in `useTasks.ts`, `useDailyLogsByUser(userId: string | undefined)`, following `useDailyLogs`'s exact same shape but calling `apiClient.get<DailyLogDTO[]>(\`/daily-logs?userId=${userId}\`)`. Then `payrollRows` (or a small per-member subcomponent, matching the per-row pattern Task 19 already established for the "Recent Progress" list) fetches each visible member's logs via this hook and filters by `log.date.startsWith(today)` client-side, same as the old logic did per-task. If restructuring `payrollRows` (a `useMemo` producing an array) to use a hook per member is awkward given hooks-can't-run-in-a-loop, extract a small `<PayrollRow member={member} ... />` subcomponent that calls `useDailyLogsByUser(member.id)` internally and renders its own computed `totalHoursToday`/`isOverloaded` — matching the `DailyLogRow` pattern Task 19 already added for the other list.
+
+- [ ] **Step 4: Simplify `handleViewLogs`.** The old logic (`memberTasks.find((t) => t.dailyLogs.length > 0) || memberTasks[0]`) prioritized opening a task that already has logs. Without a cheap way to check "has logs" without a full fetch, simplify to always opening `memberTasks[0]` (the member's first task) — this is an acceptable, minor UX trade-off (the drawer itself will correctly show that task's real logs once opened via Task 19's `useDailyLogs` wiring, whichever task it is); document this simplification in your report, don't silently narrow behavior without saying so.
+
+- [ ] **Step 5: Verify.** `pnpm run typecheck`, then a careful manual read-through confirming zero remaining `.assigneeId`/`.dailyLogs`/`useTasksStore` references anywhere in the file (grep it yourself), and that `useStandupsStore`/broadcast-feed code is completely untouched (diff should show zero lines changed in those sections).
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add artifacts/forge/src/hooks/useTasks.ts artifacts/forge/src/pages/daily-standup.tsx
+git commit -m "feat(frontend): migrate Daily Standup page's task list off the mock store"
+```
+
+---
+
 ## Task 20: Seed data
 
 **Depends on:** Tasks 1-14 (all schema and routes must exist).
