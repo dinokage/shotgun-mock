@@ -1,40 +1,277 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiFetch } from "@/lib/apiClient";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiClient } from "@/lib/apiClient";
 
+// Real `tasksTable` field set (lib/db/src/schema/production.ts) — this is
+// NOT the same shape as the mock `Task` interface in
+// artifacts/forge/src/data/mockData.ts. In particular: there is no
+// `assetId`/`shotId` pair (one `entityId`+`entityType` column pair covers
+// both), no `assigneeId` (it's `assignedTo`), and no `assignedById` or
+// `projectId` column at all. The five inline mock arrays (`checklist`,
+// `comments`, `attachments`, `dependencies`, `approvalHistory`) are not
+// present here either — they're separate nested-resource endpoints, each
+// with its own hook pair below.
 export interface TaskDTO {
   id: string;
+  tenantId: string;
+  entityId: string;
+  entityType: "asset" | "shot";
   title: string;
-  description: string | null;
-  status: "todo" | "in_progress" | "review" | "done";
-  department: string;
+  description: string;
+  assignedTo: string | null;
+  status: string;
+  priority: string;
+  department: string | null;
+  pipelinePhase: string | null;
+  weeklyRating: string | null;
+  tags: string[];
+  estimatedHours: number;
+  actualHours: number;
+  startDate: string | null;
   dueDate: string | null;
-  shotId: string;
-  assigneeId: string | null;
-  projectId: string;
+  lastStatusUpdate: string;
   createdAt: string;
-  updatedAt: string;
 }
 
-export function useTasks(projectId?: string) {
-  return useQuery({
-    queryKey: projectId ? ["tasks", "project", projectId] : ["tasks"],
-    queryFn: () =>
-      apiFetch<TaskDTO[]>(
-        projectId ? `/tasks?projectId=${projectId}` : "/tasks",
-      ),
+// GET /api/tasks has no projectId query filter (see route comment in
+// artifacts/api-server/src/routes/tasks.ts) — it returns all of the
+// tenant's tasks unconditionally. A page that needs project-scoped tasks
+// must filter client-side against useShots()/useAssets() data by matching
+// entityId, not by passing a projectId here.
+export function useTasks() {
+  return useQuery<TaskDTO[]>({
+    queryKey: ["tasks"],
+    queryFn: async () => apiClient.get<TaskDTO[]>("/tasks"),
+    staleTime: 10000,
   });
 }
 
 export function useUpdateTask() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...data }: Partial<TaskDTO> & { id: string }) =>
-      apiFetch<TaskDTO>(`/tasks/${id}`, {
-        method: "PUT",
-        body: JSON.stringify(data),
+    mutationFn: ({ id, ...body }: { id: string } & Partial<TaskDTO>) =>
+      apiClient.put<TaskDTO>(`/tasks/${id}`, body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Checklist — /tasks/:id/checklist
+// ---------------------------------------------------------------------------
+
+export interface TaskChecklistItemDTO {
+  id: string;
+  tenantId: string;
+  taskId: string;
+  text: string;
+  done: boolean;
+  position: number;
+  createdAt: string;
+}
+
+export function useTaskChecklist(taskId: string | undefined) {
+  return useQuery<TaskChecklistItemDTO[]>({
+    queryKey: ["tasks", taskId ?? "none", "checklist"],
+    queryFn: async () =>
+      apiClient.get<TaskChecklistItemDTO[]>(`/tasks/${taskId}/checklist`),
+    enabled: !!taskId,
+    staleTime: 5000,
+  });
+}
+
+export function useAddChecklistItem(taskId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { text: string; position?: number }) =>
+      apiClient.post<TaskChecklistItemDTO>(
+        `/tasks/${taskId}/checklist`,
+        body,
+      ),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ["tasks", taskId ?? "none", "checklist"],
       }),
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["tasks"] });
-    },
+  });
+}
+
+export function useToggleChecklistItem(taskId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ itemId, done }: { itemId: string; done: boolean }) =>
+      apiClient.put<TaskChecklistItemDTO>(
+        `/tasks/${taskId}/checklist/${itemId}`,
+        { done },
+      ),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ["tasks", taskId ?? "none", "checklist"],
+      }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Comments — /tasks/:id/comments
+// ---------------------------------------------------------------------------
+
+export interface TaskCommentDTO {
+  id: string;
+  tenantId: string;
+  taskId: string;
+  userId: string;
+  text: string;
+  createdAt: string;
+}
+
+export function useTaskComments(taskId: string | undefined) {
+  return useQuery<TaskCommentDTO[]>({
+    queryKey: ["tasks", taskId ?? "none", "comments"],
+    queryFn: async () =>
+      apiClient.get<TaskCommentDTO[]>(`/tasks/${taskId}/comments`),
+    enabled: !!taskId,
+    staleTime: 5000,
+  });
+}
+
+// Server infers the commenting user from the session (req.userId) — only
+// `text` is accepted in the body.
+export function useAddTaskComment(taskId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { text: string }) =>
+      apiClient.post<TaskCommentDTO>(`/tasks/${taskId}/comments`, body),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ["tasks", taskId ?? "none", "comments"],
+      }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Dependencies — /tasks/:id/dependencies
+// ---------------------------------------------------------------------------
+
+export interface TaskDependencyDTO {
+  id: string;
+  tenantId: string;
+  taskId: string;
+  dependsOnTaskId: string;
+  type: string;
+  lagDays: number | null;
+  createdAt: string;
+}
+
+export function useTaskDependencies(taskId: string | undefined) {
+  return useQuery<TaskDependencyDTO[]>({
+    queryKey: ["tasks", taskId ?? "none", "dependencies"],
+    queryFn: async () =>
+      apiClient.get<TaskDependencyDTO[]>(`/tasks/${taskId}/dependencies`),
+    enabled: !!taskId,
+    staleTime: 5000,
+  });
+}
+
+export function useAddTaskDependency(taskId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      dependsOnTaskId: string;
+      type?: string;
+      lagDays?: number;
+    }) =>
+      apiClient.post<TaskDependencyDTO>(
+        `/tasks/${taskId}/dependencies`,
+        body,
+      ),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ["tasks", taskId ?? "none", "dependencies"],
+      }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Attachments — /tasks/:id/attachments
+// ---------------------------------------------------------------------------
+
+export interface TaskAttachmentDTO {
+  id: string;
+  tenantId: string;
+  taskId: string;
+  url: string;
+  uploadedById: string;
+  createdAt: string;
+}
+
+export function useTaskAttachments(taskId: string | undefined) {
+  return useQuery<TaskAttachmentDTO[]>({
+    queryKey: ["tasks", taskId ?? "none", "attachments"],
+    queryFn: async () =>
+      apiClient.get<TaskAttachmentDTO[]>(`/tasks/${taskId}/attachments`),
+    enabled: !!taskId,
+    staleTime: 5000,
+  });
+}
+
+export function useAddTaskAttachment(taskId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { url: string }) =>
+      apiClient.post<TaskAttachmentDTO>(`/tasks/${taskId}/attachments`, body),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ["tasks", taskId ?? "none", "attachments"],
+      }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Approval events — /tasks/:id/approval-events
+// ---------------------------------------------------------------------------
+// Append-only audit trail. The server infers `byUserId`/`byRole` from the
+// caller's own session — never trust those from the client — so only
+// `action` is accepted in the POST body. Recording an event does NOT also
+// change the task's `status` server-side; callers that need both (e.g.
+// approving moves a task to the next review stage) must call
+// useUpdateTask().mutate({ id, status }) alongside this.
+
+export interface TaskApprovalEventDTO {
+  id: string;
+  tenantId: string;
+  taskId: string;
+  action:
+    | "submitted-for-lead-review"
+    | "submitted-for-manager-review"
+    | "approved"
+    | "changes-requested"
+    | "rejected"
+    | "published";
+  byUserId: string;
+  byRole: string;
+  createdAt: string;
+}
+
+export function useTaskApprovalEvents(taskId: string | undefined) {
+  return useQuery<TaskApprovalEventDTO[]>({
+    queryKey: ["tasks", taskId ?? "none", "approval-events"],
+    queryFn: async () =>
+      apiClient.get<TaskApprovalEventDTO[]>(
+        `/tasks/${taskId}/approval-events`,
+      ),
+    enabled: !!taskId,
+    staleTime: 5000,
+  });
+}
+
+export function useAddTaskApprovalEvent(taskId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { action: TaskApprovalEventDTO["action"] }) =>
+      apiClient.post<TaskApprovalEventDTO>(
+        `/tasks/${taskId}/approval-events`,
+        body,
+      ),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ["tasks", taskId ?? "none", "approval-events"],
+      }),
   });
 }
