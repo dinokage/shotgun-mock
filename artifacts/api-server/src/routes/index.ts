@@ -8,6 +8,7 @@ import departmentsRouter from "./departments";
 import rolesRouter from "./roles";
 import { episodesRouter } from "./episodes";
 import { sequencesRouter } from "./sequences";
+import { shotsRouter } from "./shots";
 
 const router = Router();
 
@@ -22,5 +23,6 @@ router.use("/departments", departmentsRouter);
 router.use("/roles", rolesRouter);
 router.use("/episodes", episodesRouter);
 router.use("/sequences", sequencesRouter);
+router.use("/shots", shotsRouter);
 
 export default router;
