@@ -1,36 +1,39 @@
 # ShotGrid Reference Catalog (merged)
 
 **Total screenshots cataloged:** 69 (54 page screenshots + 15 icon/asset references)
-**Distinct ShotGrid pages identified:** 14
+**Distinct ShotGrid pages identified:** 19
 
 **Source batches:** `catalog-batch-1.md` (18 images), `catalog-batch-2.md` (18 images), `catalog-batch-3.md` (18 images), `catalog-batch-4-icons.md` (15 images).
 
 **Merge notes:**
-- Headings that appeared in more than one batch under the same core page name — but with a parenthetical disambiguating the project/theme captured in that particular screenshot (e.g. "Assets (Demo: Animation project — classic dark theme)" vs "Assets (Drednots project — Fields & Pipeline admin)") — have been merged into a single page section below, since they are the same ShotGrid page/screen type, just captured against different demo projects and (for the older screenshots) the classic dark-themed UI generation rather than the newer light-themed one. The per-image `###` entries retain their original project/theme detail inline, so no context is lost.
-- Pages that only ever appeared under one distinct name (e.g. "Pipeline Steps (Admin)" vs "Tracking Settings … Shot entity admin" vs "Overview") were kept as separate sections — they are genuinely different ShotGrid screens (global admin list vs. per-project entity schema config vs. project dashboard), not variants of the same page, even though some share words like "Shot" or "Admin".
-- Merged sections each carry a **Consolidated Dropdowns/Filters** summary immediately under the heading — every distinct control seen across that page's screenshots, deduplicated by name — in addition to each `###` sub-entry's own unmodified Dropdowns/Filters list (kept for per-screenshot detail).
+- Only headings that are a literal, character-for-character match (including any parenthetical) across batches were merged into a single section: `Assets (Demo: Animation project — classic dark theme)` (batch 1 + batch 2) and `Shots (Signal project — Pipeline Step admin)` (batch 2 + batch 3). These are the same continuing walkthrough/page captured across adjacent screenshot batches.
+- Every other heading was kept as its own separate section — including cases where a batch used a different parenthetical for what is conceptually "the same base page name" (e.g. plain `Assets` vs. `Assets (Demo: Animation project — classic dark theme)` vs. `Assets (Drednots project — Fields & Pipeline admin)`, or plain `Projects` vs. `Projects (ticket-sg-16540 test org — user menu / Artist View)`). Each of those represents a genuinely distinct screen: different demo project and/or different UI theme/generation, different filter-panel/admin surface, etc. No sub-entry content was rewritten or dropped — sections were only regrouped under the correct, more specific headings they originally came from.
+- Merged (true cross-batch) sections carry a **Consolidated Dropdowns/Filters** summary immediately under the heading — every distinct control seen across that section's own screenshots, deduplicated by name — in addition to each `###` sub-entry's own unmodified Dropdowns/Filters list. A few non-merged, multi-screenshot sections also carry this summary for readability; single-screenshot sections do not need one.
 
 ## Page Index
-- Projects — global project-landing grid page
-- Schedule — project Schedule/Gantt page
-- Inbox — global Inbox page
-- My Tasks — global My Tasks page
-- Assets — project Assets list page
-- Sequences — project Sequences list/detail page
-- Shot Detail — single-shot detail page
-- Review — project Review (playlists) page
-- Version Player (Media Review Lightbox) — full-screen media review/lightbox viewer
-- Shots — project Shots list page
-- Pipeline Steps (Admin) — global admin Pipeline Steps list
-- Tracking Settings (Signal project — Shot entity admin) — per-project entity schema/pipeline configuration
-- Overview (Drednots project) — project dashboard/Overview page
-- Action Menu Items (Admin) — global admin Action Menu Items list
+1. Projects — global project-landing grid page
+2. Schedule — project Schedule/Gantt page (project: SCAD Animation Studios 2024)
+3. Inbox — global Inbox page
+4. My Tasks — global My Tasks page
+5. Assets — project Assets list page (project: SCAD Animation Studios 2024)
+6. Sequences — project Sequences list/detail page
+7. Shot Detail — single-shot detail page
+8. Review — project Review (playlists) page
+9. Version Player (Media Review Lightbox) — full-screen media review/lightbox viewer
+10. Assets (Demo: Animation project — classic dark theme) — Assets list page, "Demo: Animation" project, classic dark-themed UI
+11. Shots (Demo: Animation project — classic dark theme) — Shots list page, "Demo: Animation" project, classic dark-themed UI
+12. Schedule (Demo: Animation project — classic dark theme) — Schedule/Gantt page, "Demo: Animation" project, classic dark-themed UI
+13. Assets (Drednots project — Fields & Pipeline admin) — Assets list page, "Drednots" project, with Fields/Pipeline Step schema-admin modals
+14. Shots (Signal project — Pipeline Step admin) — Shots list page, "Signal" project, with Pipeline Step schema-admin modals and account/project-actions menus
+15. Pipeline Steps (Admin) — global admin Pipeline Steps list
+16. Tracking Settings (Signal project — Shot entity admin) — per-project entity schema/pipeline configuration
+17. Overview (Drednots project) — project dashboard/Overview page
+18. Action Menu Items (Admin) — global admin Action Menu Items list
+19. Projects (ticket-sg-16540 test org — user menu / Artist View) — project-landing grid page, test org, with user/admin flyout and Artist View banner
+
+(A 20th, non-page section, "Icon/Asset References," catalogs batch 4's 15 icon/asset-reference images — see below.)
 
 ## Projects
-
-*Merged from: batch 1 `## Projects`, batch 3 `## Projects (ticket-sg-16540 test org — user menu / Artist View)`.*
-
-**Consolidated Dropdowns/Filters:** `Sort`, `Group`, `Fields`, `More`, `Filter` (project grid controls) · Account/avatar user menu (Autodesk Identity status, Account Settings, New Features, Sign Out, Help links, Internal Resources links, full Admin navigation list where present).
 
 ### WhatsApp Image 2026-08-26 at 18.36.59.jpeg
 - **ShotGrid page/screen:** Projects (landing page, header reads "Projects -- shared")
@@ -46,21 +49,7 @@
   - `More` — additional list actions menu
   - `Filter` — filter panel toggle (no filters applied)
 
-### WhatsApp Image 2026-08-26 at 19.26.46.jpeg
-- **ShotGrid page/screen:** Projects (landing page, header reads "Projects -- shared"), with the account/admin flyout menu open
-- **Layout:** Global top nav bar (Inbox with a red "32" unread badge, My Tasks, Media, Projects, People, Apps, Resource Planning, search) above a "Projects" page header with a toolbar; body is a horizontal grid of 4 project poster cards (Drednots, Hyperspace Madness, Signal, Space Season 2). A user-avatar flyout is open at top-right: "AUTODESK IDENTITY" (Not yet linked), a user-name section ("ROSE AVILA" — Account Settings, New Features, Sign Out), "HELP" (Ask the ShotGrid Community…, Visit our Help Site…, About, with build/version info and a ticket reference), and "INTERNAL RESOURCES" (Studio Best Practices, Artist Workflows). A separate blue "Artist View" callout banner sits below the flyout.
-- **Widgets:**
-  - Project thumbnail/poster cards with title label under each
-  - View-mode toggle icons, "Add Project" split-button
-  - Account/admin flyout menu (Autodesk Identity, user, Help, Internal Resources sections)
-  - "Artist View" callout banner
-- **Dropdowns/Filters:**
-  - `Sort`, `Group`, `Fields`, `More` — project grid controls (unopened)
-  - Account avatar menu (open) — Autodesk Identity status, Account Settings, New Features, Sign Out, Help links, Internal Resources links (Studio Best Practices, Artist Workflows)
-
 ## Schedule
-
-*Merged from: batch 1 `## Schedule` (project: SCAD Animation Studios 2024), batch 2 `## Schedule (Demo: Animation project — classic dark theme)`.*
 
 **Consolidated Dropdowns/Filters:** `Sort`, `Group`, `Fields`, `More`, `Gantt Display`, `Search Tasks…`, `Filter`.
 
@@ -114,40 +103,6 @@
   - `Sort`, `Group`, `Fields`, `More` — task list controls
   - `Search Tasks…` — text search box
   - `Filter` — active with 1 filter applied (badge shows "1"), narrowing the task list to a single assignee/task set
-
-### WhatsApp Image 2026-08-26 at 19.02.26.jpeg
-- **ShotGrid page/screen:** Schedule (project: "Demo: Animation", classic dark-themed UI; page title reads "…edule", cropped by video chrome)
-- **Layout:** Dark-themed Schedule page: left task-list table grouped by asset/character name with per-group task counts, columns Pipeline Step/Status/Assigned To/Reviewer/Start Date/Due Date/Duration/Link; right pane an embedded Gantt chart (January–March 2016 header) with colored horizontal bar segments per task and a "Today" marker. Toolbar: Add Task, Sort, Group, Fields, More, Gantt Display, Today button, timeline zoom slider, Search Tasks, Filter.
-- **Widgets:**
-  - Grouped task list table (grouped by character/asset name, e.g. "…bach (1)", "…llowy Clouds (1)")
-  - Gantt chart with month/week column headers and colored horizontal bar segments per task
-  - "Today" button and timeline zoom slider in the toolbar
-  - "Add Task" split-button
-- **Dropdowns/Filters:**
-  - `Sort`, `Group`, `Fields`, `More` — task list controls
-  - `Gantt Display` — Gantt chart display options
-  - `Search Tasks…` — search field
-  - `Filter` — filter toggle (no filters applied)
-
-### WhatsApp Image 2026-08-26 at 19.03.31.jpeg
-- **ShotGrid page/screen:** Schedule (project: "Demo: Animation", classic dark-themed UI)
-- **Layout:** Same Schedule page as above, full-width task list visible (columns: Pipeline Step, Status, Assigned To, Start Date, Due Date, Link) grouped by asset name ("…orn (4)", "…ice (4)", "…nders (4)", "…arn (4)", "…each (4)", "…llowy Clouds (4)"); the right Gantt pane header now spans Dec 15–Aug 16 with colored bar rows aligned to each task.
-- **Widgets:** Same widgets as the prior Schedule entry — grouped task table, Gantt chart, Today button, zoom slider, "Add Task" split-button.
-- **Dropdowns/Filters:**
-  - `Sort`, `Group`, `Fields`, `More` — task list controls
-  - `Gantt Display` — Gantt chart display options
-  - `Search Tasks…` — search field
-  - `Filter` — filter toggle (no filters applied)
-
-### WhatsApp Image 2026-08-26 at 19.05.06.jpeg
-- **ShotGrid page/screen:** Schedule (project: "Demo: Animation", classic dark-themed UI)
-- **Layout:** Same Schedule page/state, Gantt pane now zoomed to a Jan–Feb 2016 range; a large yellow circular cursor/annotation marker (tutorial pointer highlight) is shown mid-canvas over the Gantt bars.
-- **Widgets:** Same as prior Schedule entries — grouped task table, Gantt chart, Today button, zoom slider, "Add Task" split-button, plus a non-native circular cursor-highlight overlay.
-- **Dropdowns/Filters:**
-  - `Sort`, `Group`, `Fields`, `More` — task list controls
-  - `Gantt Display` — Gantt chart display options
-  - `Search Tasks…` — search field
-  - `Filter` — filter toggle (no filters applied)
 
 ## Inbox
 
@@ -208,10 +163,6 @@
 
 ## Assets
 
-*Merged from: batch 1 `## Assets` (project: SCAD Animation Studios 2024), batch 1 `## Assets (Demo: Animation project — classic dark theme)`, batch 2 `## Assets (Demo: Animation project — classic dark theme)`, batch 2 `## Assets (Drednots project — Fields & Pipeline admin)`.*
-
-**Consolidated Dropdowns/Filters:** `Sort`, `Group`, `Fields`, `More`, `Pipeline`, `Search Assets…`, `Filter` · `Save in Project` (Save Page As modal) · `Project Pages` top-nav dropdown (My Pages/All Project Pages, Favorites, Recently Viewed) · Filter side-panel facets (`Type`, `Status`, `Shots`, each with per-facet counts) · Fields column-chooser submenu (Configure Columns…, Manage Asset Fields…, Pipeline/Linked Pipelines submenus) · Manage Asset Fields / New Field modal controls (`Default`, `Summary`, `Sort by`, field-visibility scope radio group, project-search field, Global Status List checkboxes).
-
 ### WhatsApp Image 2026-08-26 at 18.42.34.jpeg
 - **ShotGrid page/screen:** Assets (project: SCAD Animation Studios 2024)
 - **Layout:** Same project tab row, "Assets" tab active (red callout box). Left column: asset list grouped by asset type (Characters, Environment, Props, Story, No Type), each entry with a thumbnail placeholder and linked name. Right pane shows the default "Select a Asset on the left to view its details" placeholder, overlaid by a large red-text tutorial callout listing bullet points.
@@ -225,128 +176,6 @@
   - `More` — additional list actions
   - `Search Assets…` — search field
   - `Filter` — filter panel toggle (no filters applied)
-
-### WhatsApp Image 2026-08-26 at 18.53.37.jpeg
-- **ShotGrid page/screen:** Assets (project: "Demo: Animation", classic dark-themed ShotGrid UI)
-- **Layout:** Tutorial-video frame: a large cyan text banner ("A CIRCLE APPEARS and stalls as it processes.") covers the top portion. Below it, a dark-themed Assets page: left side an assets table (Thumbnail, Asset Name, Type, Status) grouped by "Character (18)"; right side is an open advanced Filter side-panel with faceted checkbox groups, plus a yellow loading spinner overlaying it.
-- **Widgets:**
-  - Data table with sortable/resizable columns (Thumbnail, Asset Name, Type, Status), grouped rows
-  - Right-hand advanced Filter panel with faceted checkbox groups and per-facet counts
-  - "[+] New Saved Filter" action link
-  - Loading spinner overlay
-  - "Modified" status badge near the top-right toolbar
-- **Dropdowns/Filters:**
-  - `Group` — grouping control for the asset table
-  - `Fields` — column chooser
-  - `More` — additional actions
-  - `Pipeline` — pipeline-related dropdown in the top toolbar
-  - `Search Assets…` — search field
-  - Filter panel facet `Type` — checkboxes for Environment, Matte Painting, Prop, Character (selected), Vehicle, each with a count
-  - Filter panel facet `Status` — checkboxes for Final, Waiting to Start, In Progress
-  - Filter panel facet `Shots` — individual shot-code checkboxes (e.g. bunny_010_0010…0100) with a "Show more…" expander
-
-### WhatsApp Image 2026-08-26 at 18.56.21.jpeg
-- **ShotGrid page/screen:** Assets (project: "Demo: Animation"), with "Save Page As" modal open
-- **Layout:** Same Demo: Animation Assets page underneath, dimmed by two stacked tutorial-text banners ("...OP RIGHT CORNER: PAGE SETTINGS > SAVE PAGE AS" and "BONUS TRICK: YOU CAN ALSO SAVE OUT 'MY FILTERS'"). A centered "Save Page As" modal shows Name, Save in Project, Description, Tags, and Folder fields, folder-nesting helper text, and Cancel/Create Page buttons.
-- **Widgets:**
-  - Modal dialog "Save Page As"
-  - Text inputs: Name, Save in Project, Description, Tags, Folder
-  - Helper text describing folder-nesting syntax (`->`)
-  - Cancel and "Create Page" buttons
-  - Non-native tutorial text overlays pointing to "Page Settings > Save Page As" and mentioning saving "My Filters"
-- **Dropdowns/Filters:**
-  - `Save in Project` — field showing the target project for the saved page (prefilled "Demo: Animation")
-  - Underlying Assets page filters not interactable (obscured by the modal)
-
-### WhatsApp Image 2026-08-26 at 18.58.30.jpeg
-- **ShotGrid page/screen:** Assets (project: "Demo: Animation" — inferred from truncated header "…O: ANIMATION" —, classic dark-themed UI), with the "Project Pages" flyout menu open
-- **Layout:** Tutorial-video frame with a cyan banner ("Making it easy to access no matter where you are in SG") across the top. Below, a dark-themed Assets page (project tab row: Project Details, Assets, Shots, Other, Project Pages) with the Asset List toolbar (Add Asset, Sort, Group, Fields, More, Search Assets, Filter) and a grouped asset table ("Character (13)") with Thumbnail/Asset Name/Type/Status columns. A "Project Pages" dropdown flyout is open over the content, showing MY PAGES/ALL PROJECT PAGES tabs, a Favorites section with a starred "Notes" page, and a "Recently Viewed" disclosure.
-- **Widgets:**
-  - Grouped asset table ("Character (13)") with thumbnail, Asset Name, Type, Status columns
-  - "Project Pages" flyout panel: MY PAGES / ALL PROJECT PAGES tab toggle, search icon, Favorites list (starred pages), "Recently Viewed" expandable section
-  - "Add Asset" split-button
-  - Non-native tutorial banner text overlay
-- **Dropdowns/Filters:**
-  - `Sort`, `Group`, `Fields`, `More` — asset list controls
-  - `Search Assets…` — search field
-  - `Filter` — filter toggle
-  - `Project Pages` — top-nav dropdown (open), listing My Pages/All Project Pages and Favorites
-
-### WhatsApp Image 2026-08-26 at 19.00.01.jpeg
-- **ShotGrid page/screen:** Assets (project: "Demo: Animation", classic dark-themed UI), with the "Project Pages" flyout menu open — same underlying state as the previous screenshot
-- **Layout:** Identical underlying Assets page/flyout as the previous entry; tutorial banner text now reads "YOU KNOW IT'S RIGHT when it appears under MY FAVOURITES", and the Favorites list in the flyout now shows a highlighted, starred "FP - Asset List" entry above "Notes". YouTube video-player chrome (like/dislike, comment, share, more icons, "Sub" button) is visible along the bottom edge.
-- **Widgets:** Same as previous entry — grouped asset table, Project Pages flyout with Favorites list (now showing "FP - Asset List" highlighted/selected), "Add Asset" split-button, plus non-native YouTube player controls overlay.
-- **Dropdowns/Filters:**
-  - `Sort`, `Group`, `Fields`, `More` — asset list controls
-  - `Search Assets…` — search field
-  - `Filter` — filter toggle
-  - `Project Pages` — flyout open, Favorites now showing a saved "FP - Asset List" page
-
-### WhatsApp Image 2026-08-26 at 19.08.12.jpeg
-- **ShotGrid page/screen:** Assets (project: "Drednots", light-themed UI), with the "Fields" column-chooser menu open
-- **Layout:** Global top nav bar including a "Migrating to Autodesk" lock-icon badge at far right. Project tab row (Project Details, Assets active, Sequences, Shots, Tasks, Notes, Versions, Playlists, Other, Project Pages). Main body: an Assets table grouped by Type (Environment (2), Matte Painting (1), Vehicle (10)) with Thumbnail/Asset Name/Type columns plus a right-side "Shots" rollup column showing linked shot-code chips. A "Fields" dropdown menu is open, listing toggleable columns (Asset Name, Cc, Description, Id, Linked Projects, Open Notes, Open Notes Count, Parent Assets, Project, Sequence, Shots, Status, Sub Assets, Tags, Task Template, Thumbnail, Type) plus "Configure Columns…" and "Manage Asset Fields…" links, and PIPELINE/LINKED PIPELINES submenu items (Steps, Parent Assets Steps, Sequence Steps, Shots Steps).
-- **Widgets:**
-  - Grouped asset table (by Type) with thumbnail placeholders
-  - Rollup "Shots" column showing multiple linked shot-code chips per asset
-  - View-mode toggle icons, "Add Asset" split-button, "Pipeline" toolbar dropdown
-  - "Migrating to Autodesk" badge/lock icon in the global nav bar
-- **Dropdowns/Filters:**
-  - `Fields` — open column-chooser menu with "Configure Columns…" and "Manage Asset Fields…" actions, plus Pipeline/Linked Pipelines submenus
-  - `Sort`, `More`, `Pipeline` — additional asset list controls
-  - `Search Assets…` — search field
-
-### WhatsApp Image 2026-08-26 at 19.08.37.jpeg
-- **ShotGrid page/screen:** Assets (project: "Drednots"), with the "Manage Asset Fields" modal open
-- **Layout:** Tutorial-video frame titled "ShotGrid - Applying New Fields, Statuses, and Pipeline Steps to Projects", with a YouTube scrubber/playback-controls bar along the bottom (timestamp 0:08/2:39). The Assets page is dimmed behind a centered "Manage Asset Fields" modal listing the project's custom Asset fields (Creative Brief, Keep, Outsource, Published File <-> Link, Vendor Groups, Version <-> Link) with a Field Type column and per-row delete icons, plus an "Add a new field" link and "No changes – Close"/"Done" actions.
-- **Widgets:**
-  - Modal dialog "Manage Asset Fields" with Name/Field Type table and per-row delete icon
-  - "Add a new field" action link
-  - Non-native video title caption and playback scrubber/controls
-- **Dropdowns/Filters:**
-  - Underlying Assets page filters not interactable (obscured by the modal)
-  - Per-row visibility-state radio indicators in the modal (not expanded/labeled in this frame)
-
-### WhatsApp Image 2026-08-26 at 19.09.22.jpeg
-- **ShotGrid page/screen:** Assets (project: "Drednots"), with the "Manage Asset Fields" modal open — identical frame to the previous screenshot
-- **Layout:** Same tutorial-video frame and "Manage Asset Fields" modal as the prior entry, same timestamp (0:08/2:39) and cursor position; appears to be a duplicate capture.
-- **Widgets:** Same as the previous entry.
-- **Dropdowns/Filters:** Same as the previous entry.
-
-### WhatsApp Image 2026-08-26 at 19.09.58.jpeg
-- **ShotGrid page/screen:** Assets (project: "Drednots"), with the "New Field Name" modal open (creating a "Complexity" field)
-- **Layout:** Assets page dimmed behind a centered "New Field Name" modal: a Name text box (prefilled "Complexity"), a left-hand Field Type list (Calculated, Checkbox, Currency, Date, Date and Time, Duration, Entity, File/Link, Float, Footage, List — selected, Multi-Entity, Number, Percent, Query, Status List, Text, Timecode, URL Template…), a right-hand "List of Choices" textarea, Default/Summary/Sort by dropdowns, a Description textarea, and Cancel/Next buttons.
-- **Widgets:**
-  - Modal dialog "New Field Name" with GENERAL/PERMISSIONS tabs
-  - Field Type radio list
-  - "List of Choices" multi-line textarea
-  - Description textarea with helper placeholder text
-- **Dropdowns/Filters:**
-  - `Default` — default-value dropdown for the new List field
-  - `Summary` — summary/rollup behavior dropdown (set to "none")
-  - `Sort by` — sort-basis dropdown (set to "This Field")
-  - Underlying Assets page filters not interactable (obscured by the modal)
-
-### WhatsApp Image 2026-08-26 at 19.10.25.jpeg
-- **ShotGrid page/screen:** Assets (project: "Drednots"), with the "New Field" modal open, Step 2 (project-visibility selection)
-- **Layout:** Centered "New Field" modal (with a close "×" icon) showing radio options for where to display the new field (All unarchived Projects / Only the current Project / Select unarchived and template Projects — selected), a "Find projects by Name, Type, or Layout Template" search box, and a checkbox table (Project Name, Date Updated, Type, Layout Template) listing projects (Animation Template, Automotive Design Template, Drednots, Episodic TV Template, Film VFX Template…) with a "14 Projects" count and Back/Cancel/Create Field buttons.
-- **Widgets:**
-  - Modal dialog "New Field" — project-visibility step
-  - Checkbox project table with sortable "Project Name" column
-  - Project search box
-- **Dropdowns/Filters:**
-  - Visibility-scope radio group (All unarchived Projects / Only current Project / Select unarchived and template Projects)
-  - Project-search text field ("Find projects by Name, Type, or Layout Template")
-  - Underlying Assets page filters not interactable (obscured by the modal)
-
-### WhatsApp Image 2026-08-26 at 19.11.13.jpeg
-- **ShotGrid page/screen:** Assets (project: "Drednots"), with the "Add Statuses" modal open (editing the Status field's Status List)
-- **Layout:** Same tutorial-video frame (timestamp 0:46/2:39) with an underlying "Field Name: Status" field-edit panel (Field Type: Status List selected) partially visible, overlaid by a centered "Add Statuses" modal: a radio choice between "Add more statuses from the global list" and "Create and add a brand new status", and a checkbox list drawn from the Global Status List (Active, Approved, Closed, Complete, Confirmed, Delivered, Disabled ✓, Final ✓, In Progress ✓, N/A, Omit, On Hold, Open, Pending, Pending Review, Received, Resolved, Viewed, Waiting to Start ✓) with Cancel/Next buttons.
-- **Widgets:**
-  - Modal dialog "Add Statuses" with global status checkbox list (short-code + icon + label per row)
-  - Underlying field-edit panel showing the Field Type list (Status List selected) and an "Add" link
-- **Dropdowns/Filters:**
-  - Radio group: "Add more statuses from the global list" (selected) vs. "Create and add a brand new status"
-  - Global Status List checkboxes (multi-select) — several pre-checked (Disabled, Final, In Progress, Waiting to Start)
 
 ## Sequences
 
@@ -434,11 +263,69 @@
   - Scrollable Notes feed with author/avatar/timestamp per note, "VIEW ALL 4 NOTES" link, per-note reply input, and a "Submit a new note or annotation…" input at the bottom
 - **Dropdowns/Filters:** None visible on this screen (Status is shown as a colored pill, not an open dropdown).
 
-## Shots
+## Assets (Demo: Animation project — classic dark theme)
 
-*Merged from: batch 2 `## Shots (Demo: Animation project — classic dark theme)`, batch 2 `## Shots (Signal project — Pipeline Step admin)`, batch 3 `## Shots (Signal project — Pipeline Step admin)`.*
+*Merged from: batch 1 `## Assets (Demo: Animation project — classic dark theme)`, batch 2 `## Assets (Demo: Animation project — classic dark theme)` — literal heading match, same continuing walkthrough.*
 
-**Consolidated Dropdowns/Filters:** `Sort`, `Group`, `Fields`, `More`, `Pipeline`, `Search Shots…`, `Filter` · `Project Pages` top-nav dropdown · `Project Actions` flyout (Configure: Tracking Settings, Navigation; Save as Template…; Change Project Configuration…) · Account/avatar user menu · Manage Shot Pipeline Steps / Add Pipeline Step modal controls (`Entity Pipeline` label, visibility-scope radio group, project-search field, per-step visibility eye-icon toggles).
+**Consolidated Dropdowns/Filters:** `Sort`, `Group`, `Fields`, `More`, `Pipeline`, `Search Assets…`, `Filter` · `Save in Project` (Save Page As modal) · `Project Pages` top-nav dropdown (My Pages/All Project Pages, Favorites, Recently Viewed) · Filter side-panel facets (`Type`, `Status`, `Shots`, each with per-facet counts).
+
+### WhatsApp Image 2026-08-26 at 18.53.37.jpeg
+- **ShotGrid page/screen:** Assets (project: "Demo: Animation", classic dark-themed ShotGrid UI)
+- **Layout:** Tutorial-video frame: a large cyan text banner ("A CIRCLE APPEARS and stalls as it processes.") covers the top portion. Below it, a dark-themed Assets page: left side an assets table (Thumbnail, Asset Name, Type, Status) grouped by "Character (18)"; right side is an open advanced Filter side-panel with faceted checkbox groups, plus a yellow loading spinner overlaying it.
+- **Widgets:**
+  - Data table with sortable/resizable columns (Thumbnail, Asset Name, Type, Status), grouped rows
+  - Right-hand advanced Filter panel with faceted checkbox groups and per-facet counts
+  - "[+] New Saved Filter" action link
+  - Loading spinner overlay
+  - "Modified" status badge near the top-right toolbar
+- **Dropdowns/Filters:**
+  - `Group` — grouping control for the asset table
+  - `Fields` — column chooser
+  - `More` — additional actions
+  - `Pipeline` — pipeline-related dropdown in the top toolbar
+  - `Search Assets…` — search field
+  - Filter panel facet `Type` — checkboxes for Environment, Matte Painting, Prop, Character (selected), Vehicle, each with a count
+  - Filter panel facet `Status` — checkboxes for Final, Waiting to Start, In Progress
+  - Filter panel facet `Shots` — individual shot-code checkboxes (e.g. bunny_010_0010…0100) with a "Show more…" expander
+
+### WhatsApp Image 2026-08-26 at 18.56.21.jpeg
+- **ShotGrid page/screen:** Assets (project: "Demo: Animation"), with "Save Page As" modal open
+- **Layout:** Same Demo: Animation Assets page underneath, dimmed by two stacked tutorial-text banners ("...OP RIGHT CORNER: PAGE SETTINGS > SAVE PAGE AS" and "BONUS TRICK: YOU CAN ALSO SAVE OUT 'MY FILTERS'"). A centered "Save Page As" modal shows Name, Save in Project, Description, Tags, and Folder fields, folder-nesting helper text, and Cancel/Create Page buttons.
+- **Widgets:**
+  - Modal dialog "Save Page As"
+  - Text inputs: Name, Save in Project, Description, Tags, Folder
+  - Helper text describing folder-nesting syntax (`->`)
+  - Cancel and "Create Page" buttons
+  - Non-native tutorial text overlays pointing to "Page Settings > Save Page As" and mentioning saving "My Filters"
+- **Dropdowns/Filters:**
+  - `Save in Project` — field showing the target project for the saved page (prefilled "Demo: Animation")
+  - Underlying Assets page filters not interactable (obscured by the modal)
+
+### WhatsApp Image 2026-08-26 at 18.58.30.jpeg
+- **ShotGrid page/screen:** Assets (project: "Demo: Animation" — inferred from truncated header "…O: ANIMATION" —, classic dark-themed UI), with the "Project Pages" flyout menu open
+- **Layout:** Tutorial-video frame with a cyan banner ("Making it easy to access no matter where you are in SG") across the top. Below, a dark-themed Assets page (project tab row: Project Details, Assets, Shots, Other, Project Pages) with the Asset List toolbar (Add Asset, Sort, Group, Fields, More, Search Assets, Filter) and a grouped asset table ("Character (13)") with Thumbnail/Asset Name/Type/Status columns. A "Project Pages" dropdown flyout is open over the content, showing MY PAGES/ALL PROJECT PAGES tabs, a Favorites section with a starred "Notes" page, and a "Recently Viewed" disclosure.
+- **Widgets:**
+  - Grouped asset table ("Character (13)") with thumbnail, Asset Name, Type, Status columns
+  - "Project Pages" flyout panel: MY PAGES / ALL PROJECT PAGES tab toggle, search icon, Favorites list (starred pages), "Recently Viewed" expandable section
+  - "Add Asset" split-button
+  - Non-native tutorial banner text overlay
+- **Dropdowns/Filters:**
+  - `Sort`, `Group`, `Fields`, `More` — asset list controls
+  - `Search Assets…` — search field
+  - `Filter` — filter toggle
+  - `Project Pages` — top-nav dropdown (open), listing My Pages/All Project Pages and Favorites
+
+### WhatsApp Image 2026-08-26 at 19.00.01.jpeg
+- **ShotGrid page/screen:** Assets (project: "Demo: Animation", classic dark-themed UI), with the "Project Pages" flyout menu open — same underlying state as the previous screenshot
+- **Layout:** Identical underlying Assets page/flyout as the previous entry; tutorial banner text now reads "YOU KNOW IT'S RIGHT when it appears under MY FAVOURITES", and the Favorites list in the flyout now shows a highlighted, starred "FP - Asset List" entry above "Notes". YouTube video-player chrome (like/dislike, comment, share, more icons, "Sub" button) is visible along the bottom edge.
+- **Widgets:** Same as previous entry — grouped asset table, Project Pages flyout with Favorites list (now showing "FP - Asset List" highlighted/selected), "Add Asset" split-button, plus non-native YouTube player controls overlay.
+- **Dropdowns/Filters:**
+  - `Sort`, `Group`, `Fields`, `More` — asset list controls
+  - `Search Assets…` — search field
+  - `Filter` — filter toggle
+  - `Project Pages` — flyout open, Favorites now showing a saved "FP - Asset List" page
+
+## Shots (Demo: Animation project — classic dark theme)
 
 ### WhatsApp Image 2026-08-26 at 19.00.39.jpeg
 - **ShotGrid page/screen:** Shots (project: "Demo: Animation", classic dark-themed UI), with the "Project Pages" flyout menu open
@@ -452,6 +339,120 @@
   - `Search Shots…` — search field
   - `Filter` — filter toggle
   - `Project Pages` — flyout open, listing My Pages/Favorites
+
+## Schedule (Demo: Animation project — classic dark theme)
+
+**Consolidated Dropdowns/Filters:** `Sort`, `Group`, `Fields`, `More`, `Gantt Display`, `Search Tasks…`, `Filter`.
+
+### WhatsApp Image 2026-08-26 at 19.02.26.jpeg
+- **ShotGrid page/screen:** Schedule (project: "Demo: Animation", classic dark-themed UI; page title reads "…edule", cropped by video chrome)
+- **Layout:** Dark-themed Schedule page: left task-list table grouped by asset/character name with per-group task counts, columns Pipeline Step/Status/Assigned To/Reviewer/Start Date/Due Date/Duration/Link; right pane an embedded Gantt chart (January–March 2016 header) with colored horizontal bar segments per task and a "Today" marker. Toolbar: Add Task, Sort, Group, Fields, More, Gantt Display, Today button, timeline zoom slider, Search Tasks, Filter.
+- **Widgets:**
+  - Grouped task list table (grouped by character/asset name, e.g. "…bach (1)", "…llowy Clouds (1)")
+  - Gantt chart with month/week column headers and colored horizontal bar segments per task
+  - "Today" button and timeline zoom slider in the toolbar
+  - "Add Task" split-button
+- **Dropdowns/Filters:**
+  - `Sort`, `Group`, `Fields`, `More` — task list controls
+  - `Gantt Display` — Gantt chart display options
+  - `Search Tasks…` — search field
+  - `Filter` — filter toggle (no filters applied)
+
+### WhatsApp Image 2026-08-26 at 19.03.31.jpeg
+- **ShotGrid page/screen:** Schedule (project: "Demo: Animation", classic dark-themed UI)
+- **Layout:** Same Schedule page as above, full-width task list visible (columns: Pipeline Step, Status, Assigned To, Start Date, Due Date, Link) grouped by asset name ("…orn (4)", "…ice (4)", "…nders (4)", "…arn (4)", "…each (4)", "…llowy Clouds (4)"); the right Gantt pane header now spans Dec 15–Aug 16 with colored bar rows aligned to each task.
+- **Widgets:** Same widgets as the prior Schedule entry — grouped task table, Gantt chart, Today button, zoom slider, "Add Task" split-button.
+- **Dropdowns/Filters:**
+  - `Sort`, `Group`, `Fields`, `More` — task list controls
+  - `Gantt Display` — Gantt chart display options
+  - `Search Tasks…` — search field
+  - `Filter` — filter toggle (no filters applied)
+
+### WhatsApp Image 2026-08-26 at 19.05.06.jpeg
+- **ShotGrid page/screen:** Schedule (project: "Demo: Animation", classic dark-themed UI)
+- **Layout:** Same Schedule page/state, Gantt pane now zoomed to a Jan–Feb 2016 range; a large yellow circular cursor/annotation marker (tutorial pointer highlight) is shown mid-canvas over the Gantt bars.
+- **Widgets:** Same as prior Schedule entries — grouped task table, Gantt chart, Today button, zoom slider, "Add Task" split-button, plus a non-native circular cursor-highlight overlay.
+- **Dropdowns/Filters:**
+  - `Sort`, `Group`, `Fields`, `More` — task list controls
+  - `Gantt Display` — Gantt chart display options
+  - `Search Tasks…` — search field
+  - `Filter` — filter toggle (no filters applied)
+
+## Assets (Drednots project — Fields & Pipeline admin)
+
+**Consolidated Dropdowns/Filters:** `Fields` column-chooser submenu (Configure Columns…, Manage Asset Fields…, Pipeline/Linked Pipelines submenus) · `Sort`, `More`, `Pipeline`, `Search Assets…` · Manage Asset Fields / New Field modal controls (`Default`, `Summary`, `Sort by`, visibility-scope radio group, project-search field, Global Status List checkboxes).
+
+### WhatsApp Image 2026-08-26 at 19.08.12.jpeg
+- **ShotGrid page/screen:** Assets (project: "Drednots", light-themed UI), with the "Fields" column-chooser menu open
+- **Layout:** Global top nav bar including a "Migrating to Autodesk" lock-icon badge at far right. Project tab row (Project Details, Assets active, Sequences, Shots, Tasks, Notes, Versions, Playlists, Other, Project Pages). Main body: an Assets table grouped by Type (Environment (2), Matte Painting (1), Vehicle (10)) with Thumbnail/Asset Name/Type columns plus a right-side "Shots" rollup column showing linked shot-code chips. A "Fields" dropdown menu is open, listing toggleable columns (Asset Name, Cc, Description, Id, Linked Projects, Open Notes, Open Notes Count, Parent Assets, Project, Sequence, Shots, Status, Sub Assets, Tags, Task Template, Thumbnail, Type) plus "Configure Columns…" and "Manage Asset Fields…" links, and PIPELINE/LINKED PIPELINES submenu items (Steps, Parent Assets Steps, Sequence Steps, Shots Steps).
+- **Widgets:**
+  - Grouped asset table (by Type) with thumbnail placeholders
+  - Rollup "Shots" column showing multiple linked shot-code chips per asset
+  - View-mode toggle icons, "Add Asset" split-button, "Pipeline" toolbar dropdown
+  - "Migrating to Autodesk" badge/lock icon in the global nav bar
+- **Dropdowns/Filters:**
+  - `Fields` — open column-chooser menu with "Configure Columns…" and "Manage Asset Fields…" actions, plus Pipeline/Linked Pipelines submenus
+  - `Sort`, `More`, `Pipeline` — additional asset list controls
+  - `Search Assets…` — search field
+
+### WhatsApp Image 2026-08-26 at 19.08.37.jpeg
+- **ShotGrid page/screen:** Assets (project: "Drednots"), with the "Manage Asset Fields" modal open
+- **Layout:** Tutorial-video frame titled "ShotGrid - Applying New Fields, Statuses, and Pipeline Steps to Projects", with a YouTube scrubber/playback-controls bar along the bottom (timestamp 0:08/2:39). The Assets page is dimmed behind a centered "Manage Asset Fields" modal listing the project's custom Asset fields (Creative Brief, Keep, Outsource, Published File <-> Link, Vendor Groups, Version <-> Link) with a Field Type column and per-row delete icons, plus an "Add a new field" link and "No changes – Close"/"Done" actions.
+- **Widgets:**
+  - Modal dialog "Manage Asset Fields" with Name/Field Type table and per-row delete icon
+  - "Add a new field" action link
+  - Non-native video title caption and playback scrubber/controls
+- **Dropdowns/Filters:**
+  - Underlying Assets page filters not interactable (obscured by the modal)
+  - Per-row visibility-state radio indicators in the modal (not expanded/labeled in this frame)
+
+### WhatsApp Image 2026-08-26 at 19.09.22.jpeg
+- **ShotGrid page/screen:** Assets (project: "Drednots"), with the "Manage Asset Fields" modal open — identical frame to the previous screenshot
+- **Layout:** Same tutorial-video frame and "Manage Asset Fields" modal as the prior entry, same timestamp (0:08/2:39) and cursor position; appears to be a duplicate capture.
+- **Widgets:** Same as the previous entry.
+- **Dropdowns/Filters:** Same as the previous entry.
+
+### WhatsApp Image 2026-08-26 at 19.09.58.jpeg
+- **ShotGrid page/screen:** Assets (project: "Drednots"), with the "New Field Name" modal open (creating a "Complexity" field)
+- **Layout:** Assets page dimmed behind a centered "New Field Name" modal: a Name text box (prefilled "Complexity"), a left-hand Field Type list (Calculated, Checkbox, Currency, Date, Date and Time, Duration, Entity, File/Link, Float, Footage, List — selected, Multi-Entity, Number, Percent, Query, Status List, Text, Timecode, URL Template…), a right-hand "List of Choices" textarea, Default/Summary/Sort by dropdowns, a Description textarea, and Cancel/Next buttons.
+- **Widgets:**
+  - Modal dialog "New Field Name" with GENERAL/PERMISSIONS tabs
+  - Field Type radio list
+  - "List of Choices" multi-line textarea
+  - Description textarea with helper placeholder text
+- **Dropdowns/Filters:**
+  - `Default` — default-value dropdown for the new List field
+  - `Summary` — summary/rollup behavior dropdown (set to "none")
+  - `Sort by` — sort-basis dropdown (set to "This Field")
+  - Underlying Assets page filters not interactable (obscured by the modal)
+
+### WhatsApp Image 2026-08-26 at 19.10.25.jpeg
+- **ShotGrid page/screen:** Assets (project: "Drednots"), with the "New Field" modal open, Step 2 (project-visibility selection)
+- **Layout:** Centered "New Field" modal (with a close "×" icon) showing radio options for where to display the new field (All unarchived Projects / Only the current Project / Select unarchived and template Projects — selected), a "Find projects by Name, Type, or Layout Template" search box, and a checkbox table (Project Name, Date Updated, Type, Layout Template) listing projects (Animation Template, Automotive Design Template, Drednots, Episodic TV Template, Film VFX Template…) with a "14 Projects" count and Back/Cancel/Create Field buttons.
+- **Widgets:**
+  - Modal dialog "New Field" — project-visibility step
+  - Checkbox project table with sortable "Project Name" column
+  - Project search box
+- **Dropdowns/Filters:**
+  - Visibility-scope radio group (All unarchived Projects / Only current Project / Select unarchived and template Projects)
+  - Project-search text field ("Find projects by Name, Type, or Layout Template")
+  - Underlying Assets page filters not interactable (obscured by the modal)
+
+### WhatsApp Image 2026-08-26 at 19.11.13.jpeg
+- **ShotGrid page/screen:** Assets (project: "Drednots"), with the "Add Statuses" modal open (editing the Status field's Status List)
+- **Layout:** Same tutorial-video frame (timestamp 0:46/2:39) with an underlying "Field Name: Status" field-edit panel (Field Type: Status List selected) partially visible, overlaid by a centered "Add Statuses" modal: a radio choice between "Add more statuses from the global list" and "Create and add a brand new status", and a checkbox list drawn from the Global Status List (Active, Approved, Closed, Complete, Confirmed, Delivered, Disabled ✓, Final ✓, In Progress ✓, N/A, Omit, On Hold, Open, Pending, Pending Review, Received, Resolved, Viewed, Waiting to Start ✓) with Cancel/Next buttons.
+- **Widgets:**
+  - Modal dialog "Add Statuses" with global status checkbox list (short-code + icon + label per row)
+  - Underlying field-edit panel showing the Field Type list (Status List selected) and an "Add" link
+- **Dropdowns/Filters:**
+  - Radio group: "Add more statuses from the global list" (selected) vs. "Create and add a brand new status"
+  - Global Status List checkboxes (multi-select) — several pre-checked (Disabled, Final, In Progress, Waiting to Start)
+
+## Shots (Signal project — Pipeline Step admin)
+
+*Merged from: batch 2 `## Shots (Signal project — Pipeline Step admin)`, batch 3 `## Shots (Signal project — Pipeline Step admin)` — literal heading match, same continuing walkthrough.*
+
+**Consolidated Dropdowns/Filters:** `Sort`, `Group`, `Fields`, `More`, `Pipeline`, `Filter` · `Project Actions` flyout (Configure: Tracking Settings, Navigation; Save as Template…; Change Project Configuration…) · Account/avatar user menu (Autodesk Identity, user, Help, Admin sections) · Manage Shot Pipeline Steps / Add Pipeline Step modal controls (`Entity Pipeline` label, visibility-scope radio group, project-search field, per-step visibility eye-icon toggles).
 
 ### WhatsApp Image 2026-08-26 at 19.11.51.jpeg
 - **ShotGrid page/screen:** Shots (project: "Signal", light-themed UI)
@@ -718,6 +719,20 @@
   - `Fields` dropdown menu with column-configuration actions and a checkable field/column list
 - **Dropdowns/Filters:**
   - `Fields` — open menu: Configure Columns…, Manage Action Menu Item Fields…, and a checkable column list (currently shown: Configure Menu Options, Entity Type, Order, Restrict to Permission Groups, Title) with Audit Fields / Linked Fields submenus
+
+## Projects (ticket-sg-16540 test org — user menu / Artist View)
+
+### WhatsApp Image 2026-08-26 at 19.26.46.jpeg
+- **ShotGrid page/screen:** Projects (landing page, header reads "Projects -- shared"), with the account/admin flyout menu open
+- **Layout:** Global top nav bar (Inbox with a red "32" unread badge, My Tasks, Media, Projects, People, Apps, Resource Planning, search) above a "Projects" page header with a toolbar; body is a horizontal grid of 4 project poster cards (Drednots, Hyperspace Madness, Signal, Space Season 2). A user-avatar flyout is open at top-right: "AUTODESK IDENTITY" (Not yet linked), a user-name section ("ROSE AVILA" — Account Settings, New Features, Sign Out), "HELP" (Ask the ShotGrid Community…, Visit our Help Site…, About, with build/version info and a ticket reference), and "INTERNAL RESOURCES" (Studio Best Practices, Artist Workflows). A separate blue "Artist View" callout banner sits below the flyout.
+- **Widgets:**
+  - Project thumbnail/poster cards with title label under each
+  - View-mode toggle icons, "Add Project" split-button
+  - Account/admin flyout menu (Autodesk Identity, user, Help, Internal Resources sections)
+  - "Artist View" callout banner
+- **Dropdowns/Filters:**
+  - `Sort`, `Group`, `Fields`, `More` — project grid controls (unopened)
+  - Account avatar menu (open) — Autodesk Identity status, Account Settings, New Features, Sign Out, Help links, Internal Resources links (Studio Best Practices, Artist Workflows)
 
 ## Icon/Asset References
 
