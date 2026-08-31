@@ -832,10 +832,51 @@ git commit -m "feat(api): add shots route"
 ```typescript
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { assetsTable } from "@workspace/db/schema";
+import {
+  assetsTable,
+  projectsTable,
+  episodesTable,
+  sequencesTable,
+  usersTable,
+} from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import * as crypto from "crypto";
+
+// Each check confirms a foreign-key id actually belongs to the caller's
+// tenant before it's allowed to be linked onto an asset. A DB foreign key
+// only verifies the referenced row exists, not who owns it — without this
+// check, any authenticated user could cross-link their tenant's data to
+// another tenant's project/episode/sequence/user by guessing or
+// discovering an id (IDOR). Same pattern as routes/shots.ts.
+async function projectInTenant(id: string, tenantId: string) {
+  const [row] = await db
+    .select({ id: projectsTable.id })
+    .from(projectsTable)
+    .where(and(eq(projectsTable.id, id), eq(projectsTable.tenantId, tenantId)));
+  return !!row;
+}
+async function episodeInTenant(id: string, tenantId: string) {
+  const [row] = await db
+    .select({ id: episodesTable.id })
+    .from(episodesTable)
+    .where(and(eq(episodesTable.id, id), eq(episodesTable.tenantId, tenantId)));
+  return !!row;
+}
+async function sequenceInTenant(id: string, tenantId: string) {
+  const [row] = await db
+    .select({ id: sequencesTable.id })
+    .from(sequencesTable)
+    .where(and(eq(sequencesTable.id, id), eq(sequencesTable.tenantId, tenantId)));
+  return !!row;
+}
+async function userInTenant(id: string, tenantId: string) {
+  const [row] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(and(eq(usersTable.id, id), eq(usersTable.tenantId, tenantId)));
+  return !!row;
+}
 
 export const assetsRouter = Router();
 
@@ -865,6 +906,15 @@ assetsRouter.post("/", async (req, res) => {
     const { projectId, name, type, episodeId, sequenceId, assigneeId } = req.body;
     if (!projectId || !name)
       return res.status(400).json({ error: "Missing projectId or name" });
+
+    if (!(await projectInTenant(projectId, tenantId)))
+      return res.status(400).json({ error: "Invalid projectId" });
+    if (episodeId && !(await episodeInTenant(episodeId, tenantId)))
+      return res.status(400).json({ error: "Invalid episodeId" });
+    if (sequenceId && !(await sequenceInTenant(sequenceId, tenantId)))
+      return res.status(400).json({ error: "Invalid sequenceId" });
+    if (assigneeId && !(await userInTenant(assigneeId, tenantId)))
+      return res.status(400).json({ error: "Invalid assigneeId" });
 
     const newId = crypto.randomUUID();
     await db.insert(assetsTable).values({
@@ -916,18 +966,28 @@ assetsRouter.put("/:id", async (req, res) => {
       .where(and(eq(assetsTable.tenantId, tenantId), eq(assetsTable.id, assetId)));
     if (!existing) return res.status(404).json({ error: "Not found" });
 
+    if (
+      "assigneeId" in req.body &&
+      req.body.assigneeId &&
+      !(await userInTenant(req.body.assigneeId, tenantId))
+    )
+      return res.status(400).json({ error: "Invalid assigneeId" });
+
     const updates: Record<string, unknown> = {};
     for (const field of PATCHABLE_FIELDS) {
       if (field in req.body) updates[field] = req.body[field];
     }
     updates.updatedAt = new Date();
 
-    await db.update(assetsTable).set(updates).where(eq(assetsTable.id, assetId));
+    await db
+      .update(assetsTable)
+      .set(updates)
+      .where(and(eq(assetsTable.tenantId, tenantId), eq(assetsTable.id, assetId)));
 
     const [updated] = await db
       .select()
       .from(assetsTable)
-      .where(eq(assetsTable.id, assetId));
+      .where(and(eq(assetsTable.tenantId, tenantId), eq(assetsTable.id, assetId)));
     return res.json(updated);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -993,10 +1053,23 @@ Note: `taskId` changes from required to nullable (a version belongs to a shot/as
 ```typescript
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { versionsTable } from "@workspace/db/schema";
+import { versionsTable, tasksTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import * as crypto from "crypto";
+
+// Confirms taskId actually belongs to the caller's tenant before it's
+// allowed to be linked onto a version. A DB foreign key only verifies the
+// referenced row exists, not who owns it — without this check, any
+// authenticated user could cross-link a version to another tenant's task
+// (IDOR). Same pattern as routes/shots.ts.
+async function taskInTenant(id: string, tenantId: string) {
+  const [row] = await db
+    .select({ id: tasksTable.id })
+    .from(tasksTable)
+    .where(and(eq(tasksTable.id, id), eq(tasksTable.tenantId, tenantId)));
+  return !!row;
+}
 
 export const versionsRouter = Router();
 
@@ -1032,6 +1105,9 @@ versionsRouter.post("/", async (req, res) => {
       return res
         .status(400)
         .json({ error: "Missing entityId, entityType, or mediaUrl" });
+
+    if (taskId && !(await taskInTenant(taskId, tenantId)))
+      return res.status(400).json({ error: "Invalid taskId" });
 
     const newId = crypto.randomUUID();
     await db.insert(versionsTable).values({
@@ -1073,12 +1149,15 @@ versionsRouter.put("/:id", async (req, res) => {
       if (field in req.body) updates[field] = req.body[field];
     }
 
-    await db.update(versionsTable).set(updates).where(eq(versionsTable.id, versionId));
+    await db
+      .update(versionsTable)
+      .set(updates)
+      .where(and(eq(versionsTable.tenantId, tenantId), eq(versionsTable.id, versionId)));
 
     const [updated] = await db
       .select()
       .from(versionsTable)
-      .where(eq(versionsTable.id, versionId));
+      .where(and(eq(versionsTable.tenantId, tenantId), eq(versionsTable.id, versionId)));
     return res.json(updated);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -1117,10 +1196,23 @@ git commit -m "feat(api,db): enrich versions table and add versions route"
 ```typescript
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { reviewsTable, annotationsTable } from "@workspace/db/schema";
+import { reviewsTable, annotationsTable, versionsTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import * as crypto from "crypto";
+
+// Confirms versionId actually belongs to the caller's tenant before it's
+// allowed to be linked onto a review or annotation. A DB foreign key only
+// verifies the referenced row exists, not who owns it — without this
+// check, any authenticated user could attach a review/annotation to
+// another tenant's version (IDOR). Same pattern as routes/shots.ts.
+async function versionInTenant(id: string, tenantId: string) {
+  const [row] = await db
+    .select({ id: versionsTable.id })
+    .from(versionsTable)
+    .where(and(eq(versionsTable.id, id), eq(versionsTable.tenantId, tenantId)));
+  return !!row;
+}
 
 export const reviewsRouter = Router();
 
@@ -1156,6 +1248,9 @@ reviewsRouter.post("/", async (req, res) => {
       return res
         .status(400)
         .json({ error: "Missing entityId, entityType, or versionId" });
+
+    if (!(await versionInTenant(versionId, tenantId)))
+      return res.status(400).json({ error: "Invalid versionId" });
 
     const newId = crypto.randomUUID();
     await db.insert(reviewsTable).values({
@@ -1223,6 +1318,9 @@ reviewsRouter.post("/:versionId/annotations", async (req, res) => {
     if (typeof frame !== "number" || !type || !color)
       return res.status(400).json({ error: "Missing frame, type, or color" });
 
+    if (!(await versionInTenant(versionId, tenantId)))
+      return res.status(400).json({ error: "Invalid versionId" });
+
     const newId = crypto.randomUUID();
     await db.insert(annotationsTable).values({
       id: newId,
@@ -1265,7 +1363,9 @@ reviewsRouter.delete("/annotations/:id", async (req, res) => {
       .where(and(eq(annotationsTable.tenantId, tenantId), eq(annotationsTable.id, id)));
     if (!existing) return res.status(404).json({ error: "Not found" });
 
-    await db.delete(annotationsTable).where(eq(annotationsTable.id, id));
+    await db
+      .delete(annotationsTable)
+      .where(and(eq(annotationsTable.tenantId, tenantId), eq(annotationsTable.id, id)));
     return res.status(204).send();
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -1393,7 +1493,33 @@ git commit -m "feat(api): add daily logs route"
 **Interfaces:**
 - Produces: extends existing `GET/POST/PUT` on `/api/tasks` for the new enriched fields; adds `GET/POST /api/tasks/:id/checklist`, `PUT /api/tasks/:id/checklist/:itemId`; `GET/POST /api/tasks/:id/comments`; `GET/POST /api/tasks/:id/dependencies`; `GET/POST /api/tasks/:id/attachments`; `GET/POST /api/tasks/:id/approval-events`.
 
-- [ ] **Step 1: Read the current `artifacts/api-server/src/routes/tasks.ts` in full** (it's short, ~80 lines) to confirm the exact current `GET`/`POST`/`PUT` handlers before extending them — this task modifies existing handlers, not just appends.
+- [ ] **Step 1: Read the current `artifacts/api-server/src/routes/tasks.ts` in full** (it's short, ~80 lines) to confirm the exact current `GET`/`POST`/`PUT` handlers before extending them — this task modifies existing handlers, not just appends. Add `usersTable` to the file's existing `@workspace/db/schema` import, and add this helper near the top of the file (after the imports, before the router handlers) — it's used by Steps 2, 3, and the nested sub-resource routes below: a DB foreign key only verifies a referenced row exists, not who owns it, so every foreign key accepted from a request body needs an explicit tenant-ownership check before use (same pattern already applied in `routes/shots.ts`, `routes/versions.ts`, `routes/reviews.ts`):
+
+```typescript
+async function userInTenant(id: string, tenantId: string) {
+  const [row] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(and(eq(usersTable.id, id), eq(usersTable.tenantId, tenantId)));
+  return !!row;
+}
+
+// Used by every nested /:id/* sub-resource route below to confirm the
+// parent task (req.params.id) belongs to the caller's tenant BEFORE
+// inserting a checklist item/comment/dependency/attachment/approval-event
+// against it — otherwise a user could write sub-resources onto another
+// tenant's task just by knowing its id, even though the sub-resource row
+// itself carries the caller's own tenantId (an IDOR-adjacent referential
+// integrity gap, same root cause as the FK-ownership issue elsewhere in
+// this plan).
+async function taskInTenant(id: string, tenantId: string) {
+  const [row] = await db
+    .select({ id: tasksTable.id })
+    .from(tasksTable)
+    .where(and(eq(tasksTable.id, id), eq(tasksTable.tenantId, tenantId)));
+  return !!row;
+}
+```
 
 - [ ] **Step 2: Extend the existing `POST /` handler** to accept the new enriched fields (`title`, `description`, `priority`, `department`, `pipelinePhase`, `dueDate`, `estimatedHours`) alongside the existing `entityId`/`entityType`/`status`:
 
@@ -1417,6 +1543,9 @@ tasksRouter.post("/", async (req, res) => {
 
     if (!entityId || !entityType)
       return res.status(400).json({ error: "Missing entityId or entityType" });
+
+    if (assignedTo && !(await userInTenant(assignedTo, tenantId)))
+      return res.status(400).json({ error: "Invalid assignedTo" });
 
     const newId = crypto.randomUUID();
     await db.insert(tasksTable).values({
@@ -1475,18 +1604,28 @@ tasksRouter.put("/:id", async (req, res) => {
 
     if (!existing) return res.status(404).json({ error: "Not found" });
 
+    if (
+      "assignedTo" in req.body &&
+      req.body.assignedTo &&
+      !(await userInTenant(req.body.assignedTo, tenantId))
+    )
+      return res.status(400).json({ error: "Invalid assignedTo" });
+
     const updates: Record<string, unknown> = {};
     for (const field of TASK_PATCHABLE_FIELDS) {
       if (field in req.body) updates[field] = req.body[field];
     }
     updates.lastStatusUpdate = new Date();
 
-    await db.update(tasksTable).set(updates).where(eq(tasksTable.id, taskId));
+    await db
+      .update(tasksTable)
+      .set(updates)
+      .where(and(eq(tasksTable.tenantId, tenantId), eq(tasksTable.id, taskId)));
 
     const [updated] = await db
       .select()
       .from(tasksTable)
-      .where(eq(tasksTable.id, taskId));
+      .where(and(eq(tasksTable.tenantId, tenantId), eq(tasksTable.id, taskId)));
     return res.json(updated);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -1533,6 +1672,8 @@ tasksRouter.post("/:id/checklist", async (req, res) => {
     const tenantId = req.tenantId!;
     const { text, position } = req.body;
     if (!text) return res.status(400).json({ error: "Missing text" });
+    if (!(await taskInTenant(req.params.id, tenantId)))
+      return res.status(404).json({ error: "Not found" });
     const newId = crypto.randomUUID();
     await db.insert(taskChecklistItemsTable).values({
       id: newId,
@@ -1571,11 +1712,21 @@ tasksRouter.put("/:id/checklist/:itemId", async (req, res) => {
     await db
       .update(taskChecklistItemsTable)
       .set(updates)
-      .where(eq(taskChecklistItemsTable.id, req.params.itemId));
+      .where(
+        and(
+          eq(taskChecklistItemsTable.tenantId, tenantId),
+          eq(taskChecklistItemsTable.id, req.params.itemId),
+        ),
+      );
     const [updated] = await db
       .select()
       .from(taskChecklistItemsTable)
-      .where(eq(taskChecklistItemsTable.id, req.params.itemId));
+      .where(
+        and(
+          eq(taskChecklistItemsTable.tenantId, tenantId),
+          eq(taskChecklistItemsTable.id, req.params.itemId),
+        ),
+      );
     return res.json(updated);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -1603,6 +1754,8 @@ tasksRouter.post("/:id/comments", async (req, res) => {
     const userId = req.userId!;
     const { text } = req.body;
     if (!text) return res.status(400).json({ error: "Missing text" });
+    if (!(await taskInTenant(req.params.id, tenantId)))
+      return res.status(404).json({ error: "Not found" });
     const newId = crypto.randomUUID();
     await db.insert(taskCommentsTable).values({
       id: newId,
@@ -1645,6 +1798,10 @@ tasksRouter.post("/:id/dependencies", async (req, res) => {
     const { dependsOnTaskId, type, lagDays } = req.body;
     if (!dependsOnTaskId)
       return res.status(400).json({ error: "Missing dependsOnTaskId" });
+    if (!(await taskInTenant(req.params.id, tenantId)))
+      return res.status(404).json({ error: "Not found" });
+    if (!(await taskInTenant(dependsOnTaskId, tenantId)))
+      return res.status(400).json({ error: "Invalid dependsOnTaskId" });
     const newId = crypto.randomUUID();
     await db.insert(taskDependenciesTable).values({
       id: newId,
@@ -1688,6 +1845,8 @@ tasksRouter.post("/:id/attachments", async (req, res) => {
     const userId = req.userId!;
     const { url } = req.body;
     if (!url) return res.status(400).json({ error: "Missing url" });
+    if (!(await taskInTenant(req.params.id, tenantId)))
+      return res.status(404).json({ error: "Not found" });
     const newId = crypto.randomUUID();
     await db.insert(taskAttachmentsTable).values({
       id: newId,
@@ -1731,6 +1890,8 @@ tasksRouter.post("/:id/approval-events", async (req, res) => {
     const { action, byRole } = req.body;
     if (!action || !byRole)
       return res.status(400).json({ error: "Missing action or byRole" });
+    if (!(await taskInTenant(req.params.id, tenantId)))
+      return res.status(404).json({ error: "Not found" });
     const newId = crypto.randomUUID();
     await db.insert(taskApprovalEventsTable).values({
       id: newId,
@@ -2168,3 +2329,5 @@ git commit -m "feat(seed): generate realistic episodes/sequences/shots/assets/ta
 **Placeholder scan:** No task step says "add appropriate error handling" or similar — every route handler shown is the complete, real implementation. Task 15/16/18's frontend-wiring steps describe a transformation *rule* rather than reproducing entire multi-hundred-line page files verbatim, which is a deliberate scoping choice (matching this skill's own "Modify: file:line" pattern for existing-file changes) rather than a vague placeholder — each rule names the exact old API (store selector/method name) and exact new API (hook name/mutation signature) being substituted.
 
 **Type consistency:** `ShotDTO`/`AssetDTO`/`VersionDTO`/`TaskDTO`/`DailyLogDTO`/`Annotation` field names are defined once (Tasks 15, 16, 17, 18, 19) and match the Drizzle schema column names from Tasks 2-6 exactly (camelCase in TypeScript, Drizzle's `text("snake_case_column")` mapping handled by the ORM as already established elsewhere in this codebase — no task introduces a naming mismatch between its own schema and route). `apiClient.put`/`apiClient.delete`, added once each in Tasks 15/17 respectively, are referenced by name consistently in every later task that needs them (16, 17, 18, 19).
+
+**Post-execution correction (during Task 9):** an automated security review of Task 9's originally-committed `shots.ts` found a real HIGH-severity IDOR — POST/PUT accepted foreign-key ids (`projectId`/`episodeId`/`sequenceId`/`assigneeId`, etc.) straight from the request body with no check that they belong to the caller's own tenant, since a DB foreign key only verifies the referenced row exists, not who owns it — plus a MEDIUM missing-tenant-scope on a PUT's `UPDATE` statement. Both traced back to this plan's own Task 9 template, which had already been copied unmodified into the already-approved Task 8 (`episodes.ts`, `sequences.ts`). All three files were fixed and re-reviewed (see the plan's execution ledger). This section (Tasks 10, 11, 12, 14 — not yet dispatched at the time of the finding) was then corrected in place to include the same tenant-ownership-check pattern from the start: `assets.ts` (Task 10) mirrors `shots.ts`'s four checks; `versions.ts` (Task 11) gained a `taskInTenant` check on `taskId` plus a tenant-scoped PUT; `reviews.ts`/`annotations` (Task 12) gained a `versionInTenant` check on both the reviews and annotations POST handlers plus a tenant-scoped annotation DELETE; Task 14's task-enrichment POST/PUT gained an `assignedTo` → `userInTenant` check with a tenant-scoped PUT, and every nested sub-resource POST (checklist/comments/dependencies/attachments/approval-events) gained a `taskInTenant` check on the parent `:id` before writing (plus `dependsOnTaskId` → `taskInTenant` in the dependencies POST, and a tenant-scoped checklist-item PUT). Task 13 (`daily-logs.ts`) already validated `taskId` correctly in its original form and needed no change.
