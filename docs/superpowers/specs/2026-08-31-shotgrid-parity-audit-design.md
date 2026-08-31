@@ -75,17 +75,96 @@ Output: a markdown inventory keyed by Forge page name, plus an errors list.
 
 ### Task C — Corrections verification
 
-For each item in:
-- `forge-final.md` §4 and §4a (self-host deploy-blocker fixes + hardening pass)
-- `docs/superpowers/plans/forge-hardening-plan.md` Task 1 (real RBAC
-  capability enforcement) and Task 2 (compose healthcheck + pnpm pin)
-- The two flagged commits `77a640f` (whole-branch review findings) and
-  `a862b9f` (re-review notes)
+Check the current code at `main` (`a862b9f`) against every claimed fix below
+and confirm present-and-correct / partially present / missing-or-regressed,
+with file:line evidence for each verdict. Output: a markdown checklist, one
+row per item.
 
-...check the current code at `main` (`a862b9f`) and confirm whether the fix
-is actually present and correct, partially present, or missing/regressed.
-Output: a markdown checklist, one row per claimed fix, with file:line
-evidence for each verdict.
+**From `forge-final.md` §4 (self-host deploy-blocker fixes):**
+1. `artifacts/forge/nginx.conf` — `/api/` `proxy_pass` block added.
+2. `docker-compose.yml` — `api` service migration command fixed (no longer
+   the broken `pnpm --filter` invocation against a pruned deploy image).
+3. `artifacts/api-server/Dockerfile` — only regenerates migrations if none
+   are committed, passes a placeholder `DATABASE_URL` at build time, deploys
+   `@workspace/db` without `--prod` (so `tsx` survives pruning).
+4. `artifacts/api-server/src/routes/index.ts` — `usersRouter` mounted;
+   `/api/healthz` no longer double-mounted at `/api/healthz/healthz`.
+5. `artifacts/api-server/src/routes/users.ts` — tenant-scoped, strips
+   `hashedPassword` from responses, hashes new passwords with argon2.
+6. `railway.json` — `healthcheckPath` is `/api/healthz`.
+7. `artifacts/forge/src/hooks/useUsers.ts` — no `/api/api/users`
+   double-prefix; unwraps the bare-array response shape the API actually
+   returns (not `{ users: [...] }`).
+8. `scripts/package.json` — has a `"seed": "tsx ./src/seed.ts"` script.
+9. `lib/db/seed.cjs` — deleted (was dead code against a retired schema).
+
+**From `forge-final.md` §4a (follow-up hardening pass):**
+10. `artifacts/forge/Dockerfile` — `COPY nginx.conf` resolves correctly
+    against the build context (`COPY artifacts/forge/nginx.conf …`).
+11. `lib/db/src/migrate.ts` — guards "object already exists" migration
+    errors (warns + exits 0) without swallowing genuine failures.
+12. `lib/db/src/schema/core.ts` — `users.email` is `UNIQUE`; `users.role_id`
+    has a real FK to `tenant_roles(id)`.
+13. `artifacts/api-server/src/routes/users.ts` — `POST /api/users` validates
+    `roleId` belongs to the caller's tenant (`400` if not) and checks for
+    duplicate email (`409`).
+14. `lib/api-spec/openapi.yaml` + `lib/api-zod` + `lib/api-client-react` —
+    `GET`/`POST /users` documented and codegen output regenerated/committed.
+15. `docker-compose.yml` — `api` container's internal port fixed at 3001
+    matching `nginx.conf`'s `proxy_pass`; `db` healthcheck uses
+    `pg_isready -h 127.0.0.1` with a `start_period`.
+16. `artifacts/*/Dockerfile` — uses `corepack enable` (not
+    `corepack prepare pnpm@latest --activate`), respecting the
+    `packageManager` pin.
+17. `artifacts/api-server/.env.example` — exists with placeholder values.
+18. `forge-final.md` itself — the live Neon password once quoted in §3 is
+    redacted, not verbatim.
+
+**From `docs/superpowers/plans/forge-hardening-plan.md`:**
+19. Task 1 — `artifacts/api-server/src/middleware/rbac.ts`'s
+    `requireCapability` actually queries `tenantRoleCapabilitiesTable`
+    (not just checking `req.roleId` truthy), and is applied to
+    `POST /api/users` (not `GET /`) with capability id `"manage_members"`.
+20. Task 2 — `docker-compose.yml`'s `db` service has a `pg_isready`
+    healthcheck and `api`'s `depends_on` uses the `condition: service_healthy`
+    long form; root `package.json` has a `"packageManager": "pnpm@<version>"`
+    field.
+
+**From commit `77a640f` ("address final whole-branch review findings"):**
+21. `artifacts/api-server/src/routes/users.ts` — `GET /api/users` left-joins
+    `tenant_roles` so `role` is a real name, not `undefined`; blocks the
+    `client` role from this endpoint.
+22. `scripts/src/seed.ts` — per-role `tenant_roles` re-query scoped by
+    `(name, tenantId)`, not name alone.
+23. Frontend `auth.ts` store — department rows from the real API normalized
+    to the mock `Department` shape's field names at the hydration boundary
+    (not left mismatched: `abbreviation`/`description`/`studioId` vs. the
+    API's `abbr`/`pipeline`/`tenantId`).
+24. `departments.tsx` — the persisted "Pipeline Flow" order self-heals
+    against the live department list when it can't resolve (was previously
+    permanently empty against real UUID ids).
+25. `useUsers.ts` / `admin.tsx` — uses the real `UserDTO` the endpoint
+    returns, no `any` cast.
+26. `artifacts/forge/src/scripts/generateMockData.ts` — deleted (dead code,
+    retired 9-role scheme).
+
+**From commit `a862b9f` ("address re-review notes"):**
+27. `departments.tsx` — the Pipeline Flow self-heal fallback filters to
+    `pipelineOrder > 0`, excluding "Production Management" (studio overhead,
+    not a pipeline stage) from the strip.
+28. `artifacts/api-server/src/routes/users.ts` — `GET /api/users` scopes the
+    query itself for the `client` role (returns `200` with just
+    admin/production_head rows) rather than blocking the endpoint outright
+    and leaving the frontend's stale mock fallback to render fabricated
+    names.
+
+**Known limitation, not a defect (`forge-final.md` §6, carry forward,
+do not re-flag as a new finding):** `requireCapability` is real now (item
+19) but is still the *only* route guarded by a capability check — every
+other write endpoint is tenant-scoped but not capability-scoped. `JWT_SECRET`
+has a hardcoded fallback, bundled Postgres publishes `5432` on `0.0.0.0`,
+`CORS_ORIGIN` defaults to `*` — all fine for a trusted internal network,
+flagged in `forge-final.md`, not this audit's job to fix or re-flag.
 
 ### Task D — Feature + filter/dropdown gap matrix
 
