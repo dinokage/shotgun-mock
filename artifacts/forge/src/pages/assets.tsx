@@ -30,7 +30,7 @@ import {
   EmptyContent,
 } from "@/components/ui/empty";
 import { useToast } from "@/hooks/use-toast";
-import { PROJECTS, USERS, Asset } from "@/data/mockData";
+import { PROJECTS, USERS } from "@/data/mockData";
 import {
   Search,
   Grid3X3,
@@ -44,7 +44,7 @@ import {
 } from "lucide-react";
 import { Link, useSearchParams } from "wouter";
 import { useAuthStore } from "@/store/auth";
-import { useAssetStore } from "@/store/assets";
+import { useAssets, useCreateAsset } from "@/hooks/useAssets";
 import { useCapability } from "@/hooks/use-capability";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 
@@ -72,7 +72,7 @@ const STATUS_COLORS: Record<string, string> = {
 const GRID_PAGE_SIZE = 40;
 const LIST_PAGE_SIZE = 50;
 
-const ASSET_TYPE_OPTIONS: Asset["type"][] = [
+const ASSET_TYPE_OPTIONS: string[] = [
   "Character",
   "Environment",
   "Prop",
@@ -93,14 +93,15 @@ export default function Assets() {
   const [projectFilter, setProjectFilter] = useState("all");
   const [newAssetOpen, setNewAssetOpen] = useState(false);
   const [newAssetName, setNewAssetName] = useState("");
-  const [newAssetType, setNewAssetType] = useState<Asset["type"]>("Character");
+  const [newAssetType, setNewAssetType] = useState<string>("Character");
   const [newAssetProjectId, setNewAssetProjectId] = useState(
     PROJECTS[0]?.id ?? "",
   );
   const { toast } = useToast();
   const { currentUser } = useAuthStore();
-  const assets = useAssetStore((s) => s.assets);
-  const setAssets = useAssetStore((s) => s.setAssets);
+  const { data: assets = [], isLoading } = useAssets();
+  const { mutateAsync: createAsset, isPending: isCreatingAsset } =
+    useCreateAsset();
   // Studio Ops: creating a top-level pipeline asset is gated the same way as
   // adding/reordering pipeline stages, rather than a hardcoded role list.
   const canCreateAsset = useCapability("manage_pipeline");
@@ -115,7 +116,7 @@ export default function Assets() {
     setNewAssetProjectId(PROJECTS[0]?.id ?? "");
   };
 
-  const handleCreate = (e: React.FormEvent) => {
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAssetName.trim() || !newAssetProjectId || !currentUser) {
       toast({
@@ -126,37 +127,26 @@ export default function Assets() {
       return;
     }
 
-    // Derived from the live store, not a frozen import, so ids stay unique
-    // across a session even after multiple assets are created.
-    const nextNumericId = assets.reduce((max, a) => {
-      const n = parseInt(a.id.replace(/\D/g, ""), 10);
-      return Number.isFinite(n) ? Math.max(max, n) : max;
-    }, 0);
-
-    const newAsset: Asset = {
-      id: `asset${nextNumericId + 1}`,
-      name: newAssetName.trim(),
-      projectId: newAssetProjectId,
-      type: newAssetType,
-      status: "not-started",
-      assigneeId: currentUser.id,
-      updatedAt: new Date().toISOString().split("T")[0],
-      version: "v001",
-      tags: [],
-      thumbnailSeed: 2000 + nextNumericId + 1,
-      fileSize: "0 MB",
-      dependencies: [],
-      publishStatus: "draft",
-      description: "",
-    };
-
-    setAssets([newAsset, ...assets]);
-    setNewAssetOpen(false);
-    resetCreateForm();
-    toast({
-      title: "Asset Created",
-      description: `"${newAsset.name}" was added to the project.`,
-    });
+    try {
+      const asset = await createAsset({
+        projectId: newAssetProjectId,
+        name: newAssetName.trim(),
+        type: newAssetType,
+        assigneeId: currentUser.id,
+      });
+      setNewAssetOpen(false);
+      resetCreateForm();
+      toast({
+        title: "Asset Created",
+        description: `"${asset.name}" was added to the project.`,
+      });
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err.message || "Failed to create asset.",
+        variant: "destructive",
+      });
+    }
   };
 
   const filtered = useMemo(() => {
@@ -200,6 +190,8 @@ export default function Assets() {
     mineOnly,
     currentUser?.id,
   ]);
+
+  if (isLoading) return <div className="p-6">Loading assets...</div>;
 
   return (
     <div className="p-6 max-w-[1600px] mx-auto space-y-6">
@@ -248,9 +240,7 @@ export default function Assets() {
                       <Select
                         required
                         value={newAssetType}
-                        onValueChange={(v) =>
-                          setNewAssetType(v as Asset["type"])
-                        }
+                        onValueChange={(v) => setNewAssetType(v)}
                       >
                         <SelectTrigger>
                           <SelectValue />
@@ -285,7 +275,9 @@ export default function Assets() {
                     </div>
                   </div>
                   <DialogFooter>
-                    <Button type="submit">Create Asset</Button>
+                    <Button type="submit" disabled={isCreatingAsset}>
+                      {isCreatingAsset ? "Creating..." : "Create Asset"}
+                    </Button>
                   </DialogFooter>
                 </form>
               </DialogContent>

@@ -43,7 +43,7 @@ import { PipelineVisualizer } from "@/components/shared/PipelineVisualizer";
 import { useToast } from "@/hooks/use-toast";
 import { useReviewStore } from "@/store/reviews";
 import { useAssetActivityStore } from "@/store/assetActivity";
-import { useAssetStore } from "@/store/assets";
+import { useAssets, useUpdateAsset } from "@/hooks/useAssets";
 import { useAuthStore } from "@/store/auth";
 import { useUIStore } from "@/store/ui";
 import { fadeInUp, confirmPulse } from "@/lib/motion";
@@ -126,8 +126,8 @@ export default function AssetDetail() {
     (s) => s.currentVersionOverrides,
   );
   const rollbackToVersion = useReviewStore((s) => s.rollbackToVersion);
-  const assets = useAssetStore((s) => s.assets);
-  const updateAsset = useAssetStore((s) => s.updateAsset);
+  const { data: assets = [], isLoading } = useAssets();
+  const updateAssetMutation = useUpdateAsset();
   const lastOpenedInDCC = useAssetActivityStore((s) => s.lastOpenedInDCC);
   const recordDccOpen = useAssetActivityStore((s) => s.recordDccOpen);
   const publishOverrides = useAssetActivityStore((s) => s.publishOverrides);
@@ -148,6 +148,12 @@ export default function AssetDetail() {
     setV2(null);
   }, [params?.id]);
 
+  if (isLoading)
+    return (
+      <div className="p-6 text-center text-muted-foreground">
+        Loading asset...
+      </div>
+    );
   if (!asset)
     return (
       <div className="p-6 text-center text-muted-foreground">
@@ -214,7 +220,7 @@ export default function AssetDetail() {
   };
 
   const handlePublish = () => {
-    updateAsset(asset.id, { publishStatus: "published" });
+    updateAssetMutation.mutate({ id: asset.id, publishStatus: "published" });
     publishAsset(asset.id, {
       userName: currentUser?.name ?? "You",
       timestamp: new Date().toISOString(),
