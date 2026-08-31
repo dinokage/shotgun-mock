@@ -11,6 +11,7 @@ import { sequencesRouter } from "./sequences";
 import { shotsRouter } from "./shots";
 import { assetsRouter } from "./assets";
 import { versionsRouter } from "./versions";
+import { reviewsRouter } from "./reviews";
 
 const router = Router();
 
@@ -28,5 +29,6 @@ router.use("/sequences", sequencesRouter);
 router.use("/shots", shotsRouter);
 router.use("/assets", assetsRouter);
 router.use("/versions", versionsRouter);
+router.use("/reviews", reviewsRouter);
 
 export default router;
