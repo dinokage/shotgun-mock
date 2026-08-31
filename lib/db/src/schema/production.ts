@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, integer, jsonb } from "drizzle-orm/pg-core";
 import { tenantsTable, usersTable } from "./core";
 
 export const projectsTable = pgTable("projects", {
@@ -49,10 +49,30 @@ export const assetsTable = pgTable("assets", {
   projectId: text("project_id")
     .notNull()
     .references(() => projectsTable.id, { onDelete: "cascade" }),
+  episodeId: text("episode_id").references(() => episodesTable.id, {
+    onDelete: "set null",
+  }),
+  sequenceId: text("sequence_id").references(() => sequencesTable.id, {
+    onDelete: "set null",
+  }),
+  assigneeId: text("assignee_id").references(() => usersTable.id, {
+    onDelete: "set null",
+  }),
   name: text("name").notNull(),
-  type: text("type"),
+  type: text("type").notNull().default("Prop"),
   status: text("status").notNull().default("active"),
+  version: text("version").notNull().default("v001"),
+  usdVersion: text("usd_version"),
+  tags: jsonb("tags").$type<string[]>().notNull().default([]),
+  thumbnail: text("thumbnail"),
+  fileSize: text("file_size").notNull().default("0MB"),
+  polyCount: text("poly_count"),
+  dependencies: jsonb("dependencies").$type<string[]>().notNull().default([]),
+  publishStatus: text("publish_status").notNull().default("draft"),
+  description: text("description").notNull().default(""),
+  notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
   deletedAt: timestamp("deleted_at"),
 });
 
