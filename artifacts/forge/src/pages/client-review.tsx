@@ -48,7 +48,13 @@ import {
   type AnnotationTool,
   type Annotation,
   type DraggingElement,
+  type SetAnnotations,
 } from "@/components/shared/review";
+import {
+  useAnnotations,
+  useCreateAnnotation,
+  useDeleteAnnotation,
+} from "@/hooks/useReviews";
 
 const COLORS = [
   "#10b981",
@@ -109,7 +115,36 @@ export default function ClientReview() {
 
   const [tool, setTool] = useState<AnnotationTool>("select");
   const [color, setColor] = useState("#10b981");
-  const [annotations, setAnnotations] = useState<Annotation[]>([]);
+  // Annotations are persisted server-side, keyed to the version currently
+  // being reviewed (PRESENTED_VERSION_ID — the same id review.tsx uses for
+  // this concept, and the one this page already imports for Presentation
+  // Mode's lock check above).
+  const { data: annotations = [] } = useAnnotations(PRESENTED_VERSION_ID);
+  const createAnnotation = useCreateAnnotation(PRESENTED_VERSION_ID);
+  const deleteAnnotation = useDeleteAnnotation(PRESENTED_VERSION_ID);
+  // Bridges AnnotationCanvas's raw dispatch-style API onto the server-backed
+  // list above — added ids become createAnnotation.mutate calls, dropped
+  // ids become deleteAnnotation.mutate calls. In-place edits to an
+  // already-committed annotation have no backend update endpoint yet (see
+  // useReviews.ts) and are intentionally not persisted here.
+  const applyAnnotationsUpdate: SetAnnotations = (update) => {
+    const prevList = annotations;
+    const nextList =
+      typeof update === "function"
+        ? (update as (prev: Annotation[]) => Annotation[])(prevList)
+        : update;
+    const prevIds = new Set(prevList.map((a) => a.id));
+    const nextIds = new Set(nextList.map((a) => a.id));
+    nextList
+      .filter((a) => !prevIds.has(a.id))
+      .forEach((a) => {
+        const { id, ...rest } = a;
+        createAnnotation.mutate(rest);
+      });
+    prevList
+      .filter((a) => !nextIds.has(a.id))
+      .forEach((a) => deleteAnnotation.mutate(a.id));
+  };
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<
     string | null
   >(null);
@@ -265,9 +300,7 @@ export default function ClientReview() {
         setFrame((f) => Math.min(maxFrames, f + 1));
       } else if (e.code === "Backspace" || e.code === "Delete") {
         if (selectedAnnotationId) {
-          setAnnotations((prev) =>
-            prev.filter((a) => a.id !== selectedAnnotationId),
-          );
+          deleteAnnotation.mutate(selectedAnnotationId);
           setSelectedAnnotationId(null);
         }
       } else if (e.code === "Escape") {
@@ -292,7 +325,7 @@ export default function ClientReview() {
       const dy = e.clientY - draggingElement.startY;
 
       if (draggingElement.type === "annotation") {
-        setAnnotations((prev) =>
+        applyAnnotationsUpdate((prev) =>
           prev.map((a) => {
             if (a.id !== draggingElement.id) return a;
             return {
@@ -641,7 +674,7 @@ export default function ClientReview() {
 
             <AnnotationCanvas
               annotations={annotations}
-              onAnnotationsChange={setAnnotations}
+              onAnnotationsChange={applyAnnotationsUpdate}
               frame={frame}
               maxFrames={maxFrames}
               tool={isLockedViewer ? "select" : tool}
@@ -781,7 +814,7 @@ export default function ClientReview() {
                   });
                   // Clear the canvas now that this markup has been captured
                   // with the note, so the next note starts from a blank frame.
-                  setAnnotations([]);
+                  applyAnnotationsUpdate([]);
                   setSelectedAnnotationId(null);
                   setFeedback("");
                   toast({

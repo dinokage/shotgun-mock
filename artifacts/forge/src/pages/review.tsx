@@ -94,7 +94,13 @@ import {
   type AnnotationTool,
   type Annotation,
   type DraggingElement,
+  type SetAnnotations,
 } from "@/components/shared/review";
+import {
+  useAnnotations,
+  useCreateAnnotation,
+  useDeleteAnnotation,
+} from "@/hooks/useReviews";
 
 interface MediaClip {
   id: string;
@@ -340,7 +346,40 @@ export default function Review() {
   const waveformSamplesRef = useRef<number[]>([]);
   const waveformIntervalRef = useRef<number | null>(null);
   const [color, setColor] = useState("#ef4444");
-  const [annotations, setAnnotations] = useState<Annotation[]>([]);
+  // Annotations are persisted server-side, keyed to the version currently
+  // being reviewed (PRESENTED_VERSION_ID — the same "current version" id
+  // already used above for Presentation Mode syncing).
+  const { data: annotations = [] } = useAnnotations(PRESENTED_VERSION_ID);
+  const createAnnotation = useCreateAnnotation(PRESENTED_VERSION_ID);
+  const deleteAnnotation = useDeleteAnnotation(PRESENTED_VERSION_ID);
+  // Bridges the shared AnnotationCanvas's raw dispatch-style API (and this
+  // page's own resize/drag handlers, which were all written against a local
+  // useState<Annotation[]>) onto the server-backed list above. Ids added by
+  // the updater become createAnnotation.mutate calls; ids dropped become
+  // deleteAnnotation.mutate calls. In-place edits to an already-committed
+  // annotation (resize handles, dragging, the Properties panel's text/color/
+  // frame-range fields) have no backend update endpoint yet — see
+  // useReviews.ts, which only exposes create/list/delete — so those diffs
+  // are intentionally not persisted here; they still render for this
+  // session but revert on the next annotations refetch.
+  const applyAnnotationsUpdate: SetAnnotations = (update) => {
+    const prevList = annotations;
+    const nextList =
+      typeof update === "function"
+        ? (update as (prev: Annotation[]) => Annotation[])(prevList)
+        : update;
+    const prevIds = new Set(prevList.map((a) => a.id));
+    const nextIds = new Set(nextList.map((a) => a.id));
+    nextList
+      .filter((a) => !prevIds.has(a.id))
+      .forEach((a) => {
+        const { id, ...rest } = a;
+        createAnnotation.mutate(rest);
+      });
+    prevList
+      .filter((a) => !nextIds.has(a.id))
+      .forEach((a) => deleteAnnotation.mutate(a.id));
+  };
   const [resizing, setResizing] = useState<{
     id: string;
     type: "video" | "annotation";
@@ -496,7 +535,7 @@ export default function Review() {
 
           // Occasionally simulate them drawing a box
           if (Math.random() > 0.95 && !isPlaying) {
-            setAnnotations((prevAnns) => [
+            applyAnnotationsUpdate((prevAnns) => [
               ...prevAnns,
               {
                 id: `remote-${Date.now()}`,
@@ -572,9 +611,7 @@ export default function Review() {
       Delete: () => {
         if (viewerMode || isLockedViewer) return;
         if (selectedAnnotationId) {
-          setAnnotations((prev) =>
-            prev.filter((a) => a.id !== selectedAnnotationId),
-          );
+          deleteAnnotation.mutate(selectedAnnotationId);
           setVideoClips((prev) =>
             prev.filter(
               (v) => v.id !== selectedAnnotationId || v.id === "base-v1",
@@ -586,9 +623,7 @@ export default function Review() {
       Backspace: () => {
         if (viewerMode || isLockedViewer) return;
         if (selectedAnnotationId) {
-          setAnnotations((prev) =>
-            prev.filter((a) => a.id !== selectedAnnotationId),
-          );
+          deleteAnnotation.mutate(selectedAnnotationId);
           setVideoClips((prev) =>
             prev.filter(
               (v) => v.id !== selectedAnnotationId || v.id === "base-v1",
@@ -771,7 +806,7 @@ export default function Review() {
           }),
         );
       } else {
-        setAnnotations((prev) =>
+        applyAnnotationsUpdate((prev) =>
           prev.map((a) => {
             if (a.id !== resizing.id) return a;
             const currentStart = a.startFrame ?? a.frame;
@@ -816,7 +851,7 @@ export default function Review() {
           }),
         );
       } else {
-        setAnnotations((prev) =>
+        applyAnnotationsUpdate((prev) =>
           prev.map((a) => {
             if (a.id !== draggingElement.id) return a;
             return {
@@ -1569,42 +1604,6 @@ export default function Review() {
               </motion.div>
             )}
 
-            {/* Contextual Cut Management Overlay */}
-            {!viewerMode && (
-              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-6 z-30 pointer-events-none opacity-50 hover:opacity-100 transition-opacity">
-                <div className="bg-card/90 backdrop-blur border border-border rounded-lg p-2 flex flex-col items-center gap-1 shadow-lg pointer-events-auto cursor-pointer hover:border-primary/50 transition-colors">
-                  <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
-                    Previous Shot
-                  </span>
-                  <div className="w-32 h-18 bg-muted rounded overflow-hidden relative">
-                    <img
-                      src="https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=400&q=80"
-                      className="w-full h-full object-cover"
-                      alt="prev-shot"
-                    />
-                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center font-mono text-xs font-bold text-white">
-                      S01_030
-                    </div>
-                  </div>
-                </div>
-                <div className="bg-card/90 backdrop-blur border border-border rounded-lg p-2 flex flex-col items-center gap-1 shadow-lg pointer-events-auto cursor-pointer hover:border-primary/50 transition-colors">
-                  <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
-                    Next Shot
-                  </span>
-                  <div className="w-32 h-18 bg-muted rounded overflow-hidden relative">
-                    <img
-                      src="https://images.unsplash.com/photo-1542204165-65bf26472b9b?w=400&q=80"
-                      className="w-full h-full object-cover"
-                      alt="next-shot"
-                    />
-                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center font-mono text-xs font-bold text-white">
-                      S01_050
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
             {/* VERSION COMPARISON MODE */}
             {compareMode !== "off" && (
               <div className="absolute inset-0 z-40 bg-black flex flex-col">
@@ -2016,7 +2015,7 @@ export default function Review() {
 
                 <AnnotationCanvas
                   annotations={annotations}
-                  onAnnotationsChange={setAnnotations}
+                  onAnnotationsChange={applyAnnotationsUpdate}
                   frame={frame}
                   maxFrames={maxFrames}
                   tool={isLockedViewer || viewerMode ? "select" : tool}
@@ -2066,6 +2065,48 @@ export default function Review() {
                   maxFrames={maxFrames}
                 />
               </div>
+
+              {/* Contextual Cut Management Overlay. Scoped to this
+                  video-canvas-only container (not the outer player column,
+                  which also contains the h-48 timeline/scrubber below) so
+                  `bottom-*` positions it against the bottom of the video
+                  frame instead of the bottom of the whole pane — previously
+                  it was a sibling of the timeline section and `bottom-6`
+                  placed it on top of the frame scrubber. */}
+              {!viewerMode && (
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-6 z-30 pointer-events-none opacity-50 hover:opacity-100 transition-opacity">
+                  <div className="bg-card/90 backdrop-blur border border-border rounded-lg p-2 flex flex-col items-center gap-1 shadow-lg pointer-events-auto cursor-pointer hover:border-primary/50 transition-colors">
+                    <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
+                      Previous Shot
+                    </span>
+                    <div className="w-32 h-18 bg-muted rounded overflow-hidden relative">
+                      <img
+                        src="https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=400&q=80"
+                        className="w-full h-full object-cover"
+                        alt="prev-shot"
+                      />
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center font-mono text-xs font-bold text-white">
+                        S01_030
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-card/90 backdrop-blur border border-border rounded-lg p-2 flex flex-col items-center gap-1 shadow-lg pointer-events-auto cursor-pointer hover:border-primary/50 transition-colors">
+                    <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
+                      Next Shot
+                    </span>
+                    <div className="w-32 h-18 bg-muted rounded overflow-hidden relative">
+                      <img
+                        src="https://images.unsplash.com/photo-1542204165-65bf26472b9b?w=400&q=80"
+                        className="w-full h-full object-cover"
+                        alt="next-shot"
+                      />
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center font-mono text-xs font-bold text-white">
+                        S01_050
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="h-48 bg-card border-t border-border flex flex-col shrink-0">
@@ -2245,9 +2286,7 @@ export default function Review() {
                             disabled={!canEdit}
                             onClick={(e) => {
                               e.stopPropagation();
-                              setAnnotations((prev) =>
-                                prev.filter((p) => p.id !== a.id),
-                              );
+                              deleteAnnotation.mutate(a.id);
                               if (selectedAnnotationId === a.id)
                                 setSelectedAnnotationId(null);
                               toast({ title: "Annotation Deleted" });
@@ -2783,7 +2822,7 @@ export default function Review() {
                               className="w-full bg-muted/50 border border-border rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                               value={ann.text || ""}
                               onChange={(e) =>
-                                setAnnotations((prev) =>
+                                applyAnnotationsUpdate((prev) =>
                                   prev.map((p) =>
                                     p.id === ann.id
                                       ? { ...p, text: e.target.value }
@@ -2807,7 +2846,7 @@ export default function Review() {
                               className="w-full bg-muted/50 border border-border rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                               value={ann.startFrame ?? ann.frame}
                               onChange={(e) =>
-                                setAnnotations((prev) =>
+                                applyAnnotationsUpdate((prev) =>
                                   prev.map((p) =>
                                     p.id === ann.id
                                       ? {
@@ -2835,7 +2874,7 @@ export default function Review() {
                                 Math.min(maxFrames, ann.frame + 60)
                               }
                               onChange={(e) =>
-                                setAnnotations((prev) =>
+                                applyAnnotationsUpdate((prev) =>
                                   prev.map((p) =>
                                     p.id === ann.id
                                       ? {
@@ -2860,7 +2899,7 @@ export default function Review() {
                                 disabled={!canEdit}
                                 value={ann.fontFamily || "font-sans"}
                                 onValueChange={(v) =>
-                                  setAnnotations((prev) =>
+                                  applyAnnotationsUpdate((prev) =>
                                     prev.map((p) =>
                                       p.id === ann.id
                                         ? { ...p, fontFamily: v }
@@ -2895,7 +2934,7 @@ export default function Review() {
                                 className="w-full bg-muted/50 border border-border rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                                 value={ann.fontSize || 14}
                                 onChange={(e) =>
-                                  setAnnotations((prev) =>
+                                  applyAnnotationsUpdate((prev) =>
                                     prev.map((p) =>
                                       p.id === ann.id
                                         ? {
@@ -2923,7 +2962,7 @@ export default function Review() {
                                 className={`w-6 h-6 rounded-full border-2 transition-transform hover:scale-110 disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed ${ann.color === c ? "border-primary" : "border-transparent"}`}
                                 style={{ backgroundColor: c }}
                                 onClick={() =>
-                                  setAnnotations((prev) =>
+                                  applyAnnotationsUpdate((prev) =>
                                     prev.map((p) =>
                                       p.id === ann.id ? { ...p, color: c } : p,
                                     ),
@@ -2951,7 +2990,7 @@ export default function Review() {
                                     "0 0, 0 5px, 5px -5px, -5px 0",
                                 }}
                                 onClick={() =>
-                                  setAnnotations((prev) =>
+                                  applyAnnotationsUpdate((prev) =>
                                     prev.map((p) =>
                                       p.id === ann.id
                                         ? {
@@ -2976,7 +3015,7 @@ export default function Review() {
                                   className={`w-6 h-6 rounded border-2 transition-transform hover:scale-110 disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed ${ann.backgroundColor === c ? "border-primary" : "border-transparent"}`}
                                   style={{ backgroundColor: c }}
                                   onClick={() =>
-                                    setAnnotations((prev) =>
+                                    applyAnnotationsUpdate((prev) =>
                                       prev.map((p) =>
                                         p.id === ann.id
                                           ? { ...p, backgroundColor: c }
@@ -2997,9 +3036,7 @@ export default function Review() {
                             className="w-full"
                             disabled={!canEdit}
                             onClick={() => {
-                              setAnnotations((prev) =>
-                                prev.filter((p) => p.id !== ann.id),
-                              );
+                              deleteAnnotation.mutate(ann.id);
                               setSelectedAnnotationId(null);
                             }}
                           >
