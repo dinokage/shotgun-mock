@@ -65,12 +65,25 @@ const COLUMNS: { id: TaskStatus; title: string }[] = [
 const getAssigneeId = (t: any): string | null | undefined =>
   t.assignedTo ?? t.assigneeId;
 
+// Real TaskDTO has no `projectId` field at all — a task's project is only
+// reachable indirectly via `entityId` -> shot/asset -> `projectId` (same
+// resolution pages/tasks.tsx and TaskDrawer.tsx already do). The legacy
+// mock `Task` shape has `projectId` directly, so that's tried first and
+// `entityProjectMap` (built by the real-data caller, empty for the legacy
+// fallback) is only consulted when it's missing.
+const getProjectId = (
+  t: any,
+  entityProjectMap: Record<string, string>,
+): string | undefined => t.projectId ?? entityProjectMap[t.entityId];
+
 function SortableTaskCard({
   task,
   onUpdateTask,
+  entityProjectMap,
 }: {
   task: any;
   onUpdateTask: (id: string, updates: Record<string, unknown>) => void;
+  entityProjectMap: Record<string, string>;
 }) {
   const {
     attributes,
@@ -116,7 +129,7 @@ function SortableTaskCard({
             {task.title}
           </div>
           <div className="text-xs text-muted-foreground mt-1 truncate">
-            {task.projectId} • {task.department}
+            {getProjectId(task, entityProjectMap)} • {task.department}
           </div>
         </div>
 
@@ -188,9 +201,11 @@ function SortableTaskCard({
 function ClaimableTaskCard({
   task,
   onClaim,
+  entityProjectMap,
 }: {
   task: any;
   onClaim: () => void;
+  entityProjectMap: Record<string, string>;
 }) {
   const [claiming, setClaiming] = useState(false);
 
@@ -214,7 +229,7 @@ function ClaimableTaskCard({
             {task.title}
           </div>
           <div className="text-xs text-muted-foreground mt-1 truncate">
-            {task.projectId} • {task.department}
+            {getProjectId(task, entityProjectMap)} • {task.department}
           </div>
         </div>
 
@@ -256,10 +271,12 @@ function DroppableColumn({
   col,
   tasks,
   onUpdateTask,
+  entityProjectMap,
 }: {
   col: { id: TaskStatus; title: string };
   tasks: any[];
   onUpdateTask: (id: string, updates: Record<string, unknown>) => void;
+  entityProjectMap: Record<string, string>;
 }) {
   const { setNodeRef } = useDroppable({ id: col.id });
   return (
@@ -284,6 +301,7 @@ function DroppableColumn({
               key={task.id}
               task={task}
               onUpdateTask={onUpdateTask}
+              entityProjectMap={entityProjectMap}
             />
           ))}
           {tasks.length === 0 && (
@@ -300,9 +318,15 @@ function DroppableColumn({
 export default function KanbanView({
   projectId,
   tasks,
+  entityProjectMap = {},
 }: {
   projectId?: string;
   tasks?: any[];
+  // Only meaningful (and only ever passed) when `tasks` is real TaskDTO[]
+  // from pages/tasks.tsx — see getProjectId() above. The legacy fallback
+  // path (pages/project-detail/TasksTab.tsx, no `tasks` prop) doesn't need
+  // it since its own task.projectId field already works directly.
+  entityProjectMap?: Record<string, string>;
 }) {
   const storeTasks = useTasksStore((state) => state.tasks);
   const storeUpdateTaskStatus = useTasksStore((state) => state.updateTaskStatus);
@@ -387,6 +411,7 @@ export default function KanbanView({
                 <ClaimableTaskCard
                   key={task.id}
                   task={task}
+                  entityProjectMap={entityProjectMap}
                   onClaim={() => {
                     if (!currentUser) return;
                     updateTask(
@@ -421,6 +446,7 @@ export default function KanbanView({
               col={col}
               tasks={columnTasks}
               onUpdateTask={updateTask}
+              entityProjectMap={entityProjectMap}
             />
           );
         })}
