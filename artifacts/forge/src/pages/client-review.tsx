@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { apiClient } from "@/lib/apiClient";
 import { PROJECTS, STUDIOS, VERSIONS } from "@/data/mockData";
 import { useLocation } from "wouter";
 import { useAuthStore } from "@/store/auth";
@@ -103,6 +104,19 @@ export default function ClientReview() {
 
   const [accessCode, setAccessCode] = useState("");
   const [clientAuthenticated, setClientAuthenticated] = useState(hasToken);
+  // Set once an access code is successfully redeemed against the real
+  // POST /client-access/redeem route below — null for the legacy bypass
+  // paths (an explicit-'client'-role user, or the ?token=demo shortcut)
+  // that never redeem a link, in which case this page keeps its prior
+  // unscoped behavior. When set, it scopes what this page requests to the
+  // redeemed link's granted project/episode/version (see pendingReviews
+  // below) — client-side only; full server-side enforcement of this scope
+  // is a later task's responsibility.
+  const [clientScope, setClientScope] = useState<{
+    projectId: string | null;
+    episodeId: string | null;
+    versionId: string | null;
+  } | null>(null);
 
   // If a user has the explicit 'client' role, they automatically bypass the access code.
   // Otherwise, everyone (even managers testing the portal) must enter the access code.
@@ -177,7 +191,25 @@ export default function ClientReview() {
   const shots = useShotStore((s) => s.shots);
   const updateReviewStatus = useShotStore((s) => s.updateReviewStatus);
   const updateShot = useShotStore((s) => s.updateShot);
-  const pendingReviews = shots.filter((s) => s.status === "client-review");
+  // Scoped to the redeemed access link's grant (see clientScope above), most
+  // specific field first — a versionId grant limits to that single shot's
+  // delivered version, an episodeId grant to that episode's shots, a
+  // projectId grant to that project's shots. clientScope is null for the
+  // legacy bypass paths, which keep seeing every pending review as before.
+  const pendingReviews = shots
+    .filter((s) => s.status === "client-review")
+    .filter((s) => {
+      if (!clientScope) return true;
+      if (clientScope.versionId) {
+        const scopedVersion = VERSIONS.find(
+          (v) => v.id === clientScope.versionId,
+        );
+        return scopedVersion ? scopedVersion.entityId === s.id : false;
+      }
+      if (clientScope.episodeId) return s.episodeId === clientScope.episodeId;
+      if (clientScope.projectId) return s.projectId === clientScope.projectId;
+      return true;
+    });
   const activeShot = activeReviewId
     ? shots.find((s) => s.id === activeReviewId)
     : null;
@@ -382,13 +414,21 @@ export default function ClientReview() {
     setLocation("/login");
   };
 
-  const handleAccessSubmit = () => {
-    if (accessCode.toLowerCase() === "demo") {
+  const handleAccessSubmit = async () => {
+    try {
+      const res = await apiClient.post<{
+        scope: {
+          projectId: string | null;
+          episodeId: string | null;
+          versionId: string | null;
+        };
+      }>("/client-access/redeem", { code: accessCode });
+      setClientScope(res.scope);
       setClientAuthenticated(true);
-    } else {
+    } catch {
       toast({
         title: "Invalid Code",
-        description: "Please check your email for the correct access code.",
+        description: "That access code is invalid or has expired.",
         variant: "destructive",
       });
     }
