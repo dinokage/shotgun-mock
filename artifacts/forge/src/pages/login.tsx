@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Lock } from "lucide-react";
 
-const ROLE_LANDING_ROUTE: Record<string, string> = {
+export const ROLE_LANDING_ROUTE: Record<string, string> = {
   admin: "/",
   production_head: "/",
   producer: "/production",

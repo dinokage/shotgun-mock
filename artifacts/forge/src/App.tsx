@@ -12,7 +12,7 @@ import { useIsLeadership } from "@/hooks/use-capability";
 import { AppShell } from "@/components/shell/AppShell";
 
 // Pages
-import Login from "@/pages/login";
+import Login, { ROLE_LANDING_ROUTE } from "@/pages/login";
 import Home from "@/pages/home";
 import Projects from "@/pages/projects";
 import Tasks from "@/pages/tasks";
@@ -53,6 +53,7 @@ import SchemaBuilder from "@/pages/schema-builder";
 import AdminPanel from "@/pages/admin";
 
 import { queryClient } from "@/lib/queryClient";
+import { canAccessRoute } from "@/lib/roleRouteAccess";
 
 // Auth Guard component
 function AuthGuard({ children }: { children: React.ReactNode }) {
@@ -66,6 +67,25 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   }, [isAuthenticated, isInitializing, setLocation]);
 
   if (isInitializing || !isAuthenticated) return null;
+  return <>{children}</>;
+}
+
+// Route-level RBAC guard — stops direct URL navigation to a page a role
+// isn't allowed to reach (the Sidebar separately hides the link entirely,
+// see Sidebar.tsx). Checked against the shared ROLE_ALLOWED_ROUTES
+// allow-list so this guard and the sidebar can never drift out of sync.
+function RoleRouteGuard({ children }: { children: React.ReactNode }) {
+  const { currentUser } = useAuthStore();
+  const [location, setLocation] = useLocation();
+  const allowed = !currentUser || canAccessRoute(currentUser.role, location);
+
+  useEffect(() => {
+    if (currentUser && !allowed) {
+      setLocation(ROLE_LANDING_ROUTE[currentUser.role] ?? "/");
+    }
+  }, [currentUser, allowed, setLocation]);
+
+  if (currentUser && !allowed) return null;
   return <>{children}</>;
 }
 
@@ -105,128 +125,130 @@ function Router() {
       {/* Protected Routes wrapped in AppShell */}
       <Route path="/.*">
         <AuthGuard>
-          <AppShell>
-            <Switch>
-              <Route path="/" component={Home} />
-              <Route path="/projects">
-                <LeadershipGuard>
-                  <Projects />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/projects/:id">
-                <LeadershipGuard>
-                  <ProjectDetail />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/assets" component={Assets} />
-              <Route path="/assets/:id" component={AssetDetail} />
-              <Route path="/shots" component={Shots} />
-              <Route path="/shots/:id" component={ShotDetail} />
-              <Route path="/tasks" component={Tasks} />
-              <Route path="/departments">
-                <LeadershipGuard>
-                  <Departments />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/departments/:id">
-                <LeadershipGuard>
-                  <DepartmentDetail />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/people" component={People} />
-              <Route path="/people/:id" component={Profile} />
-              <Route path="/daily-standup" component={DailyStandup} />
-              <Route path="/review" component={Review} />
-              <Route path="/scheduling">
-                <LeadershipGuard>
-                  <Scheduling />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/marketplace">
-                <LeadershipGuard>
-                  <Marketplace />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/marketplace/:id">
-                <LeadershipGuard>
-                  <PluginDetail />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/integrations">
-                <LeadershipGuard>
-                  <IntegrationsHub />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/workflows">
-                <LeadershipGuard>
-                  <Workflows />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/workflows/new">
-                <LeadershipGuard>
-                  <WorkflowEditor />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/workflows/run/:id">
-                <LeadershipGuard>
-                  <WorkflowRun />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/workflows/:id">
-                <LeadershipGuard>
-                  <WorkflowEditor />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/schema-builder">
-                <LeadershipGuard>
-                  <SchemaBuilder />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/publishing" component={Publishing} />
-              <Route path="/analytics">
-                <LeadershipGuard>
-                  <Analytics />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/profile" component={Profile} />
+          <RoleRouteGuard>
+            <AppShell>
+              <Switch>
+                <Route path="/" component={Home} />
+                <Route path="/projects">
+                  <LeadershipGuard>
+                    <Projects />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/projects/:id">
+                  <LeadershipGuard>
+                    <ProjectDetail />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/assets" component={Assets} />
+                <Route path="/assets/:id" component={AssetDetail} />
+                <Route path="/shots" component={Shots} />
+                <Route path="/shots/:id" component={ShotDetail} />
+                <Route path="/tasks" component={Tasks} />
+                <Route path="/departments">
+                  <LeadershipGuard>
+                    <Departments />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/departments/:id">
+                  <LeadershipGuard>
+                    <DepartmentDetail />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/people" component={People} />
+                <Route path="/people/:id" component={Profile} />
+                <Route path="/daily-standup" component={DailyStandup} />
+                <Route path="/review" component={Review} />
+                <Route path="/scheduling">
+                  <LeadershipGuard>
+                    <Scheduling />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/marketplace">
+                  <LeadershipGuard>
+                    <Marketplace />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/marketplace/:id">
+                  <LeadershipGuard>
+                    <PluginDetail />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/integrations">
+                  <LeadershipGuard>
+                    <IntegrationsHub />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/workflows">
+                  <LeadershipGuard>
+                    <Workflows />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/workflows/new">
+                  <LeadershipGuard>
+                    <WorkflowEditor />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/workflows/run/:id">
+                  <LeadershipGuard>
+                    <WorkflowRun />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/workflows/:id">
+                  <LeadershipGuard>
+                    <WorkflowEditor />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/schema-builder">
+                  <LeadershipGuard>
+                    <SchemaBuilder />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/publishing" component={Publishing} />
+                <Route path="/analytics">
+                  <LeadershipGuard>
+                    <Analytics />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/profile" component={Profile} />
 
-              <Route path="/production">
-                <LeadershipGuard>
-                  <ProductionDashboard />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/financials">
-                <LeadershipGuard>
-                  <FinancialDashboard />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/audit">
-                <LeadershipGuard>
-                  <Audit />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/settings">
-                <LeadershipGuard>
-                  <Settings />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/delivery">
-                <LeadershipGuard>
-                  <Deliveries />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/chat" component={Chat} />
-              <Route path="/tracking" component={TrackingGrid} />
-              <Route path="/timesheets" component={Timesheets} />
-              <Route path="/notifications" component={Notifications} />
-              <Route path="/admin">
-                <LeadershipGuard>
-                  <AdminPanel />
-                </LeadershipGuard>
-              </Route>
-              <Route component={NotFound} />
-            </Switch>
-          </AppShell>
+                <Route path="/production">
+                  <LeadershipGuard>
+                    <ProductionDashboard />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/financials">
+                  <LeadershipGuard>
+                    <FinancialDashboard />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/audit">
+                  <LeadershipGuard>
+                    <Audit />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/settings">
+                  <LeadershipGuard>
+                    <Settings />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/delivery">
+                  <LeadershipGuard>
+                    <Deliveries />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/chat" component={Chat} />
+                <Route path="/tracking" component={TrackingGrid} />
+                <Route path="/timesheets" component={Timesheets} />
+                <Route path="/notifications" component={Notifications} />
+                <Route path="/admin">
+                  <LeadershipGuard>
+                    <AdminPanel />
+                  </LeadershipGuard>
+                </Route>
+                <Route component={NotFound} />
+              </Switch>
+            </AppShell>
+          </RoleRouteGuard>
         </AuthGuard>
       </Route>
     </Switch>

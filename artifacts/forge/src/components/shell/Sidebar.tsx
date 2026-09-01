@@ -44,6 +44,7 @@ import type { CapabilityId } from "@/store/permissions";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { STUDIOS, DEPARTMENTS } from "@/data/mockData";
 import { DEPARTMENT_LEADERSHIP_ROLES } from "@/store/permissions";
+import { canAccessRoute } from "@/lib/roleRouteAccess";
 import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
@@ -234,8 +235,15 @@ export function Sidebar() {
     return caps.some((c) => currentUser.capabilities?.includes(c));
   };
 
-  const navItems = withBadges(ALL_NAV).filter((item) =>
-    hasAnyCapability(item.capabilities),
+  const navItems = withBadges(ALL_NAV).filter(
+    (item) =>
+      hasAnyCapability(item.capabilities) &&
+      // Route-level RBAC: never render a link to a page this role can't
+      // reach (Step 3's guard in App.tsx stops direct navigation to it
+      // regardless, but a visible dead-end link is bad UX). Strip any
+      // query string first (e.g. artist "My Shots" -> /shots?mine=1) since
+      // canAccessRoute matches against real paths.
+      canAccessRoute(currentUser.role, item.href.split("?")[0]),
   );
   const canViewSettings = hasAnyCapability([
     "manage_roles",
