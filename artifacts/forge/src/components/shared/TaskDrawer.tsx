@@ -47,7 +47,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
 import { useAuthStore } from "@/store/auth";
-import { LEADERSHIP_ROLES } from "@/store/permissions";
+import {
+  LEADERSHIP_ROLES,
+  DEPARTMENT_LEADERSHIP_ROLES,
+} from "@/store/permissions";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "wouter";
@@ -489,10 +492,16 @@ export function TaskDrawer() {
                   directly) - so both values are treated as "awaiting review"
                   here. This is the final internal sign-off (the former
                   separate Manager tier is gone — approving here goes straight
-                  to 'approved'). If the task is linked to a shot, approving
-                  also forwards that shot into the client-facing review queue
-                  (client-review.tsx filters shots on exactly this status). */}
-              {["production_head", "producer"].includes(currentUser.role) &&
+                  to 'approved'). Gated to the department's own
+                  Lead/Supervisor (Producer/Lead merge into the single
+                  surviving `lead` role per this phase's spec — studio-level
+                  production_head/admin get a dashboard/reporting view over
+                  already-approved work, not a second blocking gate here). If
+                  the task is linked to a shot, approving also forwards that
+                  shot into the client-facing review queue (client-review.tsx
+                  filters shots on exactly this status). */}
+              {DEPARTMENT_LEADERSHIP_ROLES.includes(currentUser.role) &&
+                currentUser.departmentId === currentDept?.id &&
                 ["review", "lead-review"].includes(task.status) &&
                 (clientSendConfirmOpen ? (
                   <div className="w-full rounded-md border border-accent-tally/30 bg-accent-tally/5 p-3 space-y-3">

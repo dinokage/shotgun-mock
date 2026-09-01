@@ -221,7 +221,7 @@ export default function Settings() {
       ")",
       "",
       "# Fetch shots needing review",
-      "shots = session.query('Shot where status is \"manager-review\"')",
+      "shots = session.query('Shot where status is \"review\"')",
       'print(f"Found {len(shots)} shots for review")',
     ].join("\n");
     copyToClipboard(snippet).then((success) => {
@@ -1053,7 +1053,7 @@ export default function Settings() {
                     shots <span className="text-blue-400">=</span>{" "}
                     session.query(
                     <span className="text-orange-300">
-                      'Shot where status is "manager-review"'
+                      'Shot where status is "review"'
                     </span>
                     )<br />
                     <span className="text-blue-400">print</span>(
