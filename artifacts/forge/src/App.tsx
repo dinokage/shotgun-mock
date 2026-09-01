@@ -96,7 +96,7 @@ function LeadershipGuard({ children }: { children: React.ReactNode }) {
 function Router() {
   return (
     <Switch>
-      <Route path="/login/:role?" component={Login} />
+      <Route path="/login" component={Login} />
       <Route path="/client-review" component={ClientReview} />
       {/* Public, outside AuthGuard — external recipients reach a specific
           delivery via its access code, with no Forge login at all. */}
