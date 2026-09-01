@@ -832,10 +832,51 @@ git commit -m "feat(api): add shots route"
 ```typescript
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { assetsTable } from "@workspace/db/schema";
+import {
+  assetsTable,
+  projectsTable,
+  episodesTable,
+  sequencesTable,
+  usersTable,
+} from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import * as crypto from "crypto";
+
+// Each check confirms a foreign-key id actually belongs to the caller's
+// tenant before it's allowed to be linked onto an asset. A DB foreign key
+// only verifies the referenced row exists, not who owns it — without this
+// check, any authenticated user could cross-link their tenant's data to
+// another tenant's project/episode/sequence/user by guessing or
+// discovering an id (IDOR). Same pattern as routes/shots.ts.
+async function projectInTenant(id: string, tenantId: string) {
+  const [row] = await db
+    .select({ id: projectsTable.id })
+    .from(projectsTable)
+    .where(and(eq(projectsTable.id, id), eq(projectsTable.tenantId, tenantId)));
+  return !!row;
+}
+async function episodeInTenant(id: string, tenantId: string) {
+  const [row] = await db
+    .select({ id: episodesTable.id })
+    .from(episodesTable)
+    .where(and(eq(episodesTable.id, id), eq(episodesTable.tenantId, tenantId)));
+  return !!row;
+}
+async function sequenceInTenant(id: string, tenantId: string) {
+  const [row] = await db
+    .select({ id: sequencesTable.id })
+    .from(sequencesTable)
+    .where(and(eq(sequencesTable.id, id), eq(sequencesTable.tenantId, tenantId)));
+  return !!row;
+}
+async function userInTenant(id: string, tenantId: string) {
+  const [row] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(and(eq(usersTable.id, id), eq(usersTable.tenantId, tenantId)));
+  return !!row;
+}
 
 export const assetsRouter = Router();
 
@@ -865,6 +906,15 @@ assetsRouter.post("/", async (req, res) => {
     const { projectId, name, type, episodeId, sequenceId, assigneeId } = req.body;
     if (!projectId || !name)
       return res.status(400).json({ error: "Missing projectId or name" });
+
+    if (!(await projectInTenant(projectId, tenantId)))
+      return res.status(400).json({ error: "Invalid projectId" });
+    if (episodeId && !(await episodeInTenant(episodeId, tenantId)))
+      return res.status(400).json({ error: "Invalid episodeId" });
+    if (sequenceId && !(await sequenceInTenant(sequenceId, tenantId)))
+      return res.status(400).json({ error: "Invalid sequenceId" });
+    if (assigneeId && !(await userInTenant(assigneeId, tenantId)))
+      return res.status(400).json({ error: "Invalid assigneeId" });
 
     const newId = crypto.randomUUID();
     await db.insert(assetsTable).values({
@@ -916,18 +966,28 @@ assetsRouter.put("/:id", async (req, res) => {
       .where(and(eq(assetsTable.tenantId, tenantId), eq(assetsTable.id, assetId)));
     if (!existing) return res.status(404).json({ error: "Not found" });
 
+    if (
+      "assigneeId" in req.body &&
+      req.body.assigneeId &&
+      !(await userInTenant(req.body.assigneeId, tenantId))
+    )
+      return res.status(400).json({ error: "Invalid assigneeId" });
+
     const updates: Record<string, unknown> = {};
     for (const field of PATCHABLE_FIELDS) {
       if (field in req.body) updates[field] = req.body[field];
     }
     updates.updatedAt = new Date();
 
-    await db.update(assetsTable).set(updates).where(eq(assetsTable.id, assetId));
+    await db
+      .update(assetsTable)
+      .set(updates)
+      .where(and(eq(assetsTable.tenantId, tenantId), eq(assetsTable.id, assetId)));
 
     const [updated] = await db
       .select()
       .from(assetsTable)
-      .where(eq(assetsTable.id, assetId));
+      .where(and(eq(assetsTable.tenantId, tenantId), eq(assetsTable.id, assetId)));
     return res.json(updated);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -993,10 +1053,23 @@ Note: `taskId` changes from required to nullable (a version belongs to a shot/as
 ```typescript
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { versionsTable } from "@workspace/db/schema";
+import { versionsTable, tasksTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import * as crypto from "crypto";
+
+// Confirms taskId actually belongs to the caller's tenant before it's
+// allowed to be linked onto a version. A DB foreign key only verifies the
+// referenced row exists, not who owns it — without this check, any
+// authenticated user could cross-link a version to another tenant's task
+// (IDOR). Same pattern as routes/shots.ts.
+async function taskInTenant(id: string, tenantId: string) {
+  const [row] = await db
+    .select({ id: tasksTable.id })
+    .from(tasksTable)
+    .where(and(eq(tasksTable.id, id), eq(tasksTable.tenantId, tenantId)));
+  return !!row;
+}
 
 export const versionsRouter = Router();
 
@@ -1032,6 +1105,9 @@ versionsRouter.post("/", async (req, res) => {
       return res
         .status(400)
         .json({ error: "Missing entityId, entityType, or mediaUrl" });
+
+    if (taskId && !(await taskInTenant(taskId, tenantId)))
+      return res.status(400).json({ error: "Invalid taskId" });
 
     const newId = crypto.randomUUID();
     await db.insert(versionsTable).values({
@@ -1073,12 +1149,15 @@ versionsRouter.put("/:id", async (req, res) => {
       if (field in req.body) updates[field] = req.body[field];
     }
 
-    await db.update(versionsTable).set(updates).where(eq(versionsTable.id, versionId));
+    await db
+      .update(versionsTable)
+      .set(updates)
+      .where(and(eq(versionsTable.tenantId, tenantId), eq(versionsTable.id, versionId)));
 
     const [updated] = await db
       .select()
       .from(versionsTable)
-      .where(eq(versionsTable.id, versionId));
+      .where(and(eq(versionsTable.tenantId, tenantId), eq(versionsTable.id, versionId)));
     return res.json(updated);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -1117,10 +1196,23 @@ git commit -m "feat(api,db): enrich versions table and add versions route"
 ```typescript
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { reviewsTable, annotationsTable } from "@workspace/db/schema";
+import { reviewsTable, annotationsTable, versionsTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import * as crypto from "crypto";
+
+// Confirms versionId actually belongs to the caller's tenant before it's
+// allowed to be linked onto a review or annotation. A DB foreign key only
+// verifies the referenced row exists, not who owns it — without this
+// check, any authenticated user could attach a review/annotation to
+// another tenant's version (IDOR). Same pattern as routes/shots.ts.
+async function versionInTenant(id: string, tenantId: string) {
+  const [row] = await db
+    .select({ id: versionsTable.id })
+    .from(versionsTable)
+    .where(and(eq(versionsTable.id, id), eq(versionsTable.tenantId, tenantId)));
+  return !!row;
+}
 
 export const reviewsRouter = Router();
 
@@ -1156,6 +1248,9 @@ reviewsRouter.post("/", async (req, res) => {
       return res
         .status(400)
         .json({ error: "Missing entityId, entityType, or versionId" });
+
+    if (!(await versionInTenant(versionId, tenantId)))
+      return res.status(400).json({ error: "Invalid versionId" });
 
     const newId = crypto.randomUUID();
     await db.insert(reviewsTable).values({
@@ -1223,6 +1318,9 @@ reviewsRouter.post("/:versionId/annotations", async (req, res) => {
     if (typeof frame !== "number" || !type || !color)
       return res.status(400).json({ error: "Missing frame, type, or color" });
 
+    if (!(await versionInTenant(versionId, tenantId)))
+      return res.status(400).json({ error: "Invalid versionId" });
+
     const newId = crypto.randomUUID();
     await db.insert(annotationsTable).values({
       id: newId,
@@ -1265,7 +1363,9 @@ reviewsRouter.delete("/annotations/:id", async (req, res) => {
       .where(and(eq(annotationsTable.tenantId, tenantId), eq(annotationsTable.id, id)));
     if (!existing) return res.status(404).json({ error: "Not found" });
 
-    await db.delete(annotationsTable).where(eq(annotationsTable.id, id));
+    await db
+      .delete(annotationsTable)
+      .where(and(eq(annotationsTable.tenantId, tenantId), eq(annotationsTable.id, id)));
     return res.status(204).send();
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -1357,7 +1457,7 @@ dailyLogsRouter.post("/", async (req, res) => {
     await db
       .update(tasksTable)
       .set({ actualHours: task.actualHours + hours })
-      .where(eq(tasksTable.id, taskId));
+      .where(and(eq(tasksTable.tenantId, tenantId), eq(tasksTable.id, taskId)));
 
     const [created] = await db
       .select()
@@ -1393,7 +1493,57 @@ git commit -m "feat(api): add daily logs route"
 **Interfaces:**
 - Produces: extends existing `GET/POST/PUT` on `/api/tasks` for the new enriched fields; adds `GET/POST /api/tasks/:id/checklist`, `PUT /api/tasks/:id/checklist/:itemId`; `GET/POST /api/tasks/:id/comments`; `GET/POST /api/tasks/:id/dependencies`; `GET/POST /api/tasks/:id/attachments`; `GET/POST /api/tasks/:id/approval-events`.
 
-- [ ] **Step 1: Read the current `artifacts/api-server/src/routes/tasks.ts` in full** (it's short, ~80 lines) to confirm the exact current `GET`/`POST`/`PUT` handlers before extending them — this task modifies existing handlers, not just appends.
+- [ ] **Step 1: Read the current `artifacts/api-server/src/routes/tasks.ts` in full** (it's short, ~80 lines) to confirm the exact current `GET`/`POST`/`PUT` handlers before extending them — this task modifies existing handlers, not just appends. Add `usersTable` and `tenantRolesTable` to the file's existing `@workspace/db/schema` import, and add these helpers near the top of the file (after the imports, before the router handlers) — used by Steps 2, 3, and the nested sub-resource routes below: a DB foreign key only verifies a referenced row exists, not who owns it, so every foreign key accepted from a request body needs an explicit tenant-ownership check before use (same pattern already applied in `routes/shots.ts`, `routes/versions.ts`, `routes/reviews.ts`):
+
+```typescript
+async function userInTenant(id: string, tenantId: string) {
+  const [row] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(and(eq(usersTable.id, id), eq(usersTable.tenantId, tenantId)));
+  return !!row;
+}
+
+// Used by every nested /:id/* sub-resource route below to confirm the
+// parent task (req.params.id) belongs to the caller's tenant BEFORE
+// inserting a checklist item/comment/dependency/attachment/approval-event
+// against it — otherwise a user could write sub-resources onto another
+// tenant's task just by knowing its id, even though the sub-resource row
+// itself carries the caller's own tenantId (an IDOR-adjacent referential
+// integrity gap, same root cause as the FK-ownership issue elsewhere in
+// this plan).
+async function taskInTenant(id: string, tenantId: string) {
+  const [row] = await db
+    .select({ id: tasksTable.id })
+    .from(tasksTable)
+    .where(and(eq(tasksTable.id, id), eq(tasksTable.tenantId, tenantId)));
+  return !!row;
+}
+
+// The approval-events table is an append-only audit trail (see the schema
+// comment in tasks-detail.ts) — its whole purpose is to record who approved
+// what and in what capacity. Accepting `byRole` from the request body would
+// let any caller write a false audit record (e.g. claim they acted as
+// "lead" while actually an "artist"), so the role is always looked up
+// server-side from the caller's own session (req.roleId), never trusted
+// from the client.
+async function roleNameForCaller(roleId: string, tenantId: string) {
+  const [row] = await db
+    .select({ name: tenantRolesTable.name })
+    .from(tenantRolesTable)
+    .where(and(eq(tenantRolesTable.id, roleId), eq(tenantRolesTable.tenantId, tenantId)));
+  return row?.name;
+}
+
+const APPROVAL_EVENT_ACTIONS = [
+  "submitted-for-lead-review",
+  "submitted-for-manager-review",
+  "approved",
+  "changes-requested",
+  "rejected",
+  "published",
+] as const;
+```
 
 - [ ] **Step 2: Extend the existing `POST /` handler** to accept the new enriched fields (`title`, `description`, `priority`, `department`, `pipelinePhase`, `dueDate`, `estimatedHours`) alongside the existing `entityId`/`entityType`/`status`:
 
@@ -1417,6 +1567,9 @@ tasksRouter.post("/", async (req, res) => {
 
     if (!entityId || !entityType)
       return res.status(400).json({ error: "Missing entityId or entityType" });
+
+    if (assignedTo && !(await userInTenant(assignedTo, tenantId)))
+      return res.status(400).json({ error: "Invalid assignedTo" });
 
     const newId = crypto.randomUUID();
     await db.insert(tasksTable).values({
@@ -1475,18 +1628,28 @@ tasksRouter.put("/:id", async (req, res) => {
 
     if (!existing) return res.status(404).json({ error: "Not found" });
 
+    if (
+      "assignedTo" in req.body &&
+      req.body.assignedTo &&
+      !(await userInTenant(req.body.assignedTo, tenantId))
+    )
+      return res.status(400).json({ error: "Invalid assignedTo" });
+
     const updates: Record<string, unknown> = {};
     for (const field of TASK_PATCHABLE_FIELDS) {
       if (field in req.body) updates[field] = req.body[field];
     }
     updates.lastStatusUpdate = new Date();
 
-    await db.update(tasksTable).set(updates).where(eq(tasksTable.id, taskId));
+    await db
+      .update(tasksTable)
+      .set(updates)
+      .where(and(eq(tasksTable.tenantId, tenantId), eq(tasksTable.id, taskId)));
 
     const [updated] = await db
       .select()
       .from(tasksTable)
-      .where(eq(tasksTable.id, taskId));
+      .where(and(eq(tasksTable.tenantId, tenantId), eq(tasksTable.id, taskId)));
     return res.json(updated);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -1533,6 +1696,8 @@ tasksRouter.post("/:id/checklist", async (req, res) => {
     const tenantId = req.tenantId!;
     const { text, position } = req.body;
     if (!text) return res.status(400).json({ error: "Missing text" });
+    if (!(await taskInTenant(req.params.id, tenantId)))
+      return res.status(404).json({ error: "Not found" });
     const newId = crypto.randomUUID();
     await db.insert(taskChecklistItemsTable).values({
       id: newId,
@@ -1544,7 +1709,7 @@ tasksRouter.post("/:id/checklist", async (req, res) => {
     const [created] = await db
       .select()
       .from(taskChecklistItemsTable)
-      .where(eq(taskChecklistItemsTable.id, newId));
+      .where(and(eq(taskChecklistItemsTable.tenantId, tenantId), eq(taskChecklistItemsTable.id, newId)));
     return res.status(201).json(created);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -1571,11 +1736,21 @@ tasksRouter.put("/:id/checklist/:itemId", async (req, res) => {
     await db
       .update(taskChecklistItemsTable)
       .set(updates)
-      .where(eq(taskChecklistItemsTable.id, req.params.itemId));
+      .where(
+        and(
+          eq(taskChecklistItemsTable.tenantId, tenantId),
+          eq(taskChecklistItemsTable.id, req.params.itemId),
+        ),
+      );
     const [updated] = await db
       .select()
       .from(taskChecklistItemsTable)
-      .where(eq(taskChecklistItemsTable.id, req.params.itemId));
+      .where(
+        and(
+          eq(taskChecklistItemsTable.tenantId, tenantId),
+          eq(taskChecklistItemsTable.id, req.params.itemId),
+        ),
+      );
     return res.json(updated);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -1603,6 +1778,8 @@ tasksRouter.post("/:id/comments", async (req, res) => {
     const userId = req.userId!;
     const { text } = req.body;
     if (!text) return res.status(400).json({ error: "Missing text" });
+    if (!(await taskInTenant(req.params.id, tenantId)))
+      return res.status(404).json({ error: "Not found" });
     const newId = crypto.randomUUID();
     await db.insert(taskCommentsTable).values({
       id: newId,
@@ -1614,7 +1791,7 @@ tasksRouter.post("/:id/comments", async (req, res) => {
     const [created] = await db
       .select()
       .from(taskCommentsTable)
-      .where(eq(taskCommentsTable.id, newId));
+      .where(and(eq(taskCommentsTable.tenantId, tenantId), eq(taskCommentsTable.id, newId)));
     return res.status(201).json(created);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -1645,6 +1822,10 @@ tasksRouter.post("/:id/dependencies", async (req, res) => {
     const { dependsOnTaskId, type, lagDays } = req.body;
     if (!dependsOnTaskId)
       return res.status(400).json({ error: "Missing dependsOnTaskId" });
+    if (!(await taskInTenant(req.params.id, tenantId)))
+      return res.status(404).json({ error: "Not found" });
+    if (!(await taskInTenant(dependsOnTaskId, tenantId)))
+      return res.status(400).json({ error: "Invalid dependsOnTaskId" });
     const newId = crypto.randomUUID();
     await db.insert(taskDependenciesTable).values({
       id: newId,
@@ -1657,7 +1838,7 @@ tasksRouter.post("/:id/dependencies", async (req, res) => {
     const [created] = await db
       .select()
       .from(taskDependenciesTable)
-      .where(eq(taskDependenciesTable.id, newId));
+      .where(and(eq(taskDependenciesTable.tenantId, tenantId), eq(taskDependenciesTable.id, newId)));
     return res.status(201).json(created);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -1688,6 +1869,8 @@ tasksRouter.post("/:id/attachments", async (req, res) => {
     const userId = req.userId!;
     const { url } = req.body;
     if (!url) return res.status(400).json({ error: "Missing url" });
+    if (!(await taskInTenant(req.params.id, tenantId)))
+      return res.status(404).json({ error: "Not found" });
     const newId = crypto.randomUUID();
     await db.insert(taskAttachmentsTable).values({
       id: newId,
@@ -1699,7 +1882,7 @@ tasksRouter.post("/:id/attachments", async (req, res) => {
     const [created] = await db
       .select()
       .from(taskAttachmentsTable)
-      .where(eq(taskAttachmentsTable.id, newId));
+      .where(and(eq(taskAttachmentsTable.tenantId, tenantId), eq(taskAttachmentsTable.id, newId)));
     return res.status(201).json(created);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -1728,9 +1911,14 @@ tasksRouter.post("/:id/approval-events", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const userId = req.userId!;
-    const { action, byRole } = req.body;
-    if (!action || !byRole)
-      return res.status(400).json({ error: "Missing action or byRole" });
+    const roleId = req.roleId!;
+    const { action } = req.body;
+    if (!action || !(APPROVAL_EVENT_ACTIONS as readonly string[]).includes(action))
+      return res.status(400).json({ error: "Missing or invalid action" });
+    if (!(await taskInTenant(req.params.id, tenantId)))
+      return res.status(404).json({ error: "Not found" });
+    const byRole = await roleNameForCaller(roleId, tenantId);
+    if (!byRole) return res.status(400).json({ error: "Invalid role" });
     const newId = crypto.randomUUID();
     await db.insert(taskApprovalEventsTable).values({
       id: newId,
@@ -1743,7 +1931,7 @@ tasksRouter.post("/:id/approval-events", async (req, res) => {
     const [created] = await db
       .select()
       .from(taskApprovalEventsTable)
-      .where(eq(taskApprovalEventsTable.id, newId));
+      .where(and(eq(taskApprovalEventsTable.tenantId, tenantId), eq(taskApprovalEventsTable.id, newId)));
     return res.status(201).json(created);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -2015,17 +2203,45 @@ git commit -m "feat(frontend): persist review annotations to the real backend, f
 - Modify: `artifacts/forge/src/pages/tasks.tsx`, `artifacts/forge/src/pages/task-detail.tsx`, `artifacts/forge/src/components/shell/TaskDrawer.tsx`
 
 **Interfaces:**
-- Produces: `useTasks(projectId?)`, `useUpdateTask()`, `useTaskChecklist(taskId)`, `useAddChecklistItem(taskId)`, `useToggleChecklistItem(taskId)`, `useTaskComments(taskId)`, `useAddTaskComment(taskId)`, `useTaskDependencies(taskId)`, `useTaskAttachments(taskId)`, `useTaskApprovalEvents(taskId)`.
+- Produces: `useTasks()`, `useUpdateTask()`, `useTaskChecklist(taskId)`, `useAddChecklistItem(taskId)`, `useToggleChecklistItem(taskId)`, `useTaskComments(taskId)`, `useAddTaskComment(taskId)`, `useTaskDependencies(taskId)`, `useTaskAttachments(taskId)`, `useTaskApprovalEvents(taskId)`.
 
-- [ ] **Step 1: Create `artifacts/forge/src/hooks/useTasks.ts`** with the core `useTasks`/`useUpdateTask` pair (same pattern as Task 15's `useShots.ts`, `TaskDTO` matching the enriched `tasksTable` from Task 4) plus the five nested-resource hook pairs, each following `useReviews.ts`'s `useAnnotations`/`useCreateAnnotation` pattern from Task 17 but pointed at `/tasks/:id/checklist`, `/tasks/:id/comments`, `/tasks/:id/dependencies`, `/tasks/:id/attachments`, `/tasks/:id/approval-events` respectively. For the checklist toggle specifically, add a `useToggleChecklistItem(taskId)` mutation calling `apiClient.put(\`/tasks/${taskId}/checklist/${itemId}\`, { done })`.
+**IMPORTANT — corrected field mapping (this section originally claimed
+`TaskDTO`'s fields match the mock `Task` interface one-for-one; that claim
+is WRONG and was caught by the controller before dispatch — do not trust
+that claim if you see it repeated anywhere else).** The real `tasksTable`
+schema (`lib/db/src/schema/production.ts`) and the mock `Task` interface
+(`artifacts/forge/src/data/mockData.ts`) diverge on several fields:
 
-- [ ] **Step 2: Wire `tasks.tsx`, `task-detail.tsx`, and `TaskDrawer.tsx`.** Read all three files first (the existing `useTasksStore` from `store/tasks.ts` has ~10 mutation methods per this session's earlier inspection — `updateTask`, `updateTaskStatus`, and several more for checklist/comments/dependencies). For each store method, map it to the corresponding new hook:
+| Mock `Task` field | Real `tasksTable` equivalent |
+|---|---|
+| `assetId` / `shotId` (two optional fields) | `entityId` + `entityType: "asset" \| "shot"` (one field pair covers both) |
+| `assigneeId` | `assignedTo` |
+| `assignedById` | **does not exist server-side** — no "who assigned this" column. Any UI that reads `task.assignedById` needs to either hide that field or fall back to a sensible default (e.g. omit the "assigned by" line); do not invent a fake value. |
+| `projectId` | **does not exist server-side** — a task's project is only reachable indirectly via its `entityId`→shot/asset→`projectId`. `GET /api/tasks` (already-shipped, from Task 8, unmodified by Task 14) has NO `projectId` query filter — it returns all of the tenant's tasks unconditionally. Do not add one now (that needs a join through shots/assets and is out of scope for this task); `useTasks()` takes no arguments. If a page needs project-scoped tasks, filter client-side against `useShots()`/`useAssets()`'s already-fetched data by matching `entityId`. |
+| `checklist` / `comments` / `attachments` / `dependencies` / `approvalHistory` / `dailyLogs` (inline arrays on the mock `Task` object) | **not present on `TaskDTO` at all** — these are the five separate nested-resource endpoints this task's hooks already cover (`useTaskChecklist`, `useTaskComments`, etc.). Any page code that reads e.g. `task.checklist` directly must be rewritten to call `useTaskChecklist(task.id)` instead — this is not a rename, it's a structural change from an inline field to a separate fetched resource. |
+
+`TaskDTO`'s real field set (matching `tasksTable` exactly) is: `id,
+tenantId, entityId, entityType, title, description, assignedTo, status,
+priority, department, pipelinePhase, weeklyRating, tags, estimatedHours,
+actualHours, startDate, dueDate, lastStatusUpdate, createdAt` (all
+nullable except id/tenantId/entityId/entityType/title/description/status/
+priority/tags/estimatedHours/actualHours/lastStatusUpdate/createdAt, per
+the schema's `.notNull()` markers — `assignedTo`/`department`/
+`pipelinePhase`/`weeklyRating`/`startDate`/`dueDate` are nullable).
+
+- [ ] **Step 1: Create `artifacts/forge/src/hooks/useTasks.ts`** with the core `useTasks()`/`useUpdateTask()` pair (same structural pattern as Task 15's `useShots.ts` — query + update mutation with `staleTime`/`onSuccess: invalidateQueries` — but `useTasks()` takes no `projectId` argument, per the correction above; `TaskDTO` is the corrected field list above, not the mock `Task` interface) plus the five nested-resource hook pairs, each following `useReviews.ts`'s `useAnnotations`/`useCreateAnnotation` pattern from Task 17 but pointed at `/tasks/:id/checklist`, `/tasks/:id/comments`, `/tasks/:id/dependencies`, `/tasks/:id/attachments`, `/tasks/:id/approval-events` respectively. For the checklist toggle specifically, add a `useToggleChecklistItem(taskId)` mutation calling `apiClient.put(\`/tasks/${taskId}/checklist/${itemId}\`, { done })`.
+
+- [ ] **Step 2: Wire `tasks.tsx`, `task-detail.tsx`, and `TaskDrawer.tsx`.** Read all three files first (the existing `useTasksStore` from `store/tasks.ts` has ~10 mutation methods per this session's earlier inspection — `updateTask`, `updateTaskStatus`, and several more for checklist/comments/dependencies). For each store method AND each field read, map it to the corresponding new hook or corrected field name per the table above:
   - `tasks` (read) → `useTasks()`'s `data`.
   - `updateTask(id, updates)` / `updateTaskStatus(id, status)` → `useUpdateTask()`'s `.mutate({ id, ...updates })` / `.mutate({ id, status })`.
   - Any checklist-toggle store method → `useToggleChecklistItem(taskId).mutate({ itemId, done })`.
   - Any comment-add store method → `useAddTaskComment(taskId).mutate({ text })`.
   - Any dependency-add store method → the dependencies hook's create mutation.
-  - Apply this same "identify the store method, map to the matching hook call" transformation to every remaining `useTasksStore` call site in these three files — the field names on `TaskDTO` match the existing mock `Task` interface's names one-for-one (both come from the same source: `artifacts/forge/src/data/mockData.ts`'s `Task` interface, which the schema in Task 4/5 was built to mirror), so no field-name translation is needed, only store-call-to-hook-call translation.
+  - `task.assetId`/`task.shotId` reads → `task.entityId` (with `task.entityType` to disambiguate which kind it is).
+  - `task.assigneeId` reads → `task.assignedTo`.
+  - `task.checklist`/`.comments`/`.attachments`/`.dependencies`/`.approvalHistory` reads → the corresponding `useTaskChecklist(task.id)`/etc. hook's `data`, called at the point of use (e.g. inside `TaskDrawer.tsx`'s expanded-task view), not as a field access on the task object itself.
+  - `task.assignedById` / `task.projectId` reads: no real backend equivalent exists (see table above) — omit the UI element that displayed it, or resolve it client-side (project: via the task's shot/asset lookup) rather than reading a nonexistent field.
+  - Apply this same "identify the store method or field read, map to the matching hook call or corrected field name" transformation to every remaining `useTasksStore` call site in these three files.
 
 - [ ] **Step 3: Verify.** `pnpm run typecheck`, then browser check at `http://localhost/tasks`: create/update a task, toggle a checklist item, add a comment, reload, confirm persistence.
 
@@ -2045,7 +2261,7 @@ git commit -m "feat(frontend): wire Tasks pages and nested sub-resources to the 
 **Files:**
 - Modify: `artifacts/forge/src/hooks/useTasks.ts` (add `useDailyLogs`/`useAddDailyLog`)
 - Modify: `artifacts/forge/src/pages/daily-standup.tsx` (the "Log Update" dialog and the Recent Progress & Daily Logs list, which today read/write `task.dailyLogs` on the mock `Task` object via `store/tasks.ts`'s `updateTask`)
-- Modify: `artifacts/forge/src/pages/task-detail.tsx` (if it has its own daily-log UI separate from the standup page's)
+- Modify: `artifacts/forge/src/components/shared/TaskDrawer.tsx` (its real path — NOT `pages/task-detail.tsx`, which does not exist in this repo; Task 18 confirmed this and correctly deferred TaskDrawer's own "Log Daily Time" button/inline form to this task, since it needs the `useDailyLogs`/`useAddDailyLog` hooks this task adds. Task 18 left a clear comment marking exactly where the removed UI was, referencing this task.)
 
 **Interfaces:**
 - Produces: `useDailyLogs(taskId)`, `useAddDailyLog(taskId)`.
@@ -2126,13 +2342,70 @@ const handleLogUpdateSubmit = () => {
 
 - [ ] **Step 3: Update the "Recent Progress & Daily Logs" list rendering** to read from `useDailyLogs` per-task instead of `task.dailyLogs` — this list currently iterates `tasks.filter((t) => t.dailyLogs.length > 0)`; since daily logs are no longer embedded on the task object, fetch logs per visible task (or add a `GET /api/daily-logs?taskId=...` call per row, batched via `Promise.all` in a small local effect, or — simpler — extend the `GET /api/tasks` response is NOT changed by this plan, so query each relevant task's logs individually via `useDailyLogs(taskId)` called from a small per-row subcomponent, matching the pattern of components that need per-item data already used elsewhere in this file for per-member data via `USERS.find(...)`).
 
-- [ ] **Step 4: Verify.** `pnpm run typecheck`, then browser check: submit a daily log from the Daily Standup page, confirm it appears in Recent Progress & Daily Logs after reload, confirm the task's actualHours updated.
+- [ ] **Step 4: Re-wire `TaskDrawer.tsx`'s "Log Daily Time" button and inline form.** Task 18 removed this UI entirely (rather than leave it reading/writing the now-nonexistent `task.dailyLogs` field) and left a comment at the removal site reading "Daily time-logging (Log Daily Time / Recent Logs) is pending Task 19's daily-logs nested resource wiring" — find that comment and replace it with a working implementation: the "Log Daily Time" button (toggles `logFormOpen`), the inline form (hours/note inputs, submit calling `useAddDailyLog()` with the drawer's current `task.id`), and a "Recent Logs" list rendering `useDailyLogs(task.id)`'s `data`. Follow the same submit-handler shape as Step 2 above, and the same per-task-hook rendering pattern as Step 3 above.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Verify.** `pnpm run typecheck`, then browser check: submit a daily log from the Daily Standup page, confirm it appears in Recent Progress & Daily Logs after reload, confirm the task's actualHours updated. Also open a task in `TaskDrawer` and confirm "Log Daily Time" works and shows recent logs.
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add artifacts/forge/src/hooks/useTasks.ts artifacts/forge/src/pages/daily-standup.tsx artifacts/forge/src/pages/task-detail.tsx
+git add artifacts/forge/src/hooks/useTasks.ts artifacts/forge/src/pages/daily-standup.tsx artifacts/forge/src/components/shared/TaskDrawer.tsx
 git commit -m "feat(frontend): wire daily task logs to the real backend"
+```
+
+---
+
+## Task 19a: Migrate Daily Standup page's task list off the mock store
+
+**Why this task exists:** Task 19's review found that `daily-standup.tsx`'s
+`tasks`/`myTasks`/`memberTasks` arrays are still sourced from
+`useTasksStore` (`store/tasks.ts`), whose mock task ids (`t1`, `t2`, ...)
+never match a real tenant task's `crypto.randomUUID()` id. Every real
+`POST /daily-logs` from this page 400s silently (Task 19 added an
+`onError` toast, so the failure is now visible, but the log never
+persists), and the "Recent Progress & Daily Logs" list never has anything
+to show. Task 19's own file list never included migrating this page's
+underlying task source — only its log-submission dialog and log-list
+rendering — so that gap survived Task 19 as-scoped and needs its own task.
+
+**Depends on:** Task 18 (`useTasks()`/`useUpdateTask()`), Task 19
+(`useDailyLogs`/`useAddDailyLog`, already in `useTasks.ts`).
+
+**Explicitly OUT of scope:** the Daily Standup page's live-updates feed
+(`useStandupsStore`, the "Live sync failed" banner, `BroadcastComposer`/
+`BroadcastFeed`) — that is separate, pre-existing (currently mocked)
+functionality in this worktree, unrelated to task/daily-log data, and its
+real-backend wiring already exists uncommitted in a different checkout
+from an earlier session (flagged in this plan's own preflight scan,
+Finding 2) — reconciling those two is a future merge concern, not this
+task's job. Do not touch `useStandupsStore` or the standup-feed rendering
+at all.
+
+**Files:**
+- Modify: `artifacts/forge/src/pages/daily-standup.tsx` only.
+
+**Field mapping**: use the exact same corrected table Task 18 established
+(re-read `.superpowers/sdd/2026-08-31-full-backend-build-out/task-18-brief.md`
+or the plan's own Task 18 section above for the full table) — the
+short version: `assigneeId` → `assignedTo`, no `projectId`/`assignedById`
+fields exist on real `TaskDTO`, and there is no inline `dailyLogs` array
+(it's the separate `useDailyLogs(taskId)` hook Task 19 already added).
+
+- [ ] **Step 1: Replace the task data source.** Remove `import { useTasksStore } from "@/store/tasks";` and the two lines `const tasks = useTasksStore((s) => s.tasks);` / `const updateTaskStatus = useTasksStore((s) => s.updateTaskStatus);`. Add `import { useTasks, useUpdateTask } from "@/hooks/useTasks";`, then `const { data: tasks = [] } = useTasks();` and `const updateTaskMutation = useUpdateTask();`. Every call site of `updateTaskStatus(taskId, status)` becomes `updateTaskMutation.mutate({ id: taskId, status })`.
+
+- [ ] **Step 2: Fix every `.assigneeId` read to `.assignedTo`.** Grep the file for `.assigneeId` — every occurrence that reads a *task's* assignee (not a member/user object's own field) needs this rename: the `myTasks` filter (`tasks.filter((t) => t.assigneeId === currentUser.id)`), the `tasksWithLogs`/`memberTasks` filters inside `payrollRows` and `handleViewLogs`, and any inline task-card rendering that reads `task.assigneeId` for avatar lookups. `.title`, `.status`, `.department` fields already match `TaskDTO` one-for-one (confirmed by Task 18's corrected mapping) — those don't need translation.
+
+- [ ] **Step 3: Rework `payrollRows`'s `totalHoursToday` aggregation** (currently: for each member's tasks, filter each task's inline `.dailyLogs` array by today's date and sum hours). The inline array no longer exists. `GET /api/daily-logs` (already-shipped, `artifacts/api-server/src/routes/daily-logs.ts`) supports an optional `userId` query filter in addition to `taskId` — the cleanest fix is a new hook in `useTasks.ts`, `useDailyLogsByUser(userId: string | undefined)`, following `useDailyLogs`'s exact same shape but calling `apiClient.get<DailyLogDTO[]>(\`/daily-logs?userId=${userId}\`)`. Then `payrollRows` (or a small per-member subcomponent, matching the per-row pattern Task 19 already established for the "Recent Progress" list) fetches each visible member's logs via this hook and filters by `log.date.startsWith(today)` client-side, same as the old logic did per-task. If restructuring `payrollRows` (a `useMemo` producing an array) to use a hook per member is awkward given hooks-can't-run-in-a-loop, extract a small `<PayrollRow member={member} ... />` subcomponent that calls `useDailyLogsByUser(member.id)` internally and renders its own computed `totalHoursToday`/`isOverloaded` — matching the `DailyLogRow` pattern Task 19 already added for the other list.
+
+- [ ] **Step 4: Simplify `handleViewLogs`.** The old logic (`memberTasks.find((t) => t.dailyLogs.length > 0) || memberTasks[0]`) prioritized opening a task that already has logs. Without a cheap way to check "has logs" without a full fetch, simplify to always opening `memberTasks[0]` (the member's first task) — this is an acceptable, minor UX trade-off (the drawer itself will correctly show that task's real logs once opened via Task 19's `useDailyLogs` wiring, whichever task it is); document this simplification in your report, don't silently narrow behavior without saying so.
+
+- [ ] **Step 5: Verify.** `pnpm run typecheck`, then a careful manual read-through confirming zero remaining `.assigneeId`/`.dailyLogs`/`useTasksStore` references anywhere in the file (grep it yourself), and that `useStandupsStore`/broadcast-feed code is completely untouched (diff should show zero lines changed in those sections).
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add artifacts/forge/src/hooks/useTasks.ts artifacts/forge/src/pages/daily-standup.tsx
+git commit -m "feat(frontend): migrate Daily Standup page's task list off the mock store"
 ```
 
 ---
@@ -2168,3 +2441,5 @@ git commit -m "feat(seed): generate realistic episodes/sequences/shots/assets/ta
 **Placeholder scan:** No task step says "add appropriate error handling" or similar — every route handler shown is the complete, real implementation. Task 15/16/18's frontend-wiring steps describe a transformation *rule* rather than reproducing entire multi-hundred-line page files verbatim, which is a deliberate scoping choice (matching this skill's own "Modify: file:line" pattern for existing-file changes) rather than a vague placeholder — each rule names the exact old API (store selector/method name) and exact new API (hook name/mutation signature) being substituted.
 
 **Type consistency:** `ShotDTO`/`AssetDTO`/`VersionDTO`/`TaskDTO`/`DailyLogDTO`/`Annotation` field names are defined once (Tasks 15, 16, 17, 18, 19) and match the Drizzle schema column names from Tasks 2-6 exactly (camelCase in TypeScript, Drizzle's `text("snake_case_column")` mapping handled by the ORM as already established elsewhere in this codebase — no task introduces a naming mismatch between its own schema and route). `apiClient.put`/`apiClient.delete`, added once each in Tasks 15/17 respectively, are referenced by name consistently in every later task that needs them (16, 17, 18, 19).
+
+**Post-execution correction (during Task 9):** an automated security review of Task 9's originally-committed `shots.ts` found a real HIGH-severity IDOR — POST/PUT accepted foreign-key ids (`projectId`/`episodeId`/`sequenceId`/`assigneeId`, etc.) straight from the request body with no check that they belong to the caller's own tenant, since a DB foreign key only verifies the referenced row exists, not who owns it — plus a MEDIUM missing-tenant-scope on a PUT's `UPDATE` statement. Both traced back to this plan's own Task 9 template, which had already been copied unmodified into the already-approved Task 8 (`episodes.ts`, `sequences.ts`). All three files were fixed and re-reviewed (see the plan's execution ledger). This section (Tasks 10, 11, 12, 14 — not yet dispatched at the time of the finding) was then corrected in place to include the same tenant-ownership-check pattern from the start: `assets.ts` (Task 10) mirrors `shots.ts`'s four checks; `versions.ts` (Task 11) gained a `taskInTenant` check on `taskId` plus a tenant-scoped PUT; `reviews.ts`/`annotations` (Task 12) gained a `versionInTenant` check on both the reviews and annotations POST handlers plus a tenant-scoped annotation DELETE; Task 14's task-enrichment POST/PUT gained an `assignedTo` → `userInTenant` check with a tenant-scoped PUT, and every nested sub-resource POST (checklist/comments/dependencies/attachments/approval-events) gained a `taskInTenant` check on the parent `:id` before writing (plus `dependsOnTaskId` → `taskInTenant` in the dependencies POST, and a tenant-scoped checklist-item PUT). Task 13 (`daily-logs.ts`) already validated `taskId` correctly in its original form and needed no change.

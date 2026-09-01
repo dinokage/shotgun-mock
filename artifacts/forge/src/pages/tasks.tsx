@@ -14,6 +14,8 @@ import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { USERS, PROJECTS, DEPARTMENTS } from "@/data/mockData";
 import { useTasks, useUpdateTask } from "@/hooks/useTasks";
+import { useShots } from "@/hooks/useShots";
+import { useAssets } from "@/hooks/useAssets";
 import {
   Search,
   ListTodo,
@@ -57,6 +59,21 @@ export default function Tasks() {
   const isMobile = useIsMobile();
   const { data: liveTasks = [], isLoading } = useTasks();
   const { mutate: updateTask } = useUpdateTask();
+  // Tasks have no projectId column server-side — a task's project is only
+  // reachable indirectly via its entityId -> shot/asset -> projectId. Build
+  // that lookup client-side from the already-fetched shots/assets data.
+  const { data: liveShots = [] } = useShots();
+  const { data: liveAssets = [] } = useAssets();
+  const entityProjectMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    liveShots.forEach((s) => {
+      map[s.id] = s.projectId;
+    });
+    liveAssets.forEach((a) => {
+      map[a.id] = a.projectId;
+    });
+    return map;
+  }, [liveShots, liveAssets]);
 
   const liveUsers = USERS; // Could be replaced with useUsers() later
   const liveProjects = PROJECTS; // Could be replaced with useProjects() later
@@ -101,16 +118,19 @@ export default function Tasks() {
         return awaitingReview && inMyDepartment;
       }
 
-      if (forceMyTasksOnly && t.assigneeId !== currentUserId) return false;
+      if (forceMyTasksOnly && t.assignedTo !== currentUserId) return false;
 
       if (search && !t.title.toLowerCase().includes(search.toLowerCase()))
         return false;
       if (statusFilter !== "all" && t.status !== statusFilter) return false;
-      if (projectFilter !== "all" && t.projectId !== projectFilter)
+      if (
+        projectFilter !== "all" &&
+        entityProjectMap[t.entityId] !== projectFilter
+      )
         return false;
       if (departmentFilter !== "all" && t.department !== departmentFilter)
         return false;
-      if (!forceMyTasksOnly && myTasksOnly && t.assigneeId !== currentUserId)
+      if (!forceMyTasksOnly && myTasksOnly && t.assignedTo !== currentUserId)
         return false;
 
       return true;
@@ -126,6 +146,7 @@ export default function Tasks() {
     liveTasks,
     needsReviewOnly,
     myDepartmentName,
+    entityProjectMap,
   ]);
 
   const statusCounts = useMemo(() => {
@@ -234,7 +255,14 @@ export default function Tasks() {
       </div>
 
       <div className="flex gap-2 overflow-x-auto shrink-0 pb-1">
-        {["all", "todo", "in_progress", "review", "done"].map((s) => (
+        {[
+          "all",
+          "not-started",
+          "in-progress",
+          "review",
+          "approved",
+          "complete",
+        ].map((s) => (
           <button
             key={s}
             onClick={() => setStatusFilter(s)}
@@ -244,7 +272,8 @@ export default function Tasks() {
                 : "bg-muted/50 text-muted-foreground hover:bg-muted"
             }`}
           >
-            {s === "all" ? "All" : s.replace("_", " ")} ({statusCounts[s] || 0})
+            {s === "all" ? "All" : s.replace(/-/g, " ")} (
+            {statusCounts[s] || 0})
           </button>
         ))}
       </div>
@@ -289,12 +318,16 @@ export default function Tasks() {
 
       <div className="flex-1 overflow-hidden">
         {view === "kanban" ? (
-          <KanbanView tasks={filtered as any} />
+          <KanbanView tasks={filtered} entityProjectMap={entityProjectMap} />
         ) : isMobile ? (
           <div className="rounded-md border border-border overflow-y-auto h-full p-3 space-y-3">
             {filtered.slice(0, 100).map((task) => {
-              const assignee = liveUsers.find((u) => u.id === task.assigneeId);
-              const project = liveProjects.find((p) => p.id === task.projectId);
+              const assignee = liveUsers.find(
+                (u) => u.id === task.assignedTo,
+              );
+              const project = liveProjects.find(
+                (p) => p.id === entityProjectMap[task.entityId],
+              );
               return (
                 <Card
                   key={task.id}
@@ -338,8 +371,8 @@ export default function Tasks() {
                         ? new Date(task.dueDate).toLocaleDateString()
                         : "No date"}
                     </span>
-                    {task.status === "in_progress" &&
-                      task.assigneeId === currentUser?.id && (
+                    {task.status === "in-progress" &&
+                      task.assignedTo === currentUser?.id && (
                         <Button
                           size="sm"
                           variant="outline"
@@ -372,10 +405,10 @@ export default function Tasks() {
               <tbody>
                 {filtered.slice(0, 100).map((task) => {
                   const assignee = liveUsers.find(
-                    (u) => u.id === task.assigneeId,
+                    (u) => u.id === task.assignedTo,
                   );
                   const project = liveProjects.find(
-                    (p) => p.id === task.projectId,
+                    (p) => p.id === entityProjectMap[task.entityId],
                   );
                   return (
                     <tr
@@ -394,9 +427,9 @@ export default function Tasks() {
                           >
                             {task.department}
                           </Badge>
-                          {task.shotId && (
+                          {task.entityType === "shot" && (
                             <span className="text-indigo-400">
-                              Shot: {task.shotId}
+                              Shot: {task.entityId}
                             </span>
                           )}
                         </div>
@@ -428,8 +461,8 @@ export default function Tasks() {
                           : ""}
                       </td>
                       <td className="p-4 text-right">
-                        {task.status === "in_progress" &&
-                          task.assigneeId === currentUser?.id && (
+                        {task.status === "in-progress" &&
+                          task.assignedTo === currentUser?.id && (
                             <Button
                               size="sm"
                               variant="outline"

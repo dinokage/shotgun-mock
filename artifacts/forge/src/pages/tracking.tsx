@@ -57,7 +57,7 @@ import {
   DEPARTMENTS,
   TaskStatus,
 } from "@/data/mockData";
-import { useShotStore } from "@/store/shots";
+import { useShots, useUpdateShot } from "@/hooks/useShots";
 import { useTasksStore } from "@/store/tasks";
 import {
   useTrackingViewsStore,
@@ -484,9 +484,8 @@ export default function TrackingGrid() {
   // Toggles visibility of the grouping/sorting/saved-views filter controls (row 2 below).
   const [showFilterControls, setShowFilterControls] = useState(true);
 
-  const liveShots = useShotStore((state) => state.shots);
-  const updateShot = useShotStore((state) => state.updateShot);
-  const updateReviewStatus = useShotStore((state) => state.updateReviewStatus);
+  const { data: liveShots = [] } = useShots();
+  const updateShotMutation = useUpdateShot();
   const liveTasks = useTasksStore((state) => state.tasks);
 
   const savedViews = useTrackingViewsStore((state) => state.views);
@@ -607,13 +606,13 @@ export default function TrackingGrid() {
       filteredShots = filteredShots.filter((s) => {
         const projName = PROJECTS.find((p) => p.id === s.projectId)?.name || "";
         const epName = EPISODES.find((e) => e.id === s.episodeId)?.name || "";
+        const seqName =
+          SEQUENCES.find((sq) => sq.id === s.sequenceId)?.name || "";
         return (
           String(s.name || "")
             .toLowerCase()
             .includes(term) ||
-          String(s.sequence || "")
-            .toLowerCase()
-            .includes(term) ||
+          seqName.toLowerCase().includes(term) ||
           projName.toLowerCase().includes(term) ||
           epName.toLowerCase().includes(term)
         );
@@ -635,10 +634,10 @@ export default function TrackingGrid() {
         project: proj?.name || "Unknown",
         projectId: shot.projectId,
         episode: ep?.name || "EP_01",
-        sequence: seq?.name || shot.sequence,
+        sequence: seq?.name || "Other",
         shot: shot.name,
         assignee: assignee?.name || "Unassigned",
-        assigneeId: shot.assigneeId,
+        assigneeId: shot.assigneeId ?? "",
         departmentId: dept?.id || "unassigned",
         department: dept?.name || "Unassigned",
         departmentColor: dept?.color || "#555555",
@@ -1042,15 +1041,22 @@ export default function TrackingGrid() {
             onClick={() => {
               Object.entries(localOverrides).forEach(([id, changes]) => {
                 if ("status" in changes || "notes" in changes) {
-                  updateShot(id, {
+                  updateShotMutation.mutate({
+                    id,
                     ...("status" in changes ? { status: changes.status } : {}),
                     ...("notes" in changes ? { notes: changes.notes } : {}),
                   });
                 }
                 if (changes.internalReview)
-                  updateReviewStatus(id, true, changes.internalReview);
+                  updateShotMutation.mutate({
+                    id,
+                    internalReviewStatus: changes.internalReview,
+                  });
                 if (changes.clientReview)
-                  updateReviewStatus(id, false, changes.clientReview);
+                  updateShotMutation.mutate({
+                    id,
+                    clientReviewStatus: changes.clientReview,
+                  });
               });
               setLocalOverrides({});
               toast({

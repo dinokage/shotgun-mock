@@ -1,9 +1,70 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { tasksTable } from "@workspace/db/schema";
+import {
+  tasksTable,
+  usersTable,
+  tenantRolesTable,
+  taskChecklistItemsTable,
+  taskDependenciesTable,
+  taskCommentsTable,
+  taskAttachmentsTable,
+  taskApprovalEventsTable,
+} from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import * as crypto from "crypto";
+
+// A DB foreign key only verifies a referenced row exists, not who owns it,
+// so every foreign key accepted from a request body needs an explicit
+// tenant-ownership check before use (same pattern already applied in
+// routes/shots.ts, routes/versions.ts, routes/reviews.ts).
+async function userInTenant(id: string, tenantId: string) {
+  const [row] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(and(eq(usersTable.id, id), eq(usersTable.tenantId, tenantId)));
+  return !!row;
+}
+
+// Used by every nested /:id/* sub-resource route below to confirm the
+// parent task (req.params.id) belongs to the caller's tenant BEFORE
+// inserting a checklist item/comment/dependency/attachment/approval-event
+// against it — otherwise a user could write sub-resources onto another
+// tenant's task just by knowing its id, even though the sub-resource row
+// itself carries the caller's own tenantId (an IDOR-adjacent referential
+// integrity gap, same root cause as the FK-ownership issue elsewhere in
+// this plan).
+async function taskInTenant(id: string, tenantId: string) {
+  const [row] = await db
+    .select({ id: tasksTable.id })
+    .from(tasksTable)
+    .where(and(eq(tasksTable.id, id), eq(tasksTable.tenantId, tenantId)));
+  return !!row;
+}
+
+// The approval-events table is an append-only audit trail (see the schema
+// comment in tasks-detail.ts) — its whole purpose is to record who approved
+// what and in what capacity. Accepting `byRole` from the request body would
+// let any caller write a false audit record (e.g. claim they acted as
+// "lead" while actually an "artist"), so the role is always looked up
+// server-side from the caller's own session (req.roleId), never trusted
+// from the client.
+async function roleNameForCaller(roleId: string, tenantId: string) {
+  const [row] = await db
+    .select({ name: tenantRolesTable.name })
+    .from(tenantRolesTable)
+    .where(and(eq(tenantRolesTable.id, roleId), eq(tenantRolesTable.tenantId, tenantId)));
+  return row?.name;
+}
+
+const APPROVAL_EVENT_ACTIONS = [
+  "submitted-for-lead-review",
+  "submitted-for-manager-review",
+  "approved",
+  "changes-requested",
+  "rejected",
+  "published",
+] as const;
 
 export const tasksRouter = Router();
 
@@ -26,10 +87,25 @@ tasksRouter.get("/", async (req, res) => {
 tasksRouter.post("/", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
-    const { entityId, entityType, status } = req.body;
+    const {
+      entityId,
+      entityType,
+      status,
+      title,
+      description,
+      priority,
+      department,
+      pipelinePhase,
+      dueDate,
+      estimatedHours,
+      assignedTo,
+    } = req.body;
 
     if (!entityId || !entityType)
       return res.status(400).json({ error: "Missing entityId or entityType" });
+
+    if (assignedTo && !(await userInTenant(assignedTo, tenantId)))
+      return res.status(400).json({ error: "Invalid assignedTo" });
 
     const newId = crypto.randomUUID();
     await db.insert(tasksTable).values({
@@ -38,6 +114,14 @@ tasksRouter.post("/", async (req, res) => {
       entityId,
       entityType,
       status: status || "ready",
+      title: title || "",
+      description: description || "",
+      priority: priority || "medium",
+      department: department || null,
+      pipelinePhase: pipelinePhase || null,
+      dueDate: dueDate ? new Date(dueDate) : null,
+      estimatedHours: estimatedHours || 0,
+      assignedTo: assignedTo || null,
     });
 
     const [created] = await db
@@ -50,11 +134,24 @@ tasksRouter.post("/", async (req, res) => {
   }
 });
 
+const TASK_PATCHABLE_FIELDS = [
+  "status",
+  "title",
+  "description",
+  "priority",
+  "department",
+  "pipelinePhase",
+  "weeklyRating",
+  "tags",
+  "estimatedHours",
+  "actualHours",
+  "assignedTo",
+] as const;
+
 tasksRouter.put("/:id", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const taskId = req.params.id;
-    const { status } = req.body;
 
     const [existing] = await db
       .select()
@@ -63,16 +160,294 @@ tasksRouter.put("/:id", async (req, res) => {
 
     if (!existing) return res.status(404).json({ error: "Not found" });
 
+    if (
+      "assignedTo" in req.body &&
+      req.body.assignedTo &&
+      !(await userInTenant(req.body.assignedTo, tenantId))
+    )
+      return res.status(400).json({ error: "Invalid assignedTo" });
+
+    const updates: Record<string, unknown> = {};
+    for (const field of TASK_PATCHABLE_FIELDS) {
+      if (field in req.body) updates[field] = req.body[field];
+    }
+    updates.lastStatusUpdate = new Date();
+
     await db
       .update(tasksTable)
-      .set({ status })
-      .where(eq(tasksTable.id, taskId));
+      .set(updates)
+      .where(and(eq(tasksTable.tenantId, tenantId), eq(tasksTable.id, taskId)));
 
     const [updated] = await db
       .select()
       .from(tasksTable)
-      .where(eq(tasksTable.id, taskId));
+      .where(and(eq(tasksTable.tenantId, tenantId), eq(tasksTable.id, taskId)));
     return res.json(updated);
+  } catch (err) {
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+tasksRouter.get("/:id/checklist", async (req, res) => {
+  try {
+    const tenantId = req.tenantId!;
+    const rows = await db
+      .select()
+      .from(taskChecklistItemsTable)
+      .where(
+        and(
+          eq(taskChecklistItemsTable.tenantId, tenantId),
+          eq(taskChecklistItemsTable.taskId, req.params.id),
+        ),
+      );
+    return res.json(rows);
+  } catch (err) {
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+tasksRouter.post("/:id/checklist", async (req, res) => {
+  try {
+    const tenantId = req.tenantId!;
+    const { text, position } = req.body;
+    if (!text) return res.status(400).json({ error: "Missing text" });
+    if (!(await taskInTenant(req.params.id, tenantId)))
+      return res.status(404).json({ error: "Not found" });
+    const newId = crypto.randomUUID();
+    await db.insert(taskChecklistItemsTable).values({
+      id: newId,
+      tenantId,
+      taskId: req.params.id,
+      text,
+      position: position ?? 0,
+    });
+    const [created] = await db
+      .select()
+      .from(taskChecklistItemsTable)
+      .where(and(eq(taskChecklistItemsTable.tenantId, tenantId), eq(taskChecklistItemsTable.id, newId)));
+    return res.status(201).json(created);
+  } catch (err) {
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+tasksRouter.put("/:id/checklist/:itemId", async (req, res) => {
+  try {
+    const tenantId = req.tenantId!;
+    const { done, text } = req.body;
+    const [existing] = await db
+      .select()
+      .from(taskChecklistItemsTable)
+      .where(
+        and(
+          eq(taskChecklistItemsTable.tenantId, tenantId),
+          eq(taskChecklistItemsTable.id, req.params.itemId),
+        ),
+      );
+    if (!existing) return res.status(404).json({ error: "Not found" });
+    const updates: Record<string, unknown> = {};
+    if (typeof done === "boolean") updates.done = done;
+    if (typeof text === "string") updates.text = text;
+    await db
+      .update(taskChecklistItemsTable)
+      .set(updates)
+      .where(
+        and(
+          eq(taskChecklistItemsTable.tenantId, tenantId),
+          eq(taskChecklistItemsTable.id, req.params.itemId),
+        ),
+      );
+    const [updated] = await db
+      .select()
+      .from(taskChecklistItemsTable)
+      .where(
+        and(
+          eq(taskChecklistItemsTable.tenantId, tenantId),
+          eq(taskChecklistItemsTable.id, req.params.itemId),
+        ),
+      );
+    return res.json(updated);
+  } catch (err) {
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+tasksRouter.get("/:id/comments", async (req, res) => {
+  try {
+    const tenantId = req.tenantId!;
+    const rows = await db
+      .select()
+      .from(taskCommentsTable)
+      .where(
+        and(eq(taskCommentsTable.tenantId, tenantId), eq(taskCommentsTable.taskId, req.params.id)),
+      );
+    return res.json(rows);
+  } catch (err) {
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+tasksRouter.post("/:id/comments", async (req, res) => {
+  try {
+    const tenantId = req.tenantId!;
+    const userId = req.userId!;
+    const { text } = req.body;
+    if (!text) return res.status(400).json({ error: "Missing text" });
+    if (!(await taskInTenant(req.params.id, tenantId)))
+      return res.status(404).json({ error: "Not found" });
+    const newId = crypto.randomUUID();
+    await db.insert(taskCommentsTable).values({
+      id: newId,
+      tenantId,
+      taskId: req.params.id,
+      userId,
+      text,
+    });
+    const [created] = await db
+      .select()
+      .from(taskCommentsTable)
+      .where(and(eq(taskCommentsTable.tenantId, tenantId), eq(taskCommentsTable.id, newId)));
+    return res.status(201).json(created);
+  } catch (err) {
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+tasksRouter.get("/:id/dependencies", async (req, res) => {
+  try {
+    const tenantId = req.tenantId!;
+    const rows = await db
+      .select()
+      .from(taskDependenciesTable)
+      .where(
+        and(
+          eq(taskDependenciesTable.tenantId, tenantId),
+          eq(taskDependenciesTable.taskId, req.params.id),
+        ),
+      );
+    return res.json(rows);
+  } catch (err) {
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+tasksRouter.post("/:id/dependencies", async (req, res) => {
+  try {
+    const tenantId = req.tenantId!;
+    const { dependsOnTaskId, type, lagDays } = req.body;
+    if (!dependsOnTaskId)
+      return res.status(400).json({ error: "Missing dependsOnTaskId" });
+    if (!(await taskInTenant(req.params.id, tenantId)))
+      return res.status(404).json({ error: "Not found" });
+    if (!(await taskInTenant(dependsOnTaskId, tenantId)))
+      return res.status(400).json({ error: "Invalid dependsOnTaskId" });
+    const newId = crypto.randomUUID();
+    await db.insert(taskDependenciesTable).values({
+      id: newId,
+      tenantId,
+      taskId: req.params.id,
+      dependsOnTaskId,
+      type: type || "FS",
+      lagDays: lagDays ?? null,
+    });
+    const [created] = await db
+      .select()
+      .from(taskDependenciesTable)
+      .where(and(eq(taskDependenciesTable.tenantId, tenantId), eq(taskDependenciesTable.id, newId)));
+    return res.status(201).json(created);
+  } catch (err) {
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+tasksRouter.get("/:id/attachments", async (req, res) => {
+  try {
+    const tenantId = req.tenantId!;
+    const rows = await db
+      .select()
+      .from(taskAttachmentsTable)
+      .where(
+        and(
+          eq(taskAttachmentsTable.tenantId, tenantId),
+          eq(taskAttachmentsTable.taskId, req.params.id),
+        ),
+      );
+    return res.json(rows);
+  } catch (err) {
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+tasksRouter.post("/:id/attachments", async (req, res) => {
+  try {
+    const tenantId = req.tenantId!;
+    const userId = req.userId!;
+    const { url } = req.body;
+    if (!url) return res.status(400).json({ error: "Missing url" });
+    if (!(await taskInTenant(req.params.id, tenantId)))
+      return res.status(404).json({ error: "Not found" });
+    const newId = crypto.randomUUID();
+    await db.insert(taskAttachmentsTable).values({
+      id: newId,
+      tenantId,
+      taskId: req.params.id,
+      url,
+      uploadedById: userId,
+    });
+    const [created] = await db
+      .select()
+      .from(taskAttachmentsTable)
+      .where(and(eq(taskAttachmentsTable.tenantId, tenantId), eq(taskAttachmentsTable.id, newId)));
+    return res.status(201).json(created);
+  } catch (err) {
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+tasksRouter.get("/:id/approval-events", async (req, res) => {
+  try {
+    const tenantId = req.tenantId!;
+    const rows = await db
+      .select()
+      .from(taskApprovalEventsTable)
+      .where(
+        and(
+          eq(taskApprovalEventsTable.tenantId, tenantId),
+          eq(taskApprovalEventsTable.taskId, req.params.id),
+        ),
+      );
+    return res.json(rows);
+  } catch (err) {
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+tasksRouter.post("/:id/approval-events", async (req, res) => {
+  try {
+    const tenantId = req.tenantId!;
+    const userId = req.userId!;
+    const roleId = req.roleId!;
+    const { action } = req.body;
+    if (!action || !(APPROVAL_EVENT_ACTIONS as readonly string[]).includes(action))
+      return res.status(400).json({ error: "Missing or invalid action" });
+    if (!(await taskInTenant(req.params.id, tenantId)))
+      return res.status(404).json({ error: "Not found" });
+    const byRole = await roleNameForCaller(roleId, tenantId);
+    if (!byRole) return res.status(400).json({ error: "Invalid role" });
+    const newId = crypto.randomUUID();
+    await db.insert(taskApprovalEventsTable).values({
+      id: newId,
+      tenantId,
+      taskId: req.params.id,
+      action,
+      byUserId: userId,
+      byRole,
+    });
+    const [created] = await db
+      .select()
+      .from(taskApprovalEventsTable)
+      .where(and(eq(taskApprovalEventsTable.tenantId, tenantId), eq(taskApprovalEventsTable.id, newId)));
+    return res.status(201).json(created);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
   }

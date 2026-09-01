@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,7 +6,6 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { USERS, DEPARTMENTS, PROJECTS } from "@/data/mockData";
 import { useAuthStore } from "@/store/auth";
-import { useTasksStore } from "@/store/tasks";
 import { useStandupsStore } from "@/store/standups";
 import { useBroadcastsStore } from "@/store/broadcasts";
 import { useUIStore } from "@/store/ui";
@@ -50,6 +49,13 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Image as ImageIcon, Video, Paperclip, Send } from "lucide-react";
 import { apiClient } from "@/lib/apiClient";
+import {
+  useTasks,
+  useUpdateTask,
+  useDailyLogs,
+  useDailyLogsByUser,
+  useAddDailyLog,
+} from "@/hooks/useTasks";
 import { fadeInUp, DURATION } from "@/lib/motion";
 import {
   Empty,
@@ -100,7 +106,7 @@ function PlaylistItem({
   } = useSortable({
     id: task.id,
   });
-  const assignee = USERS.find((u) => u.id === task.assigneeId);
+  const assignee = USERS.find((u) => u.id === task.assignedTo);
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -146,11 +152,151 @@ function PlaylistItem({
   );
 }
 
+// One "Recent Progress & Daily Logs" row. Daily logs are a real backend
+// resource keyed by taskId (see hooks/useTasks.ts's useDailyLogs), not an
+// inline field on the mock Task object anymore, so each row fetches its own
+// task's logs and renders nothing if that task has none logged yet.
+function DailyLogRow({ task }: { task: any }) {
+  const { data: logs = [] } = useDailyLogs(task.id);
+  if (logs.length === 0) return null;
+  const assignee = USERS.find((u) => u.id === task.assignedTo);
+  const latestLog = logs[logs.length - 1];
+  return (
+    <div className="p-4 hover:bg-muted/30 transition-colors">
+      <div className="flex items-start gap-4">
+        <Avatar className="w-8 h-8 mt-1">
+          <AvatarImage src={assignee?.avatar} />
+        </Avatar>
+        <div className="flex-1">
+          <div className="flex items-center justify-between mb-1">
+            <div className="font-medium text-sm">
+              <span className="text-muted-foreground mr-1">
+                {assignee?.name} logged
+              </span>
+              {latestLog.hours}h on {task.title}
+            </div>
+            <span className="text-xs text-muted-foreground">
+              {new Date(latestLog.date).toLocaleDateString()}
+            </span>
+          </div>
+          <div className="text-sm bg-muted/50 p-2.5 rounded-md text-muted-foreground italic border-l-2 border-primary">
+            "{latestLog.note}"
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// One "Payroll & Attendance" table row. Hours-today is now a real,
+// per-user backend aggregate (useDailyLogsByUser) rather than an inline
+// task.dailyLogs field summed across a member's tasks, so hooks can't run
+// per-member inside payrollRows's useMemo/loop — each row fetches its own
+// member's logs, matching the DailyLogRow pattern above. The computed
+// total is also reported up to the parent (onHoursComputed) so the CSV
+// export — a synchronous, non-hook button handler — can include real
+// numbers instead of always exporting zeroes.
+function PayrollRow({
+  member,
+  memberDept,
+  isApproved,
+  onViewLogs,
+  onHoursComputed,
+}: {
+  member: any;
+  memberDept: any;
+  isApproved: boolean;
+  onViewLogs: () => void;
+  onHoursComputed: (memberId: string, hours: number) => void;
+}) {
+  const { data: logs = [] } = useDailyLogsByUser(member.id);
+  const today = new Date().toISOString().split("T")[0];
+  const totalHoursToday = logs
+    .filter((log) => log.date.startsWith(today))
+    .reduce((acc, log) => acc + log.hours, 0);
+  const isOverloaded = (member.capacity ?? 0) > 95;
+
+  useEffect(() => {
+    onHoursComputed(member.id, totalHoursToday);
+  }, [member.id, totalHoursToday, onHoursComputed]);
+
+  return (
+    <tr className="hover:bg-muted/30 transition-colors">
+      <td className="px-4 py-3">
+        <div className="flex items-center gap-3">
+          <Avatar className="w-8 h-8">
+            <AvatarImage src={member.avatar} />
+            <AvatarFallback>{member.name.charAt(0)}</AvatarFallback>
+          </Avatar>
+          <span className="font-medium">{member.name}</span>
+        </div>
+      </td>
+      <td className="px-4 py-3">
+        <div className="text-sm">{member.title}</div>
+        <div className="text-xs text-muted-foreground">
+          {memberDept?.name}
+        </div>
+      </td>
+      <td className="px-4 py-3 text-center">
+        {member.status === "active" ? (
+          <Badge
+            variant="outline"
+            className="bg-green-500/10 text-green-500 border-green-500/20 text-[10px]"
+          >
+            PUNCHED IN
+          </Badge>
+        ) : (
+          <Badge
+            variant="outline"
+            className="bg-red-500/10 text-red-500 border-red-500/20 text-[10px]"
+          >
+            AWAY
+          </Badge>
+        )}
+      </td>
+      <td className="px-4 py-3 text-center font-mono relative">
+        <span
+          className={
+            totalHoursToday === 0
+              ? "text-muted-foreground opacity-50"
+              : totalHoursToday > 8
+                ? "text-amber-500 font-bold"
+                : "text-primary font-bold"
+          }
+        >
+          {totalHoursToday}h
+        </span>
+        {isApproved && totalHoursToday > 0 && (
+          <CheckCircle2 className="w-3 h-3 text-green-500 absolute top-1/2 -translate-y-1/2 right-4" />
+        )}
+      </td>
+      <td className="px-4 py-3 text-center">
+        <div className="flex items-center justify-center gap-2">
+          <div
+            className={`w-2 h-2 rounded-full ${isOverloaded ? "bg-red-500" : "bg-green-500"}`}
+          />
+          <span>{member.capacity ?? 0}%</span>
+        </div>
+      </td>
+      <td className="px-4 py-3 text-right">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 text-xs"
+          onClick={onViewLogs}
+        >
+          View Logs
+        </Button>
+      </td>
+    </tr>
+  );
+}
+
 export default function DailyStandup() {
   const { currentUser } = useAuthStore();
-  const tasks = useTasksStore((s) => s.tasks);
-  const updateTask = useTasksStore((s) => s.updateTask);
-  const updateTaskStatus = useTasksStore((s) => s.updateTaskStatus);
+  const { data: tasks = [] } = useTasks();
+  const updateTaskMutation = useUpdateTask();
+  const addDailyLog = useAddDailyLog();
   const standupUpdates = useStandupsStore((s) => s.updates);
   const addStandupUpdate = useStandupsStore((s) => s.addUpdate);
   const playlistIds = useStandupsStore((s) => s.playlist);
@@ -179,6 +325,18 @@ export default function DailyStandup() {
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [videoPreviewOpen, setVideoPreviewOpen] = useState(false);
   const [feedCommentsOpen, setFeedCommentsOpen] = useState(false);
+  // Per-member hours-today, reported up from each PayrollRow (which fetches
+  // its own member's logs via useDailyLogsByUser — see that component's
+  // comment). Feeds both the payroll table and the CSV export, which can't
+  // call hooks itself.
+  const [hoursByMemberId, setHoursByMemberId] = useState<
+    Record<string, number>
+  >({});
+  const reportMemberHours = useCallback((memberId: string, hours: number) => {
+    setHoursByMemberId((prev) =>
+      prev[memberId] === hours ? prev : { ...prev, [memberId]: hours },
+    );
+  }, []);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -189,11 +347,12 @@ export default function DailyStandup() {
     }),
   );
 
-  // Tasks and standup updates now live in real, persisted Zustand stores
-  // (see src/store/tasks.ts / src/store/standups.ts). This poll is a
-  // connectivity heartbeat against the (decorative) apiClient stub, kept so
-  // a real backend could slot in later; a failed poll surfaces as a
-  // stale-data banner instead of only logging to the console.
+  // Tasks now come from the real backend (useTasks(), above); standup
+  // updates still live in a persisted Zustand store (see
+  // src/store/standups.ts). This poll is a connectivity heartbeat against
+  // the (decorative) apiClient stub, kept so a real backend could slot in
+  // later; a failed poll surfaces as a stale-data banner instead of only
+  // logging to the console.
   const fetchData = async () => {
     try {
       await Promise.all([apiClient.get("/tasks"), apiClient.get("/standups")]);
@@ -278,38 +437,31 @@ export default function DailyStandup() {
       return update.userId === currentUser.id;
     });
 
+  // Hours-today per member is fetched per-row by PayrollRow (real backend
+  // data, see that component) and reported back into hoursByMemberId — this
+  // memo just joins that with the roster/department/approval info the table
+  // and CSV export both need. See PayrollRow's comment for why the fetch
+  // can't happen here directly (hooks can't run inside a loop/useMemo).
   const payrollRows = useMemo(
     () =>
       team.map((member) => {
-        const tasksWithLogs = tasks.filter((t) => t.assigneeId === member.id);
-        const today = new Date().toISOString().split("T")[0];
-        let totalHoursToday = 0;
-        tasksWithLogs.forEach((task) => {
-          const todaysLogs = task.dailyLogs.filter((log) =>
-            log.date.startsWith(today),
-          );
-          totalHoursToday += todaysLogs.reduce(
-            (acc, log) => acc + log.hours,
-            0,
-          );
-        });
         const memberDept = DEPARTMENTS.find(
           (d) => d.id === member.departmentId,
         );
         return {
           member,
           memberDept,
-          totalHoursToday,
+          totalHoursToday: hoursByMemberId[member.id] ?? 0,
           isOverloaded: (member.capacity ?? 0) > 95,
           isApproved: approvedUsers.has(member.id),
         };
       }),
-    [team, tasks, approvedUsers],
+    [team, approvedUsers, hoursByMemberId],
   );
 
   if (!currentUser) return null;
 
-  const myTasks = tasks.filter((t) => t.assigneeId === currentUser.id);
+  const myTasks = tasks.filter((t) => t.assignedTo === currentUser.id);
 
   const addToPlaylist = (task: any) => {
     if (!playlistIds.includes(task.id)) {
@@ -344,7 +496,7 @@ export default function DailyStandup() {
   };
 
   const handleUnblock = (taskId: string) => {
-    updateTaskStatus(taskId, "in-progress");
+    updateTaskMutation.mutate({ id: taskId, status: "in-progress" });
     toast({
       title: "Task Unbottleneck",
       description: "The task has been moved back to in-progress.",
@@ -386,34 +538,45 @@ export default function DailyStandup() {
       });
       return;
     }
-    const task = tasks.find((t) => t.id === resolvedTaskId);
-    if (!task) return;
-    updateTask(task.id, {
-      dailyLogs: [
-        ...task.dailyLogs,
-        {
-          date: new Date().toISOString().slice(0, 10),
-          hours: hoursNum,
-          note: logNote.trim() || "No notes provided.",
-          userId: currentUser.id,
+    addDailyLog.mutate(
+      {
+        taskId: resolvedTaskId,
+        date: new Date().toISOString().slice(0, 10),
+        hours: hoursNum,
+        note: logNote.trim() || "No notes provided.",
+      },
+      {
+        onSuccess: () => {
+          toast({
+            title: "Log Submitted",
+            description: "Your daily update has been recorded successfully.",
+          });
+          setLogDialogOpen(false);
+          setLogTaskId("");
+          setLogHours("8");
+          setLogNote("");
         },
-      ],
-      actualHours: task.actualHours + hoursNum,
-    });
-    toast({
-      title: "Log Submitted",
-      description: "Your daily update has been recorded successfully.",
-    });
-    setLogDialogOpen(false);
-    setLogTaskId("");
-    setLogHours("8");
-    setLogNote("");
+        onError: () => {
+          toast({
+            title: "Log Failed",
+            description:
+              "Couldn't record your update — the selected task may not exist on the backend yet.",
+            variant: "destructive",
+          });
+        },
+      },
+    );
   };
 
+  // Simplified from the old logic, which prioritized opening a task that
+  // already had logs (memberTasks.find((t) => t.dailyLogs.length > 0)):
+  // dailyLogs is no longer an inline field, so "has logs" can't be checked
+  // without a full per-task fetch. Always opens the member's first task —
+  // a minor UX trade-off; the drawer itself still shows that task's real
+  // logs correctly via useDailyLogs, whichever task ends up open.
   const handleViewLogs = (memberId: string, memberName: string) => {
-    const memberTasks = tasks.filter((t) => t.assigneeId === memberId);
-    const taskToOpen =
-      memberTasks.find((t) => t.dailyLogs.length > 0) || memberTasks[0];
+    const memberTasks = tasks.filter((t) => t.assignedTo === memberId);
+    const taskToOpen = memberTasks[0];
     if (taskToOpen) {
       setActiveTaskDrawer(taskToOpen.id);
     } else {
@@ -622,7 +785,7 @@ export default function DailyStandup() {
                         .slice(0, 4)
                         .map((task) => {
                           const assignee = USERS.find(
-                            (u) => u.id === task.assigneeId,
+                            (u) => u.id === task.assignedTo,
                           );
                           return (
                             <Card
@@ -749,50 +912,23 @@ export default function DailyStandup() {
                     <Card className="border-border/50">
                       <CardContent className="p-0">
                         <div className="divide-y divide-border">
+                          {/* Daily logs are a real, per-task backend resource
+                              now (useDailyLogs), not an inline task.dailyLogs
+                              array, so which tasks actually have logs can't
+                              be known before fetching. Each candidate task
+                              (dept-filtered, capped at 8) gets its own
+                              DailyLogRow, which fetches that task's logs and
+                              renders nothing if there are none — so this list
+                              may show fewer than 8 rows even when more than 8
+                              tasks in the department have logged time. */}
                           {tasks
                             .filter(
-                              (t) =>
-                                (isAllDepts || t.department === dept?.name) &&
-                                t.dailyLogs.length > 0,
+                              (t) => isAllDepts || t.department === dept?.name,
                             )
                             .slice(0, 8)
-                            .map((task) => {
-                              const assignee = USERS.find(
-                                (u) => u.id === task.assigneeId,
-                              );
-                              const latestLog =
-                                task.dailyLogs[task.dailyLogs.length - 1];
-                              return (
-                                <div
-                                  key={task.id}
-                                  className="p-4 hover:bg-muted/30 transition-colors"
-                                >
-                                  <div className="flex items-start gap-4">
-                                    <Avatar className="w-8 h-8 mt-1">
-                                      <AvatarImage src={assignee?.avatar} />
-                                    </Avatar>
-                                    <div className="flex-1">
-                                      <div className="flex items-center justify-between mb-1">
-                                        <div className="font-medium text-sm">
-                                          <span className="text-muted-foreground mr-1">
-                                            {assignee?.name} logged
-                                          </span>
-                                          {latestLog.hours}h on {task.title}
-                                        </div>
-                                        <span className="text-xs text-muted-foreground">
-                                          {new Date(
-                                            latestLog.date,
-                                          ).toLocaleDateString()}
-                                        </span>
-                                      </div>
-                                      <div className="text-sm bg-muted/50 p-2.5 rounded-md text-muted-foreground italic border-l-2 border-primary">
-                                        "{latestLog.note}"
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
+                            .map((task) => (
+                              <DailyLogRow key={task.id} task={task} />
+                            ))}
                         </div>
                       </CardContent>
                     </Card>
@@ -815,7 +951,7 @@ export default function DailyStandup() {
                     <CardContent className="p-3 space-y-2">
                       {pendingReviewTasks.map((task) => {
                         const assignee = USERS.find(
-                          (u) => u.id === task.assigneeId,
+                          (u) => u.id === task.assignedTo,
                         );
                         return (
                           <div
@@ -1421,95 +1557,16 @@ export default function DailyStandup() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
-                      {payrollRows.map(
-                        ({
-                          member,
-                          memberDept,
-                          totalHoursToday,
-                          isOverloaded,
-                          isApproved,
-                        }) => {
-                          return (
-                            <tr
-                              key={member.id}
-                              className="hover:bg-muted/30 transition-colors"
-                            >
-                              <td className="px-4 py-3">
-                                <div className="flex items-center gap-3">
-                                  <Avatar className="w-8 h-8">
-                                    <AvatarImage src={member.avatar} />
-                                    <AvatarFallback>
-                                      {member.name.charAt(0)}
-                                    </AvatarFallback>
-                                  </Avatar>
-                                  <span className="font-medium">
-                                    {member.name}
-                                  </span>
-                                </div>
-                              </td>
-                              <td className="px-4 py-3">
-                                <div className="text-sm">{member.title}</div>
-                                <div className="text-xs text-muted-foreground">
-                                  {memberDept?.name}
-                                </div>
-                              </td>
-                              <td className="px-4 py-3 text-center">
-                                {member.status === "active" ? (
-                                  <Badge
-                                    variant="outline"
-                                    className="bg-green-500/10 text-green-500 border-green-500/20 text-[10px]"
-                                  >
-                                    PUNCHED IN
-                                  </Badge>
-                                ) : (
-                                  <Badge
-                                    variant="outline"
-                                    className="bg-red-500/10 text-red-500 border-red-500/20 text-[10px]"
-                                  >
-                                    AWAY
-                                  </Badge>
-                                )}
-                              </td>
-                              <td className="px-4 py-3 text-center font-mono relative">
-                                <span
-                                  className={
-                                    totalHoursToday === 0
-                                      ? "text-muted-foreground opacity-50"
-                                      : totalHoursToday > 8
-                                        ? "text-amber-500 font-bold"
-                                        : "text-primary font-bold"
-                                  }
-                                >
-                                  {totalHoursToday}h
-                                </span>
-                                {isApproved && totalHoursToday > 0 && (
-                                  <CheckCircle2 className="w-3 h-3 text-green-500 absolute top-1/2 -translate-y-1/2 right-4" />
-                                )}
-                              </td>
-                              <td className="px-4 py-3 text-center">
-                                <div className="flex items-center justify-center gap-2">
-                                  <div
-                                    className={`w-2 h-2 rounded-full ${isOverloaded ? "bg-red-500" : "bg-green-500"}`}
-                                  />
-                                  <span>{member.capacity ?? 0}%</span>
-                                </div>
-                              </td>
-                              <td className="px-4 py-3 text-right">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-8 text-xs"
-                                  onClick={() =>
-                                    handleViewLogs(member.id, member.name)
-                                  }
-                                >
-                                  View Logs
-                                </Button>
-                              </td>
-                            </tr>
-                          );
-                        },
-                      )}
+                      {payrollRows.map(({ member, memberDept, isApproved }) => (
+                        <PayrollRow
+                          key={member.id}
+                          member={member}
+                          memberDept={memberDept}
+                          isApproved={isApproved}
+                          onViewLogs={() => handleViewLogs(member.id, member.name)}
+                          onHoursComputed={reportMemberHours}
+                        />
+                      ))}
                     </tbody>
                   </table>
                   {team.length === 0 && (
