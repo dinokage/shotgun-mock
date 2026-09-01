@@ -77,13 +77,20 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 function RoleRouteGuard({ children }: { children: React.ReactNode }) {
   const { currentUser } = useAuthStore();
   const [location, setLocation] = useLocation();
-  const allowed = !currentUser || canAccessRoute(currentUser.role, location);
+  // client has no route allow-list (see ROLE_ALLOWED_ROUTES) and no main-app
+  // landing route — it should never actually reach this guard (client
+  // sessions don't populate currentUser, see AuthGuard), but short-circuit
+  // it explicitly so a future change can't turn an empty allow-list into a
+  // redirect loop or blank page.
+  const isClient = currentUser?.role === "client";
+  const allowed =
+    !currentUser || (!isClient && canAccessRoute(currentUser.role, location));
 
   useEffect(() => {
     if (currentUser && !allowed) {
-      setLocation(ROLE_LANDING_ROUTE[currentUser.role] ?? "/");
+      setLocation(isClient ? "/login" : ROLE_LANDING_ROUTE[currentUser.role] ?? "/");
     }
-  }, [currentUser, allowed, setLocation]);
+  }, [currentUser, allowed, isClient, setLocation]);
 
   if (currentUser && !allowed) return null;
   return <>{children}</>;

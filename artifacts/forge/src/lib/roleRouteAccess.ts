@@ -9,15 +9,16 @@ import type { Role } from "@/data/mockData";
 // Tiers, per the plan's rule:
 //  - BASE: every role, including collaboration/day-to-day tools that carry
 //    no existing capability or leadership restriction (Shots, Assets, Daily
-//    Standup, Timesheets, Reviews, Team Chat, Notifications) — these are
-//    scoped to "my own work" per-role at the data layer (query params +
-//    server-side enforcement), not by page-reachability.
+//    Standup, Timesheets, Reviews, Team Chat, Notifications, Studio Roster)
+//    — these are scoped to "my own work" per-role at the data layer (query
+//    params + server-side enforcement, and — for Studio Roster — the page's
+//    own artist/lead-scoped visibility), not by page-reachability.
 //  - PRODUCER/LEAD: department- and studio-production-management pages
 //    (mirrors the existing LeadershipGuard-wrapped routes that aren't
 //    system-configuration pages).
 //  - ADMIN/PRODUCTION_HEAD: studio-wide system administration pages
-//    (Admin Panel, Studio Roster, Workflows, Schema Builder, Time Travel
-//    Audit, Integrations Hub).
+//    (Admin Panel, Workflows, Schema Builder, Time Travel Audit,
+//    Integrations Hub).
 //  - CLIENT: none — the client role never authenticates into the main app;
 //    it only reaches the public /client-review access-link flow, outside
 //    AuthGuard entirely.
@@ -34,6 +35,7 @@ const BASE_ROUTES = [
   "/timesheets",
   "/review",
   "/chat",
+  "/people",
 ];
 
 const PRODUCTION_MANAGEMENT_ROUTES = [
@@ -51,7 +53,6 @@ const PRODUCTION_MANAGEMENT_ROUTES = [
 
 const STUDIO_ADMIN_ROUTES = [
   "/admin",
-  "/people",
   "/workflows",
   "/schema-builder",
   "/audit",
