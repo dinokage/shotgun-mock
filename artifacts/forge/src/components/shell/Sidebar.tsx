@@ -191,11 +191,9 @@ export function Sidebar() {
     g.memberIds.includes(currentUser.id),
   ).length;
   const reviewsBadge = isLeadership
-    ? // Items awaiting a Lead/Manager sign-off across the studio (same
-      // statuses SupervisorDashboard treats as its department review queue).
-      tasks.filter(
-        (t) => t.status === "lead-review" || t.status === "manager-review",
-      ).length
+    ? // Items awaiting a Lead sign-off across the studio (same status
+      // SupervisorDashboard treats as its department review queue).
+      tasks.filter((t) => t.status === "lead-review").length
     : // Reviews this artist is waiting on (same query ArtistDashboard uses
       // for its "Reviews Requested" stat).
       reviews.filter(

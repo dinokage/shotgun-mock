@@ -239,7 +239,6 @@ export interface TaskApprovalEventDTO {
   taskId: string;
   action:
     | "submitted-for-lead-review"
-    | "submitted-for-manager-review"
     | "approved"
     | "changes-requested"
     | "rejected"

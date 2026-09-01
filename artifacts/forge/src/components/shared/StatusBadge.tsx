@@ -21,7 +21,6 @@ const STATUS_STYLES: Record<string, string> = {
   // convention in TaskDrawer.tsx's own status pill map, so a task reads the
   // same wherever its status is shown.
   "lead-review": "bg-purple-500/10 text-purple-500 border-purple-500/20",
-  "manager-review": "bg-purple-600/10 text-purple-600 border-purple-600/20",
   approved: "bg-status-green/10 text-status-green border-status-green/20",
   // Shot['status'] client-facing states — colors match the established
   // convention in shots.tsx/tracking.tsx (client-review is kept visually

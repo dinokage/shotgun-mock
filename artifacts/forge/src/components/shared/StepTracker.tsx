@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * Mirrors the approval chain modeled in store/tasks.ts
- * (not-started/todo/in-progress -> review/lead-review -> manager-review -> approved),
+ * (not-started/todo/in-progress -> review/lead-review -> approved),
  * so this stays correct automatically if that pipeline changes shape rather
  * than needing a second source of truth.
  */
@@ -23,11 +23,6 @@ const STAGES = [
     key: "lead-review",
     label: "Lead Review",
     statuses: ["review", "lead-review"],
-  },
-  {
-    key: "manager-review",
-    label: "Manager Review",
-    statuses: ["manager-review"],
   },
   { key: "approved", label: "Approved", statuses: ["approved", "complete"] },
 ] as const;

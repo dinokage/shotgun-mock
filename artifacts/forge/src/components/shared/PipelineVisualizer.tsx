@@ -27,9 +27,7 @@ export function PipelineVisualizer({
         {sortedTasks.map((task, index) => {
           const isComplete = task.status === "approved";
           const isInProgress =
-            task.status === "in-progress" ||
-            task.status === "lead-review" ||
-            task.status === "manager-review";
+            task.status === "in-progress" || task.status === "lead-review";
           const isBottleneck = task.status === "bottleneck";
 
           return (

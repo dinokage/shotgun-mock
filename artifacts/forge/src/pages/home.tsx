@@ -650,9 +650,7 @@ function SupervisorDashboard({ currentUser }: { currentUser: User }) {
   const deptTeam = USERS.filter((u) => u.departmentId === dept?.id);
   const deptTasks = tasks.filter((t) => t.department === dept?.name);
   const activeTasks = deptTasks.filter((t) => t.status === "in-progress");
-  const reviewTasks = deptTasks.filter(
-    (t) => t.status === "lead-review" || t.status === "manager-review",
-  );
+  const reviewTasks = deptTasks.filter((t) => t.status === "lead-review");
   const { setActiveTaskDrawer, setCreateTaskModalOpen } = useUIStore();
 
   // Avg Velocity — real throughput: completed dept tasks divided by the
@@ -922,17 +920,14 @@ function ArtistDashboard({ currentUser }: { currentUser: User }) {
     );
   }, [myTasks]);
 
-  // Submissions currently moving through the Lead -> Manager approval chain,
-  // longest-waiting first — an artist checking "where's my work" cares most
+  // Submissions currently moving through the review -> lead-review approval
+  // chain, longest-waiting first — an artist checking "where's my work" cares most
   // about the submission that's been sitting the longest, not insertion order.
   const mySubmissions = useMemo(
     () =>
       myTasks
         .filter(
-          (t) =>
-            t.status === "review" ||
-            t.status === "lead-review" ||
-            t.status === "manager-review",
+          (t) => t.status === "review" || t.status === "lead-review",
         )
         .sort(
           (a, b) =>
@@ -1227,10 +1222,10 @@ function ArtistDashboard({ currentUser }: { currentUser: User }) {
               </CardContent>
             </Card>
 
-            {/* My Submissions — tasks currently moving through the Lead ->
-              Manager approval chain, each against the same StepTracker used
-              in the task drawer so the artist can see where it sits without
-              opening it. */}
+            {/* My Submissions — tasks currently moving through the
+              review -> lead-review approval chain, each against the same
+              StepTracker used in the task drawer so the artist can see
+              where it sits without opening it. */}
             <Card className="border-border/50">
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg flex items-center gap-2">

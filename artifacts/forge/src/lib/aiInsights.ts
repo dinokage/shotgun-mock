@@ -39,7 +39,6 @@ const UNRESOLVED_TASK_STATUSES = new Set<Task["status"]>([
   "bottleneck",
   "review",
   "lead-review",
-  "manager-review",
 ]);
 
 // Assets in these states are still "live" — a dependency on one of these can

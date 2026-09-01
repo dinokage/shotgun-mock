@@ -174,12 +174,7 @@ function bucketShotStatus(status: string): keyof typeof SHOT_BUCKET_COLOR {
 function bucketTaskStatus(status: TaskStatus): keyof typeof TASK_BUCKET_COLOR {
   if (status === "todo" || status === "not-started") return "todo";
   if (status === "in-progress") return "in-progress";
-  if (
-    status === "review" ||
-    status === "lead-review" ||
-    status === "manager-review"
-  )
-    return "review";
+  if (status === "review" || status === "lead-review") return "review";
   if (status === "bottleneck") return "bottleneck";
   if (status === "complete" || status === "approved") return "complete";
   return "other";

@@ -197,8 +197,8 @@ export interface DailyLog {
 }
 
 /**
- * One step in a task's multi-tier approval chain (Artist -> Lead/Supervisor ->
- * Producer/Manager). Unlike a single `status` field, this is a real, growing
+ * One step in a task's approval chain (Artist -> Lead/Supervisor). Unlike a
+ * single `status` field, this is a real, growing
  * audit trail: every submit/approve/reject/changes-requested action along the
  * chain is appended here and persisted with the task, so the full history of
  * who moved a version through review — and when — survives reload/navigation.
@@ -207,7 +207,6 @@ export interface ApprovalEvent {
   id: string;
   action:
     | "submitted-for-lead-review"
-    | "submitted-for-manager-review"
     | "approved"
     | "changes-requested"
     | "rejected"
@@ -225,7 +224,6 @@ export type TaskStatus =
   | "bottleneck"
   | "review"
   | "lead-review"
-  | "manager-review"
   | "approved"
   | "complete"
   | "cancelled";
@@ -1895,7 +1893,6 @@ const taskStatuses: Task["status"][] = [
   "bottleneck",
   "review",
   "lead-review",
-  "manager-review",
   "approved",
   "complete",
 ];
@@ -1989,11 +1986,7 @@ function checklistDoneCount(
     return 0;
   if (status === "bottleneck") return 1;
   if (status === "in-progress") return 1 + (seed % 2); // 1-2 items: work is underway but not done
-  if (
-    status === "review" ||
-    status === "lead-review" ||
-    status === "manager-review"
-  )
+  if (status === "review" || status === "lead-review")
     return 3; // submitted, final polish still pending sign-off
   return 0;
 }

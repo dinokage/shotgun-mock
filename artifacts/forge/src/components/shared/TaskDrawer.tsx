@@ -47,10 +47,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
 import { useAuthStore } from "@/store/auth";
-import {
-  LEADERSHIP_ROLES,
-  DEPARTMENT_LEADERSHIP_ROLES,
-} from "@/store/permissions";
+import { LEADERSHIP_ROLES } from "@/store/permissions";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "wouter";
@@ -79,7 +76,6 @@ const STATUS_COLORS: Record<string, string> = {
   bottleneck: "bg-red-500/10 text-red-500",
   review: "bg-purple-500/10 text-purple-500",
   "lead-review": "bg-purple-500/10 text-purple-500",
-  "manager-review": "bg-purple-600/10 text-purple-600",
   approved: "bg-green-500/10 text-green-500",
   complete: "bg-green-500/10 text-green-500",
   cancelled: "bg-muted text-muted-foreground line-through",
@@ -485,70 +481,19 @@ export function TaskDrawer() {
                   </Button>
                 )}
 
-              {/* Lead/Supervisor Actions: only once the task has actually been
+              {/* Approve/Reject Actions: only once the task has actually been
                   submitted for review. Assignees reach that queue two ways in
                   this app - the quick "Submit for Review" actions in this
                   drawer (which set status to 'review'), and the formal chain
                   driven from the review player (which sets 'lead-review'
-                  directly) - so both values are treated as "awaiting
-                  lead/supervisor review" here. Supervisor is included
-                  alongside Lead (previously Lead-only, which didn't match
-                  how the studio's approval chain actually runs). */}
-              {DEPARTMENT_LEADERSHIP_ROLES.includes(currentUser.role) &&
-                currentUser.departmentId === currentDept?.id &&
-                ["review", "lead-review"].includes(task.status) && (
-                  <div className="flex w-full gap-2">
-                    <Button
-                      className="flex-1 bg-purple-600 hover:bg-purple-700 text-white"
-                      onClick={() => {
-                        updateTaskMutation.mutate({
-                          id: task.id,
-                          status: "manager-review",
-                        });
-                        addApprovalEventMutation.mutate({
-                          action: "approved",
-                        });
-                        toast({
-                          title: "Approved for Manager",
-                          description: `Sent to the department manager for sign-off.`,
-                        });
-                      }}
-                    >
-                      <CheckCircle2 className="w-4 h-4 mr-2" /> Approve
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="flex-1 text-red-500 hover:bg-red-500/10"
-                      onClick={() => {
-                        updateTaskMutation.mutate({
-                          id: task.id,
-                          status: "in-progress",
-                        });
-                        addApprovalEventMutation.mutate({
-                          action: "rejected",
-                        });
-                        toast({
-                          title: "Review Rejected",
-                          description: `Sent back to artist.`,
-                        });
-                      }}
-                    >
-                      <X className="w-4 h-4 mr-2" /> Reject
-                    </Button>
-                  </div>
-                )}
-
-              {/* Manager Actions: only once a lead/supervisor has approved and
-                  moved the task into manager review. This is the department
-                  manager's sanity check on the lead-approved work; approving
-                  here is the final internal sign-off. If the task is linked
-                  to a shot, approving also forwards that shot into the
-                  client-facing review queue (client-review.tsx filters shots
-                  on exactly this status) - previously this chain dead-ended
-                  at an internal 'approved' status with no path to the client
-                  portal at all. */}
+                  directly) - so both values are treated as "awaiting review"
+                  here. This is the final internal sign-off (the former
+                  separate Manager tier is gone — approving here goes straight
+                  to 'approved'). If the task is linked to a shot, approving
+                  also forwards that shot into the client-facing review queue
+                  (client-review.tsx filters shots on exactly this status). */}
               {["production_head", "producer"].includes(currentUser.role) &&
-                task.status === "manager-review" &&
+                ["review", "lead-review"].includes(task.status) &&
                 (clientSendConfirmOpen ? (
                   <div className="w-full rounded-md border border-accent-tally/30 bg-accent-tally/5 p-3 space-y-3">
                     <p className="text-sm">
@@ -878,9 +823,7 @@ export function TaskDrawer() {
                 opening the full frame-accurate Player. Only shown once the
                 task has actually entered the review chain — nothing to read
                 before that. */}
-            {["review", "lead-review", "manager-review", "approved"].includes(
-              task.status,
-            ) && (
+            {["review", "lead-review", "approved"].includes(task.status) && (
               <Link
                 href="/review?mode=feedback"
                 className="touch-target flex items-center justify-center gap-2 w-full px-3 rounded-md border border-border text-sm font-medium hover-elevate active-elevate-2"

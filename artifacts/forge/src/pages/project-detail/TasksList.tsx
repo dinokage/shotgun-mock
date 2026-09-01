@@ -51,7 +51,6 @@ const BULK_STATUS_OPTIONS: TaskStatus[] = [
   "todo",
   "in-progress",
   "lead-review",
-  "manager-review",
   "approved",
 ];
 
@@ -530,9 +529,6 @@ export default function TasksListView({ projectId }: { projectId: string }) {
                                     </SelectItem>
                                     <SelectItem value="lead-review">
                                       <StatusBadge status="lead-review" />
-                                    </SelectItem>
-                                    <SelectItem value="manager-review">
-                                      <StatusBadge status="manager-review" />
                                     </SelectItem>
                                     <SelectItem value="approved">
                                       <StatusBadge status="approved" />

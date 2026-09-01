@@ -128,7 +128,6 @@ const COLORS = [
 
 const APPROVAL_ACTION_LABEL: Record<ApprovalEvent["action"], string> = {
   "submitted-for-lead-review": "submitted for Lead review",
-  "submitted-for-manager-review": "submitted for Manager review",
   approved: "approved",
   "changes-requested": "requested changes",
   rejected: "rejected",
@@ -439,10 +438,8 @@ export default function Review() {
   const reviewedShot = reviewedTask?.shotId
     ? SHOTS.find((s) => s.id === reviewedTask.shotId)
     : undefined;
-  const reviewWorkflowStatus:
-    "wip" | "lead-review" | "manager-review" | "approved" =
+  const reviewWorkflowStatus: "wip" | "lead-review" | "approved" =
     reviewedTask?.status === "lead-review" ||
-    reviewedTask?.status === "manager-review" ||
     reviewedTask?.status === "approved"
       ? reviewedTask.status
       : "wip";
@@ -452,14 +449,13 @@ export default function Review() {
     NotificationCategory
   > = {
     "submitted-for-lead-review": "review",
-    "submitted-for-manager-review": "review",
     approved: "approval",
     "changes-requested": "workflow",
     rejected: "workflow",
     published: "publishing",
   };
   const submitApproval = (
-    status: "in-progress" | "lead-review" | "manager-review" | "approved",
+    status: "in-progress" | "lead-review" | "approved",
     action: ApprovalEvent["action"],
   ) => {
     if (!currentUser) return;
@@ -1250,13 +1246,10 @@ export default function Review() {
                       size="sm"
                       className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
                       onClick={() => {
-                        submitApproval(
-                          "manager-review",
-                          "submitted-for-manager-review",
-                        );
+                        submitApproval("approved", "published");
                         toast({
-                          title: "Submitted",
-                          description: "Submitted to Manager",
+                          title: "Published",
+                          description: "Approved & Published to Production",
                         });
                       }}
                     >
@@ -1274,35 +1267,6 @@ export default function Review() {
                     </Button>
                   </>
                 )}
-                {canApproveReview &&
-                  reviewWorkflowStatus === "manager-review" && (
-                    <>
-                      <Button
-                        size="sm"
-                        className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
-                        onClick={() => {
-                          submitApproval("approved", "published");
-                          toast({
-                            title: "Published",
-                            description: "Approved & Published to Production",
-                          });
-                        }}
-                      >
-                        <CheckCircle2 className="w-4 h-4 mr-2" /> Approve
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white"
-                        onClick={() => {
-                          submitApproval("in-progress", "changes-requested");
-                          toast({ title: "Changes Requested" });
-                        }}
-                      >
-                        <MessageSquare className="w-4 h-4 mr-2" /> Request
-                        Changes
-                      </Button>
-                    </>
-                  )}
               </div>
             ) : (
               <div className="flex items-center gap-2">
@@ -1329,25 +1293,25 @@ export default function Review() {
                 {/* Lead/Supervisor can only act once the Artist has actually
                     submitted for Lead review — mirrors the Artist button's
                     own 'wip' gate above so the UI can't fabricate an
-                    approval step that never happened. */}
+                    approval step that never happened. This is now the
+                    single, final internal sign-off (the former separate
+                    Manager tier is gone), so approving here publishes
+                    straight to production. */}
                 {canApproveReview && reviewWorkflowStatus === "lead-review" && (
                   <>
                     <Button
                       size="sm"
                       className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
                       onClick={() => {
-                        submitApproval(
-                          "manager-review",
-                          "submitted-for-manager-review",
-                        );
+                        submitApproval("approved", "published");
                         toast({
-                          title: "Submitted",
-                          description: "Submitted to Manager",
+                          title: "Published",
+                          description: "Approved & Published to Production",
                         });
                       }}
                     >
-                      <CheckCircle2 className="w-4 h-4 mr-2" /> Submit to
-                      Manager
+                      <CheckCircle2 className="w-4 h-4 mr-2" /> Approve &
+                      Publish
                     </Button>
                     <Button
                       size="sm"
@@ -1357,7 +1321,8 @@ export default function Review() {
                         toast({ title: "Changes Requested" });
                       }}
                     >
-                      <MessageSquare className="w-4 h-4 mr-2" /> Request Changes
+                      <MessageSquare className="w-4 h-4 mr-2" /> Request
+                      Changes
                     </Button>
                     <Button
                       size="sm"
@@ -1371,49 +1336,6 @@ export default function Review() {
                     </Button>
                   </>
                 )}
-
-                {/* Producer/Manager can only act once the Lead has submitted
-                    for Manager review — same discipline as above. */}
-                {canApproveReview &&
-                  reviewWorkflowStatus === "manager-review" && (
-                    <>
-                      <Button
-                        size="sm"
-                        className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
-                        onClick={() => {
-                          submitApproval("approved", "published");
-                          toast({
-                            title: "Published",
-                            description: "Approved & Published to Production",
-                          });
-                        }}
-                      >
-                        <CheckCircle2 className="w-4 h-4 mr-2" /> Approve &
-                        Publish
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white"
-                        onClick={() => {
-                          submitApproval("in-progress", "changes-requested");
-                          toast({ title: "Changes Requested" });
-                        }}
-                      >
-                        <MessageSquare className="w-4 h-4 mr-2" /> Request
-                        Changes
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="bg-[#A03030] hover:bg-[#A03030]/90 text-white"
-                        onClick={() => {
-                          submitApproval("in-progress", "rejected");
-                          toast({ title: "Rejected" });
-                        }}
-                      >
-                        <XCircle className="w-4 h-4 mr-2" /> Reject
-                      </Button>
-                    </>
-                  )}
               </div>
             ))}
         </div>
@@ -2391,22 +2313,6 @@ export default function Review() {
                               : "Approved"}
                           </span>
                         </div>
-                        {(reviewWorkflowStatus === "manager-review" ||
-                          reviewWorkflowStatus === "approved") && (
-                          <div className="flex items-center gap-2 text-sm">
-                            {reviewWorkflowStatus === "manager-review" ? (
-                              <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/50 border-t-primary animate-spin" />
-                            ) : (
-                              <CheckCircle2 className="w-4 h-4 text-[#1E7A34]" />
-                            )}
-                            Manager{" "}
-                            <span className="text-xs text-muted-foreground ml-auto">
-                              {reviewWorkflowStatus === "manager-review"
-                                ? "Pending"
-                                : "Published"}
-                            </span>
-                          </div>
-                        )}
                       </>
                     )}
                   </div>

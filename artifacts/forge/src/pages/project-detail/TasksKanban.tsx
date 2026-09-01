@@ -50,7 +50,6 @@ const COLUMNS: { id: TaskStatus; title: string }[] = [
   { id: "bottleneck", title: "Bottleneck" },
   { id: "review", title: "Review" },
   { id: "lead-review", title: "Lead Review" },
-  { id: "manager-review", title: "Manager Review" },
   { id: "approved", title: "Approved" },
   { id: "complete", title: "Complete" },
   { id: "cancelled", title: "Cancelled" },

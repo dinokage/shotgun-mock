@@ -4,12 +4,11 @@ import { USERS } from "@/data/mockData";
 import { useReviewStore, type ReviewComment } from "@/store/reviews";
 import { cn } from "@/lib/utils";
 
-type WorkflowStatus = "wip" | "lead-review" | "manager-review" | "approved";
+type WorkflowStatus = "wip" | "lead-review" | "approved";
 
 const WORKFLOW_STATUS_LABEL: Record<WorkflowStatus, string> = {
   wip: "Work in progress",
   "lead-review": "Awaiting Lead review",
-  "manager-review": "Awaiting Manager review",
   approved: "Approved",
 };
 
