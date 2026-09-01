@@ -1,6 +1,7 @@
 import { Router } from "express";
 import healthRouter from "./health";
 import { authRouter } from "./auth";
+import { clientAccessRouter } from "./client-access";
 import { projectsRouter } from "./projects";
 import { tasksRouter } from "./tasks";
 import usersRouter from "./users";
@@ -20,6 +21,7 @@ const router = Router();
 // mounting it at "/healthz" too would make the real path "/healthz/healthz".
 router.use("/", healthRouter);
 router.use("/auth", authRouter);
+router.use("/client-access", clientAccessRouter);
 router.use("/projects", projectsRouter);
 router.use("/tasks", tasksRouter);
 router.use("/users", usersRouter);
