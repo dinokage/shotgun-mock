@@ -8,6 +8,7 @@ declare global {
       userId?: string;
       roleId?: string;
       departmentId?: string | null;
+      clientAccessLinkId?: string;
     }
   }
 }
@@ -45,9 +46,10 @@ export function tenantAuthMiddleware(
 
   // NOTE: For now, we trust the session's tenantId to act as the true tenantId
   req.tenantId = session.tenantId;
-  req.userId = session.userId;
+  req.userId = session.userId ?? undefined;
   req.roleId = session.roleId;
   req.departmentId = session.departmentId;
+  req.clientAccessLinkId = session.clientAccessLinkId;
 
   next();
 }

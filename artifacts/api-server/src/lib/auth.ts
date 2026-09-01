@@ -5,10 +5,11 @@ const JWT_SECRET =
   process.env.JWT_SECRET || "fallback_super_secret_jwt_key_for_dev";
 
 export interface SessionPayload {
-  userId: string;
+  userId: string | null; // null for a client-access session (no real users row behind it)
   tenantId: string;
   roleId: string;
   departmentId: string | null;
+  clientAccessLinkId?: string; // present only for client-access sessions; Task 4's redeem route sets this, Task 6's client-review routes use it to scope queries
 }
 
 export async function hashPassword(password: string): Promise<string> {

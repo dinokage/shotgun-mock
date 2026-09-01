@@ -91,6 +91,9 @@ authRouter.get("/me", async (req, res) => {
 
   const session = verifySession(token);
   if (!session) return res.status(401).json({ error: "Invalid session" });
+  // /me is for real-user sessions only; client-access-link sessions carry a
+  // null userId and have no users row to look up.
+  if (!session.userId) return res.status(401).json({ error: "Invalid session" });
 
   const [user] = await db
     .select()
