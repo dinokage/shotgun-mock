@@ -205,7 +205,14 @@ async function main() {
     // one per department) but must resolve to the same tenant_roles row and
     // the same capability set — only insert/query the role once per name.
     if (!roleIdByName[roleDef.name]) {
-      const roleId = crypto.randomUUID();
+      // Deterministic id (not crypto.randomUUID()) — tenant_roles has no
+      // unique constraint on (tenant_id, name), so a random id never
+      // collides with itself on reseed and onConflictDoNothing() below
+      // was never actually finding a conflict, duplicating every role row
+      // on each rerun. tenantId itself is already stable (resolved by the
+      // tenants table's real unique slug constraint above), so this
+      // composite id is stable too.
+      const roleId = `role-${tenantId}-${roleDef.name}`;
       await db
         .insert(tenantRolesTable)
         .values({ id: roleId, tenantId, name: roleDef.name, isSystemDefault: true })
