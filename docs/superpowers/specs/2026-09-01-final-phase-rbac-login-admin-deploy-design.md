@@ -20,6 +20,27 @@ answered two disambiguating questions this session:
 - **Data reset**: full wipe, no pre-seeded admin — bootstrap the first
   admin account (`kris_sym` / a password the user supplied directly in
   chat) via a one-time script, not via `seed.ts`'s demo-data path.
+- **Review-chain collapse**: confirmed — `lead-review → approved`, dropping
+  `manager-review` (Sub-project B, unchanged from the draft).
+- **Video import**: both — a URL-paste path (already exists) AND real file
+  upload from the user's local machine, primarily so an uploaded video can
+  be reviewed/annotated in-browser. Opening an uploaded file in Maya/a DCC
+  is explicitly deferred (matches the already-deferred DCC-integration
+  scope) — the upload feature's job for this phase is populating the
+  Review system, not launching external tools. See Sub-project D, updated.
+- **Review-tab eraser tool**: a new annotation tool letting any viewer
+  erase/delete annotations they've drawn — new item in Sub-project D.
+- **"Remove the live review system"**: clarified — this refers to the
+  earlier-flagged Minor finding (Task 17's review) that resize/drag
+  annotation edits fire one `PUT` per `mousemove` event. Fix: save only on
+  drag-end, not per-frame. Everything else about live review (real-time
+  annotation persistence itself, Presentation Mode) stays as-is. New item
+  in Sub-project D.
+- **Deploy target**: Jenkins-driven pipeline. The target runtime is still
+  the existing Docker Compose stack (`docker-compose.yml`, unchanged
+  shape) — Jenkins builds the `api`/`web` images and deploys them to the
+  company server, rather than a bare `docker-compose up` run by hand.
+  Sub-project I, updated with a `Jenkinsfile` deliverable.
 
 **Global constraints carried over from the prior spec** (still binding):
 Drizzle ORM only, real committed migrations via `drizzle-kit generate`,
@@ -230,14 +251,40 @@ Four remaining frontend-mock surfaces the user named directly:
   session). Frontend: `chat.tsx` migrates off `store/chatGroups.ts` onto
   real hooks; 1:1 DM is a new capability (channelId nullable, two
   participant ids used instead) since none exists today.
-- **Video/media import**: given no real storage exists anywhere in this
-  stack today, and given the master spec's own "explicitly out of scope"
-  section already named DCC integration as deferred, this needs a
-  **scope decision from the user before planning it in detail** — real
-  blob storage (S3-compatible, or a self-hosted volume mount for the
-  company-server deployment) is a meaningfully sized infrastructure
-  addition, not a page-wiring task like the others in this list. Flagged
-  in the Self-Review as an open question rather than guessed at.
+- **Video/media upload** (confirmed in scope, both upload-from-disk and
+  the existing URL-paste path): new `POST /api/media/upload` (multipart,
+  `multer` with disk storage — a mounted Docker volume, not cloud blob
+  storage, matching this app's fully self-hosted posture and the
+  Docker-Compose-on-company-server deploy target from Sub-project I) —
+  tenant-scoped upload directory, returns a served-back URL Forge's own
+  `nginx` can serve statically (new `location /media/` block alongside the
+  existing `/api/` proxy in `nginx.conf`). `versionsTable.mediaUrl`
+  continues to be "just a URL string" at the data-model level — this adds
+  a *second way to produce one* (upload → server-hosted URL) alongside the
+  existing paste-a-URL path, not a schema change. File-type/size
+  validation (video formats only, a sane size cap) enforced server-side in
+  the upload route. Opening an uploaded file in a DCC stays deferred, per
+  the master spec's existing scope boundary — this only wires the file
+  into the Review system.
+- **Review-tab eraser tool**: add `"eraser"` to `ANNOTATION_TOOLS`
+  (`components/shared/review/types.ts`) alongside the existing
+  select/pen/arrow/rectangle/text tools — selecting it and clicking/dragging
+  over an annotation deletes it (routes through the existing
+  `useDeleteAnnotation`/`deleteAnnotation.mutate` already wired in
+  `review.tsx`/`client-review.tsx` from Task 17 — no new backend endpoint
+  needed, this is a frontend interaction-mode addition over
+  already-real delete capability). Available to every viewer role that can
+  already annotate (not RBAC-restricted beyond that).
+- **Drag/resize save-on-drag-end fix**: `review.tsx`'s and
+  `client-review.tsx`'s `applyAnnotationsUpdate` adapter (added in Task
+  17's follow-up fix) currently fires one `updateAnnotation.mutate` PUT
+  per `mousemove` event during a resize/drag gesture. Change to only
+  commit the mutation on drag-end (`mouseup`) — the in-progress drag
+  continues to update local/transient visual state exactly as it does
+  today (no visual behavior change), only the network write timing
+  changes. This was flagged as a Minor, non-blocking finding in Task 17's
+  review; folded into this phase's work now that it's explicitly
+  requested.
 
 ## 6. Sub-project E: Client review — producer sanity-check gate
 
@@ -329,49 +376,58 @@ listed here together so the full picture is visible in one place:
   posture gap even though every route is still tenant-scoped underneath —
   defense in depth, not just UX polish.
 
-## 10. Sub-project I: Deployment readiness (company server)
+## 10. Sub-project I: Deployment readiness (company server, Jenkins-driven)
 
-- Deploy checklist (not code changes, config/process): real `JWT_SECRET`
-  (long random value, not the dev default) set in the server's env; real
-  `CORS_ORIGIN` (the actual deployed frontend origin, not `*`); real
-  `POSTGRES_PASSWORD` (not the `postgres`/`postgres` dev default);
-  confirm the company server's Docker/Docker Compose availability (or
-  whatever the target runtime is — needs the user to specify: bare Docker
-  Compose on a VM, Kubernetes, something else) before this sub-project can
-  be planned in more detail than a checklist.
-- Given `docker-compose.yml` already uses env-var defaults throughout
-  (confirmed in research), this sub-project is mostly about *supplying the
-  right values* at deploy time and documenting the process, not changing
-  application code — flagged as comparatively low-risk/low-effort relative
-  to the rest of this spec.
+- **Confirmed target**: Jenkins pipeline, deploying the existing Docker
+  Compose stack shape (not Kubernetes) — no `docker-compose.yml`
+  restructuring needed, since it's already env-var-driven throughout.
+- **Deliverable**: a `Jenkinsfile` at the repo root with stages —
+  checkout, `pnpm run typecheck` (same gate this whole session has used
+  manually), `docker-compose build api web`, then deploy (`docker-compose
+  up -d` on the target host, via SSH/Jenkins agent — exact mechanism
+  depends on how the company's Jenkins reaches the target server, which
+  needs the user to confirm: same-host Jenkins agent, or SSH from a
+  Jenkins controller to a separate app server).
+- **Deploy checklist** (config/process, not code): real `JWT_SECRET` (long
+  random value, not the `super-secret-jwt-key` dev default) set as a
+  Jenkins credential/env var, injected at deploy time, never committed;
+  real `CORS_ORIGIN` (the actual deployed frontend origin, not `*`); real
+  `POSTGRES_PASSWORD` (not the `postgres`/`postgres` dev default); the
+  media-upload volume (Sub-project D) needs a persistent host path
+  mounted into the `api` container so uploads survive a redeploy, not an
+  ephemeral container filesystem path.
+- This sub-project is mostly about *supplying the right values and the
+  pipeline definition* — application code changes are limited to the new
+  `nginx.conf` `/media/` block from Sub-project D.
 
 ---
 
 ## 11. Explicitly out of scope (this phase)
 
-- DCC integration further testing (already done, working).
+- DCC integration further testing (already done, working); opening an
+  uploaded review video in a DCC (Sub-project D's upload feature is for
+  the Review system only).
 - Active Directory / emp-ID login — named as a future phase by the user;
   this phase's auth design (session-cookie based, role read from a real DB
   row) doesn't block adding an AD-backed login method later, but doesn't
   build one now.
-- Building an actual media/blob storage backend — flagged as an open
-  scope question in Sub-project D, not silently included or excluded.
-- New Forge logo asset and further light-theme polish — flagged as open
-  inputs needed from the user in Sub-project F.
+- New Forge logo asset and further light-theme polish — still an open
+  input needed from the user (§12), not built against a guess.
 
 ## 12. Open questions for the user (spec-review gate)
 
-1. **Sub-project B's review-chain collapse** (dropping `manager-review`
-   as a status, single `lead-review` gate) — confirm this is the right
-   call, since it's the one place this spec made a judgment call instead
-   of just following an explicit instruction.
-2. **Sub-project D's video/media upload** — is real file storage in scope
-   for this phase, or does "importing videos" mean "paste a URL to an
-   already-hosted video" (today's `mediaUrl` text-field pattern, just
-   wired into more places)? This changes the sub-project's size
-   substantially.
-3. **Sub-project F** — need the actual new logo (file or direction) and
-   specific light-theme complaints (pages/screenshots) to plan against.
-4. **Sub-project I** — what's the company server's actual runtime target
-   (Docker Compose on a VM, Kubernetes, a PaaS)? Changes what the deploy
-   checklist actually says.
+All resolved except one:
+
+1. ~~Review-chain collapse~~ — confirmed, single `lead-review` gate.
+2. ~~Video/media upload~~ — confirmed, both upload-from-disk and URL-paste,
+   volume-mounted storage, DCC-open deferred.
+3. **Sub-project F still needs**: the actual new logo (file or direction)
+   and specific light-theme complaints (pages/screenshots) before it can
+   be planned in the implementation plan — will be included in the plan as
+   a placeholder task pending that input, not blocking the rest of the
+   plan's execution.
+4. ~~Deploy target~~ — confirmed, Jenkins pipeline deploying the existing
+   Docker Compose stack. One remaining detail for the plan/execution
+   phase (not blocking planning): how Jenkins reaches the target host
+   (same-host agent vs. SSH to a separate app server) — noted in
+   Sub-project I, resolvable at Jenkinsfile-writing time.
