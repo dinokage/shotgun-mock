@@ -46,7 +46,7 @@ function parseLogId(id: string): { taskId: string; index: number } | null {
 export function useTimesheetLogs(): TimeLog[] {
   const tasks = useTasksStore((state) => state.tasks);
   return tasks.flatMap((task) =>
-    task.dailyLogs.map((log, index) => toTimeLog(task.id, index, log)),
+    (task.dailyLogs ?? []).map((log, index) => toTimeLog(task.id, index, log)),
   );
 }
 

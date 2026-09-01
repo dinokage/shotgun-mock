@@ -146,7 +146,7 @@ export const useTasksStore = create<TaskState>()(
             t.id === taskId
               ? {
                   ...t,
-                  checklist: t.checklist.map((item, i) =>
+                  checklist: (t.checklist ?? []).map((item, i) =>
                     i === index ? { ...item, done: !item.done } : item,
                   ),
                 }
@@ -179,7 +179,7 @@ export const useTasksStore = create<TaskState>()(
             t.id === taskId
               ? {
                   ...t,
-                  dailyLogs: [...t.dailyLogs, log],
+                  dailyLogs: [...(t.dailyLogs ?? []), log],
                   actualHours: t.actualHours + log.hours,
                 }
               : t,
@@ -189,9 +189,10 @@ export const useTasksStore = create<TaskState>()(
       updateDailyLog: (taskId, index, updates) => {
         set((state) => ({
           tasks: state.tasks.map((t) => {
-            if (t.id !== taskId || !t.dailyLogs[index]) return t;
-            const oldHours = t.dailyLogs[index].hours;
-            const nextLogs = t.dailyLogs.map((log, i) =>
+            const logs = t.dailyLogs ?? [];
+            if (t.id !== taskId || !logs[index]) return t;
+            const oldHours = logs[index].hours;
+            const nextLogs = logs.map((log, i) =>
               i === index ? { ...log, ...updates } : log,
             );
             const newHours = nextLogs[index].hours;
@@ -206,11 +207,12 @@ export const useTasksStore = create<TaskState>()(
       deleteDailyLog: (taskId, index) => {
         set((state) => ({
           tasks: state.tasks.map((t) => {
-            if (t.id !== taskId || !t.dailyLogs[index]) return t;
-            const removedHours = t.dailyLogs[index].hours;
+            const logs = t.dailyLogs ?? [];
+            if (t.id !== taskId || !logs[index]) return t;
+            const removedHours = logs[index].hours;
             return {
               ...t,
-              dailyLogs: t.dailyLogs.filter((_, i) => i !== index),
+              dailyLogs: logs.filter((_, i) => i !== index),
               actualHours: t.actualHours - removedHours,
             };
           }),
@@ -219,12 +221,16 @@ export const useTasksStore = create<TaskState>()(
     }),
     {
       name: "forge-task-storage",
-      version: 2,
+      version: 3,
       // Migrate tasks persisted before approvalHistory / checklist / comments /
       // dailyLogs were added — those fields will be undefined on old records,
-      // causing .length crashes everywhere they're accessed.
+      // causing .length/.map crashes everywhere they're accessed. Bumped to 3
+      // because some browsers had version-2-tagged state that still had gaps
+      // (added via a path that predated the v2 migration's own introduction),
+      // so a version check alone isn't sufficient — every consumption site
+      // was also hardened with `?? []` as defense-in-depth.
       migrate(persistedState: unknown, fromVersion: number) {
-        if (fromVersion < 2) {
+        if (fromVersion < 3) {
           const state = persistedState as { tasks?: Task[] };
           if (Array.isArray(state?.tasks)) {
             state.tasks = state.tasks.map((t) => ({

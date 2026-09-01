@@ -662,7 +662,7 @@ function SupervisorDashboard({ currentUser }: { currentUser: User }) {
     (t) => t.status === "complete" || t.status === "approved",
   ).length;
   const deptWorkDays = new Set(
-    deptTasks.flatMap((t) => t.dailyLogs.map((log) => log.date.split("T")[0])),
+    deptTasks.flatMap((t) => (t.dailyLogs ?? []).map((log) => log.date.split("T")[0])),
   ).size;
   const avgVelocity =
     deptWorkDays > 0 ? (completedDeptTasks / deptWorkDays).toFixed(1) : "0.0";
@@ -994,7 +994,7 @@ function ArtistDashboard({ currentUser }: { currentUser: User }) {
   const totalHoursLogged = myTasks.reduce(
     (sum, t) =>
       sum +
-      t.dailyLogs
+      (t.dailyLogs ?? [])
         .filter((log) => log.userId === currentUser.id)
         .reduce((s, log) => s + log.hours, 0),
     0,

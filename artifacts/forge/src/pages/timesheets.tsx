@@ -158,7 +158,7 @@ export default function Timesheets() {
     // The new entry lands at the end of the target task's dailyLogs array —
     // compute its id (taskId::index) up front so we can highlight it below.
     const targetTask = tasks.find((t) => t.id === newTaskSelection);
-    const newLogId = `${newTaskSelection}::${targetTask?.dailyLogs.length ?? 0}`;
+    const newLogId = `${newTaskSelection}::${targetTask?.dailyLogs?.length ?? 0}`;
 
     addTimeLog({
       taskId: newTaskSelection,
