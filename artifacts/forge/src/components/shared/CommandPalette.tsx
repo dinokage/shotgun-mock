@@ -124,7 +124,7 @@ export function CommandPalette() {
             .filter(
               (s) =>
                 s.name.toLowerCase().includes(q) ||
-                s.sequence.toLowerCase().includes(q),
+                (s.sequence ?? "").toLowerCase().includes(q),
             )
             .slice(0, RESULT_LIMIT)
         : [],
@@ -145,7 +145,7 @@ export function CommandPalette() {
         ? USERS.filter(
             (u) =>
               u.name.toLowerCase().includes(q) ||
-              u.title.toLowerCase().includes(q),
+              (u.title ?? "").toLowerCase().includes(q),
           ).slice(0, RESULT_LIMIT)
         : [],
     [q],
