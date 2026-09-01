@@ -26,6 +26,19 @@ async function userInTenant(id: string, tenantId: string) {
   return !!row;
 }
 
+// Leadership roles (admin/production_head/producer/lead) assign work,
+// they never hold it — enforced server-side per this phase's spec,
+// not just hidden in the UI, since a client that skips the frontend
+// could otherwise assign a task to a producer directly via the API.
+async function assignedToIsArtist(id: string, tenantId: string) {
+  const [row] = await db
+    .select({ roleName: tenantRolesTable.name })
+    .from(usersTable)
+    .innerJoin(tenantRolesTable, eq(usersTable.roleId, tenantRolesTable.id))
+    .where(and(eq(usersTable.id, id), eq(usersTable.tenantId, tenantId)));
+  return row?.roleName === "artist";
+}
+
 // Used by every nested /:id/* sub-resource route below to confirm the
 // parent task (req.params.id) belongs to the caller's tenant BEFORE
 // inserting a checklist item/comment/dependency/attachment/approval-event
@@ -107,6 +120,9 @@ tasksRouter.post("/", async (req, res) => {
     if (assignedTo && !(await userInTenant(assignedTo, tenantId)))
       return res.status(400).json({ error: "Invalid assignedTo" });
 
+    if (assignedTo && !(await assignedToIsArtist(assignedTo, tenantId)))
+      return res.status(400).json({ error: "assignedTo must be an artist" });
+
     const newId = crypto.randomUUID();
     await db.insert(tasksTable).values({
       id: newId,
@@ -166,6 +182,13 @@ tasksRouter.put("/:id", async (req, res) => {
       !(await userInTenant(req.body.assignedTo, tenantId))
     )
       return res.status(400).json({ error: "Invalid assignedTo" });
+
+    if (
+      "assignedTo" in req.body &&
+      req.body.assignedTo &&
+      !(await assignedToIsArtist(req.body.assignedTo, tenantId))
+    )
+      return res.status(400).json({ error: "assignedTo must be an artist" });
 
     const updates: Record<string, unknown> = {};
     for (const field of TASK_PATCHABLE_FIELDS) {
