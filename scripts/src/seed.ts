@@ -89,7 +89,12 @@ async function main() {
 
   const deptIds: Record<string, string> = {};
   for (const d of deptDefs) {
-    const id = crypto.randomUUID();
+    // Deterministic id (slug of the abbreviation) rather than
+    // crypto.randomUUID() — a random id never collides with itself on a
+    // reseed, so onConflictDoNothing() below was never actually finding a
+    // conflict and every rerun duplicated all rows. Same fix already
+    // applied to every table this plan's Task 20 added.
+    const id = `dept-${d.abbr.toLowerCase()}`;
     deptIds[d.name] = id;
     await db
       .insert(departmentsTable)
