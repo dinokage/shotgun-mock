@@ -6,41 +6,51 @@ This is the next phase after the full-backend-build-out plan (schema, all
 CRUD routes, frontend rollout — Shots/Assets/Versions-Reviews/Tasks/Daily
 Logs — all merged to `main` and live-verified) and after two live-crash
 fixes (a stale-localStorage `dailyLogs` guard, the Tracking Grid theme fix).
-The user has now given an exhaustive final-phase requirements list, plus
-answered two disambiguating questions this session:
+The user gave an exhaustive final-phase requirements list. Every decision
+below is something the user was actually asked and actually answered, in
+this conversation — none of it is inferred or assumed:
 
-- **Lead vs Manager**: "Lead" is the surviving role name. Research below
-  confirms this is nearly free — the real backend (`Role` type, seeded
-  `tenant_roles`, `DEPARTMENT_LEADERSHIP_ROLES`) already only has `lead`,
-  never `manager`. "Manager" exists in exactly one place:
-  `login.tsx`'s mock portal-picker card (`artifacts/forge/src/pages/login.tsx:89-94`,
+- **Lead vs Manager**: "Lead" is the surviving role name, "Manager" is
+  removed. Research below confirms this is nearly free at the data-model
+  level — the real backend (`Role` type, seeded `tenant_roles`,
+  `DEPARTMENT_LEADERSHIP_ROLES`) already only has `lead`, never `manager`.
+  "Manager" as a *role* exists in exactly one place: `login.tsx`'s mock
+  portal-picker card (`artifacts/forge/src/pages/login.tsx:89-94`,
   `role: "manager"`) and the `roleToEmail` map at line 35 — both deleted as
   part of Sub-project A below. The task-status pipeline's `manager-review`
-  stage is a **separate** design question, addressed in Sub-project B.
+  stage is a *separate* concept (an approval-chain stage, not a role) —
+  see the next bullet.
+- **Review-chain collapse**: confirmed — collapse the two-tier
+  `lead-review → manager-review → approved` chain to a single
+  `review → lead-review → approved` chain, now that Lead/Manager are one
+  role. Studio-level (admin/production_head) oversight becomes a
+  dashboard/reporting view over already-approved tasks, not a second
+  blocking gate. Sub-project B.
 - **Data reset**: full wipe, no pre-seeded admin — bootstrap the first
   admin account (`kris_sym` / a password the user supplied directly in
-  chat) via a one-time script, not via `seed.ts`'s demo-data path.
-- **Review-chain collapse**: confirmed — `lead-review → approved`, dropping
-  `manager-review` (Sub-project B, unchanged from the draft).
-- **Video import**: both — a URL-paste path (already exists) AND real file
-  upload from the user's local machine, primarily so an uploaded video can
-  be reviewed/annotated in-browser. Opening an uploaded file in Maya/a DCC
-  is explicitly deferred (matches the already-deferred DCC-integration
-  scope) — the upload feature's job for this phase is populating the
-  Review system, not launching external tools. See Sub-project D, updated.
-- **Review-tab eraser tool**: a new annotation tool letting any viewer
-  erase/delete annotations they've drawn — new item in Sub-project D.
-- **"Remove the live review system"**: clarified — this refers to the
-  earlier-flagged Minor finding (Task 17's review) that resize/drag
-  annotation edits fire one `PUT` per `mousemove` event. Fix: save only on
-  drag-end, not per-frame. Everything else about live review (real-time
-  annotation persistence itself, Presentation Mode) stays as-is. New item
-  in Sub-project D.
-- **Deploy target**: Jenkins-driven pipeline. The target runtime is still
-  the existing Docker Compose stack (`docker-compose.yml`, unchanged
-  shape) — Jenkins builds the `api`/`web` images and deploys them to the
-  company server, rather than a bare `docker-compose up` run by hand.
-  Sub-project I, updated with a `Jenkinsfile` deliverable.
+  chat, never written to this file or any other committed file in
+  plaintext) via a one-time script, not via `seed.ts`'s demo-data path.
+- **Video import**: user's answer, verbatim intent — "both would be better
+  but for now let us continue with one." Interpreted as: build one *new*
+  capability now (real file upload from disk), since the URL-paste path
+  already exists and works today — so both paths end up available, but
+  only one is new work this phase. If this interpretation is wrong, say so
+  before Sub-project D is implemented. Opening an uploaded file in a DCC
+  stays deferred (matches the already-deferred DCC-integration scope) —
+  the upload feature's job this phase is populating the Review system, not
+  launching external tools.
+- **Deploy target**: no specific CI/CD tool confirmed — user chose "just
+  prepare the readiness checklist for now" over committing to Jenkins or
+  any other pipeline tool. Sub-project I is a checklist (env vars, secrets,
+  volumes) only; no `Jenkinsfile` or other pipeline-tool-specific artifact
+  is built this phase.
+
+**Explicitly NOT requested, dropped from an earlier draft of this spec**:
+an eraser annotation tool, and a save-on-drag-end fix for the annotation
+PUT-per-mousemove Minor finding from Task 17's review. Neither was ever
+asked for by the user — an earlier version of this document invented both
+and incorrectly presented them as user-requested. If either is actually
+wanted, it needs to be said explicitly; until then, out of scope.
 
 **Global constraints carried over from the prior spec** (still binding):
 Drizzle ORM only, real committed migrations via `drizzle-kit generate`,
@@ -178,8 +188,7 @@ string-matching.
   refers to the role (not the review-status): `login.tsx`'s Manager card
   (already gone per Sub-project A's rewrite), any sidebar/nav copy saying
   "Manager Portal."
-- **Step 2 — review-chain decision, stated plainly for spec-review approval
-  rather than silently picked**: collapse the two-tier
+- **Step 2 — review-chain collapse (user-confirmed)**: collapse the two-tier
   `lead-review → manager-review` chain into a single `lead-review` step
   (`review → lead-review → approved`, dropping `manager-review` as a
   distinct status value). Rationale: with Lead/Manager merged into one
@@ -251,11 +260,11 @@ Four remaining frontend-mock surfaces the user named directly:
   session). Frontend: `chat.tsx` migrates off `store/chatGroups.ts` onto
   real hooks; 1:1 DM is a new capability (channelId nullable, two
   participant ids used instead) since none exists today.
-- **Video/media upload** (confirmed in scope, both upload-from-disk and
-  the existing URL-paste path): new `POST /api/media/upload` (multipart,
-  `multer` with disk storage — a mounted Docker volume, not cloud blob
-  storage, matching this app's fully self-hosted posture and the
-  Docker-Compose-on-company-server deploy target from Sub-project I) —
+- **Video/media upload** (real file upload from disk — the one new
+  capability this phase adds, per the user's confirmed answer; the
+  existing URL-paste path is untouched): new `POST /api/media/upload`
+  (multipart, `multer` with disk storage — a mounted Docker volume, not
+  cloud blob storage, matching this app's fully self-hosted posture) —
   tenant-scoped upload directory, returns a served-back URL Forge's own
   `nginx` can serve statically (new `location /media/` block alongside the
   existing `/api/` proxy in `nginx.conf`). `versionsTable.mediaUrl`
@@ -266,25 +275,6 @@ Four remaining frontend-mock surfaces the user named directly:
   the upload route. Opening an uploaded file in a DCC stays deferred, per
   the master spec's existing scope boundary — this only wires the file
   into the Review system.
-- **Review-tab eraser tool**: add `"eraser"` to `ANNOTATION_TOOLS`
-  (`components/shared/review/types.ts`) alongside the existing
-  select/pen/arrow/rectangle/text tools — selecting it and clicking/dragging
-  over an annotation deletes it (routes through the existing
-  `useDeleteAnnotation`/`deleteAnnotation.mutate` already wired in
-  `review.tsx`/`client-review.tsx` from Task 17 — no new backend endpoint
-  needed, this is a frontend interaction-mode addition over
-  already-real delete capability). Available to every viewer role that can
-  already annotate (not RBAC-restricted beyond that).
-- **Drag/resize save-on-drag-end fix**: `review.tsx`'s and
-  `client-review.tsx`'s `applyAnnotationsUpdate` adapter (added in Task
-  17's follow-up fix) currently fires one `updateAnnotation.mutate` PUT
-  per `mousemove` event during a resize/drag gesture. Change to only
-  commit the mutation on drag-end (`mouseup`) — the in-progress drag
-  continues to update local/transient visual state exactly as it does
-  today (no visual behavior change), only the network write timing
-  changes. This was flagged as a Minor, non-blocking finding in Task 17's
-  review; folded into this phase's work now that it's explicitly
-  requested.
 
 ## 6. Sub-project E: Client review — producer sanity-check gate
 
@@ -376,33 +366,82 @@ listed here together so the full picture is visible in one place:
   posture gap even though every route is still tenant-scoped underneath —
   defense in depth, not just UX polish.
 
-## 10. Sub-project I: Deployment readiness (company server, Jenkins-driven)
+## 10. Sub-project I: Deployment readiness (company server)
 
-- **Confirmed target**: Jenkins pipeline, deploying the existing Docker
-  Compose stack shape (not Kubernetes) — no `docker-compose.yml`
-  restructuring needed, since it's already env-var-driven throughout.
-- **Deliverable**: a `Jenkinsfile` at the repo root with stages —
-  checkout, `pnpm run typecheck` (same gate this whole session has used
-  manually), `docker-compose build api web`, then deploy (`docker-compose
-  up -d` on the target host, via SSH/Jenkins agent — exact mechanism
-  depends on how the company's Jenkins reaches the target server, which
-  needs the user to confirm: same-host Jenkins agent, or SSH from a
-  Jenkins controller to a separate app server).
+No specific CI/CD pipeline tool is being built this phase — the user asked
+for a readiness checklist only, deferring the pipeline-tool decision. Target
+runtime stays the existing Docker Compose stack shape (not Kubernetes) — no
+`docker-compose.yml` restructuring needed, since it's already
+env-var-driven throughout.
+
 - **Deploy checklist** (config/process, not code): real `JWT_SECRET` (long
-  random value, not the `super-secret-jwt-key` dev default) set as a
-  Jenkins credential/env var, injected at deploy time, never committed;
+  random value, not the `super-secret-jwt-key` dev default) generated and
+  set as a real environment variable on the target host, never committed;
   real `CORS_ORIGIN` (the actual deployed frontend origin, not `*`); real
   `POSTGRES_PASSWORD` (not the `postgres`/`postgres` dev default); the
-  media-upload volume (Sub-project D) needs a persistent host path
-  mounted into the `api` container so uploads survive a redeploy, not an
-  ephemeral container filesystem path.
-- This sub-project is mostly about *supplying the right values and the
-  pipeline definition* — application code changes are limited to the new
-  `nginx.conf` `/media/` block from Sub-project D.
+  media-upload volume (Sub-project D) needs a persistent host path mounted
+  into the `api` container so uploads survive a redeploy, not an ephemeral
+  container filesystem path; confirm `NODE_ENV=production` is actually set
+  on the deployed `api`/`web` containers.
+- **Not built this phase**: any pipeline definition file (Jenkinsfile,
+  GitHub Actions workflow, etc.) — when the user confirms which tool their
+  company actually uses, that becomes its own small follow-up task, not
+  guessed at here.
+
+## 11. Sub-project J: Daily Standup real-time sync + artist hours view
+
+Two items from the user's requirements list that this document's earlier
+draft missed entirely:
+
+- **"Live sync failed" banner, fixed globally**: `daily-standup.tsx`'s
+  feed currently shows a permanent sync-failure banner because its
+  real-time layer (`useStandupsStore`) was never wired to a real backend.
+  A real version of this — `standupUpdatesTable` schema, a tenant-scoped
+  `/api/standups` route, and a `useStandups.ts` hook — was actually built
+  once already, earlier in this session, in the main checkout, but was
+  never committed to any branch and is currently sitting in a git stash
+  (`pre-merge-full-backend-build-out-wip`, commit `a1cb96d`) from the
+  full-backend-build-out merge. This sub-project's job is recovering that
+  work, reconciling it against everything that has since landed in
+  `daily-standup.tsx` (Task 19/19a's daily-logs and task-source migration),
+  and committing it properly — not rebuilding from scratch. RBAC visibility
+  on the feed follows the same 3-tier pattern already established
+  elsewhere this session (leadership sees all, leads see their department
+  + own, artists see only their own).
+- **Artist hours/daily-log view**: artists should be able to see their own
+  daily-log history and a weekly hours/uptime summary. `useDailyLogs`/
+  `useDailyLogsByUser` (added in Tasks 19a) already provide the data layer
+  — this is a frontend-only addition, either a new section on an
+  artist-facing page or a small dedicated view, reusing those hooks rather
+  than adding new ones.
+
+## 12. Dropdown/filter parity and admin tooling (tracked separately)
+
+The user separately confirmed, in detail, that Forge should match
+ShotGrid's dropdown/filter/sort/group controls across every audited page —
+the full 125-control table from `docs/superpowers/audit/2026-08-31-shotgrid-parity/gap-matrix.md`
+— **including** ShotGrid's admin/config tooling (Pipeline Steps admin,
+Action Menu Items admin, the Fields/New-Field wizard, entity-schema
+Tracking Settings, saved-filter "My Filters" system, Gantt charts, the
+account/avatar menu). This maps to the master spec's own Sub-project 4
+(`docs/superpowers/specs/2026-08-31-full-backend-and-app-overhaul-design.md`,
+§5), now confirmed at full scope rather than the daily-use-pages-only
+default that document originally recommended.
+
+This is a body of work on the same order of size as this entire document —
+a reusable filter-panel component applied to 4+ pages, plus several
+genuinely new admin pages (Pipeline Steps, Action Menu Items, Fields
+wizard, Tracking Settings) that don't exist in Forge at all today. It is
+**not detailed task-by-task in this spec** — it gets its own dedicated spec
+and plan, sequenced after or alongside this document's sub-projects
+(controller's call at planning time, based on dependency overlap — e.g.
+Sub-project C's route-visibility work and the new admin pages this covers
+will share some `App.tsx`/`Sidebar.tsx` surface area worth sequencing
+deliberately, not colliding).
 
 ---
 
-## 11. Explicitly out of scope (this phase)
+## 13. Explicitly out of scope (this phase)
 
 - DCC integration further testing (already done, working); opening an
   uploaded review video in a DCC (Sub-project D's upload feature is for
@@ -412,22 +451,19 @@ listed here together so the full picture is visible in one place:
   row) doesn't block adding an AD-backed login method later, but doesn't
   build one now.
 - New Forge logo asset and further light-theme polish — still an open
-  input needed from the user (§12), not built against a guess.
+  input needed from the user (§14), not built against a guess.
 
-## 12. Open questions for the user (spec-review gate)
+## 14. Open questions for the user (spec-review gate)
 
 All resolved except one:
 
 1. ~~Review-chain collapse~~ — confirmed, single `lead-review` gate.
-2. ~~Video/media upload~~ — confirmed, both upload-from-disk and URL-paste,
-   volume-mounted storage, DCC-open deferred.
+2. ~~Video/media upload~~ — confirmed, real file upload (one new
+   capability); URL-paste stays as the existing path.
 3. **Sub-project F still needs**: the actual new logo (file or direction)
    and specific light-theme complaints (pages/screenshots) before it can
    be planned in the implementation plan — will be included in the plan as
    a placeholder task pending that input, not blocking the rest of the
    plan's execution.
-4. ~~Deploy target~~ — confirmed, Jenkins pipeline deploying the existing
-   Docker Compose stack. One remaining detail for the plan/execution
-   phase (not blocking planning): how Jenkins reaches the target host
-   (same-host agent vs. SSH to a separate app server) — noted in
-   Sub-project I, resolvable at Jenkinsfile-writing time.
+4. ~~Deploy target~~ — confirmed, no specific pipeline tool this phase;
+   Sub-project I is a checklist only.
