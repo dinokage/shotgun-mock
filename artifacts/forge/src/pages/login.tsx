@@ -94,7 +94,7 @@ export default function Login() {
         </Card>
         <p className="mt-6 text-center text-sm text-muted-foreground">
           Reviewing as a client?{" "}
-          <a href="/client-access" className="text-primary hover:underline">
+          <a href="/client-review" className="text-primary hover:underline">
             Use your access link instead
           </a>
         </p>
