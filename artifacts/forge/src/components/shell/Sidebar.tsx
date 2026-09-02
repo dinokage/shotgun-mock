@@ -21,7 +21,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Building2,
-  ChevronDown,
   Users,
   MonitorPlay,
   MessageSquare,
@@ -46,12 +45,6 @@ import { STUDIOS, DEPARTMENTS } from "@/data/mockData";
 import { DEPARTMENT_LEADERSHIP_ROLES } from "@/store/permissions";
 import { canAccessRoute } from "@/lib/roleRouteAccess";
 import { Badge } from "@/components/ui/badge";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 
 type NavItem = {
   label: string;
@@ -168,7 +161,7 @@ export function Sidebar() {
   const { sidebarCollapsed, toggleSidebar, mobileNavOpen, setMobileNavOpen } =
     useUIStore();
   const isMobile = useIsMobile();
-  const { currentStudioId, setStudio } = useWorkspaceStore();
+  const { currentStudioId } = useWorkspaceStore();
   const { currentUser } = useAuthStore();
   const isLeadership = useIsLeadership();
   const tasks = useTasksStore((s) => s.tasks);
@@ -263,48 +256,27 @@ export function Sidebar() {
   function renderBody(collapsed: boolean, onNavigate: () => void) {
     return (
       <>
-        {/* Workspace Switcher */}
+        {/* Tenant identity. This app is single-tenant per deployment (no
+            real multi-tenant switching exists anywhere else in the app),
+            so the switcher this used to be — a dropdown listing a static
+            STUDIOS mock array — was dead weight. Plain, non-interactive
+            display now. */}
         <div
           className={cn(
-            "p-3 border-b border-sidebar-border",
-            collapsed && "px-2",
+            "p-3 border-b border-sidebar-border flex items-center gap-2 px-2 py-1.5",
+            collapsed && "justify-center px-0",
           )}
         >
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                className={cn(
-                  "w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-sidebar-accent/50 transition-colors text-left",
-                  collapsed && "justify-center px-0",
-                )}
-              >
-                <div className="w-7 h-7 rounded-md bg-primary/20 flex items-center justify-center shrink-0">
-                  <Building2 className="w-4 h-4 text-primary" />
-                </div>
-                {!collapsed && (
-                  <>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold truncate">
-                        {currentStudio?.name || "Studio"}
-                      </div>
-                      <div className="text-[10px] text-muted-foreground truncate">
-                        {currentStudio?.region || "Global"}
-                      </div>
-                    </div>
-                    <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
-                  </>
-                )}
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-56" align="start">
-              {STUDIOS.map((s) => (
-                <DropdownMenuItem key={s.id} onClick={() => setStudio(s.id)}>
-                  <Building2 className="w-4 h-4 mr-2 text-muted-foreground" />
-                  {s.name}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="w-7 h-7 rounded-md bg-primary/20 flex items-center justify-center shrink-0">
+            <Building2 className="w-4 h-4 text-primary" />
+          </div>
+          {!collapsed && (
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold truncate">
+                {currentStudio?.name || "Studio"}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Navigation Links */}

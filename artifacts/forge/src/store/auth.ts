@@ -44,27 +44,22 @@ export const useAuthStore = create<AuthState>()((set) => ({
         apiFetch("/departments").catch(() => []),
       ]);
 
-      if (projects.length > 0) {
-        PROJECTS.length = 0;
-        PROJECTS.push(...projects);
-      }
-      if (users.length > 0) {
-        USERS.length = 0;
-        USERS.push(...(users as any));
-      }
-      if (tasks.length > 0) {
-        TASKS.length = 0;
-        TASKS.push(...tasks);
-      }
-      if (assets.length > 0) {
-        ASSETS.length = 0;
-        ASSETS.push(...assets);
-      }
-      if (shots.length > 0) {
-        SHOTS.length = 0;
-        SHOTS.push(...shots);
-      }
-      if (deps.length > 0) {
+      // Always sync these mock arrays to match the real API response,
+      // including when it's empty (e.g. right after an admin data reset) --
+      // an `if (arr.length > 0)` guard here would mean the API's true empty
+      // state could never overwrite whatever this array held from an
+      // earlier session, leaving stale data on screen indefinitely.
+      PROJECTS.length = 0;
+      PROJECTS.push(...projects);
+      USERS.length = 0;
+      USERS.push(...(users as any));
+      TASKS.length = 0;
+      TASKS.push(...tasks);
+      ASSETS.length = 0;
+      ASSETS.push(...assets);
+      SHOTS.length = 0;
+      SHOTS.push(...shots);
+      {
         // The API's department rows (id/tenantId/name/abbr/pipeline/
         // pipelineOrder/color/icon/createdAt) don't match the mock
         // Department shape's field names (abbreviation/description/
