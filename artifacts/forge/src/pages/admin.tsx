@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { useUsers } from "@/hooks/useUsers";
+import { useUsers, useSendInvite } from "@/hooks/useUsers";
 import { useDepartments } from "@/hooks/useDepartments";
 import { useRoles } from "@/hooks/useRoles";
 import { apiFetch } from "@/lib/apiClient";
@@ -57,6 +57,8 @@ export default function AdminPanel() {
   const { data: roles = [] } = useRoles();
   const { toast } = useToast();
   const [createOpen, setCreateOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const sendInvite = useSendInvite();
 
   if (!canManageUsers) return null;
 
@@ -96,6 +98,22 @@ export default function AdminPanel() {
     }
   }
 
+  async function handleInvite(formData: FormData) {
+    const email = String(formData.get("email") ?? "");
+    const roleId = String(formData.get("roleId") ?? "");
+    try {
+      await sendInvite.mutateAsync({ email, roleId });
+      toast({ title: "Invite sent", description: `Sent to ${email}` });
+      setInviteOpen(false);
+    } catch (err: any) {
+      toast({
+        title: "Failed to send invite",
+        description: err.message,
+        variant: "destructive",
+      });
+    }
+  }
+
   async function handleReassignDepartment(
     userId: string,
     departmentId: string,
@@ -119,6 +137,51 @@ export default function AdminPanel() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Admin Panel</h1>
+        <div className="flex gap-2">
+        <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+          <DialogTrigger asChild>
+            <Button variant="outline">Invite Member</Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Invite Member</DialogTitle>
+            </DialogHeader>
+            <form
+              className="space-y-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleInvite(new FormData(e.currentTarget));
+              }}
+            >
+              <div>
+                <Label htmlFor="invite-email">Email</Label>
+                <Input id="invite-email" name="email" type="email" required />
+              </div>
+              <div>
+                <Label htmlFor="invite-roleId">Role</Label>
+                <Select name="roleId" required>
+                  <SelectTrigger id="invite-roleId">
+                    <SelectValue placeholder="Select a role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {roles.map((r) => (
+                      <SelectItem key={r.id} value={r.id}>
+                        {r.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={sendInvite.isPending}
+              >
+                {sendInvite.isPending ? "Sending..." : "Send Invite"}
+              </Button>
+            </form>
+          </DialogContent>
+        </Dialog>
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogTrigger asChild>
             <Button>New User</Button>
@@ -182,6 +245,7 @@ export default function AdminPanel() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       <div className="grid grid-cols-4 gap-4">

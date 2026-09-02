@@ -35,6 +35,7 @@ import Profile from "@/pages/profile";
 import ProductionDashboard from "@/pages/production";
 import Timesheets from "@/pages/timesheets";
 import ClientReview from "@/pages/client-review";
+import AcceptInvite from "@/pages/accept-invite";
 
 import Audit from "@/pages/audit";
 import NotFound from "@/pages/not-found";
@@ -125,6 +126,7 @@ function Router() {
     <Switch>
       <Route path="/login" component={Login} />
       <Route path="/client-review" component={ClientReview} />
+      <Route path="/accept-invite" component={AcceptInvite} />
       {/* Public, outside AuthGuard — external recipients reach a specific
           delivery via its access code, with no Forge login at all. */}
       <Route path="/delivery/:id" component={DeliveryDetail} />

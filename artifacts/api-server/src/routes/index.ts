@@ -14,6 +14,7 @@ import { assetsRouter } from "./assets";
 import { versionsRouter } from "./versions";
 import { reviewsRouter } from "./reviews";
 import { dailyLogsRouter } from "./daily-logs";
+import { invitesRouter } from "./invites";
 
 const router = Router();
 
@@ -34,5 +35,6 @@ router.use("/assets", assetsRouter);
 router.use("/versions", versionsRouter);
 router.use("/reviews", reviewsRouter);
 router.use("/daily-logs", dailyLogsRouter);
+router.use("/invites", invitesRouter);
 
 export default router;

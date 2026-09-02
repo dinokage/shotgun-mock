@@ -24,6 +24,16 @@ export function useUsers() {
     staleTime: 60000,
   });
 }
+export function useSendInvite() {
+  return useMutation({
+    mutationFn: (body: { email: string; roleId: string }) =>
+      apiClient.post<{ email: string; roleId: string; expiresAt: string }>(
+        "/invites",
+        body,
+      ),
+  });
+}
+
 export function useUsersMap() {
   const { data: users = [] } = useUsers();
   return useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
