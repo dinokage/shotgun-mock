@@ -89,6 +89,8 @@ export interface Project {
   assetsCount: number;
   dueDate: string;
   startDate: string;
+  /** Real API field name for the project end date (unlike dueDate above, which the real backend never populates). */
+  endDate?: string;
   thumbnail: string;
   lastActivity: string;
   studioId: string;
