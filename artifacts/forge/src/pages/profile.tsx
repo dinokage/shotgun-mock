@@ -1,9 +1,12 @@
+import { useState } from "react";
 import { useParams, Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   USERS,
   TASKS,
@@ -21,12 +24,15 @@ import {
   Building2,
   ArrowLeft,
   ArrowUpRight,
+  Pencil,
 } from "lucide-react";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { PriorityChip } from "@/components/shared/PriorityChip";
 import { useUIStore } from "@/store/ui";
 import { useAuthStore } from "@/store/auth";
 import { useCapability } from "@/hooks/use-capability";
+import { useUpdateProfile } from "@/hooks/useUsers";
+import { useToast } from "@/hooks/use-toast";
 import {
   STUDIO_LEADERSHIP_ROLES,
   LEADERSHIP_ROLES,
@@ -42,6 +48,12 @@ export default function Profile() {
     setCreateTaskDefaultAssigneeId,
   } = useUIStore();
   const canAssignTasks = useCapability("assign_tasks");
+  const { toast } = useToast();
+  const updateProfile = useUpdateProfile();
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editTitle, setEditTitle] = useState("");
+  const [editAvatar, setEditAvatar] = useState("");
 
   const userId = id || currentUser?.id;
   const user = USERS.find((u) => u.id === userId);
@@ -114,6 +126,32 @@ export default function Profile() {
   // page's active/done rollups for the same underlying task data.
   const activeTasks = myTasks.filter((t) => isTaskActive(t.status));
 
+  const handleStartEdit = () => {
+    setEditName(user.name);
+    setEditTitle(user.title ?? "");
+    setEditAvatar(user.avatar ?? "");
+    setIsEditing(true);
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await updateProfile.mutateAsync({
+        name: editName,
+        title: editTitle || null,
+        avatar: editAvatar || null,
+      });
+      toast({ title: "Profile updated" });
+      setIsEditing(false);
+    } catch (err: any) {
+      toast({
+        title: "Failed to update profile",
+        description: err.message,
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       {/* Back link if navigating from directory */}
@@ -128,80 +166,149 @@ export default function Profile() {
       )}
 
       {/* Profile Header */}
-      <div className="flex flex-col md:flex-row md:items-center gap-6">
-        <Avatar
-          className="w-24 h-24 border-4 shadow-sm"
-          style={{ borderColor: dept?.color || "var(--border)" }}
-        >
-          <AvatarImage src={user.avatar} alt={user.name} />
-          <AvatarFallback className="text-3xl">
-            {user.name.charAt(0)}
-          </AvatarFallback>
-        </Avatar>
-        <div className="flex-1">
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold">{user.name}</h1>
-            <Badge
-              variant={user.status === "active" ? "default" : "secondary"}
-              className={
-                user.status === "active"
-                  ? "bg-green-500/10 text-green-500 hover:bg-green-500/20 shadow-none"
-                  : ""
-              }
-            >
-              {user.status}
-            </Badge>
-          </div>
-          <p className="text-muted-foreground text-lg">
-            {ROLE_LABELS[user.role] || user.title}
-          </p>
-
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mt-3 text-sm text-muted-foreground">
-            <span className="flex items-center gap-1.5">
-              <Mail className="w-4 h-4" /> {user.email}
-            </span>
-            {dept && (
-              <Link
-                href={`/departments/${dept.id}`}
-                className="flex items-center gap-1.5 hover:text-primary transition-colors"
+      {isEditing ? (
+        <Card className="border-border/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm text-muted-foreground uppercase tracking-wider">
+              Edit Profile
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSaveEdit} className="space-y-4">
+              <div className="flex flex-col md:flex-row md:items-center gap-6">
+                <Avatar className="w-20 h-20 border-4 shadow-sm">
+                  <AvatarImage src={editAvatar || undefined} alt={editName} />
+                  <AvatarFallback className="text-2xl">
+                    {(editName || user.name).charAt(0)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1 space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-name">Name</Label>
+                    <Input
+                      id="edit-name"
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-title">Title</Label>
+                    <Input
+                      id="edit-title"
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      placeholder="e.g. Senior Artist"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-avatar">Avatar URL</Label>
+                    <Input
+                      id="edit-avatar"
+                      value={editAvatar}
+                      onChange={(e) => setEditAvatar(e.target.value)}
+                      placeholder="https://..."
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsEditing(false)}
+                  disabled={updateProfile.isPending}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={updateProfile.isPending}>
+                  {updateProfile.isPending ? "Saving..." : "Save Changes"}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="flex flex-col md:flex-row md:items-center gap-6">
+          <Avatar
+            className="w-24 h-24 border-4 shadow-sm"
+            style={{ borderColor: dept?.color || "var(--border)" }}
+          >
+            <AvatarImage src={user.avatar} alt={user.name} />
+            <AvatarFallback className="text-3xl">
+              {user.name.charAt(0)}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex-1">
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-bold">{user.name}</h1>
+              <Badge
+                variant={user.status === "active" ? "default" : "secondary"}
+                className={
+                  user.status === "active"
+                    ? "bg-green-500/10 text-green-500 hover:bg-green-500/20 shadow-none"
+                    : ""
+                }
               >
-                <Building2 className="w-4 h-4" /> {dept.name}
+                {user.status}
+              </Badge>
+            </div>
+            <p className="text-muted-foreground text-lg">
+              {ROLE_LABELS[user.role] || user.title}
+            </p>
+
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mt-3 text-sm text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <Mail className="w-4 h-4" /> {user.email}
+              </span>
+              {dept && (
+                <Link
+                  href={`/departments/${dept.id}`}
+                  className="flex items-center gap-1.5 hover:text-primary transition-colors"
+                >
+                  <Building2 className="w-4 h-4" /> {dept.name}
+                </Link>
+              )}
+              <span className="flex items-center gap-1.5">
+                <MapPin className="w-4 h-4" />{" "}
+                {user.studioId === "studio1"
+                  ? "Portland"
+                  : user.studioId === "studio2"
+                    ? "London"
+                    : "Tokyo"}
+              </span>
+            </div>
+          </div>
+
+          <div className="ml-auto flex items-center gap-2">
+            {isMe && (
+              <Button variant="outline" onClick={handleStartEdit}>
+                <Pencil className="w-4 h-4 mr-2" /> Edit Profile
+              </Button>
+            )}
+            {currentUser && !isMe && (
+              <Link href={`/chat?user=${user.id}`}>
+                <Button
+                  variant="outline"
+                  className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
+                >
+                  <Mail className="w-4 h-4 mr-2" /> Message
+                </Button>
               </Link>
             )}
-            <span className="flex items-center gap-1.5">
-              <MapPin className="w-4 h-4" />{" "}
-              {user.studioId === "studio1"
-                ? "Portland"
-                : user.studioId === "studio2"
-                  ? "London"
-                  : "Tokyo"}
-            </span>
+            {currentUser && !isMe && canAssignTasks && user.role !== "client" && (
+              <Button
+                onClick={() => {
+                  setCreateTaskDefaultAssigneeId(user.id);
+                  setCreateTaskModalOpen(true);
+                }}
+              >
+                Assign Task
+              </Button>
+            )}
           </div>
         </div>
-
-        <div className="ml-auto flex items-center gap-2">
-          {currentUser && !isMe && (
-            <Link href={`/chat?user=${user.id}`}>
-              <Button
-                variant="outline"
-                className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
-              >
-                <Mail className="w-4 h-4 mr-2" /> Message
-              </Button>
-            </Link>
-          )}
-          {currentUser && !isMe && canAssignTasks && user.role !== "client" && (
-            <Button
-              onClick={() => {
-                setCreateTaskDefaultAssigneeId(user.id);
-                setCreateTaskModalOpen(true);
-              }}
-            >
-              Assign Task
-            </Button>
-          )}
-        </div>
-      </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="space-y-6">

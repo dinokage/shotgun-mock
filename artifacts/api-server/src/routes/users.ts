@@ -145,6 +145,42 @@ router.post("/", requireCapability("manage_members"), async (req, res) => {
   }
 });
 
+// Self-service profile edit -- any authenticated user may update their own
+// name/title/avatar, no manage_members capability required. Registered
+// BEFORE `PATCH /:id` below: Express matches routes in registration order,
+// and `/:id` would otherwise swallow this as a request for the user whose id
+// is literally "me".
+router.patch("/me", async (req, res) => {
+  try {
+    const tenantId = req.tenantId!;
+    const userId = req.userId;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+    const { name, title, avatar } = req.body;
+    const updates: Partial<typeof usersTable.$inferInsert> = {};
+    if (name !== undefined) updates.name = name;
+    if (title !== undefined) updates.title = title;
+    if (avatar !== undefined) updates.avatar = avatar;
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: "No valid fields to update" });
+    }
+
+    const [updated] = await db
+      .update(usersTable)
+      .set(updates)
+      .where(and(eq(usersTable.id, userId), eq(usersTable.tenantId, tenantId)))
+      .returning();
+    if (!updated) return res.status(404).json({ error: "Not found" });
+
+    const { hashedPassword: _omit, ...user } = updated;
+    return res.json(user);
+  } catch (err) {
+    req.log.error(err, "Failed to update profile");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.patch("/:id", requireCapability("manage_members"), async (req, res) => {
   try {
     const tenantId = req.tenantId!;

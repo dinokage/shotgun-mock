@@ -20,6 +20,7 @@ interface AuthState {
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
   clearError: () => void;
+  updateCurrentUser: (updates: Partial<UserDTO>) => void;
 }
 
 export const useAuthStore = create<AuthState>()((set) => ({
@@ -150,4 +151,21 @@ export const useAuthStore = create<AuthState>()((set) => ({
   },
 
   clearError: () => set({ loginError: null }),
+
+  // After a self-service profile edit (PATCH /users/me), merge the returned
+  // fields straight into currentUser AND the mutable mock USERS array --
+  // most pages (TopBar, profile.tsx) read name/title/avatar from one of
+  // those two places rather than from a react-query cache, so a plain
+  // ["users"] invalidation alone wouldn't be reflected until the next
+  // full fetchMe().
+  updateCurrentUser: (updates) =>
+    set((state) => {
+      if (!state.currentUser) return state;
+      const updatedUser = { ...state.currentUser, ...updates };
+      const idx = USERS.findIndex((u) => u.id === updatedUser.id);
+      if (idx !== -1) {
+        USERS[idx] = { ...USERS[idx], ...updates };
+      }
+      return { currentUser: updatedUser };
+    }),
 }));
