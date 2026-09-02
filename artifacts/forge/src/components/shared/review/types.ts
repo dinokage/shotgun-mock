@@ -5,6 +5,7 @@ import {
   ArrowUpRight,
   Square,
   Type,
+  Eraser,
   type LucideIcon,
 } from "lucide-react";
 
@@ -14,7 +15,13 @@ import {
  * portal (src/pages/client-review.tsx).
  */
 
-export type AnnotationTool = "select" | "pen" | "arrow" | "rectangle" | "text";
+export type AnnotationTool =
+  | "select"
+  | "pen"
+  | "arrow"
+  | "rectangle"
+  | "text"
+  | "eraser";
 
 export interface Point {
   x: number;
@@ -62,6 +69,7 @@ export const ANNOTATION_TOOLS: AnnotationToolDef[] = [
   { id: "arrow", icon: ArrowUpRight, label: "Draw arrow" },
   { id: "rectangle", icon: Square, label: "Draw rectangle" },
   { id: "text", icon: Type, label: "Add text annotation" },
+  { id: "eraser", icon: Eraser, label: "Erase your annotation" },
 ];
 
 export type SetAnnotations = Dispatch<SetStateAction<Annotation[]>>;

@@ -85,7 +85,12 @@ export function AnnotationCanvas({
     h: number;
   } | null>(null);
 
-  const drawMode = !readOnly && tool !== "select";
+  // The eraser reuses the select tool's click-to-delete hit-testing below
+  // (it needs the same "no full-canvas pointer-capture surface" treatment
+  // as select so clicks land on the actual annotation elements instead of
+  // being swallowed by the drawing surface), so it's excluded from drawMode
+  // exactly like select is.
+  const drawMode = !readOnly && tool !== "select" && tool !== "eraser";
 
   const resetDrawState = () => {
     setIsDrawing(false);
@@ -120,9 +125,18 @@ export function AnnotationCanvas({
     keySuffix = "",
   ) => {
     const key = `${a.id}${keySuffix}`;
+    // Select already deletes a shape annotation on click (there's no
+    // separate "selected then press delete" step for shapes, only for text
+    // — see the text overlay below). The eraser reuses that exact
+    // hit-testing/delete path rather than adding a new one.
+    //
+    // Note: neither this nor the pre-existing select behavior restricts
+    // deletion to the current user's own marks — `Annotation` carries no
+    // author/owner field anywhere in this data model (see types.ts), so
+    // that isn't enforceable without inventing one.
     const handleDelete = () =>
       !readOnly &&
-      tool === "select" &&
+      (tool === "select" || tool === "eraser") &&
       onAnnotationsChange((prev) => prev.filter((p) => p.id !== a.id));
     const pointerClassName =
       interactive && !readOnly
@@ -402,6 +416,7 @@ export function AnnotationCanvas({
                     ? selectionRingClassName
                     : "border-transparent",
                   tool === "select" && !readOnly && "cursor-move",
+                  tool === "eraser" && !readOnly && "cursor-pointer",
                 )}
                 style={{
                   left: a.x,
@@ -425,9 +440,23 @@ export function AnnotationCanvas({
                       initialX: a.x,
                       initialY: a.y,
                     });
+                  } else if (tool === "eraser") {
+                    // Same click-to-delete-one-mark behavior as the eraser
+                    // gives shape annotations above, applied to text's own
+                    // hit target (its wrapping div) instead of an SVG node.
+                    e.stopPropagation();
+                    onAnnotationsChange((prev) =>
+                      prev.filter((p) => p.id !== a.id),
+                    );
+                    if (selectedAnnotationId === a.id)
+                      onSelectedAnnotationIdChange(null);
                   }
                 }}
-                onClick={() => !readOnly && onSelectedAnnotationIdChange(a.id)}
+                onClick={() =>
+                  !readOnly &&
+                  tool !== "eraser" &&
+                  onSelectedAnnotationIdChange(a.id)
+                }
               >
                 <input
                   type="text"
