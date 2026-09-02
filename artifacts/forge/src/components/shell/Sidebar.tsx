@@ -145,7 +145,10 @@ const ALL_NAV: NavItem[] = [
     href: "/workflows",
     capabilities: ["manage_pipeline"],
   },
-  { label: "Marketplace", icon: Store, href: "/marketplace" }, // available to everyone
+  // Admin-only: canAccessRoute (composed into the navItems filter below)
+  // now excludes /marketplace from every role but admin, including
+  // production_head, so no per-item capability check is needed here.
+  { label: "Marketplace", icon: Store, href: "/marketplace" },
   {
     label: "Time Travel",
     icon: History,

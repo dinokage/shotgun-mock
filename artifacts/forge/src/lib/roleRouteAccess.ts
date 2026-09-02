@@ -47,7 +47,6 @@ const PRODUCTION_MANAGEMENT_ROUTES = [
   "/publishing",
   "/analytics",
   "/projects",
-  "/marketplace",
   "/financials",
 ];
 
@@ -58,6 +57,11 @@ const STUDIO_ADMIN_ROUTES = [
   "/audit",
   "/integrations",
 ];
+
+// Admin-only: the plugin/tool marketplace. Unlike every other
+// studio-admin-tier route, this one is NOT shared with production_head —
+// only admin decides plugin/tool access.
+const ADMIN_ONLY_ROUTES = ["/marketplace"];
 
 export const ROLE_ALLOWED_ROUTES: Record<Role, string[]> = {
   artist: [...BASE_ROUTES],
@@ -72,6 +76,7 @@ export const ROLE_ALLOWED_ROUTES: Record<Role, string[]> = {
     ...BASE_ROUTES,
     ...PRODUCTION_MANAGEMENT_ROUTES,
     ...STUDIO_ADMIN_ROUTES,
+    ...ADMIN_ONLY_ROUTES,
   ],
   client: [],
 };
