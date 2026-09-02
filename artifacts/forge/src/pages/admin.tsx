@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useUsers, useSendInvite } from "@/hooks/useUsers";
-import { useDepartments } from "@/hooks/useDepartments";
+import { useDepartments, useCreateDepartment } from "@/hooks/useDepartments";
 import { useRoles } from "@/hooks/useRoles";
 import { apiFetch } from "@/lib/apiClient";
 import { useCapability } from "@/hooks/use-capability";
@@ -53,12 +53,14 @@ export default function AdminPanel() {
   }, [canManageUsers, setLocation]);
 
   const { data: users = [], refetch: refetchUsers } = useUsers();
-  const { data: departments = [] } = useDepartments();
+  const { data: departments = [], refetch: refetchDepartments } = useDepartments();
   const { data: roles = [] } = useRoles();
   const { toast } = useToast();
   const [createOpen, setCreateOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [deptOpen, setDeptOpen] = useState(false);
   const sendInvite = useSendInvite();
+  const createDepartment = useCreateDepartment();
 
   if (!canManageUsers) return null;
 
@@ -114,6 +116,28 @@ export default function AdminPanel() {
     }
   }
 
+  async function handleCreateDepartment(formData: FormData) {
+    const name = String(formData.get("name") ?? "");
+    const abbr = String(formData.get("abbr") ?? "");
+    const pipeline = String(formData.get("pipeline") ?? "") as
+      | "PROD"
+      | "3D"
+      | "VFX"
+      | "2D";
+    try {
+      await createDepartment.mutateAsync({ name, abbr, pipeline });
+      toast({ title: "Department created" });
+      setDeptOpen(false);
+      refetchDepartments();
+    } catch (err: any) {
+      toast({
+        title: "Failed to create department",
+        description: err.message,
+        variant: "destructive",
+      });
+    }
+  }
+
   async function handleReassignDepartment(
     userId: string,
     departmentId: string,
@@ -138,6 +162,54 @@ export default function AdminPanel() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Admin Panel</h1>
         <div className="flex gap-2">
+        <Dialog open={deptOpen} onOpenChange={setDeptOpen}>
+          <DialogTrigger asChild>
+            <Button variant="outline">New Department</Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>New Department</DialogTitle>
+            </DialogHeader>
+            <form
+              className="space-y-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleCreateDepartment(new FormData(e.currentTarget));
+              }}
+            >
+              <div>
+                <Label htmlFor="dept-name">Name</Label>
+                <Input id="dept-name" name="name" placeholder="Animation" required />
+              </div>
+              <div>
+                <Label htmlFor="dept-abbr">Abbreviation</Label>
+                <Input id="dept-abbr" name="abbr" placeholder="ANIM" required />
+              </div>
+              <div>
+                <Label htmlFor="dept-pipeline">Pipeline</Label>
+                <Select name="pipeline" required>
+                  <SelectTrigger id="dept-pipeline">
+                    <SelectValue placeholder="Select a pipeline" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PIPELINES.map((p) => (
+                      <SelectItem key={p} value={p}>
+                        {p}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={createDepartment.isPending}
+              >
+                {createDepartment.isPending ? "Creating..." : "Create"}
+              </Button>
+            </form>
+          </DialogContent>
+        </Dialog>
         <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
           <DialogTrigger asChild>
             <Button variant="outline">Invite Member</Button>
