@@ -22,6 +22,17 @@ interface AnnotationCanvasProps {
   selectedAnnotationId: string | null;
   onSelectedAnnotationIdChange: SetSelectedAnnotationId;
   onDraggingElementChange: SetDraggingElement;
+  /**
+   * Id of the currently signed-in user, used to gate the select/eraser
+   * delete paths below to annotations that user actually created —
+   * `annotation.createdById === currentUserId`. Undefined for a
+   * client-access-link session (which has no real user id) or while auth
+   * is still loading; in both cases the ownership check fails closed, so
+   * nothing is deletable through this component rather than defaulting to
+   * allow-all. This is a UI-level convenience only — the server enforces
+   * the same rule independently on DELETE /reviews/annotations/:id.
+   */
+  currentUserId?: string;
   /** Static onion-skin edge fade: dims shape annotations within a few frames of
    * either edge of their own visible window at a flat opacity. Internal-review-only. */
   onionSkin?: boolean;
@@ -70,6 +81,7 @@ export function AnnotationCanvas({
   selectedAnnotationId,
   onSelectedAnnotationIdChange,
   onDraggingElementChange,
+  currentUserId,
   onionSkin = false,
   ghosting = false,
   selectionRingClassName = "border-primary ring-2 ring-primary/50",
@@ -130,13 +142,16 @@ export function AnnotationCanvas({
     // — see the text overlay below). The eraser reuses that exact
     // hit-testing/delete path rather than adding a new one.
     //
-    // Note: neither this nor the pre-existing select behavior restricts
-    // deletion to the current user's own marks — `Annotation` carries no
-    // author/owner field anywhere in this data model (see types.ts), so
-    // that isn't enforceable without inventing one.
+    // Restricted to the current user's own marks: an annotation whose
+    // `createdById` doesn't match `currentUserId` (including annotations
+    // with no `createdById` at all, and client sessions with no
+    // `currentUserId`) is not deletable through this path. This is a UI
+    // convenience only — the server independently enforces the same rule.
     const handleDelete = () =>
       !readOnly &&
       (tool === "select" || tool === "eraser") &&
+      a.createdById !== undefined &&
+      a.createdById === currentUserId &&
       onAnnotationsChange((prev) => prev.filter((p) => p.id !== a.id));
     const pointerClassName =
       interactive && !readOnly
@@ -444,12 +459,20 @@ export function AnnotationCanvas({
                     // Same click-to-delete-one-mark behavior as the eraser
                     // gives shape annotations above, applied to text's own
                     // hit target (its wrapping div) instead of an SVG node.
+                    // Same ownership gate as the shape path: only the
+                    // annotation's own creator can erase it (fails closed
+                    // when createdById or currentUserId is missing).
                     e.stopPropagation();
-                    onAnnotationsChange((prev) =>
-                      prev.filter((p) => p.id !== a.id),
-                    );
-                    if (selectedAnnotationId === a.id)
-                      onSelectedAnnotationIdChange(null);
+                    if (
+                      a.createdById !== undefined &&
+                      a.createdById === currentUserId
+                    ) {
+                      onAnnotationsChange((prev) =>
+                        prev.filter((p) => p.id !== a.id),
+                      );
+                      if (selectedAnnotationId === a.id)
+                        onSelectedAnnotationIdChange(null);
+                    }
                   }
                 }}
                 onClick={() =>

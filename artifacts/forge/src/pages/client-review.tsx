@@ -729,6 +729,7 @@ export default function ClientReview() {
               selectedAnnotationId={selectedAnnotationId}
               onSelectedAnnotationIdChange={setSelectedAnnotationId}
               onDraggingElementChange={setDraggingElement}
+              currentUserId={currentUser?.id}
               selectionRingClassName="border-emerald-500 ring-2 ring-emerald-500/50"
               ghosting={ghosting}
             />

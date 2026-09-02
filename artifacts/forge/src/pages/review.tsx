@@ -1950,6 +1950,7 @@ export default function Review() {
                   selectedAnnotationId={selectedAnnotationId}
                   onSelectedAnnotationIdChange={setSelectedAnnotationId}
                   onDraggingElementChange={setDraggingElement}
+                  currentUserId={currentUser?.id}
                   onionSkin={onionSkin}
                   ghosting={ghosting}
                   readOnly={viewerMode || isLockedViewer}

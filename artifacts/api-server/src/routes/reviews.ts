@@ -211,12 +211,20 @@ reviewsRouter.put("/annotations/:id", async (req, res) => {
 reviewsRouter.delete("/annotations/:id", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
+    const userId = req.userId;
     const { id } = req.params;
     const [existing] = await db
       .select()
       .from(annotationsTable)
       .where(and(eq(annotationsTable.tenantId, tenantId), eq(annotationsTable.id, id)));
     if (!existing) return res.status(404).json({ error: "Not found" });
+
+    // Only the annotation's own creator may erase it. `userId` is undefined
+    // for a client-access-link session (those sessions carry a null
+    // userId and never create annotations through this router), so such a
+    // session is blocked here regardless of the annotation's createdById.
+    if (!userId || existing.createdById !== userId)
+      return res.status(403).json({ error: "Forbidden" });
 
     await db
       .delete(annotationsTable)

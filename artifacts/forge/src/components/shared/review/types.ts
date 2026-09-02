@@ -44,6 +44,10 @@ export interface Annotation {
   fontFamily?: string;
   fontSize?: number;
   backgroundColor?: string;
+  /** Id of the user who created this annotation (set server-side on POST).
+   * Missing/undefined on annotations predating this field — treat as
+   * "not deletable via the ownership check" rather than owned by anyone. */
+  createdById?: string;
 }
 
 /** Element currently being dragged on the annotation canvas (or, on the
