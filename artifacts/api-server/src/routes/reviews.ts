@@ -181,12 +181,17 @@ const ANNOTATION_PATCHABLE_FIELDS = [
 reviewsRouter.put("/annotations/:id", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
+    const userId = req.userId;
     const { id } = req.params;
     const [existing] = await db
       .select()
       .from(annotationsTable)
       .where(and(eq(annotationsTable.tenantId, tenantId), eq(annotationsTable.id, id)));
     if (!existing) return res.status(404).json({ error: "Not found" });
+
+    // Only the annotation's own creator may edit it — same rule as DELETE.
+    if (!userId || existing.createdById !== userId)
+      return res.status(403).json({ error: "Forbidden" });
 
     const updates: Record<string, unknown> = {};
     for (const field of ANNOTATION_PATCHABLE_FIELDS) {
