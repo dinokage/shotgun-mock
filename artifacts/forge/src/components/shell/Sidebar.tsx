@@ -33,7 +33,6 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { useUIStore } from "@/store/ui";
-import { useWorkspaceStore } from "@/store/workspace";
 import { useAuthStore } from "@/store/auth";
 import { useTasksStore } from "@/store/tasks";
 import { useReviewStore } from "@/store/reviews";
@@ -41,7 +40,7 @@ import { useChatGroupsStore } from "@/store/chatGroups";
 import { useCapability, useIsLeadership } from "@/hooks/use-capability";
 import type { CapabilityId } from "@/store/permissions";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { STUDIOS, DEPARTMENTS } from "@/data/mockData";
+import { DEPARTMENTS } from "@/data/mockData";
 import { DEPARTMENT_LEADERSHIP_ROLES } from "@/store/permissions";
 import { canAccessRoute } from "@/lib/roleRouteAccess";
 import { Badge } from "@/components/ui/badge";
@@ -161,13 +160,11 @@ export function Sidebar() {
   const { sidebarCollapsed, toggleSidebar, mobileNavOpen, setMobileNavOpen } =
     useUIStore();
   const isMobile = useIsMobile();
-  const { currentStudioId } = useWorkspaceStore();
-  const { currentUser } = useAuthStore();
+  const { currentUser, tenantName } = useAuthStore();
   const isLeadership = useIsLeadership();
   const tasks = useTasksStore((s) => s.tasks);
   const reviews = useReviewStore((s) => s.reviews);
   const chatGroups = useChatGroupsStore((s) => s.groups);
-  const currentStudio = STUDIOS.find((s) => s.id === currentStudioId);
 
   // The drawer's open/closed flag lives in the global UI store, not local
   // state, so it survives a viewport resize. Without this, opening the
@@ -256,11 +253,15 @@ export function Sidebar() {
   function renderBody(collapsed: boolean, onNavigate: () => void) {
     return (
       <>
-        {/* Tenant identity. This app is single-tenant per deployment (no
-            real multi-tenant switching exists anywhere else in the app),
-            so the switcher this used to be — a dropdown listing a static
-            STUDIOS mock array — was dead weight. Plain, non-interactive
-            display now. */}
+        {/* Tenant identity -- the REAL tenant name from the database
+            (useAuthStore.tenantName, populated from GET /auth/me's
+            `tenant` field), not the earlier version's static mock STUDIOS
+            array (a fake multi-studio picker with hardcoded fictional
+            names/counts, totally disconnected from the real tenants
+            table -- it only looked correct by coincidence when the real
+            tenant happened to share a name with studio1). This app is
+            single-tenant per deployment, so this is a plain,
+            non-interactive display, not a switcher. */}
         <div
           className={cn(
             "p-3 border-b border-sidebar-border flex items-center gap-2 px-2 py-1.5",
@@ -273,7 +274,7 @@ export function Sidebar() {
           {!collapsed && (
             <div className="flex-1 min-w-0">
               <div className="text-sm font-semibold truncate">
-                {currentStudio?.name || "Studio"}
+                {tenantName || "Studio"}
               </div>
             </div>
           )}

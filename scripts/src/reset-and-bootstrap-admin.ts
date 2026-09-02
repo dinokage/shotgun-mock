@@ -32,8 +32,8 @@ async function hashPassword(password: string): Promise<string> {
 
 const ADMIN_EMAIL = "krishna.akshath11@gmail.com";
 const ADMIN_NAME = "Krishna Akshath";
-const TENANT_NAME = "Nebula Animation Co.";
-const TENANT_SLUG = "nebula";
+const TENANT_NAME = "Symbiosys Technologies";
+const TENANT_SLUG = "symbiosys";
 
 // Matches artifacts/forge/src/store/permissions.ts's DEFAULT_PERMISSION_SCHEME
 // exactly. This app's RBAC logic (Role type, DEPARTMENT_LEADERSHIP_ROLES,

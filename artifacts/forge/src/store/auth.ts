@@ -13,6 +13,7 @@ import {
 
 interface AuthState {
   currentUser: UserDTO | null;
+  tenantName: string | null;
   isAuthenticated: boolean;
   loginError: string | null;
   isInitializing: boolean;
@@ -25,6 +26,7 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>()((set) => ({
   currentUser: null,
+  tenantName: null,
   isAuthenticated: false,
   loginError: null,
   isInitializing: true,
@@ -109,9 +111,19 @@ export const useAuthStore = create<AuthState>()((set) => ({
         m.useShotStore.getState().setShots?.(shots),
       );
 
-      set({ currentUser: user, isAuthenticated: true, isInitializing: false });
+      set({
+        currentUser: user,
+        tenantName: response.tenant?.name ?? null,
+        isAuthenticated: true,
+        isInitializing: false,
+      });
     } catch {
-      set({ currentUser: null, isAuthenticated: false, isInitializing: false });
+      set({
+        currentUser: null,
+        tenantName: null,
+        isAuthenticated: false,
+        isInitializing: false,
+      });
     }
   },
 
@@ -125,6 +137,7 @@ export const useAuthStore = create<AuthState>()((set) => ({
       const response = await apiFetch<any>("/auth/me");
       set({
         currentUser: response.user,
+        tenantName: response.tenant?.name ?? null,
         isAuthenticated: true,
         loginError: null,
       });
@@ -139,7 +152,12 @@ export const useAuthStore = create<AuthState>()((set) => ({
     try {
       await apiFetch("/auth/logout", { method: "POST" });
     } finally {
-      set({ currentUser: null, isAuthenticated: false, loginError: null });
+      set({
+        currentUser: null,
+        tenantName: null,
+        isAuthenticated: false,
+        loginError: null,
+      });
       // In a real app we'd clear query caches too, but a page reload is often cleaner.
       window.location.href = "/login";
     }
