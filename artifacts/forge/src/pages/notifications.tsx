@@ -20,7 +20,7 @@ import { cut, stagger } from "@/lib/motion";
  * `actionUrl` if the type isn't one we have a dedicated detail route for,
  * and returns null if there's nowhere sensible to send the user.
  */
-function resolveNotificationRoute(notif: Notification): string | null {
+export function resolveNotificationRoute(notif: Notification): string | null {
   const { entityType, entityId, actionUrl } = notif;
   if (entityType && entityId) {
     switch (entityType) {

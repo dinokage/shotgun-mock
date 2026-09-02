@@ -29,6 +29,7 @@ import { useAuthStore } from "@/store/auth";
 import { useNotificationStore } from "@/store/notifications";
 import { useWorkspaceStore } from "@/store/workspace";
 import { useCapability } from "@/hooks/use-capability";
+import { resolveNotificationRoute } from "@/pages/notifications";
 import { useDepartmentScope } from "@/hooks/useDepartmentScope";
 import { DEPARTMENT_LEADERSHIP_ROLES } from "@/store/permissions";
 import { Link, useLocation } from "wouter";
@@ -264,6 +265,8 @@ export function TopBar() {
                 onSelect={(e) => {
                   e.preventDefault();
                   if (!notif.read) markAsRead(notif.id);
+                  const route = resolveNotificationRoute(notif);
+                  if (route) setLocation(route);
                 }}
               >
                 <div className="flex items-center gap-2 w-full">
