@@ -9,7 +9,10 @@ import {
   ASSETS,
   SHOTS,
   DEPARTMENTS,
+  VERSIONS,
+  REVIEWS,
 } from "@/data/mockData";
+import { hashString } from "@/lib/seededMock";
 
 interface AuthState {
   currentUser: UserDTO | null;
@@ -37,14 +40,17 @@ export const useAuthStore = create<AuthState>()((set) => ({
       const user = response.user;
 
       // HYDRATE ALL MOCK ARRAYS FROM BACKEND SO THE APP JUST WORKS
-      const [projects, users, tasks, assets, shots, deps] = await Promise.all([
-        apiFetch("/projects").catch(() => []),
-        apiFetch("/users").catch(() => []),
-        apiFetch("/tasks").catch(() => []),
-        apiFetch("/assets").catch(() => []),
-        apiFetch("/shots").catch(() => []),
-        apiFetch("/departments").catch(() => []),
-      ]);
+      const [projects, users, tasks, assets, shots, deps, versions, reviews] =
+        await Promise.all([
+          apiFetch("/projects").catch(() => []),
+          apiFetch("/users").catch(() => []),
+          apiFetch("/tasks").catch(() => []),
+          apiFetch("/assets").catch(() => []),
+          apiFetch("/shots").catch(() => []),
+          apiFetch("/departments").catch(() => []),
+          apiFetch("/versions").catch(() => []),
+          apiFetch("/reviews").catch(() => []),
+        ]);
 
       // Always sync these mock arrays to match the real API response,
       // including when it's empty (e.g. right after an admin data reset) --
@@ -95,6 +101,28 @@ export const useAuthStore = create<AuthState>()((set) => ({
         DEPARTMENTS.length = 0;
         DEPARTMENTS.push(...normalizedDeps);
       }
+
+      // REVIEWS's real/mock field shapes already line up exactly
+      // (lib/db/src/schema/reviews.ts mirrors mockData.ts's Review
+      // interface field-for-field) -- no translation needed, unlike
+      // departments above.
+      REVIEWS.length = 0;
+      REVIEWS.push(...(reviews as any));
+
+      // VERSIONS needs light normalization: the real API has `thumbnail`
+      // (a URL or null) where the mock shape has `thumbnailSeed` (a number
+      // used to generate a placeholder image) -- derive a stable numeric
+      // seed from the real id so placeholder rendering still works. The
+      // real schema's `status` column defaults to "pending_review", which
+      // isn't one of the mock enum's four values ("pending" is) -- map it
+      // so status-based UI (badges/filters) doesn't silently fail to match.
+      const normalizedVersions = (versions as any[]).map((v) => ({
+        ...v,
+        thumbnailSeed: hashString(v.id),
+        status: v.status === "pending_review" ? "pending" : v.status,
+      }));
+      VERSIONS.length = 0;
+      VERSIONS.push(...normalizedVersions);
 
       // Hydrate stores (ignoring those that don't have direct setters if any,
       // but tasks/assets/shots do have them, we can import them dynamically to avoid circular deps)

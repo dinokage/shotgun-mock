@@ -168,7 +168,10 @@ export const useStudioSettingsStore = create<StudioSettingsState>()(
   persist(
     (set) => ({
       profile: {
-        studioName: "Nebula Animation Co.",
+        // Default only -- the admin can edit this freely in Settings
+        // (that's the point of the field), so this just needs to start
+        // correct, not stay perfectly synced with the tenants table.
+        studioName: "Symbiosys Technologies",
         industry: "animation",
         timezone: "pst",
       },
@@ -248,6 +251,14 @@ export const useStudioSettingsStore = create<StudioSettingsState>()(
     }),
     {
       name: "forge-studio-settings-storage",
+      // Bumped from the implicit default (0) to clear the old hardcoded
+      // "Nebula Animation Co." default any browser may have already
+      // persisted. This resets the WHOLE store (not just studioName) on
+      // next load for anyone who already has a persisted copy -- safe right
+      // now since the admin account is brand new this session and hasn't
+      // had a chance to customize anything else here yet, but worth knowing
+      // before bumping this again later once real settings exist to lose.
+      version: 1,
     },
   ),
 );

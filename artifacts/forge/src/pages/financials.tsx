@@ -345,7 +345,7 @@ export default function FinancialDashboard() {
                 />
               </div>
               <p className="text-xs text-muted-foreground mt-1">
-                Across 3 studios &middot; {PROJECTS.length} total
+                {PROJECTS.length} total
               </p>
             </CardContent>
           </Card>

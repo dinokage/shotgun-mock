@@ -2275,37 +2275,17 @@ for (let i = 0; i < 80; i++) {
   });
 }
 
-// --- Publish Logs (40) -----------------------------------------------------
+// --- Publish Logs ------------------------------------------------------
+//
+// No generator loop here (unlike VERSIONS/REVIEWS above, both of which get
+// correctly overwritten with real API data by store/auth.ts's fetchMe()
+// after login) -- the publishing feature has no real backend at all yet
+// (no publishLogsTable, no /api/publish-logs route), so there is nothing
+// to hydrate from. Genuinely empty until that gets built; populated at
+// runtime only via usePublishingStore's addPublishLog on a real "Confirm
+// Publish" action.
 
 export const PUBLISH_LOGS: PublishLog[] = [];
-for (let i = 0; i < 40; i++) {
-  const asset = ASSETS[i % ASSETS.length];
-  PUBLISH_LOGS.push({
-    id: `pub${i + 1}`,
-    assetId: asset.id,
-    version: asset.version,
-    publishedById: `u${(i % 20) + 1}`,
-    publishedAt: `2024-09-${String((i % 28) + 1).padStart(2, "0")}T${String(8 + (i % 14)).padStart(2, "0")}:${String(i % 60).padStart(2, "0")}:00Z`,
-    status: (["success", "failed", "validating", "queued"] as const)[i % 4],
-    target: ["production", "staging", "archive", "client-delivery"][i % 4],
-    duration: `${(i % 5) + 1}m ${(i * 7) % 60}s`,
-    fileSize: asset.fileSize,
-    checks: [
-      { name: "Geometry Validation", passed: i % 5 !== 3 },
-      { name: "Texture Resolution", passed: i % 7 !== 4 },
-      { name: "Naming Convention", passed: true },
-      { name: "Dependencies Resolved", passed: i % 3 !== 2 },
-      { name: "File Size Limit", passed: i % 8 !== 5 },
-    ],
-    log: [
-      `[${String(8 + (i % 14)).padStart(2, "0")}:00] Starting publish pipeline...`,
-      `[${String(8 + (i % 14)).padStart(2, "0")}:01] Running validation checks...`,
-      `[${String(8 + (i % 14)).padStart(2, "0")}:02] ${i % 4 === 1 ? "ERROR: Geometry validation failed" : "All checks passed"}`,
-      `[${String(8 + (i % 14)).padStart(2, "0")}:03] ${i % 4 === 1 ? "Publish aborted" : "Publishing to " + ["production", "staging", "archive", "client-delivery"][i % 4]}...`,
-      `[${String(8 + (i % 14)).padStart(2, "0")}:04] ${i % 4 === 1 ? "" : "Publish complete. Notifying downstream."}`,
-    ].filter(Boolean),
-  });
-}
 
 // --- Workflows & Runs -------------------------------------------------------
 
