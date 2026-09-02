@@ -167,26 +167,44 @@ function findDepartmentPaceInsight(): AIInsight | null {
   };
 }
 
-/** Finds the non-complete project carrying the highest studio-assigned risk score. */
-function findProjectRiskInsight(): AIInsight | null {
-  const candidates = PROJECTS.filter((p) => p.status !== "COMPLETE").sort(
-    (a, b) => b.riskScore - a.riskScore,
-  );
-  const top = candidates[0];
-  if (!top) return null;
-
-  const shots = SHOTS.filter((s) => s.projectId === top.id);
+function computeProjectRiskScore(projectId: string): {
+  score: number;
+  flaggedShots: number;
+  totalShots: number;
+} {
+  const shots = SHOTS.filter((s) => s.projectId === projectId);
+  if (shots.length === 0) return { score: 0, flaggedShots: 0, totalShots: 0 };
   const flaggedShots = shots.filter(
     (s) => s.status === "bottleneck" || s.status === "at-risk",
   ).length;
+  return {
+    score: Math.round((flaggedShots / shots.length) * 100),
+    flaggedShots,
+    totalShots: shots.length,
+  };
+}
+
+/** Finds the non-complete project carrying the highest studio-assigned risk score. */
+function findProjectRiskInsight(): AIInsight | null {
+  const ranked = PROJECTS.filter((p) => p.status !== "COMPLETE")
+    .map((p) => ({ project: p, risk: computeProjectRiskScore(p.id) }))
+    .filter((r) => r.risk.totalShots > 0)
+    .sort((a, b) => b.risk.score - a.risk.score);
+
+  const top = ranked[0];
+  if (!top || top.risk.score === 0) return null;
+
+  const deadlineClause = top.project.endDate
+    ? ` against a ${new Date(top.project.endDate).toLocaleDateString()} deadline`
+    : "";
 
   return {
-    id: `risk-${top.id}`,
-    severity: top.riskScore >= 60 ? "critical" : "warning",
-    title: `Elevated Risk: ${top.name}`,
-    reasoning: `Flagged because ${top.name} carries the highest studio risk score (${top.riskScore}/100) among non-complete projects — ${top.progress}% complete against a ${new Date(top.dueDate).toLocaleDateString()} deadline, with ${flaggedShots} of ${shots.length} shots in a bottleneck or at-risk state.`,
+    id: `risk-${top.project.id}`,
+    severity: top.risk.score >= 60 ? "critical" : "warning",
+    title: `Elevated Risk: ${top.project.name}`,
+    reasoning: `Flagged because ${top.project.name} carries the highest studio risk score (${top.risk.score}/100) among non-complete projects${deadlineClause}, with ${top.risk.flaggedShots} of ${top.risk.totalShots} shots in a bottleneck or at-risk state.`,
     actionLabel: "View Project",
-    actionHref: `/projects/${top.id}`,
+    actionHref: `/projects/${top.project.id}`,
   };
 }
 
