@@ -876,7 +876,27 @@ export default function Analytics() {
                       },
                       {
                         label: "Avg Duration",
-                        value: "3m 45s",
+                        value: (() => {
+                          if (filteredPublishLogs.length === 0) return "—";
+                          const totalSeconds = filteredPublishLogs.reduce(
+                            (sum, p) => {
+                              const match = p.duration.match(
+                                /(\d+)m\s*(\d+)s/,
+                              );
+                              if (!match) return sum;
+                              return (
+                                sum +
+                                Number(match[1]) * 60 +
+                                Number(match[2])
+                              );
+                            },
+                            0,
+                          );
+                          const avgSeconds = Math.round(
+                            totalSeconds / filteredPublishLogs.length,
+                          );
+                          return `${Math.floor(avgSeconds / 60)}m ${avgSeconds % 60}s`;
+                        })(),
                         color: "text-blue-500",
                       },
                       {
