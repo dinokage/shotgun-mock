@@ -1,5 +1,42 @@
 # Forge — Final Phase: RBAC/Login Redesign, Admin Onboarding, Client Review, Filter/Admin Parity, Security & Deploy Readiness — Design Spec
 
+## 0a. Status update (2026-09-02)
+
+Sub-projects A (unified login + client access-link flow), B (Lead/Manager
+merge + review-chain collapse), and C (route-level RBAC page visibility)
+are **built, reviewed, and live-verified** — executed as the
+`rbac-login-core` plan (`docs/superpowers/plans/2026-09-01-rbac-login-core.md`,
+9 tasks, worktree `rbac-login-core`, HEAD `eb4162d`, not yet merged to
+`main`). A live crash in the global command-palette search (undefined
+`shot.sequence`/null `user.title`) was found and fixed during that plan's
+verification pass — unrelated to A/B/C but real and blocking.
+
+The user sent a second, independent requirements checklist (2026-09-02)
+that substantially reconfirms A/B/C's already-built direction and adds
+concrete detail to the still-unbuilt Sub-projects D/E/G/J below, plus
+several genuinely new items captured as Sub-projects K-Q (§15-21). Two
+items from that checklist required the user's direct input before they
+could be specified, both now resolved:
+
+- **Sub-project G's bootstrap credentials changed**: the email/password
+  given this time (`krishna.akshath11@gmail.com` / a password supplied
+  directly in chat) supersedes the earlier `kris_sym` credentials — the
+  user confirmed the new pair is the real one. §8 below is updated
+  accordingly. As before, the password itself is never written to this
+  file or any other committed file in plaintext.
+- **AI insights direction**: the checklist asked for "reinforced
+  learning"-based insights. Confirmed with the user this means
+  rule-based/statistical analysis over real project data (bottlenecks,
+  overdue tasks, review-cycle time, at-risk counts), not literal
+  reinforcement learning (a multi-week ML undertaking that doesn't fit
+  this app). See Sub-project N.
+
+**Reversal of an earlier exclusion**: §0's original text (below) says an
+eraser annotation tool was "explicitly NOT requested" and dropped from a
+fabricated draft. The 2026-09-02 checklist explicitly asks for one. This
+is a genuine new request, not a re-fabrication of the earlier rogue-fork
+incident — see Sub-project M.
+
 ## 0. Context and constraints
 
 This is the next phase after the full-backend-build-out plan (schema, all
@@ -317,12 +354,14 @@ Four remaining frontend-mock surfaces the user named directly:
   tables — a true blank slate, matching "wipe everything including admin."
 - **Step 2**: The same script then creates exactly one tenant, one
   `admin`-role `tenant_roles` row with every capability granted, and one
-  `users` row: email `kris_sym`, the password the user supplied in chat —
-  **hashed with argon2 via the same `hashPassword()` helper `routes/users.ts`
-  already uses**, never touching or logging the plaintext value anywhere
-  outside this one script run. This is a one-time bootstrap script, run
-  once against the target database (local now, the company server at
-  deploy time) — not part of the normal seed/migrate flow.
+  `users` row: email `krishna.akshath11@gmail.com` (superseding the
+  earlier `kris_sym` credentials per §0a — the user confirmed this pair is
+  the real one), the password the user supplied in chat — **hashed with
+  argon2 via the same `hashPassword()` helper `routes/users.ts` already
+  uses**, never touching or logging the plaintext value anywhere outside
+  this one script run. This is a one-time bootstrap script, run once
+  against the target database (local now, the company server at deploy
+  time) — not part of the normal seed/migrate flow.
 - **Step 3**: From that single admin login, every other employee
   (production heads, producers, leads, artists) and every department gets
   created through `admin.tsx`'s already-real Create User flow — this
@@ -441,7 +480,148 @@ deliberately, not colliding).
 
 ---
 
-## 13. Explicitly out of scope (this phase)
+## 13. Sub-project K: Marketplace locked to admin-only
+
+The 2026-09-02 checklist is explicit: the plugin/tool marketplace (Nuke,
+Houdini, Blender, Maya plugin choices) is an admin-only concern — no other
+role should reach it at all, not even `production_head`.
+
+- **Step 1**: `roleRouteAccess.ts` (built in the already-executed
+  Sub-project C) currently places `/marketplace` in the producer/lead tier
+  (`PRODUCTION_MANAGEMENT_ROUTES`). Move it out into a new, stricter tier —
+  `admin`-only, excluding even `production_head` (every other admin-tier
+  route in the existing map is shared with `production_head`; this is the
+  first genuinely admin-exclusive route, so it needs its own array rather
+  than reusing `STUDIO_ADMIN_ROUTES`).
+- **Step 2**: `Sidebar.tsx`'s nav filter already composes
+  `canAccessRoute` with the existing capability check — no new filtering
+  mechanism needed, just the route-map change above plus confirming no
+  nav-item-level capability grant (`store/permissions.ts`) independently
+  re-exposes the link to a role that shouldn't have it.
+- **Step 3**: Server-side — confirm (or add) tenant-scoped capability
+  gating on whatever `/api/marketplace*` routes exist today, per
+  Sub-project H's axiom (frontend hiding is never sufficient alone).
+
+## 14. Sub-project L: Notification deep-linking + top-bar declutter
+
+Two related navigation-polish items from the checklist:
+
+- **Step 1 — notification deep-linking**: clicking a notification in the
+  bell dropdown should navigate to the thing it's about (a task, a review,
+  a standup entry), not just mark it read. Requires checking the current
+  notification data model (does a stored notification already carry a
+  target entity type + id, or only a message string?) — if it doesn't,
+  add the minimal fields needed (`entityType`, `entityId`) so each
+  notification can resolve to a real route, then wire the click handler.
+- **Step 2 — top-bar declutter**: the checklist calls out the
+  "Nebula Animation Co." tenant switcher and the "Production Head • All
+  Depts" role/department indicator dropdown in the top bar as "clumsy,"
+  asking for their removal. Since this app is single-tenant per deployment
+  in practice (no multi-tenant switching UI is used anywhere else), the
+  tenant switcher is dead weight; the role/department indicator duplicates
+  information already visible elsewhere (sidebar context, profile). Remove
+  both from the top bar. If a tenant name still needs to appear somewhere
+  (e.g. browser tab title, a settings page), that's a one-line
+  relocation, not a feature loss.
+
+## 15. Sub-project M: Review tool additions
+
+- **Step 1 — eraser tool** (reinstated per §0a): the review player's
+  annotation/onion-layering surface needs an eraser mode alongside the
+  existing draw/shape/text tools, so a reviewer can remove their own
+  annotation strokes without clearing the whole layer. Scope: erase the
+  current user's own annotations on the current frame/layer — not a
+  moderation tool for erasing other people's marks.
+- **Step 2 — feedback tab visible to artists**: the review page's
+  feedback/comments (currently given by client, production manager, and
+  leads) needs to be reachable by the artist whose work is under review —
+  confirm the current review UI's tab/section structure (a "View Review
+  Feedback" surface already exists in `TaskDrawer`, live-verified this
+  session) and extend its visibility to the artist role specifically,
+  read-only if artists shouldn't be able to post feedback themselves
+  (matches the general pattern: artists execute and see outcomes, they
+  don't gate their own review).
+
+## 16. Sub-project N: Admin dashboard separation + rule-based AI insights
+
+- **Step 1 — admin's own dashboard**: today `admin` and `production_head`
+  share the same landing route and the same Studio Overview dashboard
+  (confirmed live this session). Per the checklist, the admin's actual
+  job is narrower and different in kind: add employees/departments,
+  monitor activity, never assign or hold tasks. Give `admin` its own
+  dashboard route and view — headcount/roster health, recent
+  activity/audit feed, department status at a glance — distinct from the
+  production-management dashboard `production_head`/`producer`/`lead`
+  see. This is a new page, not a filtered version of the existing one.
+- **Step 2 — admin never assigns tasks**: cross-references Sub-project B
+  Step 4 (leadership can't be a task's *assignee*) and Sub-project H — add
+  the explicit product-level constraint that `admin` also can't be a task
+  *assigner* through the UI (no "Assign Task" action surfaced for the
+  admin role), consistent with "he just adds people and monitors."
+- **Step 3 — real AI insights, not literal RL** (per §0a): replace the
+  existing "Forge AI Insights" panel (confirmed live this session to
+  already contain a real bug — it renders `undefined/100` for a risk
+  score and `Invalid Date` for deadlines) with insights computed from
+  real project data: overdue-task counts, review-cycle-time averages,
+  bottleneck/at-risk shot counts, per-department completion trends —
+  deterministic aggregation queries, optionally summarized by an LLM call
+  over the aggregated numbers for readable prose, not a trained model.
+
+## 17. Sub-project O: Tracking-grid Excel import
+
+The tracking grid should start empty (Sub-project G's data reset) and be
+populated either through normal task/shot creation or by importing a
+client-supplied spreadsheet.
+
+- **Step 1**: `POST /api/tracking/import` (tenant-scoped, capability-gated
+  to whichever role can create shots today) accepting an uploaded
+  `.xlsx`/`.csv` file, parsed server-side (a small, well-maintained
+  library — e.g. `exceljs` for `.xlsx`, or a CSV parser for `.csv` — no
+  client-side spreadsheet parsing).
+- **Step 2** (user-confirmed 2026-09-02): a **fixed template contract** —
+  Forge provides a downloadable `.xlsx` template with the exact expected
+  headers (Shot, Episode, Sequence, Status, Assignee email, Complexity,
+  etc. — the concrete column list gets finalized against the real `shots`
+  schema at plan-writing time). The import route validates the uploaded
+  file's headers against this contract and rejects (with a clear error
+  naming the missing/unexpected columns) rather than guessing at a
+  mismatch. No column-mapping UI this phase.
+- **Step 3**: Each row creates or updates a shot (matched by a stable key
+  — shot code within its sequence/episode) via the existing shot
+  create/update logic, not a separate bulk-insert bypassing existing
+  validation.
+
+## 18. Sub-project P: Presence/live-tracking scoped to active reviews
+
+The checklist asks to remove the "live tracking feature" as a global,
+always-on presence indicator (a floating name-tag cursor, seen in one of
+the user's screenshots) and instead show it **only** while a review is
+actively, simultaneously happening — i.e. scoped to the review player,
+visible only when 2+ people are viewing/annotating the same version at
+the same time, not as an app-wide presence layer.
+
+- **Step 1**: Locate the current global presence/cursor-tracking
+  implementation (likely a websocket or polling-based store broadcasting
+  cursor position app-wide) and remove its global mount point.
+- **Step 2**: Re-implement presence scoped to the review player component
+  only, active for the duration a session has that specific version's
+  review open — reuses whatever real-time transport the app already has
+  (confirm at plan-writing time whether one exists yet, or whether this is
+  new infrastructure shared with Sub-project J's standup real-time fix).
+
+## 19. Sub-project Q: Profile settings customization
+
+The checklist flags the profile/settings page as currently empty/
+non-functional. Every employee role should be able to customize their own
+profile: display name, avatar, and whatever preferences already have a
+column to hold them (e.g. notification preferences, if Sub-project L adds
+any). Scope this to fields the `users` table (or a new
+`user_preferences` table, if warranted) can actually support — not a
+speculative settings surface with no backing data.
+
+---
+
+## 20. Explicitly out of scope (this phase)
 
 - DCC integration further testing (already done, working); opening an
   uploaded review video in a DCC (Sub-project D's upload feature is for
@@ -451,13 +631,13 @@ deliberately, not colliding).
   row) doesn't block adding an AD-backed login method later, but doesn't
   build one now.
 - New Forge logo asset and further light-theme polish — still an open
-  input needed from the user (§14), not built against a guess.
+  input needed from the user (§21), not built against a guess.
+- The 125-control ShotGrid dropdown/filter parity audit (§12) — its own
+  dedicated spec, as already noted there.
 
-## 14. Open questions for the user (spec-review gate)
+## 21. Open questions for the user (spec-review gate)
 
-All resolved except one:
-
-1. ~~Review-chain collapse~~ — confirmed, single `lead-review` gate.
+1. ~~Review-chain collapse~~ — confirmed, single `lead-review` gate. Built.
 2. ~~Video/media upload~~ — confirmed, real file upload (one new
    capability); URL-paste stays as the existing path.
 3. **Sub-project F still needs**: the actual new logo (file or direction)
@@ -467,3 +647,11 @@ All resolved except one:
    plan's execution.
 4. ~~Deploy target~~ — confirmed, no specific pipeline tool this phase;
    Sub-project I is a checklist only.
+5. ~~Admin bootstrap credentials~~ — confirmed 2026-09-02,
+   `krishna.akshath11@gmail.com`, supersedes the earlier `kris_sym` pair.
+6. ~~AI insights direction~~ — confirmed 2026-09-02, rule-based/
+   statistical, not literal reinforcement learning.
+7. ~~Sub-project O's column-mapping approach~~ — confirmed 2026-09-02,
+   fixed template contract, no mapping UI.
+
+All questions resolved except Sub-project F's logo/theme input (item 3).
