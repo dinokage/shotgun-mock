@@ -35,22 +35,63 @@ const ADMIN_NAME = "Krishna Akshath";
 const TENANT_NAME = "Nebula Animation Co.";
 const TENANT_SLUG = "nebula";
 
-const ALL_CAPABILITIES = [
-  "create_tasks",
-  "edit_tasks",
-  "delete_tasks",
-  "assign_tasks",
-  "submit_reviews",
-  "approve_reviews",
-  "manage_members",
-  "manage_roles",
-  "view_financials",
-  "edit_financials",
-  "manage_pipeline",
-  "manage_licenses",
-  "manage_integrations",
-  "broadcast_updates",
-] as const;
+// Matches artifacts/forge/src/store/permissions.ts's DEFAULT_PERMISSION_SCHEME
+// exactly. This app's RBAC logic (Role type, DEPARTMENT_LEADERSHIP_ROLES,
+// STUDIO_LEADERSHIP_ROLES, capability defaults, every route's
+// requireCapability check) is hardcoded around these six specific role
+// names -- there is no role-creation UI anywhere in the app (checked before
+// writing this), so a blank-slate reset that only creates "admin" leaves the
+// admin with no other role to invite or create a user into. All six roles
+// must exist from the start; zero USERS in them is what "blank slate" means
+// here, not "the role system itself is missing."
+const ROLE_CAPABILITIES: Record<string, readonly string[]> = {
+  admin: [
+    "create_tasks",
+    "edit_tasks",
+    "delete_tasks",
+    "assign_tasks",
+    "submit_reviews",
+    "approve_reviews",
+    "manage_members",
+    "manage_roles",
+    "view_financials",
+    "edit_financials",
+    "manage_pipeline",
+    "manage_licenses",
+    "manage_integrations",
+    "broadcast_updates",
+  ],
+  production_head: [
+    "create_tasks",
+    "edit_tasks",
+    "delete_tasks",
+    "assign_tasks",
+    "submit_reviews",
+    "approve_reviews",
+    "view_financials",
+    "edit_financials",
+    "manage_pipeline",
+    "broadcast_updates",
+  ],
+  producer: [
+    "create_tasks",
+    "edit_tasks",
+    "assign_tasks",
+    "submit_reviews",
+    "approve_reviews",
+    "manage_pipeline",
+    "broadcast_updates",
+  ],
+  lead: [
+    "create_tasks",
+    "edit_tasks",
+    "assign_tasks",
+    "submit_reviews",
+    "approve_reviews",
+  ],
+  artist: ["edit_tasks", "submit_reviews"],
+  client: ["approve_reviews"],
+};
 
 async function main() {
   if (process.env.NODE_ENV !== "development") {
@@ -81,7 +122,7 @@ async function main() {
   // or getting delete order wrong across 20+ tables by hand.
   await db.delete(tenantsTable);
 
-  console.log("Creating tenant, admin role, and admin user...");
+  console.log("Creating tenant, all six standard roles, and the admin user...");
   const tenantId = crypto.randomUUID();
   await db.insert(tenantsTable).values({
     id: tenantId,
@@ -89,20 +130,21 @@ async function main() {
     slug: TENANT_SLUG,
   });
 
-  const adminRoleId = crypto.randomUUID();
-  await db.insert(tenantRolesTable).values({
-    id: adminRoleId,
-    tenantId,
-    name: "admin",
-    isSystemDefault: true,
-  });
-
-  await db.insert(tenantRoleCapabilitiesTable).values(
-    ALL_CAPABILITIES.map((capabilityId) => ({
-      roleId: adminRoleId,
-      capabilityId,
-    })),
-  );
+  const roleIdByName: Record<string, string> = {};
+  for (const [roleName, capabilities] of Object.entries(ROLE_CAPABILITIES)) {
+    const roleId = crypto.randomUUID();
+    roleIdByName[roleName] = roleId;
+    await db.insert(tenantRolesTable).values({
+      id: roleId,
+      tenantId,
+      name: roleName,
+      isSystemDefault: true,
+    });
+    await db.insert(tenantRoleCapabilitiesTable).values(
+      capabilities.map((capabilityId) => ({ roleId, capabilityId })),
+    );
+  }
+  const adminRoleId = roleIdByName.admin;
 
   const hashedPassword = await hashPassword(password);
   await db.insert(usersTable).values({
@@ -117,7 +159,7 @@ async function main() {
   });
 
   console.log(
-    `Bootstrap complete. Tenant "${TENANT_NAME}" (${tenantId}) created with one admin user (${ADMIN_EMAIL}). Every other table is empty. Log in and use the admin panel to add employees and departments.`,
+    `Bootstrap complete. Tenant "${TENANT_NAME}" (${tenantId}) created with all six standard roles and one admin user (${ADMIN_EMAIL}). Every other table is empty. Log in and use the admin panel to invite/add employees and departments.`,
   );
   process.exit(0);
 }
