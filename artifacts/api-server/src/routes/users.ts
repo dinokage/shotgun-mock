@@ -9,12 +9,55 @@ import { eq, and, inArray } from "drizzle-orm";
 const STUDIO_LEADERSHIP_ROLES = ["admin", "production_head"];
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability } from "../middleware/rbac";
-import { hashPassword } from "../lib/auth";
+import { hashPassword, verifyPassword } from "../lib/auth";
 import * as crypto from "crypto";
+import * as fs from "fs";
+import * as path from "path";
+import multer from "multer";
 
 const router = Router();
 
 router.use(tenantAuthMiddleware);
+
+// Separate from uploads.ts's generic attachment endpoint on purpose: that
+// route forces every download as application/octet-stream + Content-
+// Disposition: attachment (correct there -- an arbitrary uploaded file must
+// never render inline, since an .html/.svg attachment served inline would
+// execute as same-origin stored XSS). An avatar has to render inline as an
+// <img>, which is safe here specifically because this route accepts nothing
+// but a whitelisted image mimetype -- an image byte stream can't execute as
+// script the way an uploaded HTML/SVG document could.
+const AVATAR_UPLOAD_DIR = path.join(
+  process.env.UPLOAD_DIR || "/app/uploads",
+  "avatars",
+);
+const AVATAR_MIME_EXT: Record<string, string> = {
+  "image/png": ".png",
+  "image/jpeg": ".jpg",
+  "image/webp": ".webp",
+  "image/gif": ".gif",
+};
+const avatarUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, _file, cb) => {
+      const tenantId = req.tenantId!;
+      const dir = path.join(AVATAR_UPLOAD_DIR, tenantId);
+      fs.mkdirSync(dir, { recursive: true });
+      cb(null, dir);
+    },
+    filename: (_req, file, cb) => {
+      cb(null, `${crypto.randomUUID()}${AVATAR_MIME_EXT[file.mimetype]}`);
+    },
+  }),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB -- a profile picture, not a DCC asset
+  fileFilter: (_req, file, cb) => {
+    if (!(file.mimetype in AVATAR_MIME_EXT)) {
+      cb(new Error("Only PNG, JPEG, WebP, or GIF images are allowed"));
+      return;
+    }
+    cb(null, true);
+  },
+});
 
 router.get("/", async (req, res) => {
   try {
@@ -179,6 +222,102 @@ router.patch("/me", async (req, res) => {
     req.log.error(err, "Failed to update profile");
     return res.status(500).json({ error: "Internal server error" });
   }
+});
+
+// Every imported-roster/newly-invited account starts on a shared studio
+// default password (the admin hands it out) with no way to change it -- this
+// is that missing self-service change. Deliberately its own route rather
+// than a field on PATCH /me: it requires proving the current password,
+// which the general profile-fields route has no business checking.
+router.put("/me/password", async (req, res) => {
+  try {
+    const tenantId = req.tenantId!;
+    const userId = req.userId;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res
+        .status(400)
+        .json({ error: "Missing currentPassword or newPassword" });
+    }
+    if (typeof newPassword !== "string" || newPassword.length < 8) {
+      return res
+        .status(400)
+        .json({ error: "New password must be at least 8 characters" });
+    }
+
+    const [user] = await db
+      .select()
+      .from(usersTable)
+      .where(and(eq(usersTable.id, userId), eq(usersTable.tenantId, tenantId)));
+    if (!user) return res.status(404).json({ error: "Not found" });
+
+    const isValid = await verifyPassword(currentPassword, user.hashedPassword);
+    if (!isValid) {
+      return res.status(401).json({ error: "Current password is incorrect" });
+    }
+
+    const hashedPassword = await hashPassword(newPassword);
+    await db
+      .update(usersTable)
+      .set({ hashedPassword })
+      .where(and(eq(usersTable.id, userId), eq(usersTable.tenantId, tenantId)));
+
+    return res.json({ ok: true });
+  } catch (err) {
+    req.log.error(err, "Failed to change password");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/me/avatar", (req, res) => {
+  avatarUpload.single("file")(req, res, async (err) => {
+    if (err) return res.status(400).json({ error: err.message });
+    if (!req.file) return res.status(400).json({ error: "No file provided" });
+
+    try {
+      const tenantId = req.tenantId!;
+      const userId = req.userId;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const url = `/api/users/me/avatar/${tenantId}/${req.file.filename}`;
+      const [updated] = await db
+        .update(usersTable)
+        .set({ avatar: url })
+        .where(and(eq(usersTable.id, userId), eq(usersTable.tenantId, tenantId)))
+        .returning();
+      if (!updated) return res.status(404).json({ error: "Not found" });
+
+      const { hashedPassword: _omit, ...user } = updated;
+      return res.status(201).json(user);
+    } catch (innerErr) {
+      req.log.error(innerErr, "Failed to save avatar");
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+});
+
+// Path-scoped by tenantId (defense in depth on top of the already-unguessable
+// UUID filename) and, unlike uploads.ts's generic file route, served with its
+// real image Content-Type and no forced Content-Disposition -- an <img> tag
+// needs to render this inline, and that's safe only because avatarUpload's
+// fileFilter above already rejects anything that isn't a whitelisted image
+// mimetype at write time.
+router.get("/me/avatar/:tenantId/:filename", (req, res) => {
+  const { tenantId, filename } = req.params;
+  if (tenantId !== req.tenantId) return res.status(404).end();
+  const safeName = path.basename(filename);
+  const filePath = path.join(AVATAR_UPLOAD_DIR, tenantId, safeName);
+  if (!fs.existsSync(filePath)) return res.status(404).end();
+
+  const ext = path.extname(safeName).toLowerCase();
+  const contentType =
+    Object.entries(AVATAR_MIME_EXT).find(([, e]) => e === ext)?.[0] ||
+    "application/octet-stream";
+  res.setHeader("Content-Type", contentType);
+  res.setHeader("Cache-Control", "private, max-age=3600");
+  return res.sendFile(filePath);
 });
 
 router.patch("/:id", requireCapability("manage_members"), async (req, res) => {

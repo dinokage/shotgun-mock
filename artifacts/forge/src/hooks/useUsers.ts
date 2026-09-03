@@ -67,3 +67,41 @@ export function useUpdateProfile() {
     },
   });
 }
+
+// Self-service password change -- every imported-roster/newly-invited
+// account starts on a shared studio default password with no prior way to
+// change it. Requires the current password (PUT /users/me/password verifies
+// it server-side); ApiError's message here is server-authored ("Current
+// password is incorrect", "New password must be at least 8 characters") so
+// callers can surface it directly rather than a generic failure toast.
+export function useChangePassword() {
+  return useMutation({
+    mutationFn: (body: { currentPassword: string; newPassword: string }) =>
+      apiClient.put<{ ok: true }>("/users/me/password", body),
+  });
+}
+
+// Mirrors useUpdateProfile's cache/store sync -- POST /users/me/avatar
+// returns the full updated user row (like PATCH /users/me), just via a
+// multipart upload instead of a JSON body.
+export function useUploadAvatar() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      return apiFetch<UserDTO>("/users/me/avatar", {
+        method: "POST",
+        body: formData,
+      });
+    },
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      useAuthStore.getState().updateCurrentUser({
+        name: updated.name,
+        title: updated.title ?? undefined,
+        avatar: updated.avatar ?? undefined,
+      });
+    },
+  });
+}

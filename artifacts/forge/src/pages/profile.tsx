@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useParams, Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,13 +22,19 @@ import {
   ArrowLeft,
   ArrowUpRight,
   Pencil,
+  KeyRound,
 } from "lucide-react";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { PriorityChip } from "@/components/shared/PriorityChip";
 import { useUIStore } from "@/store/ui";
 import { useAuthStore } from "@/store/auth";
 import { useCapability } from "@/hooks/use-capability";
-import { useUpdateProfile } from "@/hooks/useUsers";
+import {
+  useUpdateProfile,
+  useChangePassword,
+  useUploadAvatar,
+} from "@/hooks/useUsers";
+import { ApiError } from "@/lib/apiClient";
 import { useToast } from "@/hooks/use-toast";
 import { getAssigneeId, getProjectId, useEntityProjectMap } from "@/lib/taskShape";
 import {
@@ -48,6 +54,13 @@ export default function Profile() {
   const canAssignTasks = useCapability("assign_tasks");
   const { toast } = useToast();
   const updateProfile = useUpdateProfile();
+  const changePassword = useChangePassword();
+  const uploadAvatar = useUploadAvatar();
+  const avatarFileInputRef = useRef<HTMLInputElement>(null);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const users = useUserStore((s) => s.users);
   const tasks = useTasksStore((s) => s.tasks);
   const projects = useProjectStore((s) => s.projects);
@@ -164,6 +177,53 @@ export default function Profile() {
     }
   };
 
+  const handleAvatarFileChange = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      const updated = await uploadAvatar.mutateAsync(file);
+      setEditAvatar(updated.avatar ?? "");
+      toast({ title: "Profile picture updated" });
+    } catch (err: any) {
+      toast({
+        title: "Failed to upload profile picture",
+        description:
+          err instanceof ApiError ? err.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      toast({
+        title: "Passwords don't match",
+        description: "New password and confirmation must match.",
+        variant: "destructive",
+      });
+      return;
+    }
+    try {
+      await changePassword.mutateAsync({ currentPassword, newPassword });
+      toast({ title: "Password changed" });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setIsChangingPassword(false);
+    } catch (err: any) {
+      toast({
+        title: "Failed to change password",
+        description:
+          err instanceof ApiError ? err.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       {/* Back link if navigating from directory */}
@@ -188,12 +248,30 @@ export default function Profile() {
           <CardContent>
             <form onSubmit={handleSaveEdit} className="space-y-4">
               <div className="flex flex-col md:flex-row md:items-center gap-6">
-                <Avatar className="w-20 h-20 border-4 shadow-sm">
-                  <AvatarImage src={editAvatar || undefined} alt={editName} />
-                  <AvatarFallback className="text-2xl">
-                    {(editName || user.name).charAt(0)}
-                  </AvatarFallback>
-                </Avatar>
+                <div className="flex flex-col items-center gap-2 shrink-0">
+                  <Avatar className="w-20 h-20 border-4 shadow-sm">
+                    <AvatarImage src={editAvatar || undefined} alt={editName} />
+                    <AvatarFallback className="text-2xl">
+                      {(editName || user.name).charAt(0)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <input
+                    ref={avatarFileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    className="hidden"
+                    onChange={handleAvatarFileChange}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={uploadAvatar.isPending}
+                    onClick={() => avatarFileInputRef.current?.click()}
+                  >
+                    {uploadAvatar.isPending ? "Uploading..." : "Upload Photo"}
+                  </Button>
+                </div>
                 <div className="flex-1 space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="edit-name">Name</Label>
@@ -219,7 +297,7 @@ export default function Profile() {
                       id="edit-avatar"
                       value={editAvatar}
                       onChange={(e) => setEditAvatar(e.target.value)}
-                      placeholder="https://..."
+                      placeholder="https://... (or use Upload Photo above)"
                     />
                   </div>
                 </div>
@@ -381,6 +459,103 @@ export default function Profile() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Change Password -- self-only. Every imported-roster/invited
+              account starts on a shared studio default password with no
+              prior way off it; this is that missing self-service change. */}
+          {isMe && (
+            <Card className="border-border/50">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm text-muted-foreground uppercase tracking-wider flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <KeyRound className="w-4 h-4" /> Password
+                  </span>
+                  {!isChangingPassword && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => setIsChangingPassword(true)}
+                    >
+                      Change
+                    </Button>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              {isChangingPassword && (
+                <CardContent>
+                  <form
+                    onSubmit={handleChangePassword}
+                    className="space-y-3"
+                  >
+                    <div className="space-y-1.5">
+                      <Label htmlFor="current-password" className="text-xs">
+                        Current Password
+                      </Label>
+                      <Input
+                        id="current-password"
+                        type="password"
+                        value={currentPassword}
+                        onChange={(e) => setCurrentPassword(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="new-password" className="text-xs">
+                        New Password
+                      </Label>
+                      <Input
+                        id="new-password"
+                        type="password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        minLength={8}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="confirm-password" className="text-xs">
+                        Confirm New Password
+                      </Label>
+                      <Input
+                        id="confirm-password"
+                        type="password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        minLength={8}
+                        required
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 justify-end pt-1">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={changePassword.isPending}
+                        onClick={() => {
+                          setIsChangingPassword(false);
+                          setCurrentPassword("");
+                          setNewPassword("");
+                          setConfirmPassword("");
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="submit"
+                        size="sm"
+                        disabled={changePassword.isPending}
+                      >
+                        {changePassword.isPending
+                          ? "Saving..."
+                          : "Save Password"}
+                      </Button>
+                    </div>
+                  </form>
+                </CardContent>
+              )}
+            </Card>
+          )}
 
           {/* Skills */}
           <Card className="border-border/50">
