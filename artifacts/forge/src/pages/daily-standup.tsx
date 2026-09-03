@@ -30,7 +30,6 @@ import {
   PlayCircle,
   Plus,
   Calendar,
-  MessageSquare,
   X,
   FileText,
   Radio,
@@ -83,11 +82,6 @@ import {
   sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-
-// Stable id for the one hardcoded "mock" playblast feed card that has an
-// approvals affordance, so approvals can be attached to real, persisted
-// store state (store/standups.ts) instead of local-only component state.
-const PLAYBLAST_FEED_ID = "feed-robot-walk-playblast";
 
 function PlaylistItem({
   task,
@@ -310,8 +304,6 @@ export default function DailyStandup() {
   const removeFromPlaylistStore = useStandupsStore((s) => s.removeFromPlaylist);
   const setPlaylistStore = useStandupsStore((s) => s.setPlaylist);
   const clearPlaylistStore = useStandupsStore((s) => s.clearPlaylist);
-  const feedApprovals = useStandupsStore((s) => s.feedApprovals);
-  const toggleFeedApproval = useStandupsStore((s) => s.toggleFeedApproval);
   const broadcasts = useBroadcastsStore((s) => s.broadcasts);
   const { setActiveTaskDrawer } = useUIStore();
   const isLeadership = useIsLeadership();
@@ -329,8 +321,6 @@ export default function DailyStandup() {
   const [logNote, setLogNote] = useState("");
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
-  const [videoPreviewOpen, setVideoPreviewOpen] = useState(false);
-  const [feedCommentsOpen, setFeedCommentsOpen] = useState(false);
   // Per-member hours-today, reported up from each PayrollRow (which fetches
   // its own member's logs via useDailyLogsByUser — see that component's
   // comment). Feeds both the payroll table and the CSV export, which can't
@@ -392,11 +382,6 @@ export default function DailyStandup() {
         .map((id) => tasks.find((t) => t.id === id))
         .filter((t): t is (typeof tasks)[number] => Boolean(t)),
     [playlistIds, tasks],
-  );
-
-  const playblastApprovals = feedApprovals[PLAYBLAST_FEED_ID] ?? [];
-  const hasApprovedPlayblast = playblastApprovals.includes(
-    currentUser?.id ?? "",
   );
 
   // A task is "awaiting lead/supervisor review" once it's either been
@@ -1282,216 +1267,6 @@ export default function DailyStandup() {
                   </CardContent>
                 </Card>
               ))}
-
-              {/* Mock Feed Item 1 (With Image/Video) */}
-              {(STUDIO_LEADERSHIP_ROLES.includes(
-                currentUser.role,
-              ) ||
-                currentUser.departmentId === users[2]?.departmentId) && (
-                <Card className="border-border/50 bg-card overflow-hidden">
-                  <CardContent className="p-0">
-                    <div className="p-4 border-b border-border/50 flex items-start gap-3">
-                      <Avatar className="w-10 h-10 border border-border/50">
-                        <AvatarImage src={users[2]?.avatar} />
-                        <AvatarFallback>A</AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1">
-                        <div className="flex items-baseline justify-between">
-                          <div className="font-semibold text-sm">
-                            {users[2]?.name}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            2 hours ago
-                          </div>
-                        </div>
-                        <div className="text-xs text-primary mb-2 flex items-center gap-1">
-                          <Badge
-                            variant="outline"
-                            className="text-[10px] h-5 border-primary/30 bg-primary/10"
-                          >
-                            Anim: Robot Walk Cycle
-                          </Badge>
-                          <span className="text-muted-foreground ml-1">
-                            logged 8h
-                          </span>
-                        </div>
-                        <p className="text-sm text-foreground/90">
-                          Finished blocking out the main walk cycle for the hero
-                          robot. Timing feels much better now. I've attached a
-                          quick playblast for review. Let me know if the weight
-                          distribution looks right on the left leg!
-                        </p>
-                      </div>
-                    </div>
-                    {/* Media Attachment */}
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      aria-label="Open playblast preview"
-                      className="bg-black relative aspect-video group cursor-pointer"
-                      onClick={() => setVideoPreviewOpen(true)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          setVideoPreviewOpen(true);
-                        }
-                      }}
-                    >
-                      {/* Placeholder image from artifact */}
-                      <img
-                        src="/src/assets/daily_update_video_thumbnail.png"
-                        alt="Playblast Thumbnail"
-                        className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
-                      />
-
-                      {/* Play Button Overlay */}
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="w-12 h-12 bg-primary/90 text-primary-foreground rounded-full flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
-                          <PlayCircle className="w-6 h-6" />
-                        </div>
-                      </div>
-                      <div className="absolute bottom-2 right-2 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded">
-                        0:12
-                      </div>
-                    </div>
-                    <Dialog
-                      open={videoPreviewOpen}
-                      onOpenChange={setVideoPreviewOpen}
-                    >
-                      <DialogContent className="sm:max-w-2xl">
-                        <DialogHeader>
-                          <DialogTitle>
-                            Anim: Robot Walk Cycle — Playblast
-                          </DialogTitle>
-                        </DialogHeader>
-                        <div className="bg-black rounded-md overflow-hidden aspect-video">
-                          <img
-                            src="/src/assets/daily_update_video_thumbnail.png"
-                            alt="Playblast Thumbnail"
-                            className="w-full h-full object-contain"
-                          />
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          Full video playback isn't available in this
-                          environment yet — this is the review thumbnail. Once
-                          the media server is connected, this will stream the
-                          actual playblast.
-                        </p>
-                      </DialogContent>
-                    </Dialog>
-
-                    {/* Feed Item Footer / Interactions */}
-                    <div className="p-3 bg-muted/20 flex gap-4 text-xs font-medium text-muted-foreground">
-                      <button
-                        className={cn(
-                          "flex items-center gap-1.5 hover:text-primary transition-colors",
-                          hasApprovedPlayblast && "text-primary",
-                        )}
-                        onClick={() =>
-                          toggleFeedApproval(PLAYBLAST_FEED_ID, currentUser.id)
-                        }
-                      >
-                        <CheckCircle2
-                          className={cn(
-                            "w-4 h-4",
-                            hasApprovedPlayblast && "fill-primary/20",
-                          )}
-                        />{" "}
-                        {playblastApprovals.length} Approval
-                        {playblastApprovals.length === 1 ? "" : "s"}
-                      </button>
-                      <button
-                        className={cn(
-                          "flex items-center gap-1.5 hover:text-primary transition-colors",
-                          feedCommentsOpen && "text-primary",
-                        )}
-                        onClick={() => setFeedCommentsOpen((prev) => !prev)}
-                      >
-                        <MessageSquare className="w-4 h-4" /> 2 Comments
-                      </button>
-                    </div>
-                    {feedCommentsOpen && (
-                      <div className="px-4 pb-4 pt-1 space-y-2 border-t border-border/50 bg-muted/10">
-                        <div className="flex items-start gap-2 pt-3 text-xs">
-                          <Avatar className="w-6 h-6 shrink-0">
-                            <AvatarImage src={users[1]?.avatar} />
-                            <AvatarFallback>
-                              {users[1]?.name.charAt(0)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <span className="font-semibold">
-                              {users[1]?.name}
-                            </span>{" "}
-                            <span className="text-muted-foreground">
-                              Weight looks great now, ship it.
-                            </span>
-                          </div>
-                        </div>
-                        <div className="flex items-start gap-2 text-xs">
-                          <Avatar className="w-6 h-6 shrink-0">
-                            <AvatarImage src={users[2]?.avatar} />
-                            <AvatarFallback>
-                              {users[2]?.name.charAt(0)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <span className="font-semibold">
-                              {users[2]?.name}
-                            </span>{" "}
-                            <span className="text-muted-foreground">
-                              Agreed, left leg reads much better.
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Mock Feed Item 2 (Text Only) */}
-              {(STUDIO_LEADERSHIP_ROLES.includes(
-                currentUser.role,
-              ) ||
-                currentUser.departmentId === users[1]?.departmentId) && (
-                <Card className="border-border/50 bg-card overflow-hidden">
-                  <CardContent className="p-0">
-                    <div className="p-4 flex items-start gap-3">
-                      <Avatar className="w-10 h-10 border border-border/50">
-                        <AvatarImage src={users[1]?.avatar} />
-                        <AvatarFallback>A</AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1">
-                        <div className="flex items-baseline justify-between">
-                          <div className="font-semibold text-sm">
-                            {users[1]?.name}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            4 hours ago
-                          </div>
-                        </div>
-                        <div className="text-xs text-primary mb-2 flex items-center gap-1">
-                          <Badge
-                            variant="outline"
-                            className="text-[10px] h-5 border-blue-500/30 text-blue-500 bg-blue-500/10"
-                          >
-                            Layout: Bridge Sequence
-                          </Badge>
-                          <span className="text-muted-foreground ml-1">
-                            logged 4h
-                          </span>
-                        </div>
-                        <p className="text-sm text-foreground/90">
-                          Camera tracking is finally matching the plate. Will
-                          push the USD to the farm tonight so lighting can pick
-                          it up tomorrow morning.
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
             </div>
           </div>
         </TabsContent>
