@@ -122,107 +122,24 @@ export function getPlaceholderThumbnail(
 }
 
 // This mock has no real render/transcode pipeline, so there's no actual
-// per-shot media file to stream. This office network has no internet
+// per-shot media file to stream, and this office network has no internet
 // access, so a `<video src="https://...">` pointed at a public CDN (the
-// previous approach) would show a blank/broken player for every real user
-// -- there's nothing to fall back to. Instead, generate a small pool of
-// short, looping "preview" clips entirely client-side (canvas -> the
-// existing seeded SVG art -> MediaRecorder -> a same-origin blob: URL) once,
-// then deterministically pick from that pool by seed, exactly like the old
-// remote-URL pool did -- distinct playback sources across shots, zero
-// network dependency. Shared between the client review portal, the review
-// annotation tool, and the delivery viewer so all three get the same clip
-// for the same shot/version.
-const VIDEO_POOL_SIZE = 5;
-const VIDEO_WIDTH = 640;
-const VIDEO_HEIGHT = 360;
-const VIDEO_DURATION_MS = 4000;
-const VIDEO_FPS = 12;
-
-let videoPoolPromise: Promise<string[]> | null = null;
-
-function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error("Failed to decode placeholder art"));
-    img.src = src;
-  });
-}
-
-async function renderPlaceholderClip(seed: number): Promise<string> {
-  const canvas = document.createElement("canvas");
-  canvas.width = VIDEO_WIDTH;
-  canvas.height = VIDEO_HEIGHT;
-  const ctx = canvas.getContext("2d");
-  const captureStream = (
-    canvas as HTMLCanvasElement & { captureStream?: (fps?: number) => MediaStream }
-  ).captureStream;
-  if (!ctx || !captureStream || typeof MediaRecorder === "undefined") {
-    // No canvas-recording support in this browser -- fall back to a static
-    // frame data URI. <video> can't play a still image, but callers already
-    // treat an empty/failed src as "show the poster" (see usePlaceholderVideoSrc).
-    throw new Error("MediaRecorder/captureStream unsupported");
-  }
-  const img = await loadImage(getPlaceholderThumbnail(seed, VIDEO_WIDTH, VIDEO_HEIGHT));
-
-  const stream = captureStream.call(canvas, VIDEO_FPS);
-  const mimeType = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"].find(
-    (t) => MediaRecorder.isTypeSupported?.(t),
-  );
-  const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-  const chunks: Blob[] = [];
-  recorder.ondataavailable = (e) => {
-    if (e.data.size > 0) chunks.push(e.data);
-  };
-  const stopped = new Promise<void>((resolve) => {
-    recorder.onstop = () => resolve();
-  });
-
-  recorder.start();
-  const totalFrames = Math.round((VIDEO_DURATION_MS / 1000) * VIDEO_FPS);
-  const frameDelay = 1000 / VIDEO_FPS;
-  for (let i = 0; i < totalFrames; i++) {
-    const t = i / totalFrames;
-    // Slow pan/zoom so the loop reads as motion, not a frozen frame.
-    const scale = 1.05 + 0.04 * Math.sin(t * Math.PI * 2);
-    ctx.clearRect(0, 0, VIDEO_WIDTH, VIDEO_HEIGHT);
-    ctx.save();
-    ctx.translate(VIDEO_WIDTH / 2, VIDEO_HEIGHT / 2);
-    ctx.scale(scale, scale);
-    ctx.drawImage(img, -VIDEO_WIDTH / 2, -VIDEO_HEIGHT / 2, VIDEO_WIDTH, VIDEO_HEIGHT);
-    ctx.restore();
-    // eslint-disable-next-line no-await-in-loop -- frames must be paced in real time for the recorder to capture them
-    await new Promise((r) => setTimeout(r, frameDelay));
-  }
-  recorder.stop();
-  await stopped;
-  stream.getTracks().forEach((t) => t.stop());
-
-  const blob = new Blob(chunks, { type: "video/webm" });
-  return URL.createObjectURL(blob);
-}
-
-function getVideoPool(): Promise<string[]> {
-  if (!videoPoolPromise) {
-    videoPoolPromise = Promise.all(
-      Array.from({ length: VIDEO_POOL_SIZE }, (_, i) => renderPlaceholderClip(i * 97 + 13)),
-    );
-  }
-  return videoPoolPromise;
-}
-
-/**
- * Resolves to a same-origin blob: URL for a short looping placeholder clip,
- * or undefined if this browser can't record canvas video (very old browsers)
- * or hasn't finished generating the pool yet -- callers should fall back to
- * their poster image (`getPlaceholderThumbnail`) in the undefined case.
- */
-export async function getPlaceholderVideoSrc(seed: number): Promise<string | undefined> {
-  try {
-    const pool = await getVideoPool();
-    return pool[Math.abs(seed) % pool.length];
-  } catch {
-    return undefined;
-  }
+// original approach) would show a blank/broken player for every real user.
+//
+// An earlier version of this function tried to synthesize a short looping
+// clip entirely client-side (canvas -> the seeded SVG art ->
+// MediaRecorder -> a blob: URL). That produced a byte-valid WebM file, but
+// canvas.captureStream() reliability turned out to vary across browser/GPU
+// configurations -- it silently produced zero decodable video frames in
+// testing (readyState stuck at HAVE_NOTHING indefinitely, no error event),
+// and there was no reliable way to verify it would behave differently on
+// the actual office deployment's browsers. A placeholder that might not
+// even play is worse than no placeholder: callers already treat `undefined`
+// here as "show the static seeded thumbnail instead" (see
+// usePlaceholderVideoSrc and every call site), which is honest about there
+// being no real footage yet rather than risking a broken video element.
+export async function getPlaceholderVideoSrc(
+  _seed: number,
+): Promise<string | undefined> {
+  return undefined;
 }

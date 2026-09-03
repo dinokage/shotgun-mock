@@ -1779,14 +1779,22 @@ export default function Review() {
                           const isDCC = !isLoading && !isVideo && !isImage;
 
                           if (isLoading) {
+                            // No real render/transcode pipeline exists yet
+                            // for this shot -- an honest "nothing to show"
+                            // state instead of a placeholder clip that
+                            // might not even play (see placeholderArt.ts).
                             return (
                               <div
-                                className={`absolute inset-0 w-full h-full bg-cover bg-center animate-pulse ${isActive ? "opacity-100" : "opacity-0 hidden"}`}
+                                className={`absolute inset-0 w-full h-full flex flex-col items-center justify-center gap-2 bg-cover bg-center text-white/80 ${isActive ? "opacity-100" : "opacity-0 hidden"}`}
                                 style={{
                                   backgroundImage: `url(${getPlaceholderThumbnail(hashString(clip.id), 1280, 720)})`,
                                   opacity: clip.opacity / 100,
                                 }}
-                              />
+                              >
+                                <div className="bg-black/50 rounded-lg px-4 py-2 text-sm font-medium backdrop-blur-sm">
+                                  No footage uploaded yet — insert a video to begin reviewing.
+                                </div>
+                              </div>
                             );
                           }
 
