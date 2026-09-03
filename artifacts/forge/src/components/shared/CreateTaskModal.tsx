@@ -2,6 +2,12 @@ import { useEffect, useState } from "react";
 import { useAuthStore } from "@/store/auth";
 import { useUIStore } from "@/store/ui";
 import { useTasksStore } from "@/store/tasks";
+import { useUserStore } from "@/store/users";
+import { useDepartmentStore } from "@/store/departments";
+import { useProjectStore } from "@/store/projects";
+import { useEpisodes } from "@/hooks/useEpisodes";
+import { useSequences } from "@/hooks/useSequences";
+import { useShots } from "@/hooks/useShots";
 import {
   Dialog,
   DialogContent,
@@ -21,13 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import {
-  USERS,
-  PROJECTS,
-  DEPARTMENTS,
-  Task,
-  TaskStatus,
-} from "@/data/mockData";
+import { Task, TaskStatus } from "@/data/mockData";
 import { STUDIO_LEADERSHIP_ROLES } from "@/store/permissions";
 import { UploadCloud } from "lucide-react";
 
@@ -41,14 +41,47 @@ export function CreateTaskModal() {
   const { addTask, tasks } = useTasksStore();
   const { currentUser } = useAuthStore();
   const { toast } = useToast();
+  const users = useUserStore((s) => s.users);
+  const departments = useDepartmentStore((s) => s.departments);
+  const projects = useProjectStore((s) => s.projects);
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [projectId, setProjectId] = useState("");
+  const [episodeId, setEpisodeId] = useState("");
+  const [sequenceId, setSequenceId] = useState("");
+  const [shotId, setShotId] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
   const [priority, setPriority] = useState<
     "low" | "medium" | "high" | "critical"
   >("medium");
+
+  const { data: episodes = [] } = useEpisodes(projectId || undefined);
+  const { data: sequences = [] } = useSequences(
+    projectId || undefined,
+    episodeId || undefined,
+  );
+  const { data: shots = [] } = useShots(projectId || undefined);
+  // The real /shots list has no sequenceId query filter server-side (see
+  // hooks/useShots.ts) -- filter client-side once a sequence is chosen,
+  // same pattern already used elsewhere in this app (e.g. tracking.tsx).
+  const shotsInSequence = sequenceId
+    ? shots.filter((s) => s.sequenceId === sequenceId)
+    : shots.filter((s) => !episodeId || s.episodeId === episodeId);
+
+  // Changing an upstream picker invalidates whatever was chosen downstream.
+  useEffect(() => {
+    setEpisodeId("");
+    setSequenceId("");
+    setShotId("");
+  }, [projectId]);
+  useEffect(() => {
+    setSequenceId("");
+    setShotId("");
+  }, [episodeId]);
+  useEffect(() => {
+    setShotId("");
+  }, [sequenceId]);
 
   // Pre-fill the assignee when the modal is opened with a default (e.g. from
   // a person's profile page via "Assign Task").
@@ -73,25 +106,26 @@ export function CreateTaskModal() {
   // store/permissions.ts (also used by home.tsx) instead of a local copy.
   const isStudioLeadership = STUDIO_LEADERSHIP_ROLES.includes(currentUser.role);
 
-  const availableUsers = USERS.filter(
+  const availableUsers = users.filter(
     (u) => isStudioLeadership || u.departmentId === currentUser.departmentId,
   );
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!title || !projectId || !assigneeId) {
+    if (!title || !projectId || !shotId || !assigneeId) {
       toast({
         title: "Missing fields",
-        description: "Please fill out all required fields.",
+        description:
+          "Please fill out all required fields, including the shot this task belongs to.",
         variant: "destructive",
       });
       return;
     }
 
-    const dept = USERS.find((u) => u.id === assigneeId)?.departmentId;
+    const dept = users.find((u) => u.id === assigneeId)?.departmentId;
     const departmentName =
-      DEPARTMENTS.find((d) => d.id === dept)?.name || "General";
+      departments.find((d) => d.id === dept)?.name || "General";
 
     // Derived from the live store, not the frozen TASKS import — using
     // TASKS.length here meant every task created after the first in a
@@ -107,6 +141,7 @@ export function CreateTaskModal() {
       title,
       description,
       projectId,
+      shotId,
       assigneeId,
       assignedById: currentUser.id,
       status: "todo",
@@ -134,13 +169,16 @@ export function CreateTaskModal() {
 
     toast({
       title: "Task Assigned",
-      description: `Successfully assigned "${title}" to ${USERS.find((u) => u.id === assigneeId)?.name}.`,
+      description: `Successfully assigned "${title}" to ${users.find((u) => u.id === assigneeId)?.name}.`,
     });
 
     // Reset and close
     setTitle("");
     setDescription("");
     setProjectId("");
+    setEpisodeId("");
+    setSequenceId("");
+    setShotId("");
     setAssigneeId("");
     setPriority("medium");
     setCreateTaskDefaultAssigneeId(null);
@@ -186,7 +224,7 @@ export function CreateTaskModal() {
                   <SelectValue placeholder="Select Project" />
                 </SelectTrigger>
                 <SelectContent>
-                  {PROJECTS.map((p) => (
+                  {projects.map((p) => (
                     <SelectItem key={p.id} value={p.id}>
                       {p.name}
                     </SelectItem>
@@ -204,6 +242,66 @@ export function CreateTaskModal() {
                   {availableUsers.map((u) => (
                     <SelectItem key={u.id} value={u.id}>
                       {u.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label>Episode {episodes.length === 0 && "(none)"}</Label>
+              <Select
+                value={episodeId}
+                onValueChange={setEpisodeId}
+                disabled={!projectId || episodes.length === 0}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select Episode" />
+                </SelectTrigger>
+                <SelectContent>
+                  {episodes.map((e) => (
+                    <SelectItem key={e.id} value={e.id}>
+                      {e.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Sequence {sequences.length === 0 && "(none)"}</Label>
+              <Select
+                value={sequenceId}
+                onValueChange={setSequenceId}
+                disabled={!projectId || sequences.length === 0}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select Sequence" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sequences.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Shot *</Label>
+              <Select
+                value={shotId}
+                onValueChange={setShotId}
+                disabled={!projectId}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select Shot" />
+                </SelectTrigger>
+                <SelectContent>
+                  {shotsInSequence.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
