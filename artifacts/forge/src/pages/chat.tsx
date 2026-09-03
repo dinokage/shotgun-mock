@@ -556,7 +556,14 @@ export default function Chat() {
           </div>
         </ScrollArea>
 
-        {/* Input Area */}
+        {/* Input Area -- the admin monitors the studio, they don't do
+            production work or take part in team conversations, so they get
+            a read-only view of every channel instead of a send box. */}
+        {currentUser?.role === "admin" ? (
+          <div className="p-4 bg-card/50 backdrop-blur-sm shrink-0 text-center text-xs text-muted-foreground border-t border-border">
+            Admin accounts are view-only here — you can read every channel but not send messages.
+          </div>
+        ) : (
         <div className="p-4 bg-card/50 backdrop-blur-sm shrink-0">
           <div className="relative flex items-end gap-2 bg-muted/30 border border-border rounded-xl p-2 focus-within:ring-1 focus-within:ring-primary focus-within:border-primary transition-all shadow-sm">
             <div className="flex gap-1 pb-1">
@@ -636,6 +643,7 @@ export default function Chat() {
             Attach an image, video, or file to share it in this channel.
           </div>
         </div>
+        )}
       </div>
 
       {/* Roster Sidebar (Right) */}

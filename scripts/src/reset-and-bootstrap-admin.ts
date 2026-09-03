@@ -45,21 +45,17 @@ const TENANT_SLUG = "symbiosys";
 // must exist from the start; zero USERS in them is what "blank slate" means
 // here, not "the role system itself is missing."
 const ROLE_CAPABILITIES: Record<string, readonly string[]> = {
+  // The admin doesn't do production work -- no tasks, no reviews, no
+  // broadcasts, no pipeline/financials edits. Their job is standing the
+  // studio up and watching it run: add people, assign roles, manage
+  // licenses/integrations (the Marketplace is admin-only elsewhere in the
+  // app for the same reason), and view financials read-only.
   admin: [
-    "create_tasks",
-    "edit_tasks",
-    "delete_tasks",
-    "assign_tasks",
-    "submit_reviews",
-    "approve_reviews",
     "manage_members",
     "manage_roles",
     "view_financials",
-    "edit_financials",
-    "manage_pipeline",
     "manage_licenses",
     "manage_integrations",
-    "broadcast_updates",
   ],
   production_head: [
     "create_tasks",

@@ -251,7 +251,7 @@ export default function Publishing() {
         >
           <DialogTrigger asChild>
             <Button className="gap-2 bg-purple-600 hover:bg-purple-700 text-white">
-              <Upload className="w-4 h-4" /> Publish New (Ayon Validator)
+              <Upload className="w-4 h-4" /> Publish New
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-[500px]">
