@@ -138,6 +138,12 @@ export const useAuthStore = create<AuthState>()((set) => ({
       import("./shots").then((m) =>
         m.useShotStore.getState().setShots?.(shots),
       );
+      import("./users").then((m) =>
+        m.useUserStore.getState().setUsers(users as any),
+      );
+      import("./departments").then((m) =>
+        m.useDepartmentStore.getState().setDepartments(DEPARTMENTS.slice()),
+      );
 
       set({
         currentUser: user,
