@@ -7,6 +7,9 @@ export const projectsTable = pgTable("projects", {
     .notNull()
     .references(() => tenantsTable.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
+  code: text("code"),
+  type: text("type"),
+  client: text("client"),
   status: text("status").notNull().default("active"),
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
