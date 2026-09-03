@@ -13,6 +13,7 @@ import {
   SelectLabel,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   AlertDialog,
@@ -43,10 +44,23 @@ export default function AuditLog() {
   // instead.
   const [selectedEntity, setSelectedEntity] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // Capping the dropdown to the first 40 assets/shots made everything past
+  // that point (the large majority, in a real tenant) unreachable -- there
+  // was no way to search past the cap, and it wasn't even the 40 most
+  // recent/relevant, just array order. Filter by name first, so the cap
+  // applies to matches instead of to the raw list.
+  const [entitySearch, setEntitySearch] = useState("");
   const { toast } = useToast();
   const assets = useAssetStore((s) => s.assets);
   const shots = useShotStore((s) => s.shots);
   const users = useUserStore((s) => s.users);
+  const searchTerm = entitySearch.trim().toLowerCase();
+  const filteredAssets = searchTerm
+    ? assets.filter((a) => a.name.toLowerCase().includes(searchTerm))
+    : assets;
+  const filteredShots = searchTerm
+    ? shots.filter((s) => s.name.toLowerCase().includes(searchTerm))
+    : shots;
 
   const rollbackPoints = useAuditStore((s) => s.rollbackPoints);
   const rollbackEntity = useAuditStore((s) => s.rollbackEntity);
@@ -63,6 +77,18 @@ export default function AuditLog() {
     (selectedEntity.startsWith("asset") ? "asset" : "shot");
 
   const handleRollback = (timestamp: string) => {
+    // Belt-and-suspenders: the UI no longer renders a Rollback button
+    // without a real selection (events is empty until one is chosen), but
+    // silently no-ops on a missing entity used to look identical to a
+    // successful rollback -- fail loudly instead if this is ever reached.
+    if (!selectedEntity) {
+      toast({
+        title: "Nothing to roll back",
+        description: "Select an entity first.",
+        variant: "destructive",
+      });
+      return;
+    }
     rollbackEntity(selectedEntity, entityType, timestamp, events);
     toast({
       title: "Rollback complete",
@@ -87,7 +113,13 @@ export default function AuditLog() {
             Audit log and state rollback
           </p>
         </div>
-        <div className="w-80">
+        <div className="w-80 space-y-1.5">
+          <Input
+            placeholder="Filter by name..."
+            value={entitySearch}
+            onChange={(e) => setEntitySearch(e.target.value)}
+            className="h-8 text-xs"
+          />
           <Select value={selectedEntity} onValueChange={setSelectedEntity}>
             <SelectTrigger>
               <SelectValue placeholder="Select entity..." />
@@ -95,19 +127,34 @@ export default function AuditLog() {
             <SelectContent>
               <SelectGroup>
                 <SelectLabel>Assets</SelectLabel>
-                {assets.slice(0, 40).map((a) => (
+                {filteredAssets.slice(0, 40).map((a) => (
                   <SelectItem key={a.id} value={a.id}>
                     {a.name} ({a.id})
                   </SelectItem>
                 ))}
+                {filteredAssets.length === 0 && (
+                  <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                    No matches.
+                  </div>
+                )}
               </SelectGroup>
               <SelectGroup>
                 <SelectLabel>Shots</SelectLabel>
-                {shots.slice(0, 40).map((s) => (
+                {filteredShots.slice(0, 40).map((s) => (
                   <SelectItem key={s.id} value={s.id}>
                     {s.name} ({s.id})
                   </SelectItem>
                 ))}
+                {filteredShots.length === 0 && (
+                  <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                    No matches.
+                  </div>
+                )}
+                {filteredShots.length > 40 && (
+                  <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                    {filteredShots.length - 40} more match — refine your search.
+                  </div>
+                )}
               </SelectGroup>
             </SelectContent>
           </Select>
@@ -137,7 +184,18 @@ export default function AuditLog() {
         </Card>
       )}
 
+      {!selectedEntity && (
+        <div className="text-sm text-muted-foreground text-center py-12">
+          Select an asset or shot above to view its audit history.
+        </div>
+      )}
+
       <div className="space-y-4 relative before:absolute before:inset-0 before:ml-[35px] before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-border before:to-transparent">
+        {selectedEntity && events.length === 0 && (
+          <div className="text-sm text-muted-foreground text-center py-8">
+            No recorded changes yet for this entity.
+          </div>
+        )}
         {events.map((event, index) => {
           const user = users.find((u) => u.id === event.actorUserId);
           const isExpanded = expandedId === event.id;
