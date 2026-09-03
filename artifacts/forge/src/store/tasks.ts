@@ -127,9 +127,18 @@ export const useTasksStore = create<TaskState>()(
         syncBackend(id, { status: "complete", lastStatusUpdate });
       },
       reassignTask: (id, assigneeId) => {
+        // Post-login tasks are real, untranslated TaskDTO objects carrying
+        // `assignedTo` (not `assigneeId`) -- every consumer's getAssigneeId
+        // normalizer reads `t.assignedTo ?? t.assigneeId`, so patching only
+        // `assigneeId` here left the optimistic update invisible: the
+        // normalizer kept resolving to the original (truthy) `assignedTo`
+        // value until a full reload re-hydrated the task. Setting both
+        // keeps old-shape and new-shape readers correct simultaneously.
         set((state) => ({
           tasks: state.tasks.map((t) =>
-            t.id === id ? { ...t, assigneeId } : t,
+            t.id === id
+              ? { ...t, assigneeId, assignedTo: assigneeId || null }
+              : t,
           ),
         }));
         syncBackend(id, { assignedTo: assigneeId || null });
@@ -137,7 +146,9 @@ export const useTasksStore = create<TaskState>()(
       claimTask: (id, userId) => {
         set((state) => ({
           tasks: state.tasks.map((t) =>
-            t.id === id ? { ...t, assigneeId: userId } : t,
+            t.id === id
+              ? { ...t, assigneeId: userId, assignedTo: userId }
+              : t,
           ),
         }));
         syncBackend(id, { assignedTo: userId });
@@ -145,7 +156,9 @@ export const useTasksStore = create<TaskState>()(
       revokeAssignment: (id) => {
         set((state) => ({
           tasks: state.tasks.map((t) =>
-            t.id === id ? { ...t, assigneeId: "" } : t,
+            t.id === id
+              ? { ...t, assigneeId: "", assignedTo: null }
+              : t,
           ),
         }));
         syncBackend(id, { assignedTo: null });
