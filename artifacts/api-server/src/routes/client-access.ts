@@ -56,7 +56,7 @@ clientAccessRouter.post("/redeem", async (req, res) => {
     // this session cookie is parsed consistently with the rest of the app.
     res.cookie("session", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: process.env.COOKIE_SECURE === "true",
       sameSite: "lax",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
