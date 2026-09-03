@@ -53,13 +53,13 @@ import { useToast } from "@/hooks/use-toast";
 import { TracksheetImportDialog } from "@/components/tracking/TracksheetImportDialog";
 import {
   PROJECTS,
-  EPISODES,
-  SEQUENCES,
   TaskStatus,
 } from "@/data/mockData";
 import { useUserStore } from "@/store/users";
 import { useDepartmentStore } from "@/store/departments";
 import { useShots, useUpdateShot } from "@/hooks/useShots";
+import { useAllEpisodes } from "@/hooks/useEpisodes";
+import { useAllSequences } from "@/hooks/useSequences";
 import { useTasksStore } from "@/store/tasks";
 import {
   useTrackingViewsStore,
@@ -469,6 +469,8 @@ export default function TrackingGrid() {
   const { toast } = useToast();
   const users = useUserStore((s) => s.users);
   const departments = useDepartmentStore((s) => s.departments);
+  const { data: allEpisodes = [] } = useAllEpisodes();
+  const { data: allSequences = [] } = useAllSequences();
   const canImportTracksheet = useCapability("create_tasks");
   const [importOpen, setImportOpen] = useState(false);
 
@@ -606,9 +608,9 @@ export default function TrackingGrid() {
       const term = search.toLowerCase();
       filteredShots = filteredShots.filter((s) => {
         const projName = PROJECTS.find((p) => p.id === s.projectId)?.name || "";
-        const epName = EPISODES.find((e) => e.id === s.episodeId)?.name || "";
+        const epName = allEpisodes.find((e) => e.id === s.episodeId)?.name || "";
         const seqName =
-          SEQUENCES.find((sq) => sq.id === s.sequenceId)?.name || "";
+          allSequences.find((sq) => sq.id === s.sequenceId)?.name || "";
         return (
           String(s.name || "")
             .toLowerCase()
@@ -622,8 +624,8 @@ export default function TrackingGrid() {
 
     let mapped: TrackingRow[] = filteredShots.map((shot, i) => {
       const proj = PROJECTS.find((p) => p.id === shot.projectId);
-      const ep = EPISODES.find((e) => e.id === shot.episodeId);
-      const seq = SEQUENCES.find((sq) => sq.id === shot.sequenceId);
+      const ep = allEpisodes.find((e) => e.id === shot.episodeId);
+      const seq = allSequences.find((sq) => sq.id === shot.sequenceId);
       const assignee = users.find((u) => u.id === shot.assigneeId);
       const dept = assignee
         ? departments.find((d) => d.id === assignee.departmentId)
@@ -634,8 +636,8 @@ export default function TrackingGrid() {
         no: i + 1,
         project: proj?.name || "Unknown",
         projectId: shot.projectId,
-        episode: ep?.name || "EP_01",
-        sequence: seq?.name || "Other",
+        episode: ep?.name || "—",
+        sequence: seq?.name || "—",
         shot: shot.name,
         assignee: assignee?.name || "Unassigned",
         assigneeId: shot.assigneeId ?? "",
@@ -661,7 +663,7 @@ export default function TrackingGrid() {
     }
 
     return mapped.map((row, i) => ({ ...row, no: i + 1 }));
-  }, [search, projectFilter, localOverrides, liveShots, sortBy, users, departments]);
+  }, [search, projectFilter, localOverrides, liveShots, sortBy, users, departments, allEpisodes, allSequences]);
 
   const groupTree = useMemo(() => {
     if (groupBy1 === "none") return null;

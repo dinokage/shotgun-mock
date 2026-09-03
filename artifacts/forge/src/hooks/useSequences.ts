@@ -31,6 +31,16 @@ export function useSequences(projectId?: string, episodeId?: string) {
   });
 }
 
+// Tenant-wide, unfiltered -- see useAllEpisodes for why (Tracking Grid
+// resolving real sequence names across every project at once).
+export function useAllSequences() {
+  return useQuery<SequenceDTO[]>({
+    queryKey: ["sequences", "all", "all"],
+    queryFn: () => apiFetch<SequenceDTO[]>("/sequences"),
+    staleTime: 30000,
+  });
+}
+
 export function useCreateSequence() {
   const queryClient = useQueryClient();
   return useMutation({

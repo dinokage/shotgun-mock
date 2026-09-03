@@ -24,6 +24,17 @@ export function useEpisodes(projectId?: string) {
   });
 }
 
+// Tenant-wide, unfiltered -- for views (Tracking Grid) that show shots
+// across every project at once and need to resolve each shot's real
+// episode name regardless of which project it belongs to.
+export function useAllEpisodes() {
+  return useQuery<EpisodeDTO[]>({
+    queryKey: ["episodes", "all"],
+    queryFn: () => apiFetch<EpisodeDTO[]>("/episodes"),
+    staleTime: 30000,
+  });
+}
+
 export function useCreateEpisode() {
   const queryClient = useQueryClient();
   return useMutation({
