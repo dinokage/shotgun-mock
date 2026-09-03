@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { AUDIT_EVENTS, USERS, ASSETS, SHOTS } from "@/data/mockData";
+import { USERS, ASSETS, SHOTS } from "@/data/mockData";
+import { useAuditLogs } from "@/hooks/useAuditLogs";
 import {
   Select,
   SelectContent,
@@ -44,18 +45,17 @@ export default function AuditLog() {
   const clearRollback = useAuditStore((s) => s.clearRollback);
   const rollbackPoint = rollbackPoints[selectedEntity];
 
-  const events = AUDIT_EVENTS.filter(
-    (e) => e.entityId === selectedEntity,
-  ).reverse();
-  // Every event for a given entityId shares the same entityType, so any
-  // event tells us which real store (assets vs shots) rollback should hit —
-  // fall back to the id's own prefix for an entity with no events yet.
-  const entityType =
-    events[0]?.entityType ??
+  // Server-side filtered by entityId and already ordered newest-first.
+  const { data: events = [] } = useAuditLogs(selectedEntity);
+  // Every log row for a given entityId shares the same targetEntityType, so
+  // any row tells us which real store (assets vs shots) rollback should hit
+  // — fall back to the id's own prefix for an entity with no rows yet.
+  const entityType: "asset" | "shot" =
+    (events[0]?.targetEntityType as "asset" | "shot" | undefined) ??
     (selectedEntity.startsWith("asset") ? "asset" : "shot");
 
   const handleRollback = (timestamp: string) => {
-    rollbackEntity(selectedEntity, entityType, timestamp);
+    rollbackEntity(selectedEntity, entityType, timestamp, events);
     toast({
       title: "Rollback complete",
       description: `${selectedEntity} restored to state at ${timestamp} — real fields updated, not just this timeline view.`,
@@ -131,11 +131,16 @@ export default function AuditLog() {
 
       <div className="space-y-4 relative before:absolute before:inset-0 before:ml-[35px] before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-border before:to-transparent">
         {events.map((event, index) => {
-          const user = USERS.find((u) => u.id === event.userId);
+          const user = USERS.find((u) => u.id === event.actorUserId);
           const isExpanded = expandedId === event.id;
-          const hasChanges = Object.keys(event.changedFields).length > 0;
+          const changedFields = Object.keys(event.metadata.before);
+          const hasChanges = changedFields.length > 0;
           const isReverted =
-            Boolean(rollbackPoint) && event.timestamp > rollbackPoint;
+            Boolean(rollbackPoint) && event.createdAt > rollbackPoint;
+          const description =
+            changedFields.length > 0
+              ? `Updated ${changedFields.join(", ")}`
+              : `${event.action} ${event.targetEntityType}`;
 
           return (
             <Card
@@ -157,7 +162,7 @@ export default function AuditLog() {
                     <div className="flex justify-between items-start mb-1">
                       <div className="font-medium text-sm flex items-center gap-2">
                         <span className="font-mono text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">
-                          {event.eventType}
+                          {event.action}
                         </span>
                         <span
                           className={
@@ -166,7 +171,7 @@ export default function AuditLog() {
                               : ""
                           }
                         >
-                          {event.description}
+                          {description}
                         </span>
                         {isReverted && (
                           <Badge
@@ -178,12 +183,15 @@ export default function AuditLog() {
                         )}
                       </div>
                       <div className="font-mono text-xs text-muted-foreground">
-                        {event.timestamp}
+                        {event.createdAt}
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2 text-xs text-muted-foreground mt-2">
-                      <UserAvatar userId={event.userId} className="w-4 h-4" />
+                      <UserAvatar
+                        userId={event.actorUserId}
+                        className="w-4 h-4"
+                      />
                       <span>{user?.name}</span>
                       {hasChanges && (
                         <span className="ml-4 flex items-center gap-1">
@@ -192,7 +200,7 @@ export default function AuditLog() {
                           ) : (
                             <ChevronDown className="w-3 h-3" />
                           )}
-                          {Object.keys(event.changedFields).length} field(s)
+                          {changedFields.length} field(s)
                           changed
                         </span>
                       )}
@@ -220,14 +228,14 @@ export default function AuditLog() {
                         This restores{" "}
                         <span className="font-mono">{selectedEntity}</span> to
                         its state as of{" "}
-                        <span className="font-mono">{event.timestamp}</span>.
+                        <span className="font-mono">{event.createdAt}</span>.
                         Changes made after this point will be discarded.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel>Cancel</AlertDialogCancel>
                       <AlertDialogAction
-                        onClick={() => handleRollback(event.timestamp)}
+                        onClick={() => handleRollback(event.createdAt)}
                       >
                         Rollback
                       </AlertDialogAction>
@@ -239,49 +247,38 @@ export default function AuditLog() {
               {isExpanded && hasChanges && (
                 <CardContent className="bg-muted/10 border-t border-border p-4 font-mono text-xs">
                   <div className="space-y-2">
-                    {Object.entries(event.changedFields).map(
-                      ([field, change]) => (
+                    {changedFields.map((field) => {
+                      // assigneeId stores real user ids so rollback can
+                      // apply them directly to the entity — resolve to a
+                      // name here for readability, same idea as UserAvatar
+                      // does elsewhere on this page.
+                      const formatValue = (value: unknown) => {
+                        if (value === null || value === undefined) return "—";
+                        if (field === "assigneeId" && typeof value === "string") {
+                          return USERS.find((u) => u.id === value)?.name ?? value;
+                        }
+                        return String(value);
+                      };
+                      const before = formatValue(event.metadata.before[field]);
+                      const after = formatValue(event.metadata.after[field]);
+                      return (
                         <div
                           key={field}
                           className="grid grid-cols-[120px_1fr] gap-4"
                         >
                           <div className="text-muted-foreground">{field}:</div>
                           <div>
-                            {(change as string)
-                              .split("→")
-                              .map((part: string, i: number) => {
-                                // assigneeId stores real user ids so rollback can
-                                // apply them directly to the entity — resolve to
-                                // a name here for readability, same idea as
-                                // UserAvatar does elsewhere on this page.
-                                const label =
-                                  field === "assigneeId"
-                                    ? (USERS.find((u) => u.id === part.trim())
-                                        ?.name ?? part.trim())
-                                    : part.trim();
-                                return (
-                                  <span key={i}>
-                                    <span
-                                      className={
-                                        i === 0
-                                          ? "text-red-400/80 line-through"
-                                          : "text-status-green"
-                                      }
-                                    >
-                                      {label}
-                                    </span>
-                                    {i === 0 && (
-                                      <span className="text-muted-foreground mx-2">
-                                        →
-                                      </span>
-                                    )}
-                                  </span>
-                                );
-                              })}
+                            <span className="text-red-400/80 line-through">
+                              {before}
+                            </span>
+                            <span className="text-muted-foreground mx-2">
+                              →
+                            </span>
+                            <span className="text-status-green">{after}</span>
                           </div>
                         </div>
-                      ),
-                    )}
+                      );
+                    })}
                   </div>
                 </CardContent>
               )}
