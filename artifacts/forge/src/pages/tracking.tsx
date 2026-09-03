@@ -197,6 +197,7 @@ interface TrackingRow {
   shot: string;
   assignee: string;
   assigneeId: string;
+  position: string;
   departmentId: string;
   department: string;
   departmentColor: string;
@@ -477,6 +478,11 @@ export default function TrackingGrid() {
 
   const [search, setSearchState] = useState("");
   const [projectFilter, setProjectFilterState] = useState("all");
+  const [episodeFilter, setEpisodeFilterState] = useState("all");
+  const [sequenceFilter, setSequenceFilterState] = useState("all");
+  const [assigneeFilter, setAssigneeFilterState] = useState("all");
+  const [positionFilter, setPositionFilterState] = useState("all");
+  const [departmentFilter, setDepartmentFilterState] = useState("all");
   const [view, setViewState] = useState<"list" | "card">("list");
   const [groupBy1, setGroupBy1State] = useState<TrackingGroupKey>("none");
   const [groupBy2, setGroupBy2State] = useState<TrackingGroupKey>("none");
@@ -513,6 +519,33 @@ export default function TrackingGrid() {
   };
   const setProjectFilter = (v: string) => {
     setProjectFilterState(v);
+    // Episode/sequence filters scope to a project -- switching projects
+    // (or clearing back to "All Projects") invalidates whatever episode/
+    // sequence was previously selected, since it may not exist under the
+    // new scope (or "all" no longer means the same set of episodes).
+    setEpisodeFilterState("all");
+    setSequenceFilterState("all");
+    markDirty();
+  };
+  const setEpisodeFilter = (v: string) => {
+    setEpisodeFilterState(v);
+    setSequenceFilterState("all");
+    markDirty();
+  };
+  const setSequenceFilter = (v: string) => {
+    setSequenceFilterState(v);
+    markDirty();
+  };
+  const setAssigneeFilter = (v: string) => {
+    setAssigneeFilterState(v);
+    markDirty();
+  };
+  const setPositionFilter = (v: string) => {
+    setPositionFilterState(v);
+    markDirty();
+  };
+  const setDepartmentFilter = (v: string) => {
+    setDepartmentFilterState(v);
     markDirty();
   };
   const setView = (v: "list" | "card") => {
@@ -588,6 +621,15 @@ export default function TrackingGrid() {
         (s) => s.projectId === projectFilter,
       );
     }
+    if (episodeFilter !== "all") {
+      filteredShots = filteredShots.filter((s) => s.episodeId === episodeFilter);
+    }
+    if (sequenceFilter !== "all") {
+      filteredShots = filteredShots.filter((s) => s.sequenceId === sequenceFilter);
+    }
+    if (assigneeFilter !== "all") {
+      filteredShots = filteredShots.filter((s) => s.assigneeId === assigneeFilter);
+    }
 
     // Default hierarchical ordering: Project -> Episode -> Sequence -> Shot
     filteredShots = [...filteredShots].sort((a, b) => {
@@ -643,6 +685,7 @@ export default function TrackingGrid() {
         shot: shot.name,
         assignee: assignee?.name || "Unassigned",
         assigneeId: shot.assigneeId ?? "",
+        position: assignee?.title || "—",
         departmentId: dept?.id || "unassigned",
         department: dept?.name || "Unassigned",
         departmentColor: dept?.color || "#555555",
@@ -660,12 +703,71 @@ export default function TrackingGrid() {
       };
     });
 
+    if (departmentFilter !== "all") {
+      mapped = mapped.filter((row) => row.departmentId === departmentFilter);
+    }
+    if (positionFilter !== "all") {
+      mapped = mapped.filter((row) => row.position === positionFilter);
+    }
+
     if (sortBy !== "hierarchy") {
       mapped = [...mapped].sort((a, b) => compareRows(a, b, sortBy));
     }
 
     return mapped.map((row, i) => ({ ...row, no: i + 1 }));
-  }, [search, projectFilter, localOverrides, liveShots, sortBy, users, departments, allEpisodes, allSequences]);
+  }, [
+    search,
+    projectFilter,
+    episodeFilter,
+    sequenceFilter,
+    assigneeFilter,
+    positionFilter,
+    departmentFilter,
+    localOverrides,
+    liveShots,
+    sortBy,
+    users,
+    departments,
+    allEpisodes,
+    allSequences,
+  ]);
+
+  // Episode/sequence options scope to whatever's selected above them so the
+  // dropdown never offers a combination that would filter to zero rows.
+  const episodeOptions = useMemo(() => {
+    const scoped =
+      projectFilter === "all"
+        ? allEpisodes
+        : allEpisodes.filter((e) => e.projectId === projectFilter);
+    return [...scoped].sort((a, b) => a.name.localeCompare(b.name));
+  }, [allEpisodes, projectFilter]);
+
+  const sequenceOptions = useMemo(() => {
+    let scoped = allSequences;
+    if (episodeFilter !== "all") {
+      scoped = scoped.filter((s) => s.episodeId === episodeFilter);
+    } else if (projectFilter !== "all") {
+      scoped = scoped.filter((s) => s.projectId === projectFilter);
+    }
+    return [...scoped].sort((a, b) => a.name.localeCompare(b.name));
+  }, [allSequences, episodeFilter, projectFilter]);
+
+  // Artist filter lists artists only, matching who shots can actually be
+  // assigned to (assignment is server-enforced to the "artist" role).
+  const artistOptions = useMemo(
+    () =>
+      [...users]
+        .filter((u) => u.role === "artist")
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [users],
+  );
+
+  const positionOptions = useMemo(() => {
+    const titles = new Set(
+      users.map((u) => u.title).filter((t): t is string => !!t),
+    );
+    return [...titles].sort((a, b) => a.localeCompare(b));
+  }, [users]);
 
   const groupTree = useMemo(() => {
     if (groupBy1 === "none") return null;
@@ -722,6 +824,13 @@ export default function TrackingGrid() {
     applyingRef.current = true;
     setSearchState(v.filters.search);
     setProjectFilterState(v.filters.projectFilter);
+    // Older saved views predate these filters -- default to "all" rather
+    // than leaving the control undefined.
+    setEpisodeFilterState(v.filters.episodeFilter ?? "all");
+    setSequenceFilterState(v.filters.sequenceFilter ?? "all");
+    setAssigneeFilterState(v.filters.assigneeFilter ?? "all");
+    setPositionFilterState(v.filters.positionFilter ?? "all");
+    setDepartmentFilterState(v.filters.departmentFilter ?? "all");
     setGroupBy1State(v.filters.groupBy1);
     setGroupBy2State(v.filters.groupBy2);
     setSortByState(v.filters.sortBy);
@@ -737,7 +846,19 @@ export default function TrackingGrid() {
   const handleSaveView = () => {
     const name = newViewName.trim();
     if (!name) return;
-    addView(name, { search, projectFilter, groupBy1, groupBy2, sortBy, view });
+    addView(name, {
+      search,
+      projectFilter,
+      episodeFilter,
+      sequenceFilter,
+      assigneeFilter,
+      positionFilter,
+      departmentFilter,
+      groupBy1,
+      groupBy2,
+      sortBy,
+      view,
+    });
     setNewViewName("");
     setSaveViewOpen(false);
     toast({
@@ -767,6 +888,7 @@ export default function TrackingGrid() {
       "Sequence",
       "Shot",
       "Assignee",
+      "Position",
       "Department",
       "Status",
       "USD Version",
@@ -782,6 +904,7 @@ export default function TrackingGrid() {
       row.sequence,
       row.shot,
       row.assignee,
+      row.position,
       row.department,
       row.status,
       row.usdVersion,
@@ -1185,8 +1308,8 @@ export default function TrackingGrid() {
       </div>
 
       {/* Filters row 1 */}
-      <div className="flex items-center gap-3 p-3 bg-card border border-border rounded-sm mb-2 shrink-0">
-        <div className="relative flex-1 max-w-sm">
+      <div className="flex items-center gap-3 p-3 bg-card border border-border rounded-sm mb-2 shrink-0 flex-wrap">
+        <div className="relative flex-1 min-w-[180px] max-w-sm">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/70" />
           <Input
             placeholder="Search shot, sequence, or episode..."
@@ -1196,7 +1319,7 @@ export default function TrackingGrid() {
           />
         </div>
         <Select value={projectFilter} onValueChange={setProjectFilter}>
-          <SelectTrigger className="w-48 h-9 bg-background border-border text-foreground">
+          <SelectTrigger className="w-40 h-9 bg-background border-border text-foreground">
             <SelectValue placeholder="Project" />
           </SelectTrigger>
           <SelectContent className="bg-background border-border text-foreground">
@@ -1204,6 +1327,71 @@ export default function TrackingGrid() {
             {PROJECTS.map((p) => (
               <SelectItem key={p.id} value={p.id}>
                 {p.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={episodeFilter} onValueChange={setEpisodeFilter}>
+          <SelectTrigger className="w-36 h-9 bg-background border-border text-foreground">
+            <SelectValue placeholder="Episode" />
+          </SelectTrigger>
+          <SelectContent className="bg-background border-border text-foreground">
+            <SelectItem value="all">All Episodes</SelectItem>
+            {episodeOptions.map((e) => (
+              <SelectItem key={e.id} value={e.id}>
+                {e.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={sequenceFilter} onValueChange={setSequenceFilter}>
+          <SelectTrigger className="w-36 h-9 bg-background border-border text-foreground">
+            <SelectValue placeholder="Sequence" />
+          </SelectTrigger>
+          <SelectContent className="bg-background border-border text-foreground">
+            <SelectItem value="all">All Sequences</SelectItem>
+            {sequenceOptions.map((s) => (
+              <SelectItem key={s.id} value={s.id}>
+                {s.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
+          <SelectTrigger className="w-40 h-9 bg-background border-border text-foreground">
+            <SelectValue placeholder="Artist" />
+          </SelectTrigger>
+          <SelectContent className="bg-background border-border text-foreground">
+            <SelectItem value="all">All Artists</SelectItem>
+            {artistOptions.map((u) => (
+              <SelectItem key={u.id} value={u.id}>
+                {u.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={positionFilter} onValueChange={setPositionFilter}>
+          <SelectTrigger className="w-40 h-9 bg-background border-border text-foreground">
+            <SelectValue placeholder="Position" />
+          </SelectTrigger>
+          <SelectContent className="bg-background border-border text-foreground">
+            <SelectItem value="all">All Positions</SelectItem>
+            {positionOptions.map((title) => (
+              <SelectItem key={title} value={title}>
+                {title}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+          <SelectTrigger className="w-40 h-9 bg-background border-border text-foreground">
+            <SelectValue placeholder="Department" />
+          </SelectTrigger>
+          <SelectContent className="bg-background border-border text-foreground">
+            <SelectItem value="all">All Departments</SelectItem>
+            {departments.map((d) => (
+              <SelectItem key={d.id} value={d.id}>
+                {d.name}
               </SelectItem>
             ))}
           </SelectContent>
