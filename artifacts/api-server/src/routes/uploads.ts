@@ -4,6 +4,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
 import { tenantAuthMiddleware } from "../middleware/tenant";
+import { requireCapability } from "../middleware/rbac";
 
 // Files live outside the pruned `pnpm deploy` output (/app/prod/api-server)
 // so they survive independently of the app tree, on a dedicated Docker
@@ -37,7 +38,14 @@ export const uploadsRouter = Router();
 
 uploadsRouter.use(tenantAuthMiddleware);
 
-uploadsRouter.post("/", upload.single("file"), (req, res) => {
+// The only current consumer (CreateTaskModal.tsx, via useUploadFile) attaches
+// files to a task being created, so gate this the same way task creation
+// itself is gated -- without this, any authenticated tenant member could
+// write arbitrarily many 200MB files to the shared upload volume with no
+// capability check at all. A per-tenant storage quota is a bigger feature
+// (would need tracking total bytes per tenant) and is out of scope here; the
+// per-file 200MB cap above is the only size guard in place for now.
+uploadsRouter.post("/", requireCapability("create_tasks"), upload.single("file"), (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file provided" });
   const tenantId = req.tenantId!;
   const url = `/api/uploads/files/${tenantId}/${req.file.filename}?name=${encodeURIComponent(req.file.originalname)}`;
