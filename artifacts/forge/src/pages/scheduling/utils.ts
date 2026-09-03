@@ -2,8 +2,21 @@
 // Team Calendar, Capacity Forecast). All views share one reference window so
 // drag-reschedule, leave blocks and forecast buckets stay aligned.
 
-// Fixed reference date matching the rest of our mock data.
-export const REFERENCE_DATE = new Date("2025-06-01");
+// Start of the current week (Sunday, local time). Previously a hardcoded
+// "2025-06-01" matching whatever date the mock data happened to be seeded
+// against -- once real tasks with 2026+ dates replaced the mock array, that
+// fixed date put every real task's window outside the 45-day timeline this
+// anchors (CapacityForecast bucketed everything to 0% utilization,
+// TeamCalendar pushed every bar ~450 days off-screen). Deriving it from
+// "now" keeps the window aligned with whatever data is actually live.
+function startOfWeek(d: Date): Date {
+  const result = new Date(d);
+  result.setHours(0, 0, 0, 0);
+  result.setDate(result.getDate() - result.getDay());
+  return result;
+}
+
+export const REFERENCE_DATE = startOfWeek(new Date());
 export const TIMELINE_DAYS = 45;
 
 export const addDays = (dateStr: string, days: number) => {
@@ -35,8 +48,21 @@ export const overlapDays = (
   return Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1;
 };
 
-// A mocked task duration/start-date since Task only carries a dueDate.
-export const getTaskWindow = (task: { id: string; dueDate: string }) => {
+// Real TaskDTOs now carry a genuine `startDate` (see TASK_PATCHABLE_FIELDS
+// server-side) -- use it directly when present. Only fall back to fabricating
+// a duration/start-date from the task id when `startDate` is missing (some
+// tasks, especially older/legacy ones, genuinely have none).
+export const getTaskWindow = (task: {
+  id: string;
+  dueDate: string;
+  startDate?: string | null;
+}) => {
+  if (task.startDate) {
+    return {
+      startDate: task.startDate,
+      duration: getDaysDiff(task.startDate, task.dueDate),
+    };
+  }
   const duration = Math.max(
     3,
     (task.id.charCodeAt(task.id.length - 1) % 10) + 1,
