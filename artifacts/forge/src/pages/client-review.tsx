@@ -89,19 +89,15 @@ export default function ClientReview() {
   const { currentUser, logout, tenantName } = useAuthStore();
   const [, setLocation] = useLocation();
 
-  const searchParams = new URLSearchParams(window.location.search);
-  const hasToken = searchParams.get("token") === "demo";
-
   const [accessCode, setAccessCode] = useState("");
-  const [clientAuthenticated, setClientAuthenticated] = useState(hasToken);
+  const [clientAuthenticated, setClientAuthenticated] = useState(false);
   // Set once an access code is successfully redeemed against the real
-  // POST /client-access/redeem route below — null for the legacy bypass
-  // paths (an explicit-'client'-role user, or the ?token=demo shortcut)
-  // that never redeem a link, in which case this page keeps its prior
-  // unscoped behavior. When set, it scopes what this page requests to the
-  // redeemed link's granted project/episode/version (see pendingReviews
-  // below) — client-side only; full server-side enforcement of this scope
-  // is a later task's responsibility.
+  // POST /client-access/redeem route below — null for an explicit
+  // 'client'-role user, who bypasses the code entirely and keeps this
+  // page's prior unscoped behavior. When set, it scopes what this page
+  // requests to the redeemed link's granted project/episode/version (see
+  // pendingReviews below) — client-side only; full server-side enforcement
+  // of this scope is a later task's responsibility.
   const [clientScope, setClientScope] = useState<{
     projectId: string | null;
     episodeId: string | null;
@@ -465,15 +461,6 @@ export default function ClientReview() {
             </Button>
             <p className="text-xs text-center text-muted-foreground mt-4">
               Protected by Forge Secure Share
-            </p>
-            {/* This is a mock with no real email-delivery system behind the
-                access code, so unlike a real product there is no other way
-                to learn it. Stated plainly here instead of disguised inside
-                the input's placeholder (which read the code out to anyone
-                who focused the field, without even needing to submit). */}
-            <p className="text-xs text-center text-muted-foreground/70 border-t border-border/50 pt-3 mt-2">
-              Demo mode — access code is{" "}
-              <span className="font-mono text-foreground/80">demo</span>
             </p>
           </CardContent>
         </Card>

@@ -4,6 +4,7 @@ import { projectsTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import * as crypto from "crypto";
 import { tenantAuthMiddleware } from "../middleware/tenant";
+import { requireCapability } from "../middleware/rbac";
 
 export const projectsRouter = Router();
 
@@ -44,7 +45,12 @@ projectsRouter.get("/:id", async (req, res) => {
   }
 });
 
-projectsRouter.post("/", async (req, res) => {
+// Unguarded until now — any authenticated tenant session, including a
+// client-access-link session (a real "client" tenant role whose only grant
+// is approve_reviews), could create or rewrite any project in the tenant.
+// manage_pipeline matches the capability the frontend's own "New Project"
+// affordance is gated on (producer/production_head).
+projectsRouter.post("/", requireCapability("manage_pipeline"), async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const { name, code, type, client, status, startDate, endDate } = req.body;
@@ -86,10 +92,10 @@ const PROJECT_PATCHABLE_FIELDS = [
   "endDate",
 ] as const;
 
-projectsRouter.put("/:id", async (req, res) => {
+projectsRouter.put("/:id", requireCapability("manage_pipeline"), async (req, res) => {
   try {
     const tenantId = req.tenantId!;
-    const projectId = req.params.id;
+    const projectId = req.params.id as string;
 
     const [existing] = await db
       .select()
