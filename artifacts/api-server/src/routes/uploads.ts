@@ -40,7 +40,7 @@ uploadsRouter.use(tenantAuthMiddleware);
 uploadsRouter.post("/", upload.single("file"), (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file provided" });
   const tenantId = req.tenantId!;
-  const url = `/api/uploads/files/${tenantId}/${req.file.filename}`;
+  const url = `/api/uploads/files/${tenantId}/${req.file.filename}?name=${encodeURIComponent(req.file.originalname)}`;
   return res.status(201).json({
     url,
     name: req.file.originalname,
@@ -54,13 +54,32 @@ uploadsRouter.post("/", upload.single("file"), (req, res) => {
 // UUIDs -- defense in depth, and it also lets the route reject outright
 // before touching the filesystem if the caller's session tenant doesn't
 // match the path.
+//
+// Always forces a download rather than letting the browser render the file
+// inline. An attacker-uploaded .html/.svg attachment served with its
+// natural sniffed content-type and rendered inline would execute as a
+// same-origin page with access to the session cookie (stored XSS) -- since
+// this route sits behind the same nginx origin as the rest of the app
+// (same cookie jar), the file's original extension/mimetype is never
+// trusted for how the response gets rendered.
 uploadsRouter.get("/files/:tenantId/:filename", (req, res) => {
   const { tenantId, filename } = req.params;
   if (tenantId !== req.tenantId) return res.status(404).end();
   // path.basename strips any directory traversal a crafted filename param
   // could otherwise smuggle in.
-  const filePath = path.join(UPLOAD_DIR, tenantId, path.basename(filename));
+  const safeName = path.basename(filename);
+  const filePath = path.join(UPLOAD_DIR, tenantId, safeName);
   if (!fs.existsSync(filePath)) return res.status(404).end();
+
+  const displayName =
+    typeof req.query.name === "string" ? req.query.name : safeName;
+  res.setHeader("Content-Type", "application/octet-stream");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="${displayName.replace(/["\\]/g, "_")}"`,
+  );
+  res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
   return res.sendFile(filePath);
 });
 
