@@ -102,6 +102,7 @@ import {
   useDeleteAnnotation,
 } from "@/hooks/useReviews";
 import { useVersions, useCreateVersion } from "@/hooks/useVersions";
+import { useCreateClientAccessLink } from "@/hooks/useClientAccess";
 
 interface MediaClip {
   id: string;
@@ -307,6 +308,7 @@ export default function Review() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per taskId (guarded by versionCreateAttempted), not on every dependency change
   }, [taskId, versionEntityId, versionEntityType, versionsLoading, existingVersion]);
   const versionId = existingVersion?.id;
+  const createClientAccessLink = useCreateClientAccessLink();
 
   const isManager = currentUser && LEADERSHIP_ROLES.includes(currentUser.role);
 
@@ -1251,31 +1253,39 @@ export default function Review() {
               }}
             />
           )}
-          {!viewerMode && isProd && (
+          {!viewerMode && isProd && versionId && (
             <Button
               size="sm"
               variant="outline"
               className="border-blue-500/50 text-blue-500 hover:bg-blue-500/10"
+              disabled={createClientAccessLink.isPending}
               onClick={async () => {
-                const success = await copyToClipboard(
-                  window.location.origin + "/client-review",
-                );
-                if (success) {
-                  toast({
-                    title: "Link Copied",
-                    description:
-                      "Secure client review link copied to clipboard.",
+                try {
+                  // Creates a new code, or returns the existing still-valid
+                  // one for this version -- clicking this again to re-share
+                  // doesn't mint (and confuse the client with) a second code.
+                  const link = await createClientAccessLink.mutateAsync({
+                    versionId,
                   });
-                } else {
+                  const shareText = `Forge client review link: ${window.location.origin}/client-review\nAccess code: ${link.code}`;
+                  const success = await copyToClipboard(shareText);
                   toast({
-                    title: "Copy Failed",
-                    description: "Could not copy link.",
+                    title: success ? "Link & Code Copied" : "Code Generated",
+                    description: success
+                      ? `Link and access code ${link.code} copied to clipboard — send both to the client.`
+                      : `Access code: ${link.code} — copy failed, share this code manually along with the client review link.`,
+                    variant: success ? undefined : "destructive",
+                  });
+                } catch {
+                  toast({
+                    title: "Couldn't Generate Link",
+                    description: "Something went wrong creating the client access code.",
                     variant: "destructive",
                   });
                 }
               }}
             >
-              <Link2 className="w-4 h-4 mr-2" /> Copy Client Link
+              <Link2 className="w-4 h-4 mr-2" /> Share with Client
             </Button>
           )}
 
