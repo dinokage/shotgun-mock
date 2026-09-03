@@ -28,19 +28,12 @@ interface TaskState {
    * DailyLogDTO/useAddDailyLog) — TaskDrawer and pages/timesheets.tsx both
    * write through that instead, since this store's `tasks` get overwritten
    * with real, untranslated TaskDTO[] on login (no inline `dailyLogs` field
-   * at all) and never sync back to the backend. Kept only in case another
-   * legacy-mock-data call site still depends on it; has no consumers as of
-   * this comment.
+   * at all) and never sync back to the backend. Still has one real consumer,
+   * components/shared/TimeClockWidget.tsx's punch-out flow — that path
+   * hasn't been migrated to the real daily-logs backend yet, so this stays
+   * local-only (and un-synced) for now.
    */
   logTime: (taskId: string, log: DailyLog) => void;
-  /** Edits one previously logged entry (by index) and reconciles actualHours. */
-  updateDailyLog: (
-    taskId: string,
-    index: number,
-    updates: Partial<DailyLog>,
-  ) => void;
-  /** Removes one previously logged entry (by index) and reconciles actualHours. */
-  deleteDailyLog: (taskId: string, index: number) => void;
   /**
    * Advances a task's multi-tier approval-chain status AND appends a
    * permanent, persisted audit-trail entry for the action taken (who, what,
@@ -222,38 +215,6 @@ export const useTasksStore = create<TaskState>()(
                 }
               : t,
           ),
-        }));
-      },
-      updateDailyLog: (taskId, index, updates) => {
-        set((state) => ({
-          tasks: state.tasks.map((t) => {
-            const logs = t.dailyLogs ?? [];
-            if (t.id !== taskId || !logs[index]) return t;
-            const oldHours = logs[index].hours;
-            const nextLogs = logs.map((log, i) =>
-              i === index ? { ...log, ...updates } : log,
-            );
-            const newHours = nextLogs[index].hours;
-            return {
-              ...t,
-              dailyLogs: nextLogs,
-              actualHours: t.actualHours - oldHours + newHours,
-            };
-          }),
-        }));
-      },
-      deleteDailyLog: (taskId, index) => {
-        set((state) => ({
-          tasks: state.tasks.map((t) => {
-            const logs = t.dailyLogs ?? [];
-            if (t.id !== taskId || !logs[index]) return t;
-            const removedHours = logs[index].hours;
-            return {
-              ...t,
-              dailyLogs: logs.filter((_, i) => i !== index),
-              actualHours: t.actualHours - removedHours,
-            };
-          }),
         }));
       },
     }),

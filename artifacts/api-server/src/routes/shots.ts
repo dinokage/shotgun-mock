@@ -162,15 +162,20 @@ shotsRouter.put("/:id", async (req, res) => {
       .from(shotsTable)
       .where(and(eq(shotsTable.tenantId, tenantId), eq(shotsTable.id, shotId)));
 
-    recordAuditLog({
-      tenantId,
-      actorUserId: req.userId!,
-      action: "update",
-      targetEntityType: "shot",
-      targetEntityId: shotId,
-      before,
-      after: updates,
-    }).catch((err) => req.log.error(err, "audit log write failed"));
+    // `updates` always carries `updatedAt`, but `before`/`after` should
+    // reflect an actual field change -- skip logging an empty-`before` audit
+    // row when the request patched no PATCHABLE_FIELDS at all.
+    if (Object.keys(before).length > 0) {
+      recordAuditLog({
+        tenantId,
+        actorUserId: req.userId!,
+        action: "update",
+        targetEntityType: "shot",
+        targetEntityId: shotId,
+        before,
+        after: updates,
+      }).catch((err) => req.log.error(err, "audit log write failed"));
+    }
 
     return res.json(updated);
   } catch (err) {

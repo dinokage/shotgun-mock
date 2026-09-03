@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { USERS } from "@/data/mockData";
 import { useAuditLogs } from "@/hooks/useAuditLogs";
 import { useAssetStore } from "@/store/assets";
 import { useShotStore } from "@/store/shots";
+import { useUserStore } from "@/store/users";
 import {
   Select,
   SelectContent,
@@ -38,11 +38,15 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuditStore } from "@/store/audit";
 
 export default function AuditLog() {
-  const [selectedEntity, setSelectedEntity] = useState("asset1");
+  // "asset1" is a mock id that exists in no real tenant, so the page used to
+  // open looking empty for every real studio. Default to no selection
+  // instead.
+  const [selectedEntity, setSelectedEntity] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const { toast } = useToast();
   const assets = useAssetStore((s) => s.assets);
   const shots = useShotStore((s) => s.shots);
+  const users = useUserStore((s) => s.users);
 
   const rollbackPoints = useAuditStore((s) => s.rollbackPoints);
   const rollbackEntity = useAuditStore((s) => s.rollbackEntity);
@@ -135,7 +139,7 @@ export default function AuditLog() {
 
       <div className="space-y-4 relative before:absolute before:inset-0 before:ml-[35px] before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-border before:to-transparent">
         {events.map((event, index) => {
-          const user = USERS.find((u) => u.id === event.actorUserId);
+          const user = users.find((u) => u.id === event.actorUserId);
           const isExpanded = expandedId === event.id;
           const changedFields = Object.keys(event.metadata.before);
           const hasChanges = changedFields.length > 0;
@@ -259,7 +263,7 @@ export default function AuditLog() {
                       const formatValue = (value: unknown) => {
                         if (value === null || value === undefined) return "—";
                         if (field === "assigneeId" && typeof value === "string") {
-                          return USERS.find((u) => u.id === value)?.name ?? value;
+                          return users.find((u) => u.id === value)?.name ?? value;
                         }
                         return String(value);
                       };

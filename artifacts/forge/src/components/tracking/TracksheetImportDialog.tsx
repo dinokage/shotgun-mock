@@ -204,7 +204,11 @@ export function TracksheetImportDialog({
                 pipelinePhase: "ANIM",
                 startDate,
                 dueDate: endDate,
-                estimatedHours: duration ? Math.max(duration / 60, 1) : 8,
+                // `duration` comes from the "Sec"/"Duration" column, i.e.
+                // seconds -- dividing by 60 turned a several-minute shot into
+                // a fractional-hour estimate instead of converting seconds to
+                // hours.
+                estimatedHours: duration ? Math.max(duration / 3600, 1) : 8,
                 assignedTo: assignee?.id ?? null,
               }),
             });

@@ -77,8 +77,14 @@ export function EmployeeImportDialog({
   const [rows, setRows] = useState<DraftRow[]>([]);
   const [sending, setSending] = useState(false);
 
+  // Falls back to the resolved "artist" role (least-privileged) rather than
+  // roles[0] -- roles[0] is whatever order the API happened to return, which
+  // could just as easily be "admin", directly contradicting guessRoleName's
+  // own "always default to least-privileged" contract above.
   const roleIdByName = (name: string) =>
-    roles.find((r: TenantRoleDTO) => r.name === name)?.id ?? roles[0]?.id ?? "";
+    roles.find((r: TenantRoleDTO) => r.name === name)?.id ??
+    roles.find((r: TenantRoleDTO) => r.name === "artist")?.id ??
+    "";
 
   const handleFile = async (file: File) => {
     try {
@@ -135,6 +141,13 @@ export function EmployeeImportDialog({
 
   const handleSendInvites = async () => {
     setSending(true);
+    // Tracked locally rather than read back from `rows` afterward: `rows` is
+    // closed over from render and updateRow only ever applies its patches
+    // via functional setState, so the `rows` binding in this closure never
+    // reflects the "sent"/"error" outcomes written during the loop below —
+    // reading rows.filter(...) after the loop always saw the pre-loop state
+    // (0 sent), regardless of how many invites actually succeeded.
+    let sentCount = 0;
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       if (!row.email || !row.email.includes("@")) {
@@ -148,6 +161,7 @@ export function EmployeeImportDialog({
           departmentId: row.departmentId || undefined,
         });
         updateRow(i, { outcome: "sent" });
+        sentCount++;
       } catch (err: any) {
         updateRow(i, { outcome: "error", error: err?.message });
       }
@@ -155,7 +169,7 @@ export function EmployeeImportDialog({
     setSending(false);
     toast({
       title: "Invites sent",
-      description: `${rows.filter((r) => r.outcome === "sent").length} of ${rows.length} invites sent. Rows without an email were skipped.`,
+      description: `${sentCount} of ${rows.length} invites sent. Rows without an email were skipped.`,
     });
   };
 
