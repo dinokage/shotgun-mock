@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useUIStore } from "@/store/ui";
 import { cn } from "@/lib/utils";
 import {
@@ -24,6 +25,7 @@ import {
 import { useShots } from "@/hooks/useShots";
 import { useAssets } from "@/hooks/useAssets";
 import { useShotStore } from "@/store/shots";
+import { useTasksStore } from "@/store/tasks";
 import {
   X,
   CheckCircle2,
@@ -89,6 +91,7 @@ export function TaskDrawer() {
   const { currentUser } = useAuthStore();
   const { toast } = useToast();
   const isMobile = useIsMobile();
+  const queryClient = useQueryClient();
 
   const { data: liveTasks = [] } = useTasks();
   const updateTaskMutation = useUpdateTask();
@@ -432,6 +435,34 @@ export function TaskDrawer() {
 
             {/* Action Bar */}
             <div className="flex gap-2">
+              {/* Self-claim: an unassigned task can be picked up directly by
+                  any artist (server enforces this same self-claim exception
+                  — see artifacts/api-server's task RBAC). Uses Task 4's
+                  claimTask action, which both updates the local store
+                  optimistically and syncs assignedTo to the backend. */}
+              {!task.assignedTo && currentUser.role === "artist" && (
+                <Button
+                  className="flex-1 border-accent-tally/40 text-accent-tally hover:bg-accent-tally/10"
+                  variant="outline"
+                  onClick={() => {
+                    useTasksStore.getState().claimTask(task.id, currentUser.id);
+                    // claimTask only updates the local Zustand tasks array
+                    // (which this drawer no longer reads); invalidate the
+                    // real-backend tasks query so the drawer's `task` object
+                    // (sourced from useTasks()) reflects the new assignee
+                    // without waiting out staleTime.
+                    queryClient.invalidateQueries({ queryKey: ["tasks"] });
+                    toast({
+                      title: "Task Claimed",
+                      description: `You've claimed ${task.title}.`,
+                    });
+                  }}
+                >
+                  <UserCircle2 className="w-4 h-4 mr-2" />
+                  Claim Task
+                </Button>
+              )}
+
               {/* Assignee Actions */}
               {isAssignee &&
                 [
