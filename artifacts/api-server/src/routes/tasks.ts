@@ -4,6 +4,7 @@ import {
   tasksTable,
   usersTable,
   tenantRolesTable,
+  tenantRoleCapabilitiesTable,
   taskChecklistItemsTable,
   taskDependenciesTable,
   taskCommentsTable,
@@ -12,6 +13,7 @@ import {
 } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { tenantAuthMiddleware } from "../middleware/tenant";
+import { requireCapability } from "../middleware/rbac";
 import * as crypto from "crypto";
 
 // A DB foreign key only verifies a referenced row exists, not who owns it,
@@ -97,7 +99,7 @@ tasksRouter.get("/", async (req, res) => {
   }
 });
 
-tasksRouter.post("/", async (req, res) => {
+tasksRouter.post("/", requireCapability("create_tasks"), async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const {
@@ -162,6 +164,8 @@ const TASK_PATCHABLE_FIELDS = [
   "estimatedHours",
   "actualHours",
   "assignedTo",
+  "startDate",
+  "dueDate",
 ] as const;
 
 tasksRouter.put("/:id", async (req, res) => {
@@ -175,6 +179,35 @@ tasksRouter.put("/:id", async (req, res) => {
       .where(and(eq(tasksTable.tenantId, tenantId), eq(tasksTable.id, taskId)));
 
     if (!existing) return res.status(404).json({ error: "Not found" });
+
+    // Artists have `edit_tasks` but not `assign_tasks` — the one exception is
+    // claiming a currently-unassigned task for themselves ("take tasks on
+    // their own"), which needs neither capability. Any other assignedTo
+    // change (including reassigning someone else, or re-claiming an already
+    // -assigned task) still requires assign_tasks; any other field change
+    // still requires edit_tasks.
+    const bodyKeys = Object.keys(req.body);
+    const onlyClaimingSelf =
+      bodyKeys.length === 1 &&
+      bodyKeys[0] === "assignedTo" &&
+      existing.assignedTo === null &&
+      req.body.assignedTo === req.userId;
+
+    if (!onlyClaimingSelf) {
+      const requiredCapability =
+        "assignedTo" in req.body ? "assign_tasks" : "edit_tasks";
+      const [grant] = await db
+        .select()
+        .from(tenantRoleCapabilitiesTable)
+        .where(
+          and(
+            eq(tenantRoleCapabilitiesTable.roleId, req.roleId!),
+            eq(tenantRoleCapabilitiesTable.capabilityId, requiredCapability),
+          ),
+        );
+      if (!grant)
+        return res.status(403).json({ error: "Forbidden: Missing capability" });
+    }
 
     if (
       "assignedTo" in req.body &&
@@ -192,7 +225,12 @@ tasksRouter.put("/:id", async (req, res) => {
 
     const updates: Record<string, unknown> = {};
     for (const field of TASK_PATCHABLE_FIELDS) {
-      if (field in req.body) updates[field] = req.body[field];
+      if (!(field in req.body)) continue;
+      if (field === "startDate" || field === "dueDate") {
+        updates[field] = req.body[field] ? new Date(req.body[field]) : null;
+      } else {
+        updates[field] = req.body[field];
+      }
     }
     updates.lastStatusUpdate = new Date();
 
