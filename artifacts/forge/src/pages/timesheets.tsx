@@ -39,7 +39,9 @@ import {
   EmptyTitle,
   EmptyDescription,
 } from "@/components/ui/empty";
-import { PROJECTS, USERS, DEPARTMENTS } from "@/data/mockData";
+import { PROJECTS } from "@/data/mockData";
+import { useUserStore } from "@/store/users";
+import { useDepartmentStore } from "@/store/departments";
 import {
   Clock,
   Plus,
@@ -59,6 +61,8 @@ import { cn } from "@/lib/utils";
 
 export default function Timesheets() {
   const { currentUser } = useAuthStore();
+  const users = useUserStore((s) => s.users);
+  const departments = useDepartmentStore((s) => s.departments);
   const { toast } = useToast();
   const { setActiveTaskDrawer } = useUIStore();
 
@@ -99,11 +103,11 @@ export default function Timesheets() {
   // them directly never matched, so a manager's own department's tasks
   // (for anyone who wasn't also their direct report) silently never
   // showed up here. Resolve the manager's department name first.
-  const currentUserDeptName = DEPARTMENTS.find(
+  const currentUserDeptName = departments.find(
     (d) => d.id === currentUser.departmentId,
   )?.name;
   const directReportIds = new Set(
-    USERS.filter((u) => u.supervisorId === currentUser.id).map((u) => u.id),
+    users.filter((u) => u.supervisorId === currentUser.id).map((u) => u.id),
   );
   const myTasks = tasks.filter(
     (t) =>
@@ -422,7 +426,7 @@ export default function Timesheets() {
                         const project = PROJECTS.find(
                           (p) => p.id === task?.projectId,
                         );
-                        const user = USERS.find((u) => u.id === log.userId);
+                        const user = users.find((u) => u.id === log.userId);
                         const isNew = log.id === justAddedId;
                         const isOwn = log.userId === currentUser.id;
                         const isEditing = editingLogId === log.id;

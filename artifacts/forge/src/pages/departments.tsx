@@ -6,7 +6,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { USERS, TASKS, isTaskActive, isTaskDone } from "@/data/mockData";
+import { TASKS, isTaskActive, isTaskDone } from "@/data/mockData";
+import { useUserStore } from "@/store/users";
 import {
   Users,
   ListTodo,
@@ -30,6 +31,7 @@ export default function Departments() {
   const { currentUser } = useAuthStore();
   const isGlobalManager = useDepartmentScope().scoped === false;
   const canManagePipeline = useCapability("manage_pipeline");
+  const users = useUserStore((s) => s.users);
 
   const { data: DEPARTMENTS = [], isLoading } = useDepartments();
 
@@ -186,7 +188,7 @@ export default function Departments() {
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                 {depts.map((dept, i) => {
-                  const members = USERS.filter(
+                  const members = users.filter(
                     (u) => u.departmentId === dept.id,
                   );
                   // Departments don't track a designated supervisor/lead as

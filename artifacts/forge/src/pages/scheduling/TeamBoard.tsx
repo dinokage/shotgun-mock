@@ -33,7 +33,9 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Switch } from "@/components/ui/switch";
 import { PriorityChip } from "@/components/shared/PriorityChip";
 import { Search, Inbox, Clock } from "lucide-react";
-import { USERS, PROJECTS, DEPARTMENTS, Task } from "@/data/mockData";
+import { PROJECTS, Task } from "@/data/mockData";
+import { useUserStore } from "@/store/users";
+import { useDepartmentStore } from "@/store/departments";
 import { useTasksStore } from "@/store/tasks";
 import { useUIStore } from "@/store/ui";
 import { useToast } from "@/hooks/use-toast";
@@ -238,6 +240,8 @@ export default function TeamBoard() {
   const tasks = useTasksStore((s) => s.tasks);
   const reassignTask = useTasksStore((s) => s.reassignTask);
   const revokeAssignment = useTasksStore((s) => s.revokeAssignment);
+  const users = useUserStore((s) => s.users);
+  const departments = useDepartmentStore((s) => s.departments);
 
   const [projectFilter, setProjectFilter] = useState("all");
   const [departmentFilter, setDepartmentFilter] = useState("all");
@@ -261,14 +265,14 @@ export default function TeamBoard() {
         // e.g. Lighting's people, which reads as "Lighting has a huge backlog"
         // when most of it isn't Lighting work at all.
         if (departmentFilter !== "all") {
-          const dept = DEPARTMENTS.find((d) => d.id === departmentFilter);
+          const dept = departments.find((d) => d.id === departmentFilter);
           if (!dept || t.department !== dept.name) return false;
         }
         if (search && !t.title.toLowerCase().includes(search.toLowerCase()))
           return false;
         return true;
       }),
-    [tasks, projectFilter, departmentFilter, search],
+    [tasks, projectFilter, departmentFilter, search, departments],
   );
 
   const unassignedTasks = useMemo(
@@ -277,7 +281,8 @@ export default function TeamBoard() {
   );
 
   const people = useMemo(() => {
-    return USERS.filter((u) => u.role !== "client")
+    return users
+      .filter((u) => u.role !== "client")
       .filter(
         (u) =>
           departmentFilter === "all" || u.departmentId === departmentFilter,
@@ -292,7 +297,7 @@ export default function TeamBoard() {
           b.tasks.length - a.tasks.length ||
           (b.user.capacity ?? 0) - (a.user.capacity ?? 0),
       );
-  }, [filteredTasks, departmentFilter, showEmpty]);
+  }, [users, filteredTasks, departmentFilter, showEmpty]);
 
   const findTask = (id: string) => tasks.find((t) => t.id === id);
 
@@ -302,7 +307,7 @@ export default function TeamBoard() {
 
   const resolveTargetUserId = (overId: string): string | undefined => {
     if (overId === UNASSIGNED) return "";
-    if (USERS.some((u) => u.id === overId)) return overId;
+    if (users.some((u) => u.id === overId)) return overId;
     const overTask = findTask(overId);
     if (overTask) return overTask.assigneeId ?? "";
     return undefined;
@@ -327,7 +332,7 @@ export default function TeamBoard() {
         description: `${activeTaskItem.title} moved back to the unassigned pool.`,
       });
     } else {
-      const person = USERS.find((u) => u.id === targetUserId);
+      const person = users.find((u) => u.id === targetUserId);
       reassignTask(activeTaskItem.id, targetUserId);
       toast({
         title: "Task assigned",
@@ -362,7 +367,7 @@ export default function TeamBoard() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Departments</SelectItem>
-              {DEPARTMENTS.map((d) => (
+              {departments.map((d) => (
                 <SelectItem key={d.id} value={d.id}>
                   {d.name}
                 </SelectItem>

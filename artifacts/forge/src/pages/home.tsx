@@ -9,6 +9,7 @@ import { useProjectStore } from "@/store/projects";
 import { useTasksStore } from "@/store/tasks";
 import { useShotStore } from "@/store/shots";
 import { useReviewStore } from "@/store/reviews";
+import { useDepartmentStore } from "@/store/departments";
 import {
   USERS,
   DEPARTMENTS,
@@ -228,10 +229,14 @@ function ProducerDashboard() {
   // for every user, with no reload. Same pattern as projects.tsx.
   const projects = useProjectStore((state) => state.projects);
   const shots = useShotStore((state) => state.shots);
+  const departments = useDepartmentStore((state) => state.departments);
   const activeProjects = projects.filter((p) => p.status !== "COMPLETE");
   // Recomputed from the current mock data on every mount — not hand-written copy.
   // See src/lib/aiInsights.ts for the rule-based logic behind each card.
-  const insights = useMemo(() => generateProducerInsights(), []);
+  const insights = useMemo(
+    () => generateProducerInsights(departments),
+    [departments],
+  );
 
   // Review queue — real shots currently sitting in internal or client review.
   // Single source of truth for both the "Pending Client Reviews" stat and the

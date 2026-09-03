@@ -5,14 +5,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
-  DEPARTMENTS,
-  USERS,
   TASKS,
   ROLE_LABELS,
   isTaskActive,
   isTaskDone,
   TaskStatus,
 } from "@/data/mockData";
+import { useUserStore } from "@/store/users";
+import { useDepartmentStore } from "@/store/departments";
 import {
   Users,
   ListTodo,
@@ -57,7 +57,9 @@ const TASK_STATUS_OPTIONS: { value: TaskStatus; label: string }[] = [
 
 export default function DepartmentDetail() {
   const { id } = useParams<{ id: string }>();
-  const dept = DEPARTMENTS.find((d) => d.id === id);
+  const users = useUserStore((s) => s.users);
+  const departments = useDepartmentStore((s) => s.departments);
+  const dept = departments.find((d) => d.id === id);
   const { currentUser } = useAuthStore();
   const [activeTab, setActiveTab] = useState("overview");
   const { setCreateTaskModalOpen } = useUIStore();
@@ -90,7 +92,7 @@ export default function DepartmentDetail() {
     );
   }
 
-  const team = USERS.filter((u) => u.departmentId === dept.id).sort((a, b) => {
+  const team = users.filter((u) => u.departmentId === dept.id).sort((a, b) => {
     // Sort by role hierarchy
     const roleWeight = {
       producer: 3,
@@ -441,7 +443,7 @@ export default function DepartmentDetail() {
               <CardContent className="p-0">
                 <div className="divide-y divide-border">
                   {activeTasks.slice(0, 15).map((task) => {
-                    const assignee = USERS.find(
+                    const assignee = users.find(
                       (u) => u.id === task.assigneeId,
                     );
                     return (

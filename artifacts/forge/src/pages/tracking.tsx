@@ -53,10 +53,10 @@ import {
   PROJECTS,
   EPISODES,
   SEQUENCES,
-  USERS,
-  DEPARTMENTS,
   TaskStatus,
 } from "@/data/mockData";
+import { useUserStore } from "@/store/users";
+import { useDepartmentStore } from "@/store/departments";
 import { useShots, useUpdateShot } from "@/hooks/useShots";
 import { useTasksStore } from "@/store/tasks";
 import {
@@ -465,6 +465,8 @@ export default function TrackingGrid() {
   const { currentUser } = useAuthStore();
   const isLeadership = useIsLeadership();
   const { toast } = useToast();
+  const users = useUserStore((s) => s.users);
+  const departments = useDepartmentStore((s) => s.departments);
 
   const [search, setSearchState] = useState("");
   const [projectFilter, setProjectFilterState] = useState("all");
@@ -618,9 +620,9 @@ export default function TrackingGrid() {
       const proj = PROJECTS.find((p) => p.id === shot.projectId);
       const ep = EPISODES.find((e) => e.id === shot.episodeId);
       const seq = SEQUENCES.find((sq) => sq.id === shot.sequenceId);
-      const assignee = USERS.find((u) => u.id === shot.assigneeId);
+      const assignee = users.find((u) => u.id === shot.assigneeId);
       const dept = assignee
-        ? DEPARTMENTS.find((d) => d.id === assignee.departmentId)
+        ? departments.find((d) => d.id === assignee.departmentId)
         : undefined;
 
       return {
@@ -655,7 +657,7 @@ export default function TrackingGrid() {
     }
 
     return mapped.map((row, i) => ({ ...row, no: i + 1 }));
-  }, [search, projectFilter, localOverrides, liveShots, sortBy]);
+  }, [search, projectFilter, localOverrides, liveShots, sortBy, users, departments]);
 
   const groupTree = useMemo(() => {
     if (groupBy1 === "none") return null;
@@ -668,7 +670,7 @@ export default function TrackingGrid() {
       projectFilter === "all"
         ? liveTasks
         : liveTasks.filter((t) => t.projectId === projectFilter);
-    return DEPARTMENTS.map((dept) => {
+    return departments.map((dept) => {
       const deptTasks = relevantTasks.filter((t) => t.department === dept.name);
       const buckets: Record<string, number> = {
         todo: 0,
@@ -683,7 +685,7 @@ export default function TrackingGrid() {
       });
       return { dept, total: deptTasks.length, buckets };
     }).filter((d) => d.total > 0);
-  }, [liveTasks, projectFilter]);
+  }, [liveTasks, projectFilter, departments]);
 
   const toggleGroup = (path: string) => {
     setCollapsedKeys((prev) => {

@@ -10,11 +10,11 @@
 
 import {
   ASSETS,
-  DEPARTMENTS,
   PROJECTS,
   SHOTS,
   TASKS,
   type Asset,
+  type Department,
   type Task,
 } from "@/data/mockData";
 
@@ -137,7 +137,7 @@ function groupActiveTasksByDept(): Map<string, Task[]> {
 }
 
 /** Finds the department with the highest share of self-reported "behind" pace tasks. */
-function findDepartmentPaceInsight(): AIInsight | null {
+function findDepartmentPaceInsight(departments: Department[]): AIInsight | null {
   const ranked = Array.from(groupActiveTasksByDept().entries())
     .filter(([, tasks]) => tasks.length >= MIN_DEPT_SAMPLE)
     .map(([department, tasks]) => {
@@ -154,7 +154,7 @@ function findDepartmentPaceInsight(): AIInsight | null {
   const top = ranked[0];
   if (!top || top.behind === 0) return null;
 
-  const dept = DEPARTMENTS.find((d) => d.name === top.department);
+  const dept = departments.find((d) => d.name === top.department);
   const pct = Math.round(top.rate * 100);
 
   return {
@@ -209,7 +209,7 @@ function findProjectRiskInsight(): AIInsight | null {
 }
 
 /** Finds the department with the highest share of self-reported "on-track" tasks — a genuine positive signal, not just the inverse of the pace warning. */
-function findDepartmentOnTrackInsight(): AIInsight | null {
+function findDepartmentOnTrackInsight(departments: Department[]): AIInsight | null {
   const ranked = Array.from(groupActiveTasksByDept().entries())
     .filter(([, tasks]) => tasks.length >= MIN_DEPT_SAMPLE)
     .map(([department, tasks]) => {
@@ -226,7 +226,7 @@ function findDepartmentOnTrackInsight(): AIInsight | null {
   const top = ranked[0];
   if (!top || top.rate === 0) return null;
 
-  const dept = DEPARTMENTS.find((d) => d.name === top.department);
+  const dept = departments.find((d) => d.name === top.department);
   const pct = Math.round(top.rate * 100);
 
   return {
@@ -246,11 +246,13 @@ function findDepartmentOnTrackInsight(): AIInsight | null {
  * against the current data (e.g. no department has a "behind" task) is
  * omitted rather than shown with placeholder text.
  */
-export function generateProducerInsights(): AIInsight[] {
+export function generateProducerInsights(
+  departments: Department[],
+): AIInsight[] {
   return [
     findBlockingAssetInsight(),
-    findDepartmentPaceInsight(),
+    findDepartmentPaceInsight(departments),
     findProjectRiskInsight(),
-    findDepartmentOnTrackInsight(),
+    findDepartmentOnTrackInsight(departments),
   ].filter((insight): insight is AIInsight => insight !== null);
 }

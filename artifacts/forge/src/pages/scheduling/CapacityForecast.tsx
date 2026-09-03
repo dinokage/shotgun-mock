@@ -21,7 +21,9 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { PalmtreeIcon, Users2, TrendingUp } from "lucide-react";
-import { USERS, DEPARTMENTS, LEAVE_EVENTS } from "@/data/mockData";
+import type { LeaveEvent } from "@/data/mockData";
+import { useUserStore } from "@/store/users";
+import { useDepartmentStore } from "@/store/departments";
 import { useTasksStore } from "@/store/tasks";
 import { cn } from "@/lib/utils";
 import {
@@ -73,12 +75,14 @@ function utilText(pct: number) {
 
 export default function CapacityForecast() {
   const tasks = useTasksStore((s) => s.tasks);
+  const users = useUserStore((s) => s.users);
+  const allDepartments = useDepartmentStore((s) => s.departments);
   const [pipelineFilter, setPipelineFilter] = useState<string>("all");
 
   const buckets = useMemo(() => bucketRanges(), []);
   const studioUsers = useMemo(
-    () => USERS.filter((u) => u.role !== "client"),
-    [],
+    () => users.filter((u) => u.role !== "client"),
+    [users],
   );
 
   // --- Studio-wide weekly chart data ---------------------------------------
@@ -92,12 +96,10 @@ export default function CapacityForecast() {
       );
       const headcountDays = studioUsers.length * bucketLen;
 
-      const leaveDays = LEAVE_EVENTS.reduce((sum, leave) => {
-        if (!studioUsers.some((u) => u.id === leave.userId)) return sum;
-        return (
-          sum + overlapDays(bucket.start, bucket.end, leave.start, leave.end)
-        );
-      }, 0);
+      // No real leave/PTO backend exists yet (only the fully-fake
+      // LEAVE_EVENTS mock array did before), so leave is always 0 rather
+      // than showing invented days off against real employees.
+      const leaveDays = 0;
 
       const bookedDays = tasks.reduce((sum, task) => {
         if (
@@ -134,9 +136,10 @@ export default function CapacityForecast() {
       : { start: buckets[0].start, end: buckets[0].end };
 
   const departments = useMemo(() => {
-    return DEPARTMENTS.filter(
-      (d) => pipelineFilter === "all" || d.pipeline === pipelineFilter,
-    )
+    return allDepartments
+      .filter(
+        (d) => pipelineFilter === "all" || d.pipeline === pipelineFilter,
+      )
       .map((dept) => {
         const deptUsers = studioUsers.filter((u) => u.departmentId === dept.id);
         const windowLen = overlapDays(
@@ -147,18 +150,9 @@ export default function CapacityForecast() {
         );
         const headcountDays = deptUsers.length * windowLen;
 
-        const leaveDays = LEAVE_EVENTS.reduce((sum, leave) => {
-          if (!deptUsers.some((u) => u.id === leave.userId)) return sum;
-          return (
-            sum +
-            overlapDays(
-              deptWindow.start,
-              deptWindow.end,
-              leave.start,
-              leave.end,
-            )
-          );
-        }, 0);
+        // No real leave/PTO backend exists yet — see chartData's leaveDays
+        // comment above.
+        const leaveDays = 0;
 
         const bookedDays = tasks.reduce((sum, task) => {
           if (!deptUsers.some((u) => u.id === task.assigneeId)) return sum;
@@ -192,7 +186,14 @@ export default function CapacityForecast() {
       })
       .filter((d) => d.headcount > 0)
       .sort((a, b) => b.utilization - a.utilization);
-  }, [pipelineFilter, studioUsers, tasks, deptWindow.start, deptWindow.end]);
+  }, [
+    allDepartments,
+    pipelineFilter,
+    studioUsers,
+    tasks,
+    deptWindow.start,
+    deptWindow.end,
+  ]);
 
   // --- Per-department utilization trend, one point per week bucket --------
   // Same booked/leave/available math as the department cards above, just run
@@ -201,7 +202,7 @@ export default function CapacityForecast() {
   // ScopeTrace sparkline in each department card.
   const departmentTrends = useMemo(() => {
     const map = new Map<string, number[]>();
-    DEPARTMENTS.forEach((dept) => {
+    allDepartments.forEach((dept) => {
       const deptUsers = studioUsers.filter((u) => u.departmentId === dept.id);
       if (deptUsers.length === 0) return;
       const series = buckets.map((bucket) => {
@@ -213,12 +214,9 @@ export default function CapacityForecast() {
         );
         const headcountDays = deptUsers.length * bucketLen;
 
-        const leaveDays = LEAVE_EVENTS.reduce((sum, leave) => {
-          if (!deptUsers.some((u) => u.id === leave.userId)) return sum;
-          return (
-            sum + overlapDays(bucket.start, bucket.end, leave.start, leave.end)
-          );
-        }, 0);
+        // No real leave/PTO backend exists yet — see chartData's leaveDays
+        // comment above.
+        const leaveDays = 0;
 
         const bookedDays = tasks.reduce((sum, task) => {
           if (!deptUsers.some((u) => u.id === task.assigneeId)) return sum;
@@ -242,13 +240,13 @@ export default function CapacityForecast() {
       map.set(dept.id, series);
     });
     return map;
-  }, [buckets, studioUsers, tasks]);
+  }, [allDepartments, buckets, studioUsers, tasks]);
 
-  const upcomingLeave = useMemo(() => {
-    return LEAVE_EVENTS.filter((l) => l.end >= buckets[0].start)
-      .sort((a, b) => a.start.localeCompare(b.start))
-      .slice(0, 8);
-  }, [buckets]);
+  // No real leave/PTO feature or backend exists yet — the "Upcoming Leave"
+  // list stays empty (rendering the existing "No leave scheduled" state)
+  // rather than showing the fully-fake LEAVE_EVENTS mock data mixed in with
+  // real employees.
+  const upcomingLeave: LeaveEvent[] = [];
 
   return (
     <div className="flex flex-col h-full overflow-y-auto">
@@ -449,7 +447,7 @@ export default function CapacityForecast() {
             <Card>
               <CardContent className="p-0 divide-y divide-border">
                 {upcomingLeave.map((leave) => {
-                  const user = USERS.find((u) => u.id === leave.userId);
+                  const user = users.find((u) => u.id === leave.userId);
                   return (
                     <div
                       key={leave.id}

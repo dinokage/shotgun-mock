@@ -20,13 +20,12 @@ import {
   TASKS,
   REVIEWS,
   PUBLISH_LOGS,
-  DEPARTMENTS,
-  USERS,
-  TIME_LOGS,
   SHOTS,
   Project,
   isTaskDone,
 } from "@/data/mockData";
+import { useUserStore } from "@/store/users";
+import { useDepartmentStore } from "@/store/departments";
 import {
   BarChart3,
   TrendingUp,
@@ -137,6 +136,8 @@ function usePunchedInSession(userId: string | undefined): {
 export default function Analytics() {
   const { toast } = useToast();
   const { currentUser } = useAuthStore();
+  const users = useUserStore((s) => s.users);
+  const departments = useDepartmentStore((s) => s.departments);
   const punchedInSession = usePunchedInSession(currentUser?.id);
   const canViewFinancials = useCapability("view_financials");
 
@@ -342,10 +343,11 @@ export default function Analytics() {
 
   const topContributors = useMemo(
     () =>
-      USERS.map((u) => ({ user: u, count: contributorCounts.get(u.id) || 0 }))
+      users
+        .map((u) => ({ user: u, count: contributorCounts.get(u.id) || 0 }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 5),
-    [contributorCounts],
+    [users, contributorCounts],
   );
 
   // Generate mock chart data
@@ -689,7 +691,7 @@ export default function Analytics() {
                         </tr>
                       </thead>
                       <tbody>
-                        {DEPARTMENTS.slice(0, 6).map((dept, i) => {
+                        {departments.slice(0, 6).map((dept, i) => {
                           // Deterministic capacity curve per week (0-150%), seeded per dept+week
                           const baseLoad = [80, 95, 60, 110, 40, 85][i];
                           const weekLoads = Array.from({ length: 8 }).map(
@@ -1119,16 +1121,8 @@ export default function Analytics() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/50">
-                    {USERS.map((user, i) => {
-                      // Filter all logs for the user to compute actual hours, or mock it if missing
-                      const userLogs = TIME_LOGS.filter(
-                        (l) => l.userId === user.id,
-                      );
-                      const actualHours = userLogs.reduce(
-                        (acc, l) => acc + l.hours,
-                        0,
-                      );
-                      const dept = DEPARTMENTS.find(
+                    {users.map((user, i) => {
+                      const dept = departments.find(
                         (d) => d.id === user.departmentId,
                       );
                       const isCurrentUser = currentUser?.id === user.id;
@@ -1152,25 +1146,26 @@ export default function Analytics() {
                             ? punchedInSession.since!
                             : new Date().toISOString()
                           : undefined;
-                      const baseHoursToday =
-                        actualHours > 0 ? actualHours : i % 2 === 0 ? 6.5 : 0;
-                      const baseHoursWeek =
-                        actualHours > 0
-                          ? actualHours * 5
-                          : i % 2 === 0
-                            ? 32.5
-                            : 0;
-                      const totalHoursToday = isCurrentUser
-                        ? baseHoursToday + punchedInSession.hours
-                        : baseHoursToday;
-                      const totalHoursWeek = isCurrentUser
-                        ? baseHoursWeek + punchedInSession.hours
-                        : baseHoursWeek;
 
-                      const todayHrs = totalHoursToday.toFixed(1);
-                      const weekHrs = totalHoursWeek.toFixed(1);
-                      const util = Math.round((Number(weekHrs) / 40) * 100);
-                      const isOver = util > 100;
+                      // No real studio-wide time-log aggregation backend
+                      // exists yet (only per-task daily-logs via
+                      // GET /daily-logs?taskId=/?userId=, not a full
+                      // per-user aggregate) — so only the logged-in user's
+                      // own row has real hours, mirrored from the header
+                      // clock's punched-in session above. Every other row
+                      // shows an honest "no data" placeholder instead of
+                      // invented hours.
+                      const todayHrs = isCurrentUser
+                        ? punchedInSession.hours.toFixed(1)
+                        : null;
+                      const weekHrs = isCurrentUser
+                        ? punchedInSession.hours.toFixed(1)
+                        : null;
+                      const util =
+                        weekHrs !== null
+                          ? Math.round((Number(weekHrs) / 40) * 100)
+                          : null;
+                      const isOver = util !== null && util > 100;
 
                       return (
                         <tr
@@ -1212,22 +1207,26 @@ export default function Analytics() {
                             </Badge>
                           </td>
                           <td className="py-4 text-right tabular-nums font-medium">
-                            {todayHrs}h
+                            {todayHrs !== null ? `${todayHrs}h` : "—"}
                           </td>
                           <td className="py-4 text-right tabular-nums">
-                            {weekHrs}h
+                            {weekHrs !== null ? `${weekHrs}h` : "—"}
                           </td>
                           <td className="py-4 text-right">
-                            <Badge
-                              variant="outline"
-                              className={
-                                isOver
-                                  ? "bg-orange-500/10 text-orange-500 border-orange-500/20"
-                                  : "bg-blue-500/10 text-blue-500 border-blue-500/20"
-                              }
-                            >
-                              {util}%
-                            </Badge>
+                            {util !== null ? (
+                              <Badge
+                                variant="outline"
+                                className={
+                                  isOver
+                                    ? "bg-orange-500/10 text-orange-500 border-orange-500/20"
+                                    : "bg-blue-500/10 text-blue-500 border-blue-500/20"
+                                }
+                              >
+                                {util}%
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
                           </td>
                         </tr>
                       );

@@ -6,7 +6,9 @@ import {
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
-import { DEPARTMENTS, PROJECTS, TASKS, USERS } from "@/data/mockData";
+import { PROJECTS, TASKS } from "@/data/mockData";
+import { useUserStore } from "@/store/users";
+import { useDepartmentStore } from "@/store/departments";
 import {
   TableProperties,
   PlayCircle,
@@ -54,6 +56,8 @@ export default function ProductionDashboard() {
   const [, setLocation] = useLocation();
   const [filter, setFilter] = useState<"all" | "review" | "at-risk">("all");
   const { shots, updateShot } = useShotStore();
+  const users = useUserStore((s) => s.users);
+  const departments = useDepartmentStore((s) => s.departments);
   const { toast } = useToast();
   const canAssignTasks = useCapability("assign_tasks");
   const canEditTasks = useCapability("edit_tasks");
@@ -210,7 +214,7 @@ export default function ProductionDashboard() {
           "Rendering",
           "Compositing",
         ].map((deptName) => {
-          const dept = DEPARTMENTS.find((d) =>
+          const dept = departments.find((d) =>
             d.name.toLowerCase().includes(deptName.toLowerCase()),
           ) || { id: deptName, name: deptName, color: "hsl(var(--primary))" };
 
@@ -248,7 +252,7 @@ export default function ProductionDashboard() {
           if (deptShots.length === 0) return null; // Don't show empty departments when filtering
 
           // Department-scoped artists, for the "Assign Artists" quick action below.
-          const deptArtists = USERS.filter(
+          const deptArtists = users.filter(
             (u) => u.departmentId === dept.id && u.role === "artist",
           );
 
@@ -381,7 +385,7 @@ export default function ProductionDashboard() {
                                 Active Tasks
                               </div>
                               {shotTasks.slice(0, 3).map((task) => {
-                                const assignee = USERS.find(
+                                const assignee = users.find(
                                   (u) => u.id === task.assigneeId,
                                 );
                                 return (

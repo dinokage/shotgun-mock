@@ -4,7 +4,9 @@ import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { USERS, DEPARTMENTS, PROJECTS } from "@/data/mockData";
+import { PROJECTS } from "@/data/mockData";
+import { useUserStore } from "@/store/users";
+import { useDepartmentStore } from "@/store/departments";
 import { useAuthStore } from "@/store/auth";
 import { useStandupsStore } from "@/store/standups";
 import { useBroadcastsStore } from "@/store/broadcasts";
@@ -106,7 +108,8 @@ function PlaylistItem({
   } = useSortable({
     id: task.id,
   });
-  const assignee = USERS.find((u) => u.id === task.assignedTo);
+  const users = useUserStore((s) => s.users);
+  const assignee = users.find((u) => u.id === task.assignedTo);
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -158,8 +161,9 @@ function PlaylistItem({
 // task's logs and renders nothing if that task has none logged yet.
 function DailyLogRow({ task }: { task: any }) {
   const { data: logs = [] } = useDailyLogs(task.id);
+  const users = useUserStore((s) => s.users);
   if (logs.length === 0) return null;
-  const assignee = USERS.find((u) => u.id === task.assignedTo);
+  const assignee = users.find((u) => u.id === task.assignedTo);
   const latestLog = logs[logs.length - 1];
   return (
     <div className="p-4 hover:bg-muted/30 transition-colors">
@@ -294,6 +298,8 @@ function PayrollRow({
 
 export default function DailyStandup() {
   const { currentUser } = useAuthStore();
+  const users = useUserStore((s) => s.users);
+  const departments = useDepartmentStore((s) => s.departments);
   const { data: tasks = [] } = useTasks();
   const updateTaskMutation = useUpdateTask();
   const addDailyLog = useAddDailyLog();
@@ -372,10 +378,10 @@ export default function DailyStandup() {
   const isAllDepts = selectedDeptId === "ALL";
   const dept = isAllDepts
     ? null
-    : DEPARTMENTS.find((d) => d.id === selectedDeptId);
+    : departments.find((d) => d.id === selectedDeptId);
   const team = isAllDepts
-    ? USERS
-    : USERS.filter((u) => u.departmentId === selectedDeptId);
+    ? users
+    : users.filter((u) => u.departmentId === selectedDeptId);
 
   // Playlist entries derived live from the persisted id order + the current
   // task list, so it always reflects real task data (title/status/assignee)
@@ -410,7 +416,7 @@ export default function DailyStandup() {
   // from the apiClient stub.
   const feedUpdates = standupUpdates
     .map((update) => {
-      const user = USERS.find((u) => u.id === update.userId) || currentUser;
+      const user = users.find((u) => u.id === update.userId) || currentUser;
       return {
         ...update,
         user,
@@ -445,7 +451,7 @@ export default function DailyStandup() {
   const payrollRows = useMemo(
     () =>
       team.map((member) => {
-        const memberDept = DEPARTMENTS.find(
+        const memberDept = departments.find(
           (d) => d.id === member.departmentId,
         );
         return {
@@ -654,7 +660,7 @@ export default function DailyStandup() {
             onChange={(e) => setSelectedDeptId(e.target.value)}
           >
             <option value="ALL">All Departments (Studio-Wide)</option>
-            {DEPARTMENTS.map((d) => (
+            {departments.map((d) => (
               <option key={d.id} value={d.id}>
                 {d.name}
               </option>
@@ -784,7 +790,7 @@ export default function DailyStandup() {
                         )
                         .slice(0, 4)
                         .map((task) => {
-                          const assignee = USERS.find(
+                          const assignee = users.find(
                             (u) => u.id === task.assignedTo,
                           );
                           return (
@@ -950,7 +956,7 @@ export default function DailyStandup() {
                   <Card className="border-border/50 bg-muted/10 h-[600px] overflow-y-auto">
                     <CardContent className="p-3 space-y-2">
                       {pendingReviewTasks.map((task) => {
-                        const assignee = USERS.find(
+                        const assignee = users.find(
                           (u) => u.id === task.assignedTo,
                         );
                         return (
@@ -1281,18 +1287,18 @@ export default function DailyStandup() {
               {(STUDIO_LEADERSHIP_ROLES.includes(
                 currentUser.role,
               ) ||
-                currentUser.departmentId === USERS[2]?.departmentId) && (
+                currentUser.departmentId === users[2]?.departmentId) && (
                 <Card className="border-border/50 bg-card overflow-hidden">
                   <CardContent className="p-0">
                     <div className="p-4 border-b border-border/50 flex items-start gap-3">
                       <Avatar className="w-10 h-10 border border-border/50">
-                        <AvatarImage src={USERS[2]?.avatar} />
+                        <AvatarImage src={users[2]?.avatar} />
                         <AvatarFallback>A</AvatarFallback>
                       </Avatar>
                       <div className="flex-1">
                         <div className="flex items-baseline justify-between">
                           <div className="font-semibold text-sm">
-                            {USERS[2]?.name}
+                            {users[2]?.name}
                           </div>
                           <div className="text-xs text-muted-foreground">
                             2 hours ago
@@ -1408,14 +1414,14 @@ export default function DailyStandup() {
                       <div className="px-4 pb-4 pt-1 space-y-2 border-t border-border/50 bg-muted/10">
                         <div className="flex items-start gap-2 pt-3 text-xs">
                           <Avatar className="w-6 h-6 shrink-0">
-                            <AvatarImage src={USERS[1]?.avatar} />
+                            <AvatarImage src={users[1]?.avatar} />
                             <AvatarFallback>
-                              {USERS[1]?.name.charAt(0)}
+                              {users[1]?.name.charAt(0)}
                             </AvatarFallback>
                           </Avatar>
                           <div>
                             <span className="font-semibold">
-                              {USERS[1]?.name}
+                              {users[1]?.name}
                             </span>{" "}
                             <span className="text-muted-foreground">
                               Weight looks great now, ship it.
@@ -1424,14 +1430,14 @@ export default function DailyStandup() {
                         </div>
                         <div className="flex items-start gap-2 text-xs">
                           <Avatar className="w-6 h-6 shrink-0">
-                            <AvatarImage src={USERS[2]?.avatar} />
+                            <AvatarImage src={users[2]?.avatar} />
                             <AvatarFallback>
-                              {USERS[2]?.name.charAt(0)}
+                              {users[2]?.name.charAt(0)}
                             </AvatarFallback>
                           </Avatar>
                           <div>
                             <span className="font-semibold">
-                              {USERS[2]?.name}
+                              {users[2]?.name}
                             </span>{" "}
                             <span className="text-muted-foreground">
                               Agreed, left leg reads much better.
@@ -1448,18 +1454,18 @@ export default function DailyStandup() {
               {(STUDIO_LEADERSHIP_ROLES.includes(
                 currentUser.role,
               ) ||
-                currentUser.departmentId === USERS[1]?.departmentId) && (
+                currentUser.departmentId === users[1]?.departmentId) && (
                 <Card className="border-border/50 bg-card overflow-hidden">
                   <CardContent className="p-0">
                     <div className="p-4 flex items-start gap-3">
                       <Avatar className="w-10 h-10 border border-border/50">
-                        <AvatarImage src={USERS[1]?.avatar} />
+                        <AvatarImage src={users[1]?.avatar} />
                         <AvatarFallback>A</AvatarFallback>
                       </Avatar>
                       <div className="flex-1">
                         <div className="flex items-baseline justify-between">
                           <div className="font-semibold text-sm">
-                            {USERS[1]?.name}
+                            {users[1]?.name}
                           </div>
                           <div className="text-xs text-muted-foreground">
                             4 hours ago

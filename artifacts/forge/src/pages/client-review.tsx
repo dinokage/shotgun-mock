@@ -18,7 +18,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiClient } from "@/lib/apiClient";
-import { PROJECTS, STUDIOS, VERSIONS } from "@/data/mockData";
+import { PROJECTS, VERSIONS } from "@/data/mockData";
 import { useLocation } from "wouter";
 import { useAuthStore } from "@/store/auth";
 import { Badge } from "@/components/ui/badge";
@@ -96,7 +96,7 @@ function resolveShotVideoSrc(shot: {
 }
 
 export default function ClientReview() {
-  const { currentUser, logout } = useAuthStore();
+  const { currentUser, logout, tenantName } = useAuthStore();
   const [, setLocation] = useLocation();
 
   const searchParams = new URLSearchParams(window.location.search);
@@ -215,9 +215,6 @@ export default function ClientReview() {
     : null;
   const activeProject = activeShot
     ? PROJECTS.find((p) => p.id === activeShot.projectId)
-    : null;
-  const activeStudio = activeProject
-    ? STUDIOS.find((s) => s.id === activeProject.studioId)
     : null;
 
   // Studio Updates: the one bridge from the internal status-broadcast
@@ -554,9 +551,6 @@ export default function ClientReview() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {pendingReviews.map((shot) => {
                 const project = PROJECTS.find((p) => p.id === shot.projectId);
-                const studio = project
-                  ? STUDIOS.find((s) => s.id === project.studioId)
-                  : null;
                 return (
                   <div
                     key={shot.id}
@@ -572,10 +566,10 @@ export default function ClientReview() {
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                         <Play className="w-12 h-12 text-white drop-shadow-md" />
                       </div>
-                      {studio && (
+                      {tenantName && (
                         <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-black/60 backdrop-blur px-2 py-1 rounded-md text-[11px] font-medium text-zinc-100 border border-white/10">
                           <Building2 className="w-3 h-3 text-zinc-300" />
-                          <span>{studio.name}</span>
+                          <span>{tenantName}</span>
                         </div>
                       )}
                     </div>
@@ -643,13 +637,13 @@ export default function ClientReview() {
           </div>
         </div>
         <div className="flex items-center gap-4">
-          {activeStudio && (
+          {tenantName && (
             <div className="flex items-center gap-2 pr-4 border-r border-white/10 text-xs text-white/60">
               <Building2 className="w-4 h-4 text-white/40" />
               <span>
                 Delivered by{" "}
                 <span className="text-white font-medium">
-                  {activeStudio.name}
+                  {tenantName}
                 </span>
               </span>
             </div>
@@ -681,7 +675,7 @@ export default function ClientReview() {
               >
                 <div className="flex items-center justify-between gap-2 mb-1">
                   <span className="text-xs font-medium text-zinc-200">
-                    {activeStudio?.name || "Studio"}
+                    {tenantName || "Studio"}
                   </span>
                   <span className="text-[10px] text-zinc-500 timecode shrink-0">
                     {new Date(update.timestamp).toLocaleString(undefined, {
