@@ -168,13 +168,20 @@ export function TracksheetImportDialog({
           // the row is preserved verbatim in the description so nothing
           // in the source sheet is silently lost.
           const status = getField(row, ["Anim_status", "Layout_status", "Status"]) || "ready";
+          // Real sheets put short location/vendor codes here too ("Kol",
+          // "Vizag", "os" for outsourced) -- a plain substring match wrongly
+          // matched "os" against "Debut Gh-os-h". Requiring every word in
+          // the sheet's value to appear as a whole word in the candidate's
+          // name avoids that false positive while still matching partial
+          // real names ("Yathendra" against "Yathendra Sri Sai Hanuma Pudi").
           const artistName = getField(row, ["Artist Name", "Artist"]);
-          const assignee = artistName
-            ? users.find(
-                (u) =>
-                  u.role === "artist" &&
-                  u.name.toLowerCase().includes(artistName.toLowerCase()),
-              )
+          const artistWords = artistName.toLowerCase().trim().split(/\s+/).filter(Boolean);
+          const assignee = artistWords.length
+            ? users.find((u) => {
+                if (u.role !== "artist") return false;
+                const nameWords = u.name.toLowerCase().split(/\s+/);
+                return artistWords.every((w) => nameWords.includes(w));
+              })
             : undefined;
 
           const startDate = parseLooseDate(getField(row, ["Start Date"]));

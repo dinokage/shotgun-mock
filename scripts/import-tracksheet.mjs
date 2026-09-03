@@ -104,6 +104,15 @@ async function main() {
   );
   const shotCache = new Map(shotsRes.rows.map((s) => [s.name.toLowerCase(), s.id]));
 
+  // One task per shot -- keyed by entity_id so re-running this script
+  // (e.g. after a matching-logic fix) updates existing rows in place
+  // instead of creating duplicates.
+  const tasksRes = await client.query(
+    `SELECT id, entity_id FROM tasks WHERE tenant_id = $1 AND entity_type = 'shot' AND entity_id = ANY($2)`,
+    [TENANT_ID, shotsRes.rows.map((s) => s.id)],
+  );
+  const taskCache = new Map(tasksRes.rows.map((t) => [t.entity_id, t.id]));
+
   const wb = XLSX.readFile(TRACKSHEET_PATH);
   const outcomes = [];
   let assignedCount = 0;
@@ -168,9 +177,15 @@ async function main() {
       }
 
       const status = getField(row, ["Anim_status", "Layout_status", "Status"]) || "ready";
+      // Whole-word match only -- a plain substring match wrongly matched
+      // the location/vendor code "os" (outsourced) against "Debut Gh-os-h".
       const artistName = getField(row, ["Artist Name", "Artist"]);
-      const assignee = artistName
-        ? artists.find((u) => u.name.toLowerCase().includes(artistName.toLowerCase()))
+      const artistWords = artistName.toLowerCase().trim().split(/\s+/).filter(Boolean);
+      const assignee = artistWords.length
+        ? artists.find((u) => {
+            const nameWords = u.name.toLowerCase().split(/\s+/);
+            return artistWords.every((w) => nameWords.includes(w));
+          })
         : undefined;
       if (assignee) assignedCount++;
 
@@ -182,20 +197,27 @@ async function main() {
         .map(([k, v]) => `${k}: ${v}`)
         .join("; ");
 
-      const taskId = crypto.randomUUID();
-      await client.query(
-        `INSERT INTO tasks (id, tenant_id, entity_id, entity_type, title, description, status, priority, pipeline_phase, start_date, due_date, estimated_hours, assigned_to)
-         VALUES ($1,$2,$3,'shot',$4,$5,$6,'medium','ANIM',$7,$8,$9,$10)`,
-        [
-          taskId, TENANT_ID, shotId,
-          `Animation — ${shotCode}`,
-          extraNotes || `Imported from ${sheetName}.`,
-          status,
-          startDate, endDate,
-          duration ? Math.max(duration / 3600, 1) : 8,
-          assignee?.id ?? null,
-        ],
-      );
+      const taskTitle = `Animation — ${shotCode}`;
+      const taskDescription = extraNotes || `Imported from ${sheetName}.`;
+      const estimatedHours = duration ? Math.max(duration / 3600, 1) : 8;
+      const assignedTo = assignee?.id ?? null;
+
+      const existingTaskId = taskCache.get(shotId);
+      if (existingTaskId) {
+        await client.query(
+          `UPDATE tasks SET title=$1, description=$2, status=$3, start_date=$4, due_date=$5, estimated_hours=$6, assigned_to=$7
+           WHERE id = $8 AND tenant_id = $9`,
+          [taskTitle, taskDescription, status, startDate, endDate, estimatedHours, assignedTo, existingTaskId, TENANT_ID],
+        );
+      } else {
+        const taskId = crypto.randomUUID();
+        await client.query(
+          `INSERT INTO tasks (id, tenant_id, entity_id, entity_type, title, description, status, priority, pipeline_phase, start_date, due_date, estimated_hours, assigned_to)
+           VALUES ($1,$2,$3,'shot',$4,$5,$6,'medium','ANIM',$7,$8,$9,$10)`,
+          [taskId, TENANT_ID, shotId, taskTitle, taskDescription, status, startDate, endDate, estimatedHours, assignedTo],
+        );
+        taskCache.set(shotId, taskId);
+      }
       outcomes.push({ sheet: sheetName, shotCode, shotCreated });
     }
     console.log(`${sheetName}: processed ${rows.length} rows`);
