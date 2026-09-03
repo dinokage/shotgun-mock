@@ -15,6 +15,7 @@ import {
   BookmarkPlus,
   Trash2,
   Building2,
+  UploadCloud,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cut } from "@/lib/motion";
@@ -47,8 +48,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useAuthStore } from "@/store/auth";
-import { useIsLeadership } from "@/hooks/use-capability";
+import { useIsLeadership, useCapability } from "@/hooks/use-capability";
 import { useToast } from "@/hooks/use-toast";
+import { TracksheetImportDialog } from "@/components/tracking/TracksheetImportDialog";
 import {
   PROJECTS,
   EPISODES,
@@ -467,6 +469,8 @@ export default function TrackingGrid() {
   const { toast } = useToast();
   const users = useUserStore((s) => s.users);
   const departments = useDepartmentStore((s) => s.departments);
+  const canImportTracksheet = useCapability("create_tasks");
+  const [importOpen, setImportOpen] = useState(false);
 
   const [search, setSearchState] = useState("");
   const [projectFilter, setProjectFilterState] = useState("all");
@@ -1032,6 +1036,16 @@ export default function TrackingGrid() {
           >
             <Download className="w-4 h-4 mr-2" /> Export CSV
           </Button>
+          {canImportTracksheet && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setImportOpen(true)}
+              className="border-border text-foreground"
+            >
+              <UploadCloud className="w-4 h-4 mr-2" /> Import Tracksheet
+            </Button>
+          )}
           <Button
             size="sm"
             className="bg-emerald-600 hover:bg-emerald-700 text-white border-0"
@@ -1512,6 +1526,8 @@ export default function TrackingGrid() {
           </span>
         </div>
       </div>
+
+      <TracksheetImportDialog open={importOpen} onOpenChange={setImportOpen} />
     </div>
   );
 }

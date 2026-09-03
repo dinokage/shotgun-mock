@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/apiClient";
 
 export interface EpisodeDTO {
@@ -21,5 +21,20 @@ export function useEpisodes(projectId?: string) {
       ),
     enabled: !!projectId,
     staleTime: 30000,
+  });
+}
+
+export function useCreateEpisode() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { projectId: string; name: string }) =>
+      apiFetch<EpisodeDTO>("/episodes", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (_, variables) =>
+      queryClient.invalidateQueries({
+        queryKey: ["episodes", variables.projectId],
+      }),
   });
 }

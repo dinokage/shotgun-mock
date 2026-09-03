@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/apiClient";
 
 export interface SequenceDTO {
@@ -28,5 +28,20 @@ export function useSequences(projectId?: string, episodeId?: string) {
     },
     enabled: !!projectId,
     staleTime: 30000,
+  });
+}
+
+export function useCreateSequence() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { projectId: string; episodeId?: string; name: string }) =>
+      apiFetch<SequenceDTO>("/sequences", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (_, variables) =>
+      queryClient.invalidateQueries({
+        queryKey: ["sequences", variables.projectId],
+      }),
   });
 }

@@ -5,6 +5,7 @@ import { useDepartments, useCreateDepartment } from "@/hooks/useDepartments";
 import { useRoles } from "@/hooks/useRoles";
 import { apiFetch } from "@/lib/apiClient";
 import { useCapability } from "@/hooks/use-capability";
+import { EmployeeImportDialog } from "@/components/admin/EmployeeImportDialog";
 import {
   Card,
   CardContent,
@@ -59,6 +60,7 @@ export default function AdminPanel() {
   const [createOpen, setCreateOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [deptOpen, setDeptOpen] = useState(false);
+  const [employeeImportOpen, setEmployeeImportOpen] = useState(false);
   const sendInvite = useSendInvite();
   const createDepartment = useCreateDepartment();
 
@@ -163,6 +165,9 @@ export default function AdminPanel() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Admin Panel</h1>
         <div className="flex gap-2">
+        <Button variant="outline" onClick={() => setEmployeeImportOpen(true)}>
+          Import Employees
+        </Button>
         <Dialog open={deptOpen} onOpenChange={setDeptOpen}>
           <DialogTrigger asChild>
             <Button variant="outline">New Department</Button>
@@ -402,6 +407,11 @@ export default function AdminPanel() {
           </Table>
         </CardContent>
       </Card>
+
+      <EmployeeImportDialog
+        open={employeeImportOpen}
+        onOpenChange={setEmployeeImportOpen}
+      />
     </div>
   );
 }
