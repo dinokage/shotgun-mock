@@ -17,6 +17,7 @@ interface TaskState {
   updateTaskStatus: (id: string, status: TaskStatus) => void;
   completeTask: (id: string) => void;
   reassignTask: (id: string, assigneeId: string) => void;
+  claimTask: (id: string, userId: string) => void;
   revokeAssignment: (id: string) => void;
   addComment: (taskId: string, userId: string, text: string) => void;
   toggleChecklistItem: (taskId: string, index: number) => void;
@@ -71,7 +72,19 @@ export const useTasksStore = create<TaskState>()(
         import("@/lib/apiClient").then(({ apiFetch }) => {
           apiFetch("/tasks", {
             method: "POST",
-            body: JSON.stringify(task),
+            body: JSON.stringify({
+              entityId: task.assetId || task.shotId,
+              entityType: task.assetId ? "asset" : "shot",
+              status: task.status,
+              title: task.title,
+              description: task.description,
+              priority: task.priority,
+              department: task.department,
+              pipelinePhase: task.pipelinePhase,
+              dueDate: task.dueDate,
+              estimatedHours: task.estimatedHours,
+              assignedTo: task.assigneeId || null,
+            }),
           }).catch(console.error);
         });
       },
@@ -115,7 +128,15 @@ export const useTasksStore = create<TaskState>()(
             t.id === id ? { ...t, assigneeId } : t,
           ),
         }));
-        syncBackend(id, { assigneeId });
+        syncBackend(id, { assignedTo: assigneeId || null });
+      },
+      claimTask: (id, userId) => {
+        set((state) => ({
+          tasks: state.tasks.map((t) =>
+            t.id === id ? { ...t, assigneeId: userId } : t,
+          ),
+        }));
+        syncBackend(id, { assignedTo: userId });
       },
       revokeAssignment: (id) => {
         set((state) => ({
@@ -123,7 +144,7 @@ export const useTasksStore = create<TaskState>()(
             t.id === id ? { ...t, assigneeId: "" } : t,
           ),
         }));
-        syncBackend(id, { assigneeId: "" });
+        syncBackend(id, { assignedTo: null });
       },
       addComment: (taskId, userId, text) => {
         set((state) => ({
