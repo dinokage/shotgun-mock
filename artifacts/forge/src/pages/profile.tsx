@@ -7,14 +7,11 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  USERS,
-  TASKS,
-  PROJECTS,
-  DEPARTMENTS,
-  ROLE_LABELS,
-  isTaskActive,
-} from "@/data/mockData";
+import { ROLE_LABELS, isTaskActive } from "@/data/mockData";
+import { useUserStore } from "@/store/users";
+import { useTasksStore } from "@/store/tasks";
+import { useProjectStore } from "@/store/projects";
+import { useDepartmentStore } from "@/store/departments";
 import {
   ListTodo,
   FolderOpen,
@@ -51,6 +48,10 @@ export default function Profile() {
   const canAssignTasks = useCapability("assign_tasks");
   const { toast } = useToast();
   const updateProfile = useUpdateProfile();
+  const users = useUserStore((s) => s.users);
+  const tasks = useTasksStore((s) => s.tasks);
+  const projects = useProjectStore((s) => s.projects);
+  const departments = useDepartmentStore((s) => s.departments);
   // Called unconditionally (before the not-found/no-access early returns
   // below) since it's a hook — see myTasks/myProjects further down, which
   // need it to resolve a real TaskDTO's project via entityId -> shot/asset.
@@ -61,7 +62,7 @@ export default function Profile() {
   const [editAvatar, setEditAvatar] = useState("");
 
   const userId = id || currentUser?.id;
-  const user = USERS.find((u) => u.id === userId);
+  const user = users.find((u) => u.id === userId);
 
   if (!user) {
     return (
@@ -117,12 +118,12 @@ export default function Profile() {
     );
   }
 
-  const dept = DEPARTMENTS.find((d) => d.id === user.departmentId);
+  const dept = departments.find((d) => d.id === user.departmentId);
   const supervisor = user.supervisorId
-    ? USERS.find((u) => u.id === user.supervisorId)
+    ? users.find((u) => u.id === user.supervisorId)
     : null;
 
-  const myTasks = TASKS.filter((t) => getAssigneeId(t) === user.id);
+  const myTasks = tasks.filter((t) => getAssigneeId(t) === user.id);
   const myProjects = [
     ...new Set(
       myTasks
@@ -130,7 +131,7 @@ export default function Profile() {
         .filter((pid): pid is string => Boolean(pid)),
     ),
   ]
-    .map((pid) => PROJECTS.find((p) => p.id === pid))
+    .map((pid) => projects.find((p) => p.id === pid))
     .filter(Boolean);
   // Shared isTaskActive classification (see data/mockData.ts) so this stat and the
   // "Active Tasks" list below always agree with each other and with every other

@@ -12,7 +12,9 @@ import {
 } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { USERS, PROJECTS, DEPARTMENTS } from "@/data/mockData";
+import { useUserStore } from "@/store/users";
+import { useProjectStore } from "@/store/projects";
+import { useDepartmentStore } from "@/store/departments";
 import { useTasks, useUpdateTask } from "@/hooks/useTasks";
 import { useShots } from "@/hooks/useShots";
 import { useAssets } from "@/hooks/useAssets";
@@ -21,12 +23,8 @@ import {
   ListTodo,
   LayoutGrid,
   List,
-  AlertTriangle,
-  Circle,
   Play,
   UserCheck,
-  Clock,
-  CheckCircle2,
 } from "lucide-react";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { UserAvatar } from "@/components/shared/UserAvatar";
@@ -75,9 +73,9 @@ export default function Tasks() {
     return map;
   }, [liveShots, liveAssets]);
 
-  const liveUsers = USERS; // Could be replaced with useUsers() later
-  const liveProjects = PROJECTS; // Could be replaced with useProjects() later
-  const liveDepartments = DEPARTMENTS; // Could be replaced with useDepartments() later
+  const liveUsers = useUserStore((s) => s.users);
+  const liveProjects = useProjectStore((s) => s.projects);
+  const liveDepartments = useDepartmentStore((s) => s.departments);
 
   const { setActiveTaskDrawer, setCreateTaskModalOpen } = useUIStore();
   const { toast } = useToast();
@@ -107,7 +105,10 @@ export default function Tasks() {
   const isLeadOrSupervisor =
     !!currentUser && DEPARTMENT_LEADERSHIP_ROLES.includes(currentUser.role);
 
-  const myDepartmentName = currentUser?.departmentId; // Fallback, could resolve from DEPARTMENTS if needed.
+  const myDepartmentName = useMemo(
+    () => liveDepartments.find((d) => d.id === currentUser?.departmentId)?.name,
+    [liveDepartments, currentUser?.departmentId],
+  );
 
   const filtered = useMemo(() => {
     return liveTasks.filter((t) => {
@@ -147,6 +148,7 @@ export default function Tasks() {
     needsReviewOnly,
     myDepartmentName,
     entityProjectMap,
+    liveDepartments,
   ]);
 
   const statusCounts = useMemo(() => {
@@ -164,7 +166,7 @@ export default function Tasks() {
         t.status === "review" &&
         (!myDepartmentName || t.department === myDepartmentName),
     ).length;
-  }, [liveTasks, isLeadOrSupervisor, myDepartmentName]);
+  }, [liveTasks, isLeadOrSupervisor, myDepartmentName, liveDepartments]);
 
   if (isLoading) return <div className="p-6">Loading tasks...</div>;
 

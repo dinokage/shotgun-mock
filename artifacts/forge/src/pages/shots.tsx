@@ -20,7 +20,8 @@ import {
   EmptyDescription,
   EmptyContent,
 } from "@/components/ui/empty";
-import { PROJECTS, USERS } from "@/data/mockData";
+import { useProjectStore } from "@/store/projects";
+import { useUserStore } from "@/store/users";
 import { Search, Film, Grid3X3, List, X, ChevronDown } from "lucide-react";
 import { Link, useSearchParams } from "wouter";
 import { useAuthStore } from "@/store/auth";
@@ -52,6 +53,8 @@ export default function Shots() {
   const [projectFilter, setProjectFilter] = useState("all");
   const [view, setView] = useState<"grid" | "list">("grid");
   const { currentUser } = useAuthStore();
+  const projects = useProjectStore((s) => s.projects);
+  const users = useUserStore((s) => s.users);
   const { data: shots = [], isLoading } = useShots();
   const [searchParams] = useSearchParams();
   const mineOnly = searchParams.get("mine") === "1";
@@ -142,7 +145,7 @@ export default function Shots() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Projects</SelectItem>
-            {PROJECTS.map((p) => (
+            {projects.map((p) => (
               <SelectItem key={p.id} value={p.id}>
                 {p.name}
               </SelectItem>
@@ -191,7 +194,7 @@ export default function Shots() {
                   </h2>
                   <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-3">
                     {shots.slice(0, shownInGroup).map((shot, i) => {
-                      const assignee = USERS.find(
+                      const assignee = users.find(
                         (u) => u.id === shot.assigneeId,
                       );
                       return (
@@ -306,7 +309,7 @@ export default function Shots() {
               </thead>
               <tbody>
                 {filtered.slice(0, listVisible).map((shot) => {
-                  const assignee = USERS.find(
+                  const assignee = users.find(
                     (u) => u.id === shot.assigneeId,
                   );
                   return (

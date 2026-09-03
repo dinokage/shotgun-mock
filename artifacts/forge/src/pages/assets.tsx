@@ -30,20 +30,18 @@ import {
   EmptyContent,
 } from "@/components/ui/empty";
 import { useToast } from "@/hooks/use-toast";
-import { PROJECTS, USERS } from "@/data/mockData";
 import {
   Search,
   Grid3X3,
   List,
-  Filter,
   Package,
-  Eye,
-  ArrowUpDown,
   X,
   ChevronDown,
 } from "lucide-react";
 import { Link, useSearchParams } from "wouter";
 import { useAuthStore } from "@/store/auth";
+import { useProjectStore } from "@/store/projects";
+import { useUserStore } from "@/store/users";
 import { useAssets, useCreateAsset } from "@/hooks/useAssets";
 import { useCapability } from "@/hooks/use-capability";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -94,8 +92,10 @@ export default function Assets() {
   const [newAssetOpen, setNewAssetOpen] = useState(false);
   const [newAssetName, setNewAssetName] = useState("");
   const [newAssetType, setNewAssetType] = useState<string>("Character");
+  const projects = useProjectStore((s) => s.projects);
+  const users = useUserStore((s) => s.users);
   const [newAssetProjectId, setNewAssetProjectId] = useState(
-    PROJECTS[0]?.id ?? "",
+    projects[0]?.id ?? "",
   );
   const { toast } = useToast();
   const { currentUser } = useAuthStore();
@@ -113,7 +113,7 @@ export default function Assets() {
   const resetCreateForm = () => {
     setNewAssetName("");
     setNewAssetType("Character");
-    setNewAssetProjectId(PROJECTS[0]?.id ?? "");
+    setNewAssetProjectId(projects[0]?.id ?? "");
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -201,7 +201,7 @@ export default function Assets() {
             {mineOnly ? "My Assets" : "Asset Browser"}
           </h1>
           <p className="text-muted-foreground mt-1">
-            {filtered.length} assets across {PROJECTS.length} projects
+            {filtered.length} assets across {projects.length} projects
             {mineOnly && " · assigned to you"}
           </p>
         </div>
@@ -265,7 +265,7 @@ export default function Assets() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {PROJECTS.map((p) => (
+                          {projects.map((p) => (
                             <SelectItem key={p.id} value={p.id}>
                               {p.name}
                             </SelectItem>
@@ -346,7 +346,7 @@ export default function Assets() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Projects</SelectItem>
-            {PROJECTS.map((p) => (
+            {projects.map((p) => (
               <SelectItem key={p.id} value={p.id}>
                 {p.name}
               </SelectItem>
@@ -378,7 +378,7 @@ export default function Assets() {
         <div className="space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
             {filtered.slice(0, gridVisible).map((asset, i) => {
-              const project = PROJECTS.find((p) => p.id === asset.projectId);
+              const project = projects.find((p) => p.id === asset.projectId);
               return (
                 <motion.div
                   key={asset.id}
@@ -469,10 +469,10 @@ export default function Assets() {
               </thead>
               <tbody>
                 {filtered.slice(0, listVisible).map((asset) => {
-                  const project = PROJECTS.find(
+                  const project = projects.find(
                     (p) => p.id === asset.projectId,
                   );
-                  const assignee = USERS.find((u) => u.id === asset.assigneeId);
+                  const assignee = users.find((u) => u.id === asset.assigneeId);
                   return (
                     <tr
                       key={asset.id}

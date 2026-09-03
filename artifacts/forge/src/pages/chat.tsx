@@ -203,32 +203,39 @@ export default function Chat() {
 
   // Reads the real file the user picked and attaches it to the channel.
   // No AI analysis or "logging" happens here — none exists in this app.
+  // Uses a data: URL rather than URL.createObjectURL: chat messages are
+  // persisted to localStorage, and a blob: URL stops resolving as soon as
+  // the document that created it is gone, breaking every attachment on reload.
   const handleAttachmentSelected = (
     file: File,
     type: "image" | "video" | "file",
   ) => {
     if (!currentUser) return;
-    const url = URL.createObjectURL(file);
-    const newMsg: ChatMessage = {
-      id: `m_${Date.now()}`,
-      departmentId: activeDeptId,
-      userId: currentUser.id,
-      text: "",
-      attachments: [
-        {
-          id: `att_${Date.now()}`,
-          name: file.name,
-          type,
-          url,
-        },
-      ],
-      timestamp: new Date().toISOString(),
+    const reader = new FileReader();
+    reader.onload = () => {
+      const url = reader.result as string;
+      const newMsg: ChatMessage = {
+        id: `m_${Date.now()}`,
+        departmentId: activeDeptId,
+        userId: currentUser.id,
+        text: "",
+        attachments: [
+          {
+            id: `att_${Date.now()}`,
+            name: file.name,
+            type,
+            url,
+          },
+        ],
+        timestamp: new Date().toISOString(),
+      };
+      addMessage(newMsg);
+      toast({
+        title: "Attachment added",
+        description: `${file.name} was shared in #${activeDept?.name ?? "this channel"}.`,
+      });
     };
-    addMessage(newMsg);
-    toast({
-      title: "Attachment added",
-      description: `${file.name} was shared in #${activeDept?.name ?? "this channel"}.`,
-    });
+    reader.readAsDataURL(file);
   };
 
   const handleFileInputChange = (

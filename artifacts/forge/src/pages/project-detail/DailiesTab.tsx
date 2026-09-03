@@ -10,8 +10,9 @@ import {
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { USERS, type Shot } from "@/data/mockData";
+import { type Shot, type User } from "@/data/mockData";
 import { useShotStore } from "@/store/shots";
+import { useUserStore } from "@/store/users";
 import { getPlaceholderThumbnail } from "@/lib/placeholderArt";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { PlaybackControls } from "@/components/shared/review/PlaybackControls";
@@ -22,6 +23,7 @@ const THEATER_MAX_FRAMES = 100;
 export default function DailiesTab({ project }: { project: any }) {
   const shots = useShotStore((state) => state.shots);
   const updateReviewStatus = useShotStore((state) => state.updateReviewStatus);
+  const users = useUserStore((state) => state.users);
   const projectShots = shots.filter((s) => s.projectId === project.id);
   const { toast } = useToast();
 
@@ -47,7 +49,7 @@ export default function DailiesTab({ project }: { project: any }) {
   };
 
   const handleDownload = (shot: Shot) => {
-    const assignee = USERS.find((u) => u.id === shot.assigneeId);
+    const assignee = users.find((u) => u.id === shot.assigneeId);
     const manifest = [
       `Shot: ${shot.name}`,
       `Sequence: ${shot.sequence}`,
@@ -93,7 +95,7 @@ export default function DailiesTab({ project }: { project: any }) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {projectShots.map((shot, index) => {
-          const assignee = USERS.find((u) => u.id === shot.assigneeId);
+          const assignee = users.find((u) => u.id === shot.assigneeId);
           // Deterministic thumbnail based on shot ID
           const thumbSeed = shot.id
             .split("")
@@ -197,6 +199,7 @@ export default function DailiesTab({ project }: { project: any }) {
           {activeShot && (
             <TheaterPlayer
               shot={activeShot}
+              users={users}
               hasPrev={theaterIndex !== null && theaterIndex > 0}
               hasNext={
                 theaterIndex !== null && theaterIndex < projectShots.length - 1
@@ -224,12 +227,14 @@ export default function DailiesTab({ project }: { project: any }) {
 // asset behind the mock dailies thumbnails.
 function TheaterPlayer({
   shot,
+  users,
   hasPrev,
   hasNext,
   onPrev,
   onNext,
 }: {
   shot: Shot;
+  users: User[];
   hasPrev: boolean;
   hasNext: boolean;
   onPrev: () => void;
@@ -237,7 +242,7 @@ function TheaterPlayer({
 }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [frame, setFrame] = useState(1);
-  const assignee = USERS.find((u) => u.id === shot.assigneeId);
+  const assignee = users.find((u) => u.id === shot.assigneeId);
   const thumbSeed = shot.id.split("").reduce((a, b) => a + b.charCodeAt(0), 0);
 
   // Reset playback state whenever the shot being previewed changes.

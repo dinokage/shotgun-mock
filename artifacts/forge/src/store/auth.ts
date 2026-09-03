@@ -27,7 +27,7 @@ interface AuthState {
   updateCurrentUser: (updates: Partial<UserDTO>) => void;
 }
 
-export const useAuthStore = create<AuthState>()((set) => ({
+export const useAuthStore = create<AuthState>()((set, get) => ({
   currentUser: null,
   tenantName: null,
   isAuthenticated: false,
@@ -168,13 +168,14 @@ export const useAuthStore = create<AuthState>()((set) => ({
         method: "POST",
         body: JSON.stringify({ email, password }),
       });
-      const response = await apiFetch<any>("/auth/me");
-      set({
-        currentUser: response.user,
-        tenantName: response.tenant?.name ?? null,
-        isAuthenticated: true,
-        loginError: null,
-      });
+      // Route through fetchMe() rather than duplicating its GET /auth/me +
+      // set({...}) so login also runs the mock-array/store hydration block --
+      // otherwise every page renders stale/seeded data until a hard refresh.
+      await get().fetchMe();
+      if (!get().isAuthenticated) {
+        set({ loginError: "Invalid email or password." });
+        return false;
+      }
       return true;
     } catch (error: any) {
       set({ loginError: error.message || "Invalid email or password." });

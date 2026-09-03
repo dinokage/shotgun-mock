@@ -47,6 +47,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useSearch } from "wouter";
 import { useAuthStore } from "@/store/auth";
 import { useIsLeadership, useCapability } from "@/hooks/use-capability";
 import { useToast } from "@/hooks/use-toast";
@@ -482,7 +483,10 @@ export default function TrackingGrid() {
   const [sequenceFilter, setSequenceFilterState] = useState("all");
   const [assigneeFilter, setAssigneeFilterState] = useState("all");
   const [positionFilter, setPositionFilterState] = useState("all");
-  const [departmentFilter, setDepartmentFilterState] = useState("all");
+  const deptParam = new URLSearchParams(useSearch()).get("dept");
+  const [departmentFilter, setDepartmentFilterState] = useState(
+    deptParam ?? "all",
+  );
   const [view, setViewState] = useState<"list" | "card">("list");
   const [groupBy1, setGroupBy1State] = useState<TrackingGroupKey>("none");
   const [groupBy2, setGroupBy2State] = useState<TrackingGroupKey>("none");

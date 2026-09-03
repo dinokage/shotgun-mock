@@ -1,12 +1,9 @@
 import { useUIStore } from "@/store/ui";
 import { cn } from "@/lib/utils";
-import {
-  USERS,
-  PROJECTS,
-  DEPARTMENTS,
-  getNextDepartment,
-  DEPENDENCY_TYPE_LABELS,
-} from "@/data/mockData";
+import { getNextDepartment, DEPENDENCY_TYPE_LABELS } from "@/data/mockData";
+import { useUserStore } from "@/store/users";
+import { useProjectStore } from "@/store/projects";
+import { useDepartmentStore } from "@/store/departments";
 import {
   useTasks,
   useUpdateTask,
@@ -117,6 +114,9 @@ export function TaskDrawer() {
   const { data: liveShots = [] } = useShots();
   const { data: liveAssets = [] } = useAssets();
   const updateShotStatus = useShotStore((state) => state.updateShot);
+  const users = useUserStore((s) => s.users);
+  const projects = useProjectStore((s) => s.projects);
+  const departments = useDepartmentStore((s) => s.departments);
 
   const [commentText, setCommentText] = useState("");
   const [showMentions, setShowMentions] = useState(false);
@@ -136,7 +136,7 @@ export function TaskDrawer() {
   const task = liveTasks.find((t) => t.id === activeTaskDrawer);
   if (!task) return null;
 
-  const assignee = USERS.find((u) => u.id === task.assignedTo);
+  const assignee = users.find((u) => u.id === task.assignedTo);
 
   const handleAddDailyLog = () => {
     const hoursNum = parseFloat(logHours);
@@ -207,7 +207,7 @@ export function TaskDrawer() {
     task.entityType === "shot"
       ? liveShots.find((s) => s.id === task.entityId)
       : null;
-  const project = PROJECTS.find(
+  const project = projects.find(
     (p) => p.id === (asset?.projectId ?? shot?.projectId),
   );
   const depTasks = dependencies
@@ -228,7 +228,7 @@ export function TaskDrawer() {
 
   const isLeadership = LEADERSHIP_ROLES.includes(currentUser.role);
   const isAssignee = currentUser.id === task.assignedTo;
-  const currentDept = DEPARTMENTS.find((d) => d.name === task.department);
+  const currentDept = departments.find((d) => d.name === task.department);
   const nextDept = currentDept ? getNextDepartment(currentDept.id) : null;
 
   return (
@@ -327,11 +327,12 @@ export function TaskDrawer() {
                         <div className="text-xs font-semibold px-2 py-1.5 text-muted-foreground">
                           Department Roster
                         </div>
-                        {USERS.filter(
-                          (u) =>
-                            u.departmentId === currentDept?.id &&
-                            u.id !== task.assignedTo,
-                        )
+                        {users
+                          .filter(
+                            (u) =>
+                              u.departmentId === currentDept?.id &&
+                              u.id !== task.assignedTo,
+                          )
                           .slice(0, 4)
                           .map((u) => (
                             <DropdownMenuItem
@@ -689,7 +690,7 @@ export function TaskDrawer() {
                     .reverse()
                     .slice(0, 5)
                     .map((log) => {
-                      const loggedBy = USERS.find((u) => u.id === log.userId);
+                      const loggedBy = users.find((u) => u.id === log.userId);
                       return (
                         <div
                           key={log.id}
@@ -899,7 +900,7 @@ export function TaskDrawer() {
               <div className="space-y-4">
                 <AnimatePresence initial={false}>
                   {comments.map((comment) => {
-                    const commenter = USERS.find(
+                    const commenter = users.find(
                       (u) => u.id === comment.userId,
                     );
                     return (
@@ -953,14 +954,14 @@ export function TaskDrawer() {
                 {/* Mentions Dropdown */}
                 {showMentions && (
                   <div className="absolute left-2 top-[85px] w-64 max-h-48 overflow-y-auto bg-card border border-border rounded-md shadow-lg z-50 p-1 animate-in fade-in slide-in-from-top-2">
-                    {USERS.filter((u) =>
+                    {users.filter((u) =>
                       u.name.toLowerCase().includes(mentionQuery),
                     ).length === 0 ? (
                       <div className="p-2 text-xs text-muted-foreground text-center">
                         No users found.
                       </div>
                     ) : (
-                      USERS.filter((u) =>
+                      users.filter((u) =>
                         u.name.toLowerCase().includes(mentionQuery),
                       ).map((u) => (
                         <div

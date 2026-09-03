@@ -4,7 +4,8 @@ import { getAssigneeId, getProjectId, useEntityProjectMap } from "@/lib/taskShap
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { PriorityChip } from "@/components/shared/PriorityChip";
 import { UserAvatar } from "@/components/shared/UserAvatar";
-import { USERS, TaskStatus } from "@/data/mockData";
+import { TaskStatus } from "@/data/mockData";
+import { useUserStore } from "@/store/users";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import {
@@ -80,6 +81,7 @@ export default function TasksListView({ projectId }: { projectId: string }) {
   // reachable via entityId -> shot/asset -> projectId (same pattern as
   // pages/tasks.tsx and TasksKanban.tsx).
   const entityProjectMap = useEntityProjectMap();
+  const users = useUserStore((s) => s.users);
   const tasks = allTasks.filter(
     (t) => getProjectId(t, entityProjectMap) === projectId,
   );
@@ -101,7 +103,7 @@ export default function TasksListView({ projectId }: { projectId: string }) {
   const sortedTasks = useMemo(() => {
     if (!sortKey) return tasks;
     const assigneeName = (t: (typeof tasks)[number]) =>
-      USERS.find((u) => u.id === getAssigneeId(t))?.name ?? "";
+      users.find((u) => u.id === getAssigneeId(t))?.name ?? "";
     const valueFor = (t: (typeof tasks)[number]) => {
       switch (sortKey) {
         case "assignee":
@@ -119,7 +121,7 @@ export default function TasksListView({ projectId }: { projectId: string }) {
       if (av > bv) return sortDir === "asc" ? 1 : -1;
       return 0;
     });
-  }, [tasks, sortKey, sortDir]);
+  }, [tasks, sortKey, sortDir, users]);
 
   const groupedTasks = useMemo(() => {
     if (groupBy === "none")
@@ -131,7 +133,7 @@ export default function TasksListView({ projectId }: { projectId: string }) {
       switch (groupBy) {
         case "assignee":
           groupKey =
-            USERS.find((u) => u.id === getAssigneeId(t))?.name ??
+            users.find((u) => u.id === getAssigneeId(t))?.name ??
             "Unassigned";
           break;
         case "status":
@@ -153,7 +155,7 @@ export default function TasksListView({ projectId }: { projectId: string }) {
       label: key,
       tasks,
     }));
-  }, [sortedTasks, groupBy]);
+  }, [sortedTasks, groupBy, users]);
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -198,7 +200,7 @@ export default function TasksListView({ projectId }: { projectId: string }) {
 
   const handleBulkReassign = (assigneeId: string) => {
     const count = selectedIds.size;
-    const user = USERS.find((u) => u.id === assigneeId);
+    const user = users.find((u) => u.id === assigneeId);
     // reassignTask (not the generic updateTask) is the store action that
     // actually syncs to the backend with the real `assignedTo` field name —
     // updateTask forwards whatever keys it's given verbatim, so passing
@@ -295,7 +297,7 @@ export default function TasksListView({ projectId }: { projectId: string }) {
                 align="end"
                 className="max-h-64 overflow-y-auto"
               >
-                {USERS.map((u) => (
+                {users.map((u) => (
                   <DropdownMenuItem
                     key={u.id}
                     onSelect={() => handleBulkReassign(u.id)}
@@ -432,7 +434,7 @@ export default function TasksListView({ projectId }: { projectId: string }) {
                     {/* Tasks in this group */}
                     {!isCollapsed &&
                       group.tasks.map((task) => {
-                        const user = USERS.find(
+                        const user = users.find(
                           (u) => u.id === getAssigneeId(task),
                         );
                         const isSelected = selectedIds.has(task.id);
@@ -474,7 +476,7 @@ export default function TasksListView({ projectId }: { projectId: string }) {
                                     <SelectValue placeholder="Select Assignee" />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {USERS.map((u) => (
+                                    {users.map((u) => (
                                       <SelectItem key={u.id} value={u.id}>
                                         <div className="flex items-center gap-2">
                                           <UserAvatar

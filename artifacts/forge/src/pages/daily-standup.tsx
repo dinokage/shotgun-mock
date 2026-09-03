@@ -4,9 +4,9 @@ import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { PROJECTS } from "@/data/mockData";
 import { useUserStore } from "@/store/users";
 import { useDepartmentStore } from "@/store/departments";
+import { useProjectStore } from "@/store/projects";
 import { useAuthStore } from "@/store/auth";
 import { useStandupsStore } from "@/store/standups";
 import { useBroadcastsStore } from "@/store/broadcasts";
@@ -29,7 +29,6 @@ import {
   GripVertical,
   PlayCircle,
   Plus,
-  Calendar,
   X,
   FileText,
   Radio,
@@ -212,7 +211,11 @@ function PayrollRow({
   const totalHoursToday = logs
     .filter((log) => log.date.startsWith(today))
     .reduce((acc, log) => acc + log.hours, 0);
-  const isOverloaded = (member.capacity ?? 0) > 95;
+  // Real backend User rows have no `capacity` column (mock-only field) --
+  // treat it as unknown rather than a verified 0%, so a real employee never
+  // silently reads as a healthy/green load.
+  const hasCapacity = typeof member.capacity === "number";
+  const isOverloaded = hasCapacity && member.capacity > 95;
 
   useEffect(() => {
     onHoursComputed(member.id, totalHoursToday);
@@ -271,9 +274,9 @@ function PayrollRow({
       <td className="px-4 py-3 text-center">
         <div className="flex items-center justify-center gap-2">
           <div
-            className={`w-2 h-2 rounded-full ${isOverloaded ? "bg-red-500" : "bg-green-500"}`}
+            className={`w-2 h-2 rounded-full ${!hasCapacity ? "bg-muted-foreground/40" : isOverloaded ? "bg-red-500" : "bg-green-500"}`}
           />
-          <span>{member.capacity ?? 0}%</span>
+          <span>{hasCapacity ? `${member.capacity}%` : "—"}</span>
         </div>
       </td>
       <td className="px-4 py-3 text-right">
@@ -294,6 +297,7 @@ export default function DailyStandup() {
   const { currentUser } = useAuthStore();
   const users = useUserStore((s) => s.users);
   const departments = useDepartmentStore((s) => s.departments);
+  const projects = useProjectStore((s) => s.projects);
   const { data: tasks = [] } = useTasks();
   const updateTaskMutation = useUpdateTask();
   const addDailyLog = useAddDailyLog();
@@ -351,7 +355,7 @@ export default function DailyStandup() {
   // logging to the console.
   const fetchData = async () => {
     try {
-      await Promise.all([apiClient.get("/tasks"), apiClient.get("/standups")]);
+      await apiClient.get("/tasks");
       setSyncError(false);
     } catch (e) {
       console.error(e);
@@ -443,7 +447,8 @@ export default function DailyStandup() {
           member,
           memberDept,
           totalHoursToday: hoursByMemberId[member.id] ?? 0,
-          isOverloaded: (member.capacity ?? 0) > 95,
+          isOverloaded:
+            typeof member.capacity === "number" && member.capacity > 95,
           isApproved: approvedUsers.has(member.id),
         };
       }),
@@ -600,7 +605,7 @@ export default function DailyStandup() {
         memberDept?.name ?? "",
         member.status === "active" ? "Punched In" : "Away",
         totalHoursToday,
-        member.capacity ?? 0,
+        typeof member.capacity === "number" ? member.capacity : "",
         isApproved ? "Yes" : "No",
       ],
     );
@@ -711,7 +716,10 @@ export default function DailyStandup() {
                     </CardHeader>
                     <CardContent className="space-y-3">
                       {team.map((member) => {
-                        const isOverloaded = (member.capacity ?? 0) > 95;
+                        const hasCapacity =
+                          typeof member.capacity === "number";
+                        const isOverloaded =
+                          hasCapacity && member.capacity > 95;
                         const isAway = member.status !== "active";
 
                         return (
@@ -738,9 +746,12 @@ export default function DailyStandup() {
                                   ) : (
                                     <>
                                       <div
-                                        className={`w-1.5 h-1.5 rounded-full ${isOverloaded ? "bg-red-500" : "bg-green-500"}`}
+                                        className={`w-1.5 h-1.5 rounded-full ${!hasCapacity ? "bg-muted-foreground/40" : isOverloaded ? "bg-red-500" : "bg-green-500"}`}
                                       />
-                                      Cap: {member.capacity ?? 0}%
+                                      Cap:{" "}
+                                      {hasCapacity
+                                        ? `${member.capacity}%`
+                                        : "—"}
                                     </>
                                   )}
                                 </div>
@@ -1278,7 +1289,7 @@ export default function DailyStandup() {
                 capability (see store/permissions.ts) — no visibility
                 gating needed here. */}
             <BroadcastComposer
-              projects={PROJECTS.map((p) => ({ id: p.id, name: p.name }))}
+              projects={projects.map((p) => ({ id: p.id, name: p.name }))}
             />
             <BroadcastFeed broadcasts={broadcasts} />
           </div>

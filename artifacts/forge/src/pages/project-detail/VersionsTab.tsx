@@ -1,4 +1,3 @@
-import { ASSETS, SHOTS, USERS } from "@/data/mockData";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { UserAvatar } from "@/components/shared/UserAvatar";
@@ -33,6 +32,9 @@ import {
 } from "@/components/ui/empty";
 import { useReviewStore } from "@/store/reviews";
 import { useAuthStore } from "@/store/auth";
+import { useAssetStore } from "@/store/assets";
+import { useShotStore } from "@/store/shots";
+import { useUserStore } from "@/store/users";
 import { useToast } from "@/hooks/use-toast";
 
 /** Human-readable file size for a real, user-selected File object. */
@@ -51,10 +53,13 @@ export default function VersionsTab({ project }: { project: any }) {
   const versions = useReviewStore((s) => s.versions);
   const addVersion = useReviewStore((s) => s.addVersion);
   const currentUser = useAuthStore((s) => s.currentUser);
+  const assets = useAssetStore((s) => s.assets);
+  const shots = useShotStore((s) => s.shots);
+  const users = useUserStore((s) => s.users);
   const { toast } = useToast();
 
-  const projectAssets = ASSETS.filter((a) => a.projectId === project.id);
-  const projectShots = SHOTS.filter((s) => s.projectId === project.id);
+  const projectAssets = assets.filter((a) => a.projectId === project.id);
+  const projectShots = shots.filter((s) => s.projectId === project.id);
   const projectEntityIds = new Set([
     ...projectAssets.map((a) => a.id),
     ...projectShots.map((s) => s.id),
@@ -86,7 +91,7 @@ export default function VersionsTab({ project }: { project: any }) {
   };
 
   const handleUploadSubmit = () => {
-    if (!uploadTarget || !uploadFile) return;
+    if (!uploadTarget || !uploadFile || !currentUser) return;
     const entityType: "asset" | "shot" = projectAssets.some(
       (a) => a.id === uploadTarget,
     )
@@ -102,7 +107,7 @@ export default function VersionsTab({ project }: { project: any }) {
       entityType,
       versionNumber: `v${String(nextNumber).padStart(3, "0")}`,
       status: "pending",
-      createdById: currentUser?.id ?? "u1",
+      createdById: currentUser.id,
       thumbnailSeed: Math.floor(Math.random() * 5000),
       notes: uploadNotes || `Uploaded ${uploadFile.name}`,
       derivedFromId: latest?.id ?? "",
@@ -148,7 +153,7 @@ export default function VersionsTab({ project }: { project: any }) {
           ) : (
             <div className="grid grid-cols-2 gap-4 content-start">
               {projectVersions.map((v) => {
-                const user = USERS.find((u) => u.id === v.createdById);
+                const user = users.find((u) => u.id === v.createdById);
                 const isSelected = selectedVersion === v.id;
                 return (
                   <Card

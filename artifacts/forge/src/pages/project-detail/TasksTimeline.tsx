@@ -1,9 +1,12 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
+import { useQueries } from "@tanstack/react-query";
 import { useTasksStore } from "@/store/tasks";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { DEPENDENCY_TYPE_LABELS, MILESTONES } from "@/data/mockData";
 import { getAssigneeId, getProjectId, useEntityProjectMap } from "@/lib/taskShape";
+import { apiClient } from "@/lib/apiClient";
+import type { TaskDependencyDTO } from "@/hooks/useTasks";
 
 const PIXELS_PER_DAY = 30;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -23,9 +26,28 @@ export default function TasksTimelineView({
   const projectMilestones = MILESTONES.filter((m) => m.projectId === projectId);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Real TaskDTO carries no inline `dependencies` field (see hooks/useTasks.ts) --
+  // dependency rows only exist via /tasks/:id/dependencies, so they're fetched
+  // per visible task here and looked up by taskId at render time instead of
+  // reading task.dependencies (always undefined for real data).
+  const dependencyQueries = useQueries({
+    queries: projectTasks.map((task) => ({
+      queryKey: ["tasks", task.id, "dependencies"],
+      queryFn: () =>
+        apiClient.get<TaskDependencyDTO[]>(`/tasks/${task.id}/dependencies`),
+      staleTime: 5000,
+    })),
+  });
+  const dependenciesByTaskId: Record<string, TaskDependencyDTO[]> = {};
+  projectTasks.forEach((task, i) => {
+    dependenciesByTaskId[task.id] = dependencyQueries[i]?.data ?? [];
+  });
+
   const [draggingTask, setDraggingTask] = useState<string | null>(null);
   const [startX, setStartX] = useState(0);
   const [originalDateTs, setOriginalDateTs] = useState(0);
+  const [previewDate, setPreviewDate] = useState<string | null>(null);
+  const previewDateRef = useRef<string | null>(null);
 
   // Derive the visible Gantt window from the real min/max task dates instead of a
   // hardcoded range, so bars for whatever year the seeded data lives in still render.
@@ -88,10 +110,21 @@ export default function TasksTimelineView({
       const dayDelta = Math.round(dx / PIXELS_PER_DAY);
 
       const newDate = new Date(originalDateTs + dayDelta * MS_PER_DAY);
-      updateTaskDates(draggingTask, newDate.toISOString().split("T")[0]);
+      const newDateStr = newDate.toISOString().split("T")[0];
+      // Track the pending date locally only; committing via updateTaskDates()
+      // here would fire a PUT /tasks/:id on every mousemove tick, and those
+      // requests can resolve out of order and overwrite the final drop
+      // position with a stale mid-drag value.
+      previewDateRef.current = newDateStr;
+      setPreviewDate(newDateStr);
     };
 
     const handleMouseUp = () => {
+      if (draggingTask && previewDateRef.current) {
+        updateTaskDates(draggingTask, previewDateRef.current);
+      }
+      previewDateRef.current = null;
+      setPreviewDate(null);
       setDraggingTask(null);
     };
 
@@ -206,8 +239,8 @@ export default function TasksTimelineView({
               </marker>
             </defs>
             {projectTasks.flatMap((task) =>
-              (task.dependencies || []).map((dep) => {
-                const start = taskBarCoords[dep.taskId];
+              (dependenciesByTaskId[task.id] || []).map((dep) => {
+                const start = taskBarCoords[dep.dependsOnTaskId];
                 const end = taskBarCoords[task.id];
                 if (!start || !end) return null;
                 const cpOffset = Math.max(
@@ -217,7 +250,7 @@ export default function TasksTimelineView({
                 const d = `M ${start.right} ${start.y} C ${start.right + cpOffset} ${start.y}, ${end.left - cpOffset} ${end.y}, ${end.left - 2} ${end.y}`;
                 return (
                   <path
-                    key={`dep-${dep.taskId}-${task.id}`}
+                    key={`dep-${dep.dependsOnTaskId}-${task.id}`}
                     d={d}
                     fill="none"
                     stroke="rgba(156, 163, 175, 0.45)"
@@ -233,18 +266,22 @@ export default function TasksTimelineView({
           {/* Dependency link-type badges */}
           <div className="absolute inset-0 pointer-events-none z-[15]">
             {projectTasks.flatMap((task) =>
-              (task.dependencies || []).map((dep) => {
-                const start = taskBarCoords[dep.taskId];
+              (dependenciesByTaskId[task.id] || []).map((dep) => {
+                const start = taskBarCoords[dep.dependsOnTaskId];
                 const end = taskBarCoords[task.id];
                 if (!start || !end) return null;
                 const midX = (start.right + end.left) / 2;
                 const midY = (start.y + end.y) / 2;
                 return (
                   <div
-                    key={`dep-badge-${dep.taskId}-${task.id}`}
+                    key={`dep-badge-${dep.dependsOnTaskId}-${task.id}`}
                     className="absolute -translate-x-1/2 -translate-y-1/2 px-1 py-0.5 rounded text-[8px] font-mono font-semibold bg-card border border-border text-muted-foreground shadow-sm whitespace-nowrap"
                     style={{ left: midX, top: midY }}
-                    title={DEPENDENCY_TYPE_LABELS[dep.type]}
+                    title={
+                      DEPENDENCY_TYPE_LABELS[
+                        dep.type as keyof typeof DEPENDENCY_TYPE_LABELS
+                      ]
+                    }
                   >
                     {dep.type}
                     {dep.lagDays ? ` +${dep.lagDays}d` : ""}
@@ -301,7 +338,11 @@ export default function TasksTimelineView({
 
           {/* Task bars */}
           {projectTasks.map((task, index) => {
-            const left = getDaysFromStart(task.dueDate) * PIXELS_PER_DAY;
+            const effectiveDueDate =
+              draggingTask === task.id && previewDate
+                ? previewDate
+                : task.dueDate;
+            const left = getDaysFromStart(effectiveDueDate) * PIXELS_PER_DAY;
             // Fake duration based on estimated hours
             const width = Math.max(
               PIXELS_PER_DAY,

@@ -180,7 +180,7 @@ invitesRouter.post("/:token/accept", async (req, res) => {
       userId,
       tenantId: invite.tenantId,
       roleId: invite.roleId,
-      departmentId: null,
+      departmentId: invite.departmentId,
     });
     res.cookie("session", sessionToken, {
       httpOnly: true,

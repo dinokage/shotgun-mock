@@ -6,9 +6,10 @@ import {
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
-import { PROJECTS, TASKS } from "@/data/mockData";
 import { useUserStore } from "@/store/users";
 import { useDepartmentStore } from "@/store/departments";
+import { useTasksStore } from "@/store/tasks";
+import { useProjectStore } from "@/store/projects";
 import { getAssigneeId, getShotId } from "@/lib/taskShape";
 import {
   TableProperties,
@@ -59,6 +60,8 @@ export default function ProductionDashboard() {
   const { shots, updateShot } = useShotStore();
   const users = useUserStore((s) => s.users);
   const departments = useDepartmentStore((s) => s.departments);
+  const tasks = useTasksStore((s) => s.tasks);
+  const projects = useProjectStore((s) => s.projects);
   const { toast } = useToast();
   const canAssignTasks = useCapability("assign_tasks");
   const canEditTasks = useCapability("edit_tasks");
@@ -208,20 +211,20 @@ export default function ProductionDashboard() {
       {/* Department Wise Previews */}
       <div className="space-y-8">
         {[
-          "Layout",
-          "Animation",
-          "Lighting",
+          "LAY",
+          "ANIM",
+          "LIT",
           "FX",
-          "Rendering",
-          "Compositing",
-        ].map((deptName) => {
-          const dept = departments.find((d) =>
-            d.name.toLowerCase().includes(deptName.toLowerCase()),
-          ) || { id: deptName, name: deptName, color: "hsl(var(--primary))" };
+          "RND",
+          "COMP",
+        ].map((deptAbbr) => {
+          const dept = departments.find(
+            (d) => d.abbreviation.toLowerCase() === deptAbbr.toLowerCase(),
+          ) || { id: deptAbbr, name: deptAbbr, color: "hsl(var(--primary))" };
 
           // Real completion percentage: share of this department's tasks (across all
           // shots, not just the ones previewed below) that are complete/approved.
-          const deptAllTasks = TASKS.filter((t) => t.department === dept.name);
+          const deptAllTasks = tasks.filter((t) => t.department === dept.name);
           const deptProgress =
             deptAllTasks.length > 0
               ? Math.round(
@@ -239,7 +242,7 @@ export default function ProductionDashboard() {
           // progress bar above is computed from, so the two never contradict).
           const deptShots = filteredShots
             .filter((shot) =>
-              TASKS.some(
+              tasks.some(
                 (t) => getShotId(t) === shot.id && t.department === dept.name,
               ),
             )
@@ -293,12 +296,13 @@ export default function ProductionDashboard() {
               <CardContent className="p-6">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                   {deptShots.map((shot) => {
-                    const project = PROJECTS.find(
+                    const project = projects.find(
                       (p) => p.id === shot.projectId,
                     );
-                    const shotTasks = TASKS.filter(
+                    const shotTasks = tasks.filter(
                       (t) => getShotId(t) === shot.id,
                     );
+                    const reviewTaskId = shotTasks[0]?.id;
 
                     return (
                       <div
@@ -312,12 +316,14 @@ export default function ProductionDashboard() {
                               role="button"
                               tabIndex={0}
                               onClick={() =>
-                                setLocation(`/review?shot=${shot.id}`)
+                                reviewTaskId &&
+                                setLocation(`/review/${reviewTaskId}`)
                               }
                               onKeyDown={(e) => {
                                 if (e.key === "Enter" || e.key === " ") {
                                   e.preventDefault();
-                                  setLocation(`/review?shot=${shot.id}`);
+                                  if (reviewTaskId)
+                                    setLocation(`/review/${reviewTaskId}`);
                                 }
                               }}
                             >
@@ -457,8 +463,10 @@ export default function ProductionDashboard() {
                               </DropdownMenuLabel>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
+                                disabled={!reviewTaskId}
                                 onClick={() =>
-                                  setLocation(`/review?shot=${shot.id}`)
+                                  reviewTaskId &&
+                                  setLocation(`/review/${reviewTaskId}`)
                                 }
                               >
                                 Review in Player

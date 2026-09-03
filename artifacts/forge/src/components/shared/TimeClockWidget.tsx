@@ -18,17 +18,18 @@ import {
 import { Input } from "@/components/ui/input";
 import { useAuthStore } from "@/store/auth";
 import { useTasksStore } from "@/store/tasks";
-import { isTaskActive, type DailyLog } from "@/data/mockData";
+import { isTaskActive } from "@/data/mockData";
 import { getAssigneeId } from "@/lib/taskShape";
 import { useToast } from "@/hooks/use-toast";
+import { useAddDailyLog } from "@/hooks/useTasks";
 
 const STORAGE_PREFIX = "forge-punch-in-time-";
 
 /**
  * Real punch clock: punching in only starts a local session timer (no time
- * is "logged" yet), and punching out writes one real DailyLog entry into the
- * canonical Task.dailyLogs/actualHours (store/tasks.ts) — the same data
- * TaskDrawer and the Timesheets page read and write — instead of the old
+ * is "logged" yet), and punching out posts one real daily log via
+ * useAddDailyLog (hooks/useTasks.ts) — the same backend-synced mutation
+ * TaskDrawer and the Timesheets page use — instead of the old
  * ever-growing, un-resettable localStorage counter that never produced any
  * real logged time and had no punch-out control at all.
  */
@@ -37,8 +38,8 @@ export function TimeClockWidget() {
   const logout = useAuthStore((s) => s.logout);
   const [, setLocation] = useLocation();
   const tasks = useTasksStore((s) => s.tasks);
-  const logTime = useTasksStore((s) => s.logTime);
   const { toast } = useToast();
+  const addDailyLogMutation = useAddDailyLog();
 
   const [punchedIn, setPunchedIn] = useState(false);
   const [startTime, setStartTime] = useState<number | null>(null);
@@ -129,24 +130,31 @@ export function TimeClockWidget() {
     setSelectedTaskId("");
   };
 
-  const handleConfirmPunchOut = () => {
+  const handleConfirmPunchOut = async () => {
     const hours = Math.round((seconds / 3600) * 100) / 100;
     const task = selectedTaskId
       ? tasks.find((t) => t.id === selectedTaskId)
       : undefined;
 
     if (task && hours > 0) {
-      const newLog: DailyLog = {
-        date: new Date().toISOString().slice(0, 10),
-        hours,
-        note: note.trim() || "Clocked time",
-        userId: currentUser.id,
-      };
-      logTime(task.id, newLog);
-      toast({
-        title: "Punched Out",
-        description: `Logged ${hours}h to ${task.title}. You've been signed out.`,
-      });
+      try {
+        await addDailyLogMutation.mutateAsync({
+          taskId: task.id,
+          date: new Date().toISOString().slice(0, 10),
+          hours,
+          note: note.trim() || "Clocked time",
+        });
+        toast({
+          title: "Punched Out",
+          description: `Logged ${hours}h to ${task.title}. You've been signed out.`,
+        });
+      } catch {
+        toast({
+          title: "Punched Out",
+          description: `Couldn't log ${hours}h to ${task.title} — you've still been signed out.`,
+          variant: "destructive",
+        });
+      }
     } else if (task) {
       toast({
         title: "Punched Out",

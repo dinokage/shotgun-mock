@@ -15,19 +15,15 @@ import {
   EmptyTitle,
   EmptyDescription,
 } from "@/components/ui/empty";
-import {
-  PROJECTS,
-  TASKS,
-  REVIEWS,
-  PUBLISH_LOGS,
-  SHOTS,
-  Project,
-  isTaskDone,
-} from "@/data/mockData";
+import { Project, isTaskDone } from "@/data/mockData";
 import { useUserStore } from "@/store/users";
 import { useDepartmentStore } from "@/store/departments";
+import { useProjectStore } from "@/store/projects";
+import { useTasksStore } from "@/store/tasks";
+import { useReviewStore } from "@/store/reviews";
+import { usePublishingStore } from "@/store/publishing";
+import { useShotStore } from "@/store/shots";
 import {
-  BarChart3,
   TrendingUp,
   Clock,
   CheckCircle2,
@@ -139,6 +135,11 @@ export default function Analytics() {
   const { currentUser } = useAuthStore();
   const users = useUserStore((s) => s.users);
   const departments = useDepartmentStore((s) => s.departments);
+  const projects = useProjectStore((s) => s.projects);
+  const tasks = useTasksStore((s) => s.tasks);
+  const reviews = useReviewStore((s) => s.reviews);
+  const publishLogs = usePublishingStore((s) => s.logs);
+  const shots = useShotStore((s) => s.shots);
   const punchedInSession = usePunchedInSession(currentUser?.id);
   const canViewFinancials = useCapability("view_financials");
 
@@ -167,46 +168,46 @@ export default function Analytics() {
 
   const filteredTasks = useMemo(
     () =>
-      TASKS.filter((t) => withinRange(t.createdAt, currentStart, MOCK_TODAY)),
-    [currentStart],
+      tasks.filter((t) => withinRange(t.createdAt, currentStart, MOCK_TODAY)),
+    [tasks, currentStart],
   );
   const filteredReviews = useMemo(
     () =>
-      REVIEWS.filter((r) => withinRange(r.createdAt, currentStart, MOCK_TODAY)),
-    [currentStart],
+      reviews.filter((r) => withinRange(r.createdAt, currentStart, MOCK_TODAY)),
+    [reviews, currentStart],
   );
   const filteredPublishLogs = useMemo(
     () =>
-      PUBLISH_LOGS.filter((p) =>
+      publishLogs.filter((p) =>
         withinRange(p.publishedAt, currentStart, MOCK_TODAY),
       ),
-    [currentStart],
+    [publishLogs, currentStart],
   );
 
   const previousTasks = useMemo(
     () =>
-      TASKS.filter((t) => withinRange(t.createdAt, previousStart, previousEnd)),
-    [previousStart, previousEnd],
+      tasks.filter((t) => withinRange(t.createdAt, previousStart, previousEnd)),
+    [tasks, previousStart, previousEnd],
   );
   const previousReviews = useMemo(
     () =>
-      REVIEWS.filter((r) =>
+      reviews.filter((r) =>
         withinRange(r.createdAt, previousStart, previousEnd),
       ),
-    [previousStart, previousEnd],
+    [reviews, previousStart, previousEnd],
   );
   const previousPublishLogs = useMemo(
     () =>
-      PUBLISH_LOGS.filter((p) =>
+      publishLogs.filter((p) =>
         withinRange(p.publishedAt, previousStart, previousEnd),
       ),
-    [previousStart, previousEnd],
+    [publishLogs, previousStart, previousEnd],
   );
 
   function periodStats(
-    tasks: typeof TASKS,
-    reviews: typeof REVIEWS,
-    publishLogs: typeof PUBLISH_LOGS,
+    tasks: typeof filteredTasks,
+    reviews: typeof filteredReviews,
+    publishLogs: typeof filteredPublishLogs,
   ) {
     const total = tasks.length;
     const done = tasks.filter((t) => isTaskDone(t.status)).length;
@@ -528,8 +529,8 @@ export default function Analytics() {
                       const burnRate = Math.round((actuals / bids) * 100);
                       const isOverBudget = actuals > bids;
 
-                      const shot = SHOTS.find((s) => s.id === getShotId(task));
-                      const project = PROJECTS.find(
+                      const shot = shots.find((s) => s.id === getShotId(task));
+                      const project = projects.find(
                         (p) => p.id === shot?.projectId,
                       );
 
@@ -803,7 +804,7 @@ export default function Analytics() {
                   <CardTitle className="text-lg">Project Forecast</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-5">
-                  {PROJECTS.slice(0, 5).map((proj) => {
+                  {projects.slice(0, 5).map((proj) => {
                     const risk = proj.riskScore;
                     return (
                       <div key={proj.id} className="space-y-2">
@@ -1041,7 +1042,7 @@ export default function Analytics() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border/50">
-                        {PROJECTS.map((proj) => {
+                        {projects.map((proj) => {
                           const { bids, actuals, rate } =
                             getProjectBidMargin(proj);
                           const bidValue = bids * rate;
@@ -1123,30 +1124,28 @@ export default function Analytics() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/50">
-                    {users.map((user, i) => {
+                    {users.map((user) => {
                       const dept = departments.find(
                         (d) => d.id === user.departmentId,
                       );
                       const isCurrentUser = currentUser?.id === user.id;
 
-                      // Mock additional status since our TimeLog interface is very simple.
-                      // The logged-in user's own row instead mirrors the header clock's
-                      // punched-in state (usePunchedInSession above) so the two live
-                      // status indicators never contradict each other - which means this
-                      // row must actually check punchedInSession.since, not just identity,
-                      // or a currentUser who is punched OUT would still show PUNCHED IN here.
+                      // No real studio-wide time-log aggregation backend exists yet,
+                      // so only the logged-in user's own row has a real punched-in
+                      // status (mirrored from the header clock via usePunchedInSession
+                      // above) - which means this row must actually check
+                      // punchedInSession.since, not just identity, or a currentUser who
+                      // is punched OUT would still show PUNCHED IN here. Every other
+                      // row gets an honest "unknown" placeholder instead of a fabricated
+                      // punched-in/offline status.
                       const mockStatus = isCurrentUser
                         ? punchedInSession.since
                           ? "punched-in"
                           : "offline"
-                        : i % 3 === 0
-                          ? "punched-in"
-                          : "offline";
+                        : "unknown";
                       const punchedInAt =
-                        mockStatus === "punched-in"
-                          ? isCurrentUser
-                            ? punchedInSession.since!
-                            : new Date().toISOString()
+                        mockStatus === "punched-in" && isCurrentUser
+                          ? punchedInSession.since!
                           : undefined;
 
                       // No real studio-wide time-log aggregation backend
@@ -1210,7 +1209,9 @@ export default function Analytics() {
                             >
                               {mockStatus === "punched-in"
                                 ? `PUNCHED IN${punchedInAt ? ` (${new Date(punchedInAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})` : ""}`
-                                : "OFFLINE"}
+                                : mockStatus === "unknown"
+                                  ? "NO DATA"
+                                  : "OFFLINE"}
                             </Badge>
                           </td>
                           <td className="py-4 text-right tabular-nums font-medium">

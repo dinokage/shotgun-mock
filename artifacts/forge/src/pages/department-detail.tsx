@@ -5,7 +5,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
-  TASKS,
   ROLE_LABELS,
   isTaskActive,
   isTaskDone,
@@ -64,6 +63,7 @@ export default function DepartmentDetail() {
   const { currentUser } = useAuthStore();
   const [activeTab, setActiveTab] = useState("overview");
   const { setCreateTaskModalOpen } = useUIStore();
+  const tasks = useTasksStore((s) => s.tasks);
   const { reassignTask, updateTaskStatus } = useTasksStore();
   const { toast } = useToast();
   const canAssignTasks = useCapability("assign_tasks");
@@ -106,7 +106,7 @@ export default function DepartmentDetail() {
   const supervisor = team.find((u) => u.id === dept.supervisorId);
   const lead = team.find((u) => u.id === dept.leadId);
 
-  const deptTasks = TASKS.filter((t) => t.department === dept.name);
+  const deptTasks = tasks.filter((t) => t.department === dept.name);
   // Use the shared isTaskDone/isTaskActive classification (same as the Departments overview
   // and Tracking Grid pages) so a department's active/done counts agree everywhere it's shown.
   const activeTasks = deptTasks.filter((t) => isTaskActive(t.status));

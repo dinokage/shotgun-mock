@@ -8,7 +8,7 @@ import { useProjectStore } from "@/store/projects";
 import { useShotStore } from "@/store/shots";
 import { useTasksStore } from "@/store/tasks";
 import { useAssetStore } from "@/store/assets";
-import { USERS } from "@/data/mockData";
+import { useUserStore } from "@/store/users";
 import { stagger, fadeInUp } from "@/lib/motion";
 import {
   CommandDialog,
@@ -72,6 +72,7 @@ export function CommandPalette() {
   const allShots = useShotStore((s) => s.shots);
   const allTasks = useTasksStore((s) => s.tasks);
   const allAssets = useAssetStore((s) => s.assets);
+  const allUsers = useUserStore((s) => s.users);
   // `resolvedTheme` (not `theme`) so this reflects what's actually on screen —
   // see TopBar's theme toggle for the same fix; `theme` stays 'system' by
   // default and never equals 'dark', so the label/icon and the toggle target
@@ -142,13 +143,15 @@ export function CommandPalette() {
   const people = useMemo(
     () =>
       q
-        ? USERS.filter(
-            (u) =>
-              u.name.toLowerCase().includes(q) ||
-              (u.title ?? "").toLowerCase().includes(q),
-          ).slice(0, RESULT_LIMIT)
+        ? allUsers
+            .filter(
+              (u) =>
+                u.name.toLowerCase().includes(q) ||
+                (u.title ?? "").toLowerCase().includes(q),
+            )
+            .slice(0, RESULT_LIMIT)
         : [],
-    [q],
+    [q, allUsers],
   );
 
   const actions = useMemo(() => {

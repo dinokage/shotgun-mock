@@ -24,9 +24,9 @@ import {
   EmptyTitle,
   EmptyDescription,
 } from "@/components/ui/empty";
-import { PROJECTS } from "@/data/mockData";
 import { useUserStore } from "@/store/users";
 import { useDepartmentStore } from "@/store/departments";
+import { useProjectStore } from "@/store/projects";
 import {
   Clock,
   Plus,
@@ -44,6 +44,7 @@ export default function Timesheets() {
   const { currentUser } = useAuthStore();
   const users = useUserStore((s) => s.users);
   const departments = useDepartmentStore((s) => s.departments);
+  const projects = useProjectStore((s) => s.projects);
   const { toast } = useToast();
   const { setActiveTaskDrawer } = useUIStore();
 
@@ -103,6 +104,12 @@ export default function Timesheets() {
   const currentUserDeptName = departments.find(
     (d) => d.id === currentUser.departmentId,
   )?.name;
+  // KNOWN LIMITATION: the real backend User row (routes/users.ts / usersTable)
+  // has no supervisorId column, so for real tenants this filter always
+  // produces an empty Set and a manager only ever sees their own department's
+  // tasks here, never a direct report's tasks outside that department. Fixing
+  // this for real requires a supervisorId/managerId column on usersTable plus
+  // API + UI support to set it -- out of scope for this page.
   const directReportIds = new Set(
     users.filter((u) => u.supervisorId === currentUser.id).map((u) => u.id),
   );
@@ -117,7 +124,7 @@ export default function Timesheets() {
   });
   const filteredTasks = myTasks.filter((t) => {
     if (!taskSearch.trim()) return true;
-    const proj = PROJECTS.find(
+    const proj = projects.find(
       (p) => p.id === getProjectId(t, entityProjectMap),
     );
     return `${proj?.name ?? ""} ${t.title}`
@@ -292,7 +299,7 @@ export default function Timesheets() {
                       </div>
                     ) : (
                       filteredTasks.map((t) => {
-                        const proj = PROJECTS.find(
+                        const proj = projects.find(
                           (p) => p.id === getProjectId(t, entityProjectMap),
                         );
                         return (
@@ -401,7 +408,7 @@ export default function Timesheets() {
                       )
                       .map((log) => {
                         const task = tasks.find((t) => t.id === log.taskId);
-                        const project = PROJECTS.find(
+                        const project = projects.find(
                           (p) =>
                             p.id ===
                             (task ? getProjectId(task, entityProjectMap) : undefined),

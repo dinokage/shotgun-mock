@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
-import { ASSETS, USERS, PROJECTS, PublishLog } from "@/data/mockData";
+import { PublishLog } from "@/data/mockData";
 import {
   Upload,
   CheckCircle2,
@@ -31,6 +31,8 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { usePublishingStore } from "@/store/publishing";
 import { useAuthStore } from "@/store/auth";
+import { useAssetStore } from "@/store/assets";
+import { useUserStore } from "@/store/users";
 import {
   Empty,
   EmptyHeader,
@@ -75,6 +77,8 @@ export default function Publishing() {
   const publishLogs = usePublishingStore((s) => s.logs);
   const addPublishLog = usePublishingStore((s) => s.addPublishLog);
   const currentUser = useAuthStore((s) => s.currentUser);
+  const assets = useAssetStore((s) => s.assets);
+  const users = useUserStore((s) => s.users);
 
   const queue = publishLogs.filter(
     (p) => p.status === "queued" || p.status === "validating",
@@ -398,8 +402,8 @@ export default function Publishing() {
             </Empty>
           )}
           {queue.map((pub) => {
-            const asset = ASSETS.find((a) => a.id === pub.assetId);
-            const publisher = USERS.find((u) => u.id === pub.publishedById);
+            const asset = assets.find((a) => a.id === pub.assetId);
+            const publisher = users.find((u) => u.id === pub.publishedById);
             const config = STATUS_CONFIG[pub.status];
             return (
               <Card
@@ -457,8 +461,8 @@ export default function Publishing() {
             </Empty>
           )}
           {recent.map((pub) => {
-            const asset = ASSETS.find((a) => a.id === pub.assetId);
-            const publisher = USERS.find((u) => u.id === pub.publishedById);
+            const asset = assets.find((a) => a.id === pub.assetId);
+            const publisher = users.find((u) => u.id === pub.publishedById);
             const config = STATUS_CONFIG[pub.status];
             const isExpanded = expandedLog === pub.id;
 
@@ -599,8 +603,8 @@ export default function Publishing() {
                 </thead>
                 <tbody>
                   {publishLogs.map((pub) => {
-                    const asset = ASSETS.find((a) => a.id === pub.assetId);
-                    const publisher = USERS.find(
+                    const asset = assets.find((a) => a.id === pub.assetId);
+                    const publisher = users.find(
                       (u) => u.id === pub.publishedById,
                     );
                     const config = STATUS_CONFIG[pub.status];

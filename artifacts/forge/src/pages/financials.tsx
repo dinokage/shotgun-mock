@@ -6,8 +6,10 @@ import {
   EmptyTitle,
   EmptyDescription,
 } from "@/components/ui/empty";
-import { PROJECTS, DEPARTMENTS, Project } from "@/data/mockData";
+import { Project } from "@/data/mockData";
 import { useTasksStore } from "@/store/tasks";
+import { useProjectStore } from "@/store/projects";
+import { useDepartmentStore } from "@/store/departments";
 import {
   DollarSign,
   TrendingUp,
@@ -168,32 +170,34 @@ function CountUp({
 
 export default function FinancialDashboard() {
   const tasks = useTasksStore((state) => state.tasks);
+  const projects = useProjectStore((s) => s.projects);
+  const departments = useDepartmentStore((s) => s.departments);
   const canViewFinancials = useCapability("view_financials");
 
   const projectFinancials = useMemo(() => {
     const map = new Map<string, ProjectFinancials>();
-    PROJECTS.forEach((p) => map.set(p.id, getProjectFinancials(p)));
+    projects.forEach((p) => map.set(p.id, getProjectFinancials(p)));
     return map;
-  }, []);
+  }, [projects]);
 
   const totalBudget = useMemo(
-    () => PROJECTS.reduce((acc, p) => acc + (p.budget || 0), 0),
-    [],
+    () => projects.reduce((acc, p) => acc + (p.budget || 0), 0),
+    [projects],
   );
   const totalSpent = useMemo(
     () =>
-      PROJECTS.reduce(
+      projects.reduce(
         (acc, p) => acc + (projectFinancials.get(p.id)?.spent || 0),
         0,
       ),
-    [projectFinancials],
+    [projects, projectFinancials],
   );
   const overallPercentSpent =
     totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
 
   const activeProjects = useMemo(
-    () => PROJECTS.filter((p) => p.status !== "COMPLETE"),
-    [],
+    () => projects.filter((p) => p.status !== "COMPLETE"),
+    [projects],
   );
   const totalMonthlyBurn = useMemo(
     () =>
@@ -208,8 +212,8 @@ export default function FinancialDashboard() {
   // marginal (burn-rate) derivative. See getStudioSpendTrend for how these
   // are derived from real project fields rather than fabricated.
   const spendTrend = useMemo(
-    () => getStudioSpendTrend(PROJECTS, projectFinancials),
-    [projectFinancials],
+    () => getStudioSpendTrend(projects, projectFinancials),
+    [projects, projectFinancials],
   );
   const burnTrend = useMemo(() => toDeltaSeries(spendTrend), [spendTrend]);
 
@@ -217,7 +221,7 @@ export default function FinancialDashboard() {
   // not a random percentage - a department that has logged more actual hours
   // against its bid hours shows a proportionally larger burn.
   const departmentSpend = useMemo(() => {
-    return DEPARTMENTS.slice(0, 6).map((d) => {
+    return departments.slice(0, 6).map((d) => {
       const deptTasks = tasks.filter((t) => t.department === d.name);
       const estimatedHours = deptTasks.reduce(
         (acc, t) => acc + (t.estimatedHours || 0),
@@ -231,7 +235,7 @@ export default function FinancialDashboard() {
         estimatedHours > 0 ? (actualHours / estimatedHours) * 100 : 0;
       return { ...d, percent, estimatedHours, actualHours };
     });
-  }, [tasks]);
+  }, [tasks, departments]);
 
   // Leadership passes the coarse route-level LeadershipGuard, but not every
   // leadership role carries view_financials in the real, editable Roles &
@@ -290,7 +294,7 @@ export default function FinancialDashboard() {
               </div>
               <p className="text-xs text-muted-foreground mt-1 flex items-center">
                 <Briefcase className="w-3 h-3 text-blue-500 mr-1" /> Across{" "}
-                {PROJECTS.length} projects
+                {projects.length} projects
               </p>
             </CardContent>
           </Card>
@@ -345,7 +349,7 @@ export default function FinancialDashboard() {
                 />
               </div>
               <p className="text-xs text-muted-foreground mt-1">
-                {PROJECTS.length} total
+                {projects.length} total
               </p>
             </CardContent>
           </Card>
@@ -388,7 +392,7 @@ export default function FinancialDashboard() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {PROJECTS.map((p, i) => {
+              {projects.map((p, i) => {
                 const pf = projectFinancials.get(p.id)!;
                 const barPercent = Math.min(pf.percentSpent, 100);
                 return (
