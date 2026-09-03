@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { Notification, NOTIFICATIONS } from "@/data/mockData";
+import { Notification } from "@/data/mockData";
 
 export type NotificationCategory = Notification["category"];
 
@@ -102,7 +102,7 @@ interface NotificationState {
 export const useNotificationStore = create<NotificationState>()(
   persist(
     (set) => ({
-      notifications: NOTIFICATIONS,
+      notifications: [],
       preferences: DEFAULT_NOTIFICATION_PREFERENCES,
       addNotification: (notification) =>
         set((state) => {
@@ -150,6 +150,16 @@ export const useNotificationStore = create<NotificationState>()(
     }),
     {
       name: "forge-notification-storage",
+      // Was un-versioned while seeded from fake mockData.ts notifications --
+      // any browser that ever cached that non-empty seed would keep showing
+      // it forever regardless of this fix, since persist restores from
+      // localStorage rather than re-running the initializer. Bumping the
+      // version forces those browsers to pick up the real (empty) start.
+      version: 1,
+      migrate: () => ({
+        notifications: [],
+        preferences: DEFAULT_NOTIFICATION_PREFERENCES,
+      }),
     },
   ),
 );
