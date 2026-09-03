@@ -167,6 +167,14 @@ function Router() {
                 <Route path="/people/:id" component={Profile} />
                 <Route path="/daily-standup" component={DailyStandup} />
                 <Route path="/review" component={Review} />
+                {/* key={params.taskId} forces a full remount when navigating
+                    between two different tasks' reviews -- Review carries a
+                    lot of local editor state (video clips, frame, tool
+                    selection, drag/resize) that must not leak from one
+                    task's session into another's. */}
+                <Route path="/review/:taskId">
+                  {(params) => <Review key={params.taskId} />}
+                </Route>
                 <Route path="/scheduling">
                   <LeadershipGuard>
                     <Scheduling />

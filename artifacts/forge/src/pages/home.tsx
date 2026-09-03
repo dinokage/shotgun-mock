@@ -20,7 +20,7 @@ import {
   TaskStatus,
   DailyLog,
 } from "@/data/mockData";
-import { getAssigneeId, useEntityProjectMap } from "@/lib/taskShape";
+import { getAssigneeId, getShotId, useEntityProjectMap } from "@/lib/taskShape";
 import { generateProducerInsights, type AIInsight } from "@/lib/aiInsights";
 import { useDailyLogsByUser, useAddDailyLog } from "@/hooks/useTasks";
 import { useQueryClient } from "@tanstack/react-query";
@@ -194,6 +194,23 @@ interface ScheduleVariance {
   history: number[]; // drift trend leading up to varianceDays, for the ScopeTrace
 }
 
+// `dueDate` is a legacy mock-only field the real backend never populates
+// (see the Project interface comment); `endDate` is the real one. A project
+// can legitimately have neither set, which callers must handle explicitly
+// rather than feeding a missing value straight into `new Date()`.
+function getEffectiveDueDate(project: Project): Date | null {
+  const raw = project.endDate || project.dueDate;
+  if (!raw) return null;
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function formatDueDate(date: Date | null): string {
+  return date
+    ? date.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+    : "TBD";
+}
+
 function getScheduleVariance(project: Project): ScheduleVariance {
   const seed = hashString(project.id);
   const jitter = seededFraction(seed, 11);
@@ -235,6 +252,7 @@ function ProducerDashboard() {
   const shots = useShotStore((state) => state.shots);
   const departments = useDepartmentStore((state) => state.departments);
   const users = useUserStore((state) => state.users);
+  const tasks = useTasksStore((state) => state.tasks);
   const activeProjects = projects.filter((p) => p.status !== "COMPLETE");
   const entityProjectMap = useEntityProjectMap();
   // Recomputed from the current mock data on every mount — not hand-written copy.
@@ -263,6 +281,20 @@ function ProducerDashboard() {
     [shots],
   );
 
+  // The task backing the first shot in the review queue, so "View All
+  // Pending Reviews" opens a real review instead of a dead-end route.
+  const firstPendingReviewTaskId = useMemo(() => {
+    for (const shot of reviewQueueShots) {
+      const task = tasks.find(
+        (t) =>
+          getShotId(t) === shot.id &&
+          (t.status === "review" || t.status === "lead-review"),
+      );
+      if (task) return task.id;
+    }
+    return null;
+  }, [reviewQueueShots, tasks]);
+
   // Quick Review Queue — real shots currently sitting in internal or client
   // review, not hand-written placeholder rows, so the row both reads
   // correctly and actually goes somewhere when clicked.
@@ -283,9 +315,7 @@ function ProducerDashboard() {
     });
   }, [reviewQueueShots, projects, users, departments]);
 
-  // Active Shots / Sequences — shots not yet in a terminal (complete/approved/
-  // published) state, and the count of distinct sequences (via the shot's own
-  // `sequenceId` field) those active shots belong to.
+  // Active Shots — shots not yet in a terminal (complete/approved/published) state.
   const activeShots = useMemo(
     () =>
       shots.filter(
@@ -293,24 +323,30 @@ function ProducerDashboard() {
       ),
     [shots],
   );
-  const activeSequenceCount = useMemo(
-    () => new Set(activeShots.map((s) => s.sequenceId)).size,
-    [activeShots],
-  );
 
   // Planner vs Actual — real active projects, nearest-due first, each with a
   // deterministic schedule-variance trend (see getScheduleVariance above).
+  // `dueDate` is a legacy mock-only field the real backend never populates
+  // (see the Project interface comment) -- `endDate` is the real one, and a
+  // project can legitimately have neither set yet, which getEffectiveDueDate
+  // callers below must render as "TBD" rather than "Invalid Date".
   const plannerRows = useMemo(() => {
     return [...activeProjects]
-      .sort(
-        (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime(),
-      )
+      .sort((a, b) => {
+        const aDate = getEffectiveDueDate(a);
+        const bDate = getEffectiveDueDate(b);
+        if (!aDate && !bDate) return 0;
+        if (!aDate) return 1;
+        if (!bDate) return -1;
+        return aDate.getTime() - bDate.getTime();
+      })
       .slice(0, 4)
       .map((project) => {
         const variance = getScheduleVariance(project);
-        const actualDate = new Date(project.dueDate);
-        actualDate.setDate(actualDate.getDate() + variance.varianceDays);
-        return { project, variance, actualDate };
+        const dueDate = getEffectiveDueDate(project);
+        const actualDate = dueDate ? new Date(dueDate) : null;
+        actualDate?.setDate(actualDate.getDate() + variance.varianceDays);
+        return { project, variance, dueDate, actualDate };
       });
   }, [activeProjects]);
 
@@ -354,8 +390,8 @@ function ProducerDashboard() {
               icon: FolderOpen,
             },
             {
-              label: "Active Shots / Sequences",
-              value: `${activeShots.length} / ${activeSequenceCount}`,
+              label: "Active Shots",
+              value: activeShots.length,
               icon: ListTodo,
             },
             {
@@ -531,7 +567,7 @@ function ProducerDashboard() {
                 <CardTitle className="text-lg">Planner vs Actual</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {plannerRows.map(({ project, variance, actualDate }) => (
+                {plannerRows.map(({ project, variance, dueDate, actualDate }) => (
                   <div
                     key={project.id}
                     className="flex justify-between items-center gap-3 border-b border-border/50 pb-3 last:border-0 last:pb-0"
@@ -541,11 +577,7 @@ function ProducerDashboard() {
                         {project.name}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        Deadline:{" "}
-                        {new Date(project.dueDate).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                        })}
+                        Deadline: {formatDueDate(dueDate)}
                       </div>
                       <div className="h-5 w-24 mt-1.5">
                         <ScopeTrace data={variance.history} strokeWidth={2.5} />
@@ -555,14 +587,10 @@ function ProducerDashboard() {
                       <div
                         className={`font-semibold text-sm ${variance.color}`}
                       >
-                        {variance.status}
+                        {dueDate ? variance.status : "—"}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        Est:{" "}
-                        {actualDate.toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                        })}
+                        Est: {formatDueDate(actualDate)}
                       </div>
                     </div>
                   </div>
@@ -633,7 +661,11 @@ function ProducerDashboard() {
                 <Button
                   variant="outline"
                   className="w-full text-xs h-8 mt-2"
-                  onClick={() => setLocation("/review")}
+                  disabled={!firstPendingReviewTaskId}
+                  onClick={() =>
+                    firstPendingReviewTaskId &&
+                    setLocation(`/review/${firstPendingReviewTaskId}`)
+                  }
                 >
                   View All Pending Reviews
                 </Button>

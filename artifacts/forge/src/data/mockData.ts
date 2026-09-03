@@ -2181,14 +2181,6 @@ for (let i = 0; i < 300; i++) {
   });
 }
 
-/**
- * The task backing "the version under review" on the internal review page —
- * a mock stand-in for what would otherwise arrive via routing (the review
- * page is a fixed demo route, not parameterized by task/shot id). Picked
- * deterministically (first seeded task with a linked shot) so its approval
- * chain is the same task across reloads.
- */
-export const REVIEWED_TASK_ID = TASKS.find((t) => t.shotId)?.id ?? TASKS[0].id;
 
 // --- Versions (200) --------------------------------------------------------
 

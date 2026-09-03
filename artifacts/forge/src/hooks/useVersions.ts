@@ -28,7 +28,24 @@ export function useVersions(entityId?: string, entityType?: "shot" | "asset") {
       const qs = params.toString();
       return apiClient.get<VersionDTO[]>(`/versions${qs ? `?${qs}` : ""}`);
     },
+    // Without entityId this fetches every version in the tenant, unfiltered
+    // -- fine for an explicit "browse everything" call, but every current
+    // caller passes entityId and would otherwise transiently run that
+    // unfiltered query while entityId is still resolving (e.g. from a task
+    // that hasn't loaded yet).
+    enabled: !!entityId,
     staleTime: 10000,
+  });
+}
+
+export function useCreateVersion() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (
+      body: Pick<VersionDTO, "entityId" | "entityType"> &
+        Partial<Pick<VersionDTO, "versionNumber" | "mediaUrl" | "taskId">>,
+    ) => apiClient.post<VersionDTO>("/versions", body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["versions"] }),
   });
 }
 

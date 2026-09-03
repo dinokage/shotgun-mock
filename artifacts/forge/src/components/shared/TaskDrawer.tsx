@@ -32,6 +32,7 @@ import {
   Tag,
   Paperclip,
   MessageSquare,
+  Film,
   GitBranch,
   Sparkles,
   AlertTriangle,
@@ -865,19 +866,28 @@ export function TaskDrawer() {
 
             <Separator />
 
-            {/* Link into the lightweight Feedback view (see
-                components/shared/review/FeedbackList.tsx) for anyone who
-                just wants to read review notes on this submission, without
-                opening the full frame-accurate Player. Only shown once the
-                task has actually entered the review chain — nothing to read
-                before that. */}
+            {/* Full frame-accurate Player (annotate, scrub, approve/reject)
+                and the lightweight Feedback view (just the comment stream,
+                see components/shared/review/FeedbackList.tsx) both open this
+                same task's real review -- versionId is resolved from this
+                exact task server-side, not a fixed demo route. Only shown
+                once the task has actually entered the review chain —
+                nothing to review before that. */}
             {["review", "lead-review", "approved"].includes(task.status) && (
-              <Link
-                href="/review?mode=feedback"
-                className="touch-target flex items-center justify-center gap-2 w-full px-3 rounded-md border border-border text-sm font-medium hover-elevate active-elevate-2"
-              >
-                <MessageSquare className="w-4 h-4" /> View Review Feedback
-              </Link>
+              <div className="flex gap-2">
+                <Link
+                  href={`/review/${task.id}`}
+                  className="touch-target flex-1 flex items-center justify-center gap-2 px-3 rounded-md border border-border text-sm font-medium hover-elevate active-elevate-2"
+                >
+                  <Film className="w-4 h-4" /> Open in Review Player
+                </Link>
+                <Link
+                  href={`/review/${task.id}?mode=feedback`}
+                  className="touch-target flex-1 flex items-center justify-center gap-2 px-3 rounded-md border border-border text-sm font-medium hover-elevate active-elevate-2"
+                >
+                  <MessageSquare className="w-4 h-4" /> View Feedback
+                </Link>
+              </div>
             )}
 
             {/* Comments */}

@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   USERS,
   SHOTS,
-  REVIEWED_TASK_ID,
+  ASSETS,
   type ApprovalEvent,
 } from "@/data/mockData";
 import {
@@ -43,7 +43,7 @@ import {
   LEADERSHIP_ROLES,
   DEPARTMENT_LEADERSHIP_ROLES,
 } from "@/store/permissions";
-import { Link, useSearch } from "wouter";
+import { Link, useSearch, useRoute } from "wouter";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
@@ -72,10 +72,9 @@ import { hashString } from "@/lib/seededMock";
 import { getPlaceholderThumbnail, getPlaceholderVideoSrc } from "@/lib/placeholderArt";
 import { useAuthStore } from "@/store/auth";
 import { useTasksStore } from "@/store/tasks";
-import { getShotId } from "@/lib/taskShape";
+import { getShotId, getAssetId } from "@/lib/taskShape";
 import {
   useReviewStore,
-  PRESENTED_VERSION_ID,
   type ReviewComment,
 } from "@/store/reviews";
 import {
@@ -102,6 +101,7 @@ import {
   useUpdateAnnotation,
   useDeleteAnnotation,
 } from "@/hooks/useReviews";
+import { useVersions, useCreateVersion } from "@/hooks/useVersions";
 
 interface MediaClip {
   id: string;
@@ -250,6 +250,64 @@ function VoiceNotePlayer({ comment }: { comment: ReviewComment }) {
 
 export default function Review() {
   const { currentUser } = useAuthStore();
+
+  // Multi-tier approval chain (Artist -> Lead/Supervisor -> Producer) is real,
+  // persisted state on the task backing this version — not local UI state —
+  // so it survives reload/navigation and stays in sync with every other view
+  // of the same task (Kanban, task drawer, dashboards). ftrack only tracks a
+  // single status field per version; this is a genuine multi-step chain with
+  // a full audit trail.
+  const [, routeParams] = useRoute("/review/:taskId");
+  const taskId = routeParams?.taskId;
+  const tasks = useTasksStore((s) => s.tasks);
+  const recordApprovalEvent = useTasksStore((s) => s.recordApprovalEvent);
+  const reviewedTask = taskId ? tasks.find((t) => t.id === taskId) : undefined;
+  const reviewedTaskShotId = reviewedTask ? getShotId(reviewedTask) : undefined;
+  const reviewedTaskAssetId = reviewedTask ? getAssetId(reviewedTask) : undefined;
+  const reviewedShot = reviewedTaskShotId
+    ? SHOTS.find((s) => s.id === reviewedTaskShotId)
+    : undefined;
+  const reviewedAsset = reviewedTaskAssetId
+    ? ASSETS.find((a) => a.id === reviewedTaskAssetId)
+    : undefined;
+
+  // The version this page's annotations/approval chain attach to. One real
+  // Version row per task, created on first visit if the task doesn't have
+  // one yet (no real render pipeline exists, so there's nothing meaningful
+  // to fill mediaUrl with until someone inserts real footage -- see the
+  // "insert video" flow below, which patches this same version's src in
+  // place rather than creating a second one).
+  const versionEntityId = reviewedTaskShotId ?? reviewedTaskAssetId;
+  const versionEntityType: "shot" | "asset" | undefined = reviewedTaskShotId
+    ? "shot"
+    : reviewedTaskAssetId
+      ? "asset"
+      : undefined;
+  const { data: taskVersions = [], isLoading: versionsLoading } = useVersions(
+    versionEntityId,
+    versionEntityType,
+  );
+  const existingVersion = taskId
+    ? taskVersions.find((v) => v.taskId === taskId)
+    : undefined;
+  const createVersion = useCreateVersion();
+  const versionCreateAttempted = useRef<string | null>(null);
+  useEffect(() => {
+    if (!taskId || !versionEntityId || !versionEntityType) return;
+    if (versionsLoading) return;
+    if (existingVersion) return;
+    if (versionCreateAttempted.current === taskId) return;
+    versionCreateAttempted.current = taskId;
+    createVersion.mutate({
+      entityId: versionEntityId,
+      entityType: versionEntityType,
+      versionNumber: reviewedShot?.currentVersion || reviewedAsset?.version || "v001",
+      taskId,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per taskId (guarded by versionCreateAttempted), not on every dependency change
+  }, [taskId, versionEntityId, versionEntityType, versionsLoading, existingVersion]);
+  const versionId = existingVersion?.id;
+
   const isManager = currentUser && LEADERSHIP_ROLES.includes(currentUser.role);
 
   const isLead =
@@ -286,7 +344,7 @@ export default function Review() {
     presentation.isActive && presentation.presenterId === currentUser?.id;
   const isLockedViewer =
     presentation.isActive &&
-    presentation.versionId === PRESENTED_VERSION_ID &&
+    presentation.versionId === versionId &&
     presentation.presenterId !== currentUser?.id;
 
   const [isPlaying, setIsPlaying] = useState(false);
@@ -351,12 +409,12 @@ export default function Review() {
   const waveformIntervalRef = useRef<number | null>(null);
   const [color, setColor] = useState("#ef4444");
   // Annotations are persisted server-side, keyed to the version currently
-  // being reviewed (PRESENTED_VERSION_ID — the same "current version" id
-  // already used above for Presentation Mode syncing).
-  const { data: annotations = [] } = useAnnotations(PRESENTED_VERSION_ID);
-  const createAnnotation = useCreateAnnotation(PRESENTED_VERSION_ID);
-  const updateAnnotation = useUpdateAnnotation(PRESENTED_VERSION_ID);
-  const deleteAnnotation = useDeleteAnnotation(PRESENTED_VERSION_ID);
+  // being reviewed (versionId, resolved above from this task's real Version
+  // row — the same id already used above for Presentation Mode syncing).
+  const { data: annotations = [] } = useAnnotations(versionId);
+  const createAnnotation = useCreateAnnotation(versionId);
+  const updateAnnotation = useUpdateAnnotation(versionId);
+  const deleteAnnotation = useDeleteAnnotation(versionId);
   // Bridges the shared AnnotationCanvas's raw dispatch-style API (and this
   // page's own resize/drag handlers, which were all written against a local
   // useState<Annotation[]>) onto the server-backed list above. Ids added by
@@ -467,19 +525,6 @@ export default function Review() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount, this is one-time placeholder generation, not a reaction to changing props/state
   }, []);
 
-  // Multi-tier approval chain (Artist -> Lead/Supervisor -> Producer) is real,
-  // persisted state on the task backing this version — not local UI state —
-  // so it survives reload/navigation and stays in sync with every other view
-  // of the same task (Kanban, task drawer, dashboards). ftrack only tracks a
-  // single status field per version; this is a genuine multi-step chain with
-  // a full audit trail.
-  const tasks = useTasksStore((s) => s.tasks);
-  const recordApprovalEvent = useTasksStore((s) => s.recordApprovalEvent);
-  const reviewedTask = tasks.find((t) => t.id === REVIEWED_TASK_ID);
-  const reviewedTaskShotId = reviewedTask ? getShotId(reviewedTask) : undefined;
-  const reviewedShot = reviewedTaskShotId
-    ? SHOTS.find((s) => s.id === reviewedTaskShotId)
-    : undefined;
   const reviewWorkflowStatus: "wip" | "lead-review" | "approved" =
     reviewedTask?.status === "lead-review" ||
     reviewedTask?.status === "approved"
@@ -500,8 +545,8 @@ export default function Review() {
     status: "in-progress" | "lead-review" | "approved",
     action: ApprovalEvent["action"],
   ) => {
-    if (!currentUser) return;
-    recordApprovalEvent(REVIEWED_TASK_ID, status, {
+    if (!currentUser || !taskId) return;
+    recordApprovalEvent(taskId, status, {
       action,
       byUserId: currentUser.id,
       byUserName: currentUser.name,
@@ -518,8 +563,8 @@ export default function Review() {
       category: APPROVAL_NOTIFICATION_CATEGORY[action],
       priority: action === "rejected" ? "high" : "medium",
       entityType: "review",
-      entityId: REVIEWED_TASK_ID,
-      actionUrl: "/review",
+      entityId: taskId,
+      actionUrl: `/review/${taskId}`,
     });
   };
 
@@ -1115,7 +1160,40 @@ export default function Review() {
   // without touching the header's existing JSX.
   const versionLabel = reviewedShot
     ? `${reviewedShot.name} ${reviewedShot.currentVersion}`
-    : "SEQ_020_SH_040 v003";
+    : "Untitled Review";
+
+  // Every hook above is called unconditionally regardless of which of these
+  // branches fires -- only the render output is gated here, at the very end
+  // of the component body.
+  if (!taskId) {
+    return (
+      <div className="h-screen flex items-center justify-center text-muted-foreground text-sm">
+        Select a task to open its review.
+      </div>
+    );
+  }
+  if (!reviewedTask) {
+    return (
+      <div className="h-screen flex items-center justify-center text-muted-foreground text-sm">
+        Task not found.
+      </div>
+    );
+  }
+  if (reviewedTaskAssetId && !reviewedShot) {
+    return (
+      <div className="h-screen flex flex-col items-center justify-center gap-1 text-muted-foreground text-sm">
+        <div>Asset review isn't supported in this player yet.</div>
+        <div className="text-xs">Only shot-based tasks can be opened here.</div>
+      </div>
+    );
+  }
+  if (!reviewedShot) {
+    return (
+      <div className="h-screen flex items-center justify-center text-muted-foreground text-sm">
+        This task's shot could not be found.
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen bg-background relative overflow-hidden">
@@ -1127,18 +1205,12 @@ export default function Review() {
             asChild
             className="h-8 w-8 text-muted-foreground shrink-0"
           >
-            <Link href="/projects/p1">
+            <Link href={`/shots/${reviewedShot.id}`}>
               <ChevronLeft className="w-5 h-5" />
             </Link>
           </Button>
-          <div
-            className="font-medium truncate"
-            title={`FORGE REVIEW — ${reviewedShot ? `${reviewedShot.name} ${reviewedShot.currentVersion}` : "SEQ_020_SH_040 v003"}`}
-          >
-            FORGE REVIEW —{" "}
-            {reviewedShot
-              ? `${reviewedShot.name} ${reviewedShot.currentVersion}`
-              : "SEQ_020_SH_040 v003"}
+          <div className="font-medium truncate" title={`FORGE REVIEW — ${versionLabel}`}>
+            FORGE REVIEW — {versionLabel}
           </div>
         </div>
         <div className="flex items-center gap-4 shrink-0">
@@ -1154,12 +1226,12 @@ export default function Review() {
           >
             {viewerMode ? "Exit Viewer Mode" : "Read-only Reviewer"}
           </Button>
-          {!isLockedViewer && canPresent && (
+          {!isLockedViewer && canPresent && versionId && (
             <PresentationToggle
               isPresenting={isPresenting}
               onStart={() => {
                 startPresentation({
-                  versionId: PRESENTED_VERSION_ID,
+                  versionId: versionId!,
                   presenterId: currentUser!.id,
                   presenterName: currentUser!.name,
                   frame,
