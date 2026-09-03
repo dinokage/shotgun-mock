@@ -13,15 +13,14 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   USERS,
   PROJECTS,
-  LEAVE_EVENTS,
   DEPENDENCY_TYPE_LABELS,
+  type LeaveEvent,
 } from "@/data/mockData";
 import { Search, ZoomIn, ZoomOut } from "lucide-react";
 import { useUIStore } from "@/store/ui";
 import { useTasksStore } from "@/store/tasks";
 import { useToast } from "@/hooks/use-toast";
-import { useShots } from "@/hooks/useShots";
-import { useAssets } from "@/hooks/useAssets";
+import { getAssigneeId, getProjectId, useEntityProjectMap } from "@/lib/taskShape";
 import {
   addDays,
   getDaysDiff,
@@ -35,19 +34,6 @@ const LEAVE_LABEL: Record<string, string> = {
   sick: "SICK",
   holiday: "HOL",
 };
-
-// store/auth.ts's login hydration overwrites useTasksStore's `tasks` with
-// raw, untranslated real TaskDTO[] data (field: `assignedTo`, no
-// `assigneeId`; no `projectId` at all — a task's project is only reachable
-// via `entityId` -> shot/asset -> `projectId`). Same normalizer shape as
-// TasksKanban.tsx/TasksList.tsx/department-detail.tsx/home.tsx.
-const getAssigneeId = (t: any): string | null | undefined =>
-  t.assignedTo ?? t.assigneeId;
-
-const getProjectId = (
-  t: any,
-  entityProjectMap: Record<string, string>,
-): string | undefined => t.projectId ?? entityProjectMap[t.entityId];
 
 // utils.getDaysDiff floors zero-length ranges up to 1 (so a same-day
 // *duration* never renders as a zero-width bar), which is wrong whenever the
@@ -65,18 +51,7 @@ export default function TeamCalendar() {
   const { setActiveTaskDrawer } = useUIStore();
   const tasks = useTasksStore((s) => s.tasks);
   const updateTaskDates = useTasksStore((s) => s.updateTaskDates);
-  const { data: liveShots = [] } = useShots();
-  const { data: liveAssets = [] } = useAssets();
-  const entityProjectMap = useMemo(() => {
-    const map: Record<string, string> = {};
-    liveShots.forEach((s) => {
-      map[s.id] = s.projectId;
-    });
-    liveAssets.forEach((a) => {
-      map[a.id] = a.projectId;
-    });
-    return map;
-  }, [liveShots, liveAssets]);
+  const entityProjectMap = useEntityProjectMap();
 
   const [projectFilter, setProjectFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
@@ -198,7 +173,7 @@ export default function TeamCalendar() {
         <div>
           <h3 className="text-sm font-semibold">Per-Person Time Allocation</h3>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Drag a bar to reschedule &middot; dashed blocks are leave / PTO
+            Drag a bar to reschedule
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -432,12 +407,12 @@ export default function TeamCalendar() {
             {Object.keys(groupedByUser).map((userId) => {
               const rows = groupedByUser[userId];
               const rowHeight = Math.max(48, rows.length * 40 + 8);
-              const userLeave = LEAVE_EVENTS.filter(
-                (v) =>
-                  v.userId === userId &&
-                  v.start <= timelineEndStr &&
-                  v.end >= timelineStartStr,
-              );
+              // No real leave/PTO backend exists yet (only the fully-fake
+              // LEAVE_EVENTS mock array did before) — see
+              // CapacityForecast.tsx's identical leaveDays=0 comment. Render
+              // no leave bars against real employees rather than invented
+              // days off.
+              const userLeave: LeaveEvent[] = [];
               return (
                 <div
                   key={userId}

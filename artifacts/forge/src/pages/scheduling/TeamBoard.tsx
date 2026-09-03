@@ -39,27 +39,11 @@ import { useDepartmentStore } from "@/store/departments";
 import { useTasksStore } from "@/store/tasks";
 import { useUIStore } from "@/store/ui";
 import { useToast } from "@/hooks/use-toast";
-import { useShots } from "@/hooks/useShots";
-import { useAssets } from "@/hooks/useAssets";
+import { getAssigneeId, getProjectId, useEntityProjectMap } from "@/lib/taskShape";
 import { cn } from "@/lib/utils";
 import { REFERENCE_DATE } from "./utils";
 
 const UNASSIGNED = "__unassigned__";
-
-// store/auth.ts's login hydration overwrites useTasksStore's `tasks` with
-// raw, untranslated real TaskDTO[] data (field: `assignedTo`, no
-// `assigneeId`; no `projectId` at all — a task's project is only reachable
-// via `entityId` -> shot/asset -> `projectId`). This mirrors the same
-// getAssigneeId/getProjectId normalizers used in TasksKanban.tsx/
-// TasksList.tsx/department-detail.tsx/home.tsx so this board doesn't
-// silently show every task as unassigned/project-less once real data lands.
-const getAssigneeId = (t: any): string | null | undefined =>
-  t.assignedTo ?? t.assigneeId;
-
-const getProjectId = (
-  t: any,
-  entityProjectMap: Record<string, string>,
-): string | undefined => t.projectId ?? entityProjectMap[t.entityId];
 
 function capacityColor(cap: number) {
   return cap > 90
@@ -259,18 +243,7 @@ export default function TeamBoard() {
   const revokeAssignment = useTasksStore((s) => s.revokeAssignment);
   const users = useUserStore((s) => s.users);
   const departments = useDepartmentStore((s) => s.departments);
-  const { data: liveShots = [] } = useShots();
-  const { data: liveAssets = [] } = useAssets();
-  const entityProjectMap = useMemo(() => {
-    const map: Record<string, string> = {};
-    liveShots.forEach((s) => {
-      map[s.id] = s.projectId;
-    });
-    liveAssets.forEach((a) => {
-      map[a.id] = a.projectId;
-    });
-    return map;
-  }, [liveShots, liveAssets]);
+  const entityProjectMap = useEntityProjectMap();
 
   const [projectFilter, setProjectFilter] = useState("all");
   const [departmentFilter, setDepartmentFilter] = useState("all");

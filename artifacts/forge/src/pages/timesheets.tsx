@@ -5,8 +5,7 @@ import { useAuthStore } from "@/store/auth";
 import { useUIStore } from "@/store/ui";
 import { useTasksStore } from "@/store/tasks";
 import { useAllDailyLogs, useAddDailyLog } from "@/hooks/useTasks";
-import { useShots } from "@/hooks/useShots";
-import { useAssets } from "@/hooks/useAssets";
+import { getAssigneeId, getProjectId, useEntityProjectMap } from "@/lib/taskShape";
 import { useIsLeadership } from "@/hooks/use-capability";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -41,19 +40,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 
-// store/auth.ts's login hydration overwrites useTasksStore's `tasks` with
-// raw, untranslated real TaskDTO[] data (field: `assignedTo`, no
-// `assigneeId`; no `projectId` at all — a task's project is only reachable
-// via `entityId` -> shot/asset -> `projectId`). Same normalizer shape as
-// TasksKanban.tsx/TasksList.tsx/department-detail.tsx/home.tsx.
-const getAssigneeId = (t: any): string | null | undefined =>
-  t.assignedTo ?? t.assigneeId;
-
-const getProjectId = (
-  t: any,
-  entityProjectMap: Record<string, string>,
-): string | undefined => t.projectId ?? entityProjectMap[t.entityId];
-
 export default function Timesheets() {
   const { currentUser } = useAuthStore();
   const users = useUserStore((s) => s.users);
@@ -63,18 +49,7 @@ export default function Timesheets() {
 
   const isManager = useIsLeadership();
   const tasks = useTasksStore((state) => state.tasks);
-  const { data: liveShots = [] } = useShots();
-  const { data: liveAssets = [] } = useAssets();
-  const entityProjectMap = useMemo(() => {
-    const map: Record<string, string> = {};
-    liveShots.forEach((s) => {
-      map[s.id] = s.projectId;
-    });
-    liveAssets.forEach((a) => {
-      map[a.id] = a.projectId;
-    });
-    return map;
-  }, [liveShots, liveAssets]);
+  const entityProjectMap = useEntityProjectMap();
   const isMobile = useIsMobile();
 
   // Daily logs are a real, per-task/per-user backend resource

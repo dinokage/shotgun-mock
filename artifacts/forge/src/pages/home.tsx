@@ -10,6 +10,7 @@ import { useTasksStore } from "@/store/tasks";
 import { useShotStore } from "@/store/shots";
 import { useReviewStore } from "@/store/reviews";
 import { useDepartmentStore } from "@/store/departments";
+import { useUserStore } from "@/store/users";
 import {
   USERS,
   DEPARTMENTS,
@@ -19,6 +20,7 @@ import {
   TaskStatus,
   DailyLog,
 } from "@/data/mockData";
+import { getAssigneeId } from "@/lib/taskShape";
 import { generateProducerInsights, type AIInsight } from "@/lib/aiInsights";
 import { useDailyLogsByUser, useAddDailyLog } from "@/hooks/useTasks";
 import { useQueryClient } from "@tanstack/react-query";
@@ -158,15 +160,6 @@ function LatestBroadcastBanner() {
     </Link>
   );
 }
-
-// store/auth.ts's login hydration overwrites useTasksStore's `tasks` with
-// raw, untranslated real TaskDTO[] data (field: `assignedTo`, no
-// `assigneeId`/inline `dailyLogs` array at all — see hooks/useTasks.ts's
-// TaskDTO). This tolerates both that real shape and the legacy mock `Task`
-// shape (pre-login) so the dashboards below don't silently show "Unassigned"
-// or an empty task list for every artist once real data lands.
-const getAssigneeId = (t: any): string | null | undefined =>
-  t.assignedTo ?? t.assigneeId;
 
 // ============================================================================
 // Planner vs Actual — deterministic schedule-variance model
@@ -662,8 +655,10 @@ function formatRoleLabel(role: string): string {
 // --- Supervisor Dashboard (Department Focus) ---
 function SupervisorDashboard({ currentUser }: { currentUser: User }) {
   const tasks = useTasksStore((state) => state.tasks);
-  const dept = DEPARTMENTS.find((d) => d.id === currentUser.departmentId);
-  const deptTeam = USERS.filter((u) => u.departmentId === dept?.id);
+  const users = useUserStore((state) => state.users);
+  const departments = useDepartmentStore((state) => state.departments);
+  const dept = departments.find((d) => d.id === currentUser.departmentId);
+  const deptTeam = users.filter((u) => u.departmentId === dept?.id);
   const deptTasks = tasks.filter((t) => t.department === dept?.name);
   const activeTasks = deptTasks.filter((t) => t.status === "in-progress");
   const reviewTasks = deptTasks.filter((t) => t.status === "lead-review");
@@ -776,7 +771,7 @@ function SupervisorDashboard({ currentUser }: { currentUser: User }) {
             <CardContent>
               <div className="divide-y divide-border">
                 {reviewTasks.slice(0, 5).map((task, i) => {
-                  const assignee = USERS.find(
+                  const assignee = users.find(
                     (u) => u.id === getAssigneeId(task),
                   );
                   return (

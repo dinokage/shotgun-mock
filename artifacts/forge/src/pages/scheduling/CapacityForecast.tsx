@@ -25,6 +25,7 @@ import type { LeaveEvent } from "@/data/mockData";
 import { useUserStore } from "@/store/users";
 import { useDepartmentStore } from "@/store/departments";
 import { useTasksStore } from "@/store/tasks";
+import { getAssigneeId } from "@/lib/taskShape";
 import { cn } from "@/lib/utils";
 import {
   REFERENCE_DATE,
@@ -33,13 +34,6 @@ import {
   getTaskWindow,
 } from "./utils";
 import { ScopeTrace } from "@/components/shared/ScopeTrace";
-
-// store/auth.ts's login hydration overwrites useTasksStore's `tasks` with
-// raw, untranslated real TaskDTO[] data (field: `assignedTo`, no
-// `assigneeId`). Same normalizer shape as TasksKanban.tsx/TasksList.tsx/
-// department-detail.tsx/home.tsx.
-const getAssigneeId = (t: any): string | null | undefined =>
-  t.assignedTo ?? t.assigneeId;
 
 const PIPELINES = ["PROD", "3D", "VFX", "2D"] as const;
 

@@ -13,6 +13,7 @@ import {
 } from "@/data/mockData";
 import { useUserStore } from "@/store/users";
 import { useDepartmentStore } from "@/store/departments";
+import { getAssigneeId } from "@/lib/taskShape";
 import {
   Users,
   ListTodo,
@@ -45,14 +46,6 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-
-// store/auth.ts's login hydration mutates the shared `TASKS` mock array
-// in-place with raw real TaskDTO[] data (field: `assignedTo`, no
-// `assigneeId` at all — see hooks/useTasks.ts's TaskDTO). This tolerates
-// both that real shape and the legacy mock `Task` shape (pre-login) so
-// assignee lookups below don't silently stop resolving after hydration.
-const getAssigneeId = (t: any): string | null | undefined =>
-  t.assignedTo ?? t.assigneeId;
 
 const TASK_STATUS_OPTIONS: { value: TaskStatus; label: string }[] = [
   { value: "todo", label: "To Do" },

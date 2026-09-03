@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { useTasksStore } from "@/store/tasks";
-import { useShots } from "@/hooks/useShots";
-import { useAssets } from "@/hooks/useAssets";
+import { getAssigneeId, getProjectId, useEntityProjectMap } from "@/lib/taskShape";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { PriorityChip } from "@/components/shared/PriorityChip";
 import { UserAvatar } from "@/components/shared/UserAvatar";
@@ -69,20 +68,6 @@ const COLUMNS: { key: SortKey; label: string }[] = [
   { key: "estimatedHours", label: "Est. Hrs" },
 ];
 
-// store/auth.ts's login hydration overwrites useTasksStore's `tasks` with
-// raw, untranslated real TaskDTO[] data (field: `assignedTo`, no
-// `assigneeId`/`projectId` at all — see hooks/useTasks.ts's TaskDTO). These
-// normalizers tolerate both that real shape and the legacy mock `Task` shape
-// (pre-login / pre-hydration) so this view doesn't silently show blank
-// assignees or an always-empty list once real data lands.
-const getAssigneeId = (t: any): string | null | undefined =>
-  t.assignedTo ?? t.assigneeId;
-
-const getProjectId = (
-  t: any,
-  entityProjectMap: Record<string, string>,
-): string | undefined => t.projectId ?? entityProjectMap[t.entityId];
-
 export default function TasksListView({ projectId }: { projectId: string }) {
   const {
     tasks: allTasks,
@@ -94,18 +79,7 @@ export default function TasksListView({ projectId }: { projectId: string }) {
   // Real TaskDTO has no `projectId` column — a task's project is only
   // reachable via entityId -> shot/asset -> projectId (same pattern as
   // pages/tasks.tsx and TasksKanban.tsx).
-  const { data: liveShots = [] } = useShots();
-  const { data: liveAssets = [] } = useAssets();
-  const entityProjectMap = useMemo(() => {
-    const map: Record<string, string> = {};
-    liveShots.forEach((s) => {
-      map[s.id] = s.projectId;
-    });
-    liveAssets.forEach((a) => {
-      map[a.id] = a.projectId;
-    });
-    return map;
-  }, [liveShots, liveAssets]);
+  const entityProjectMap = useEntityProjectMap();
   const tasks = allTasks.filter(
     (t) => getProjectId(t, entityProjectMap) === projectId,
   );

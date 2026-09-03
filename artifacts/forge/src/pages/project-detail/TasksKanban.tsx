@@ -2,8 +2,7 @@ import { useTasksStore } from "@/store/tasks";
 import { useAuthStore } from "@/store/auth";
 import { TaskStatus } from "@/data/mockData";
 import { useUpdateTask } from "@/hooks/useTasks";
-import { useShots } from "@/hooks/useShots";
-import { useAssets } from "@/hooks/useAssets";
+import { getAssigneeId, getProjectId, useEntityProjectMap } from "@/lib/taskShape";
 import {
   DndContext,
   DragOverlay,
@@ -56,26 +55,6 @@ const COLUMNS: { id: TaskStatus; title: string }[] = [
   { id: "complete", title: "Complete" },
   { id: "cancelled", title: "Cancelled" },
 ];
-
-// This component renders two structurally different task shapes depending
-// on the caller: pages/tasks.tsx passes real TaskDTO[] (field: `assignedTo`,
-// no `projectId`), while pages/project-detail/TasksTab.tsx passes no
-// `tasks` prop at all and this component falls back to the legacy mock
-// `Task[]` from useTasksStore (field: `assigneeId`, has `projectId`). This
-// normalizer tolerates both instead of assuming one shape.
-const getAssigneeId = (t: any): string | null | undefined =>
-  t.assignedTo ?? t.assigneeId;
-
-// Real TaskDTO has no `projectId` field at all — a task's project is only
-// reachable indirectly via `entityId` -> shot/asset -> `projectId` (same
-// resolution pages/tasks.tsx and TaskDrawer.tsx already do). The legacy
-// mock `Task` shape has `projectId` directly, so that's tried first and
-// `entityProjectMap` (built by the real-data caller, empty for the legacy
-// fallback) is only consulted when it's missing.
-const getProjectId = (
-  t: any,
-  entityProjectMap: Record<string, string>,
-): string | undefined => t.projectId ?? entityProjectMap[t.entityId];
 
 function SortableTaskCard({
   task,
@@ -343,18 +322,7 @@ export default function KanbanView({
   // lookup real TaskDTO[] callers rely on. Build it here unconditionally
   // (react-query dedupes against pages/tasks.tsx's identical query) and let
   // an explicitly-passed prop take priority.
-  const { data: liveShots = [] } = useShots();
-  const { data: liveAssets = [] } = useAssets();
-  const builtEntityProjectMap = useMemo(() => {
-    const map: Record<string, string> = {};
-    liveShots.forEach((s) => {
-      map[s.id] = s.projectId;
-    });
-    liveAssets.forEach((a) => {
-      map[a.id] = a.projectId;
-    });
-    return map;
-  }, [liveShots, liveAssets]);
+  const builtEntityProjectMap = useEntityProjectMap();
   const resolvedEntityProjectMap = useMemo(
     () => ({ ...builtEntityProjectMap, ...entityProjectMap }),
     [builtEntityProjectMap, entityProjectMap],
