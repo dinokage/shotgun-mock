@@ -161,7 +161,7 @@ export default function AuditLog() {
         </div>
       </div>
 
-      {rollbackPoint && (
+      {selectedEntity && rollbackPoint && (
         <Card className="border-primary/30 bg-primary/5">
           <CardContent className="p-4 flex items-center justify-between gap-4">
             <div className="text-sm">
