@@ -6,17 +6,21 @@
  * status) rather than hand-written prose. The `reasoning` string is built
  * from the same numbers surfaced in the UI, so it stays traceable: change
  * the mock data and the flagged entity, counts, and copy all change with it.
+ *
+ * Every function below takes assets/projects/shots/tasks as explicit
+ * parameters rather than reading the raw ASSETS/PROJECTS/SHOTS/TASKS mock
+ * arrays directly. Those arrays are mutated in place by fetchMe() on login
+ * (real data replaces the seeded content), which updates their *contents*
+ * but not their object identity -- a caller's useMemo gated on some other
+ * dependency (e.g. departments) can settle before that mutation lands and
+ * then never recompute again, freezing the dashboard's insights at
+ * whatever was true (often the seeded mock data) at first render. Passing
+ * the arrays in lets the caller depend on the same live-store/react-query
+ * values everywhere else in the app already does, so recomputation is
+ * driven by real reference/state changes instead of a mutation React can't see.
  */
 
-import {
-  ASSETS,
-  PROJECTS,
-  SHOTS,
-  TASKS,
-  type Asset,
-  type Department,
-  type Task,
-} from "@/data/mockData";
+import type { Asset, Department, Project, Shot, Task } from "@/data/mockData";
 import { getAssetId, getProjectId } from "@/lib/taskShape";
 
 export type InsightSeverity = "critical" | "warning" | "positive";
@@ -65,11 +69,14 @@ const MIN_DEPT_SAMPLE = 8; // ignore departments too small to make a rate meanin
  * preferring one that is itself stuck (bottleneck/at-risk).
  */
 function findBlockingAssetInsight(
+  assets: Asset[],
+  tasks: Task[],
+  projects: Project[],
   entityProjectMap: Record<string, string>,
 ): AIInsight | null {
-  const assetById = new Map(ASSETS.map((a) => [a.id, a]));
+  const assetById = new Map(assets.map((a) => [a.id, a]));
   const dependents = new Map<string, string[]>();
-  for (const asset of ASSETS) {
+  for (const asset of assets) {
     for (const depId of asset.dependencies) {
       const list = dependents.get(depId) ?? [];
       list.push(asset.id);
@@ -85,7 +92,7 @@ function findBlockingAssetInsight(
         ACTIVE_ASSET_STATUSES.has(assetById.get(id)!.status),
       );
       const activeDependentSet = new Set(activeDependentIds);
-      const impactedTasks = TASKS.filter((t) => {
+      const impactedTasks = tasks.filter((t) => {
         const assetId = getAssetId(t);
         return (
           assetId &&
@@ -119,7 +126,7 @@ function findBlockingAssetInsight(
   const top = candidates[0];
   if (!top) return null;
 
-  const project = PROJECTS.find((p) => p.id === top.source.projectId);
+  const project = projects.find((p) => p.id === top.source.projectId);
 
   return {
     id: `blocker-${top.source.id}`,
@@ -134,9 +141,9 @@ function findBlockingAssetInsight(
 }
 
 /** Groups unresolved tasks by department, keeping only departments with a meaningful sample. */
-function groupActiveTasksByDept(): Map<string, Task[]> {
+function groupActiveTasksByDept(tasks: Task[]): Map<string, Task[]> {
   const byDept = new Map<string, Task[]>();
-  for (const t of TASKS) {
+  for (const t of tasks) {
     if (!UNRESOLVED_TASK_STATUSES.has(t.status)) continue;
     const list = byDept.get(t.department) ?? [];
     list.push(t);
@@ -146,8 +153,11 @@ function groupActiveTasksByDept(): Map<string, Task[]> {
 }
 
 /** Finds the department with the highest share of self-reported "behind" pace tasks. */
-function findDepartmentPaceInsight(departments: Department[]): AIInsight | null {
-  const ranked = Array.from(groupActiveTasksByDept().entries())
+function findDepartmentPaceInsight(
+  tasks: Task[],
+  departments: Department[],
+): AIInsight | null {
+  const ranked = Array.from(groupActiveTasksByDept(tasks).entries())
     .filter(([, tasks]) => tasks.length >= MIN_DEPT_SAMPLE)
     .map(([department, tasks]) => {
       const behind = tasks.filter((t) => t.weeklyRating === "behind").length;
@@ -176,12 +186,15 @@ function findDepartmentPaceInsight(departments: Department[]): AIInsight | null 
   };
 }
 
-function computeProjectRiskScore(projectId: string): {
+function computeProjectRiskScore(
+  allShots: Shot[],
+  projectId: string,
+): {
   score: number;
   flaggedShots: number;
   totalShots: number;
 } {
-  const shots = SHOTS.filter((s) => s.projectId === projectId);
+  const shots = allShots.filter((s) => s.projectId === projectId);
   if (shots.length === 0) return { score: 0, flaggedShots: 0, totalShots: 0 };
   const flaggedShots = shots.filter(
     (s) => s.status === "bottleneck" || s.status === "at-risk",
@@ -194,9 +207,13 @@ function computeProjectRiskScore(projectId: string): {
 }
 
 /** Finds the non-complete project carrying the highest studio-assigned risk score. */
-function findProjectRiskInsight(): AIInsight | null {
-  const ranked = PROJECTS.filter((p) => p.status !== "COMPLETE")
-    .map((p) => ({ project: p, risk: computeProjectRiskScore(p.id) }))
+function findProjectRiskInsight(
+  projects: Project[],
+  shots: Shot[],
+): AIInsight | null {
+  const ranked = projects
+    .filter((p) => p.status !== "COMPLETE")
+    .map((p) => ({ project: p, risk: computeProjectRiskScore(shots, p.id) }))
     .filter((r) => r.risk.totalShots > 0)
     .sort((a, b) => b.risk.score - a.risk.score);
 
@@ -218,8 +235,11 @@ function findProjectRiskInsight(): AIInsight | null {
 }
 
 /** Finds the department with the highest share of self-reported "on-track" tasks — a genuine positive signal, not just the inverse of the pace warning. */
-function findDepartmentOnTrackInsight(departments: Department[]): AIInsight | null {
-  const ranked = Array.from(groupActiveTasksByDept().entries())
+function findDepartmentOnTrackInsight(
+  tasks: Task[],
+  departments: Department[],
+): AIInsight | null {
+  const ranked = Array.from(groupActiveTasksByDept(tasks).entries())
     .filter(([, tasks]) => tasks.length >= MIN_DEPT_SAMPLE)
     .map(([department, tasks]) => {
       const onTrack = tasks.filter((t) => t.weeklyRating === "on-track").length;
@@ -256,13 +276,17 @@ function findDepartmentOnTrackInsight(departments: Department[]): AIInsight | nu
  * omitted rather than shown with placeholder text.
  */
 export function generateProducerInsights(
+  assets: Asset[],
+  projects: Project[],
+  shots: Shot[],
+  tasks: Task[],
   departments: Department[],
   entityProjectMap: Record<string, string>,
 ): AIInsight[] {
   return [
-    findBlockingAssetInsight(entityProjectMap),
-    findDepartmentPaceInsight(departments),
-    findProjectRiskInsight(),
-    findDepartmentOnTrackInsight(departments),
+    findBlockingAssetInsight(assets, tasks, projects, entityProjectMap),
+    findDepartmentPaceInsight(tasks, departments),
+    findProjectRiskInsight(projects, shots),
+    findDepartmentOnTrackInsight(tasks, departments),
   ].filter((insight): insight is AIInsight => insight !== null);
 }

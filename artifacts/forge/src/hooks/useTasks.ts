@@ -340,3 +340,36 @@ export function useAddDailyLog() {
     },
   });
 }
+
+// Editable only by whoever logged the hours (server-enforced) -- corrects a
+// mislogged date/hours/note on an entry that already exists, re-rolling the
+// task's actualHours by the delta rather than the absolute new value.
+export function useUpdateDailyLog() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      ...body
+    }: {
+      id: string;
+      date?: string;
+      hours?: number;
+      note?: string;
+    }) => apiClient.put<DailyLogDTO>(`/daily-logs/${id}`, body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["daily-logs"] });
+      queryClient.invalidateQueries({ queryKey: ["tasks"] }); // actualHours changed
+    },
+  });
+}
+
+export function useDeleteDailyLog() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/daily-logs/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["daily-logs"] });
+      queryClient.invalidateQueries({ queryKey: ["tasks"] }); // actualHours changed
+    },
+  });
+}

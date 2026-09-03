@@ -8,6 +8,7 @@ import { useUIStore } from "@/store/ui";
 import { useProjectStore } from "@/store/projects";
 import { useTasksStore } from "@/store/tasks";
 import { useShotStore } from "@/store/shots";
+import { useAssetStore } from "@/store/assets";
 import { useReviewStore } from "@/store/reviews";
 import { useDepartmentStore } from "@/store/departments";
 import { useUserStore } from "@/store/users";
@@ -250,16 +251,26 @@ function ProducerDashboard() {
   // for every user, with no reload. Same pattern as projects.tsx.
   const projects = useProjectStore((state) => state.projects);
   const shots = useShotStore((state) => state.shots);
+  const assets = useAssetStore((state) => state.assets);
   const departments = useDepartmentStore((state) => state.departments);
   const users = useUserStore((state) => state.users);
   const tasks = useTasksStore((state) => state.tasks);
   const activeProjects = projects.filter((p) => p.status !== "COMPLETE");
   const entityProjectMap = useEntityProjectMap();
-  // Recomputed from the current mock data on every mount — not hand-written copy.
-  // See src/lib/aiInsights.ts for the rule-based logic behind each card.
+  // Recomputed from real reactive store data -- not hand-written copy, and
+  // not the raw mock arrays read directly (see aiInsights.ts's top comment
+  // for why that went stale after login).
   const insights = useMemo(
-    () => generateProducerInsights(departments, entityProjectMap),
-    [departments, entityProjectMap],
+    () =>
+      generateProducerInsights(
+        assets,
+        projects,
+        shots,
+        tasks,
+        departments,
+        entityProjectMap,
+      ),
+    [assets, projects, shots, tasks, departments, entityProjectMap],
   );
 
   // Review queue — real shots currently sitting in internal or client review.

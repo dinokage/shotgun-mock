@@ -1,5 +1,5 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { USERS } from "@/data/mockData";
+import { useUserStore } from "@/store/users";
 import { cn } from "@/lib/utils";
 
 export function UserAvatar({
@@ -9,7 +9,12 @@ export function UserAvatar({
   userId: string;
   className?: string;
 }) {
-  const user = USERS.find((u) => u.id === userId);
+  // Reactive store, not the raw USERS array -- fetchMe() mutates USERS in
+  // place with real data, which updates its *contents* but never triggers
+  // a re-render for a component that already mounted before that mutation
+  // (e.g. one rendered during the brief pre-login/pre-hydration window).
+  const users = useUserStore((s) => s.users);
+  const user = users.find((u) => u.id === userId);
 
   if (!user) {
     return (
