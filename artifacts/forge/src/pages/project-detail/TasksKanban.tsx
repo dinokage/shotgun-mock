@@ -2,6 +2,8 @@ import { useTasksStore } from "@/store/tasks";
 import { useAuthStore } from "@/store/auth";
 import { TaskStatus } from "@/data/mockData";
 import { useUpdateTask } from "@/hooks/useTasks";
+import { useShots } from "@/hooks/useShots";
+import { useAssets } from "@/hooks/useAssets";
 import {
   DndContext,
   DragOverlay,
@@ -20,7 +22,7 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card } from "@/components/ui/card";
@@ -334,6 +336,29 @@ export default function KanbanView({
   const { currentUser } = useAuthStore();
   const { toast } = useToast();
   const sourceTasks = tasks || storeTasks;
+  // The legacy fallback path (pages/project-detail/TasksTab.tsx) never passes
+  // `entityProjectMap` — but since store/auth.ts's login hydration overwrites
+  // useTasksStore's tasks with raw, untranslated real TaskDTO[] data (no
+  // `projectId` field), `storeTasks` needs the exact same entityId -> project
+  // lookup real TaskDTO[] callers rely on. Build it here unconditionally
+  // (react-query dedupes against pages/tasks.tsx's identical query) and let
+  // an explicitly-passed prop take priority.
+  const { data: liveShots = [] } = useShots();
+  const { data: liveAssets = [] } = useAssets();
+  const builtEntityProjectMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    liveShots.forEach((s) => {
+      map[s.id] = s.projectId;
+    });
+    liveAssets.forEach((a) => {
+      map[a.id] = a.projectId;
+    });
+    return map;
+  }, [liveShots, liveAssets]);
+  const resolvedEntityProjectMap = useMemo(
+    () => ({ ...builtEntityProjectMap, ...entityProjectMap }),
+    [builtEntityProjectMap, entityProjectMap],
+  );
   // `tasks` is only ever passed by pages/tasks.tsx (real TaskDTO[] from the
   // backend). pages/project-detail/TasksTab.tsx passes only `projectId` (or
   // nothing) and relies on the storeTasks fallback above — mutations must
@@ -349,8 +374,15 @@ export default function KanbanView({
       ? updateTaskMutation.mutate({ id, ...updates })
       : storeUpdateTask(id, updates);
 
+  // Real TaskDTO[] has no `projectId` column, so filtering must go through
+  // the entityId -> project lookup (getProjectId), not a direct field read —
+  // a direct `t.projectId === projectId` read silently matched nothing once
+  // real data replaced the mock array, making every project-scoped board
+  // appear to have zero tasks.
   const projectTasks = projectId
-    ? sourceTasks.filter((t) => t.projectId === projectId)
+    ? sourceTasks.filter(
+        (t) => getProjectId(t, resolvedEntityProjectMap) === projectId,
+      )
     : sourceTasks;
   const availableTasks = projectTasks.filter((t) => !getAssigneeId(t));
 
@@ -410,7 +442,7 @@ export default function KanbanView({
                 <ClaimableTaskCard
                   key={task.id}
                   task={task}
-                  entityProjectMap={entityProjectMap}
+                  entityProjectMap={resolvedEntityProjectMap}
                   onClaim={() => {
                     if (!currentUser) return;
                     updateTask(
@@ -445,7 +477,7 @@ export default function KanbanView({
               col={col}
               tasks={columnTasks}
               onUpdateTask={updateTask}
-              entityProjectMap={entityProjectMap}
+              entityProjectMap={resolvedEntityProjectMap}
             />
           );
         })}

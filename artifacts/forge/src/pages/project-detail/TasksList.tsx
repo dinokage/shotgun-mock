@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
 import { useTasksStore } from "@/store/tasks";
+import { useShots } from "@/hooks/useShots";
+import { useAssets } from "@/hooks/useAssets";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { PriorityChip } from "@/components/shared/PriorityChip";
 import { UserAvatar } from "@/components/shared/UserAvatar";
@@ -67,25 +69,46 @@ const COLUMNS: { key: SortKey; label: string }[] = [
   { key: "estimatedHours", label: "Est. Hrs" },
 ];
 
-const DEPARTMENT_MAP: Record<string, string> = {
-  u1: "VFX Supervision",
-  u2: "Lighting",
-  u3: "Compositing",
-  u4: "Animation",
-  u5: "Modeling",
-  u6: "FX",
-  u7: "Production",
-  u8: "Rigging",
-};
+// store/auth.ts's login hydration overwrites useTasksStore's `tasks` with
+// raw, untranslated real TaskDTO[] data (field: `assignedTo`, no
+// `assigneeId`/`projectId` at all — see hooks/useTasks.ts's TaskDTO). These
+// normalizers tolerate both that real shape and the legacy mock `Task` shape
+// (pre-login / pre-hydration) so this view doesn't silently show blank
+// assignees or an always-empty list once real data lands.
+const getAssigneeId = (t: any): string | null | undefined =>
+  t.assignedTo ?? t.assigneeId;
+
+const getProjectId = (
+  t: any,
+  entityProjectMap: Record<string, string>,
+): string | undefined => t.projectId ?? entityProjectMap[t.entityId];
 
 export default function TasksListView({ projectId }: { projectId: string }) {
   const {
     tasks: allTasks,
     updateTask,
     updateTaskStatus,
+    reassignTask,
     setTasks,
   } = useTasksStore();
-  const tasks = allTasks.filter((t) => t.projectId === projectId);
+  // Real TaskDTO has no `projectId` column — a task's project is only
+  // reachable via entityId -> shot/asset -> projectId (same pattern as
+  // pages/tasks.tsx and TasksKanban.tsx).
+  const { data: liveShots = [] } = useShots();
+  const { data: liveAssets = [] } = useAssets();
+  const entityProjectMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    liveShots.forEach((s) => {
+      map[s.id] = s.projectId;
+    });
+    liveAssets.forEach((a) => {
+      map[a.id] = a.projectId;
+    });
+    return map;
+  }, [liveShots, liveAssets]);
+  const tasks = allTasks.filter(
+    (t) => getProjectId(t, entityProjectMap) === projectId,
+  );
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -104,7 +127,7 @@ export default function TasksListView({ projectId }: { projectId: string }) {
   const sortedTasks = useMemo(() => {
     if (!sortKey) return tasks;
     const assigneeName = (t: (typeof tasks)[number]) =>
-      USERS.find((u) => u.id === t.assigneeId)?.name ?? "";
+      USERS.find((u) => u.id === getAssigneeId(t))?.name ?? "";
     const valueFor = (t: (typeof tasks)[number]) => {
       switch (sortKey) {
         case "assignee":
@@ -134,7 +157,8 @@ export default function TasksListView({ projectId }: { projectId: string }) {
       switch (groupBy) {
         case "assignee":
           groupKey =
-            USERS.find((u) => u.id === t.assigneeId)?.name ?? "Unassigned";
+            USERS.find((u) => u.id === getAssigneeId(t))?.name ??
+            "Unassigned";
           break;
         case "status":
           groupKey = t.status;
@@ -143,7 +167,7 @@ export default function TasksListView({ projectId }: { projectId: string }) {
           groupKey = t.priority;
           break;
         case "department":
-          groupKey = DEPARTMENT_MAP[t.assigneeId] ?? "General";
+          groupKey = t.department || "General";
           break;
       }
       if (!groups.has(groupKey)) groups.set(groupKey, []);
@@ -201,7 +225,11 @@ export default function TasksListView({ projectId }: { projectId: string }) {
   const handleBulkReassign = (assigneeId: string) => {
     const count = selectedIds.size;
     const user = USERS.find((u) => u.id === assigneeId);
-    selectedIds.forEach((id) => updateTask(id, { assigneeId }));
+    // reassignTask (not the generic updateTask) is the store action that
+    // actually syncs to the backend with the real `assignedTo` field name —
+    // updateTask forwards whatever keys it's given verbatim, so passing
+    // `assigneeId` through it would silently no-op server-side.
+    selectedIds.forEach((id) => reassignTask(id, assigneeId));
     toast({
       title: "Tasks reassigned",
       description: `${count} task${count === 1 ? "" : "s"} reassigned to ${user?.name ?? "selected user"}.`,
@@ -431,7 +459,7 @@ export default function TasksListView({ projectId }: { projectId: string }) {
                     {!isCollapsed &&
                       group.tasks.map((task) => {
                         const user = USERS.find(
-                          (u) => u.id === task.assigneeId,
+                          (u) => u.id === getAssigneeId(task),
                         );
                         const isSelected = selectedIds.has(task.id);
                         return (
@@ -463,7 +491,7 @@ export default function TasksListView({ projectId }: { projectId: string }) {
                                     if (!open) setEditingCell(null);
                                   }}
                                   onValueChange={(val) => {
-                                    updateTask(task.id, { assigneeId: val });
+                                    reassignTask(task.id, val);
                                     setEditingCell(null);
                                     toast({ description: "Assignee updated" });
                                   }}
@@ -487,7 +515,7 @@ export default function TasksListView({ projectId }: { projectId: string }) {
                                 </Select>
                               ) : (
                                 <div className="flex items-center gap-2 relative">
-                                  <UserAvatar userId={task.assigneeId} />
+                                  <UserAvatar userId={getAssigneeId(task) ?? ""} />
                                   <span>{user?.name}</span>
                                   <div className="absolute right-0 opacity-0 group-hover:opacity-100 bg-muted/80 px-1 rounded text-[10px] text-muted-foreground pointer-events-none">
                                     Click to edit

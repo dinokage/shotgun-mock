@@ -20,6 +20,8 @@ import {
   DailyLog,
 } from "@/data/mockData";
 import { generateProducerInsights, type AIInsight } from "@/lib/aiInsights";
+import { useDailyLogsByUser, useAddDailyLog } from "@/hooks/useTasks";
+import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useMemo, useState } from "react";
 import { motion, AnimatePresence, MotionConfig } from "framer-motion";
@@ -156,6 +158,15 @@ function LatestBroadcastBanner() {
     </Link>
   );
 }
+
+// store/auth.ts's login hydration overwrites useTasksStore's `tasks` with
+// raw, untranslated real TaskDTO[] data (field: `assignedTo`, no
+// `assigneeId`/inline `dailyLogs` array at all — see hooks/useTasks.ts's
+// TaskDTO). This tolerates both that real shape and the legacy mock `Task`
+// shape (pre-login) so the dashboards below don't silently show "Unassigned"
+// or an empty task list for every artist once real data lands.
+const getAssigneeId = (t: any): string | null | undefined =>
+  t.assignedTo ?? t.assigneeId;
 
 // ============================================================================
 // Planner vs Actual — deterministic schedule-variance model
@@ -659,16 +670,26 @@ function SupervisorDashboard({ currentUser }: { currentUser: User }) {
   const { setActiveTaskDrawer, setCreateTaskModalOpen } = useUIStore();
 
   // Avg Velocity — real throughput: completed dept tasks divided by the
-  // number of distinct calendar days the department actually logged work on
-  // (via each task's dailyLogs), not a hand-written "4.2".
+  // number of distinct calendar days the department actually logged work on.
+  // Daily logs are a separate nested resource server-side (GET
+  // /daily-logs?taskId=...) — there's no per-department bulk endpoint, and
+  // fetching every dept member's logs individually just to feed one stat
+  // tile is the same "too expensive for a list view" cost Task 5/6 avoided
+  // elsewhere, so this tile now honestly reports "no data" instead of
+  // reading the (always-empty, since real TaskDTO has no inline `dailyLogs`
+  // array) `t.dailyLogs` field and showing a misleading "0.0".
   const completedDeptTasks = deptTasks.filter(
     (t) => t.status === "complete" || t.status === "approved",
   ).length;
   const deptWorkDays = new Set(
-    deptTasks.flatMap((t) => (t.dailyLogs ?? []).map((log) => log.date.split("T")[0])),
+    deptTasks.flatMap((t: any) =>
+      (t.dailyLogs ?? []).map((log: DailyLog) => log.date.split("T")[0]),
+    ),
   ).size;
   const avgVelocity =
-    deptWorkDays > 0 ? (completedDeptTasks / deptWorkDays).toFixed(1) : "0.0";
+    deptWorkDays > 0
+      ? (completedDeptTasks / deptWorkDays).toFixed(1)
+      : null;
 
   if (!dept) return null;
 
@@ -717,8 +738,8 @@ function SupervisorDashboard({ currentUser }: { currentUser: User }) {
             },
             {
               label: "Avg Velocity",
-              value: avgVelocity,
-              sub: "tasks/day",
+              value: avgVelocity ?? "—",
+              sub: avgVelocity !== null ? "tasks/day" : "no data",
               icon: TrendingUp,
             },
           ].map((s, i) => (
@@ -755,7 +776,9 @@ function SupervisorDashboard({ currentUser }: { currentUser: User }) {
             <CardContent>
               <div className="divide-y divide-border">
                 {reviewTasks.slice(0, 5).map((task, i) => {
-                  const assignee = USERS.find((u) => u.id === task.assigneeId);
+                  const assignee = USERS.find(
+                    (u) => u.id === getAssigneeId(task),
+                  );
                   return (
                     <motion.div
                       key={task.id}
@@ -873,10 +896,9 @@ const NEAR_TERM_DEADLINE_DAYS = 7;
 
 function ArtistDashboard({ currentUser }: { currentUser: User }) {
   const tasks = useTasksStore((state) => state.tasks);
-  const logTime = useTasksStore((state) => state.logTime);
   const reviews = useReviewStore((state) => state.reviews);
   const versions = useReviewStore((state) => state.versions);
-  const myTasks = tasks.filter((t) => t.assigneeId === currentUser.id);
+  const myTasks = tasks.filter((t) => getAssigneeId(t) === currentUser.id);
 
   // Active tasks — anything blocked (bottleneck) is surfaced ahead of the
   // normal due-date ordering used for the rest, so it can't get buried.
@@ -961,42 +983,65 @@ function ArtistDashboard({ currentUser }: { currentUser: User }) {
   }, [reviews, versions, currentUser.id]);
   const { setActiveTaskDrawer } = useUIStore();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const addDailyLogMutation = useAddDailyLog();
 
   // Inline quick-log-time form state — mirrors TaskDrawer's own "Log Daily
-  // Time" affordance (same fields, same logTime call) so logging hours reads
-  // the same whether it's done here or from inside the task drawer.
+  // Time" affordance (same fields, same useAddDailyLog mutation) so logging
+  // hours reads the same whether it's done here or from inside the task
+  // drawer.
   const [logFormOpen, setLogFormOpen] = useState(false);
   const [logHours, setLogHours] = useState("");
   const [logNote, setLogNote] = useState("");
 
+  // Daily logs are a separate nested resource (/tasks/:id/daily-logs) —
+  // real TaskDTO has no inline `dailyLogs` array, so this used to route
+  // through useTasksStore's `logTime`, a local-only mutation with no backend
+  // sync at all (unlike the store's other actions). Switched to the real
+  // useAddDailyLog() mutation (same one TaskDrawer already uses) so logged
+  // time actually persists.
   const handleQuickLogTime = () => {
     if (!mostRecentInProgressTask) return;
     const hoursNum = parseFloat(logHours);
     if (!hoursNum || hoursNum <= 0) return;
-    const newLog: DailyLog = {
-      date: new Date().toISOString().slice(0, 10),
-      hours: hoursNum,
-      note: logNote.trim() || "No notes provided.",
-      userId: currentUser.id,
-    };
-    logTime(mostRecentInProgressTask.id, newLog);
-    toast({
-      title: "Time Logged",
-      description: `Logged ${hoursNum}h on ${mostRecentInProgressTask.title}.`,
-    });
-    setLogFormOpen(false);
-    setLogHours("");
-    setLogNote("");
+    addDailyLogMutation.mutate(
+      {
+        taskId: mostRecentInProgressTask.id,
+        date: new Date().toISOString().slice(0, 10),
+        hours: hoursNum,
+        note: logNote.trim() || "No notes provided.",
+      },
+      {
+        onSuccess: () => {
+          // useAddDailyLog only invalidates the per-task daily-logs query and
+          // ["tasks"] — this dashboard reads the per-user aggregate below, a
+          // different query key, so it needs its own invalidation.
+          queryClient.invalidateQueries({
+            queryKey: ["daily-logs", "user", currentUser.id],
+          });
+          toast({
+            title: "Time Logged",
+            description: `Logged ${hoursNum}h on ${mostRecentInProgressTask.title}.`,
+          });
+          setLogFormOpen(false);
+          setLogHours("");
+          setLogNote("");
+        },
+        onError: () => {
+          toast({ title: "Failed to log time", variant: "destructive" });
+        },
+      },
+    );
   };
 
-  // Total Hours Logged — real sum of this artist's own dailyLogs entries
-  // across their tasks, not a hand-written "32h".
-  const totalHoursLogged = myTasks.reduce(
-    (sum, t) =>
-      sum +
-      (t.dailyLogs ?? [])
-        .filter((log) => log.userId === currentUser.id)
-        .reduce((s, log) => s + log.hours, 0),
+  // Total Hours Logged — real sum of this artist's own daily logs, fetched
+  // via the dedicated per-user endpoint (hooks/useTasks.ts's
+  // useDailyLogsByUser, built for exactly this "one member's hours across
+  // all tasks" case) rather than a per-task `dailyLogs` array that no longer
+  // exists on real TaskDTO.
+  const { data: myDailyLogs = [] } = useDailyLogsByUser(currentUser.id);
+  const totalHoursLogged = myDailyLogs.reduce(
+    (sum, log) => sum + log.hours,
     0,
   );
 
@@ -1119,7 +1164,7 @@ function ArtistDashboard({ currentUser }: { currentUser: User }) {
               </CardHeader>
               <CardContent>
                 {/* Inline Quick Log Time form — same fields (hours, note) and
-                  same logTime(task.id, newLog) call as TaskDrawer's "Log
+                  same useAddDailyLog() mutation as TaskDrawer's "Log
                   Daily Time" form, just surfaced on the dashboard itself. */}
                 <AnimatePresence initial={false}>
                   {logFormOpen && mostRecentInProgressTask && (

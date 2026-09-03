@@ -46,6 +46,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+// store/auth.ts's login hydration mutates the shared `TASKS` mock array
+// in-place with raw real TaskDTO[] data (field: `assignedTo`, no
+// `assigneeId` at all — see hooks/useTasks.ts's TaskDTO). This tolerates
+// both that real shape and the legacy mock `Task` shape (pre-login) so
+// assignee lookups below don't silently stop resolving after hydration.
+const getAssigneeId = (t: any): string | null | undefined =>
+  t.assignedTo ?? t.assigneeId;
+
 const TASK_STATUS_OPTIONS: { value: TaskStatus; label: string }[] = [
   { value: "todo", label: "To Do" },
   { value: "in-progress", label: "In Progress" },
@@ -444,7 +452,7 @@ export default function DepartmentDetail() {
                 <div className="divide-y divide-border">
                   {activeTasks.slice(0, 15).map((task) => {
                     const assignee = users.find(
-                      (u) => u.id === task.assigneeId,
+                      (u) => u.id === getAssigneeId(task),
                     );
                     return (
                       <div
@@ -489,7 +497,9 @@ export default function DepartmentDetail() {
                                     </DropdownMenuSubTrigger>
                                     <DropdownMenuSubContent>
                                       {team
-                                        .filter((u) => u.id !== task.assigneeId)
+                                        .filter(
+                                          (u) => u.id !== getAssigneeId(task),
+                                        )
                                         .map((u) => (
                                           <DropdownMenuItem
                                             key={u.id}
