@@ -70,7 +70,7 @@ import { Label } from "@/components/ui/label";
 import { cn, copyToClipboard } from "@/lib/utils";
 import { cut } from "@/lib/motion";
 import { hashString } from "@/lib/seededMock";
-import { getPlaceholderThumbnail } from "@/lib/placeholderArt";
+import { getPlaceholderThumbnail, getPlaceholderVideoSrc } from "@/lib/placeholderArt";
 import { useAuthStore } from "@/store/auth";
 import { useTasksStore } from "@/store/tasks";
 import { getShotId } from "@/lib/taskShape";
@@ -298,7 +298,11 @@ export default function Review() {
   const [videoClips, setVideoClips] = useState<MediaClip[]>([
     {
       id: "base-v1",
-      src: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
+      // Resolved asynchronously below (this office network has no internet
+      // access, so a hardcoded CDN URL here would just be a broken player
+      // for every real user) -- empty until the self-hosted placeholder
+      // clip finishes generating.
+      src: "",
       trackIndex: 0,
       startFrame: 1,
       endFrame: 240,
@@ -408,24 +412,39 @@ export default function Review() {
   const compareVideoRefA = useRef<HTMLVideoElement>(null);
   const compareVideoRefB = useRef<HTMLVideoElement>(null);
 
-  // Mock version list for the compare dropdown
-  const VERSIONS = [
-    {
-      id: "v001",
-      label: "v001 — Initial Layout",
-      src: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-    },
-    {
-      id: "v002",
-      label: "v002 — Lighting Pass",
-      src: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-    },
-    {
-      id: "v003",
-      label: "v003 — Final Comp",
-      src: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
-    },
-  ];
+  // Mock version list for the compare dropdown. `src` starts empty and is
+  // resolved below (self-hosted, generated client-side) rather than
+  // hardcoded to a CDN URL -- this office network has no internet access.
+  const [VERSIONS, setVERSIONS] = useState([
+    { id: "v001", label: "v001 — Initial Layout", src: "" },
+    { id: "v002", label: "v002 — Lighting Pass", src: "" },
+    { id: "v003", label: "v003 — Final Comp", src: "" },
+  ]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getPlaceholderVideoSrc(hashString("base-v1")).then((src) => {
+      if (cancelled || !src) return;
+      setVideoClips((prev) =>
+        prev.map((c) => (c.id === "base-v1" && !c.src ? { ...c, src } : c)),
+      );
+    });
+    Promise.all(
+      ["v001", "v002", "v003"].map((id) => getPlaceholderVideoSrc(hashString(id))),
+    ).then(([srcA, srcB, srcC]) => {
+      if (cancelled) return;
+      setVERSIONS((prev) =>
+        prev.map((v, i) => {
+          const src = [srcA, srcB, srcC][i];
+          return src ? { ...v, src } : v;
+        }),
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount, this is one-time placeholder generation, not a reaction to changing props/state
+  }, []);
 
   // Multi-tier approval chain (Artist -> Lead/Supervisor -> Producer) is real,
   // persisted state on the task backing this version — not local UI state —
@@ -2010,7 +2029,7 @@ export default function Review() {
                     </span>
                     <div className="w-32 h-18 bg-muted rounded overflow-hidden relative">
                       <img
-                        src="https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=400&q=80"
+                        src={getPlaceholderThumbnail(hashString("prev-shot"), 400, 225)}
                         className="w-full h-full object-cover"
                         alt="prev-shot"
                       />
@@ -2025,7 +2044,7 @@ export default function Review() {
                     </span>
                     <div className="w-32 h-18 bg-muted rounded overflow-hidden relative">
                       <img
-                        src="https://images.unsplash.com/photo-1542204165-65bf26472b9b?w=400&q=80"
+                        src={getPlaceholderThumbnail(hashString("next-shot"), 400, 225)}
                         className="w-full h-full object-cover"
                         alt="next-shot"
                       />

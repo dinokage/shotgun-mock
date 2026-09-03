@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { USERS, type Shot } from "@/data/mockData";
 import { useShotStore } from "@/store/shots";
+import { getPlaceholderThumbnail } from "@/lib/placeholderArt";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { PlaybackControls } from "@/components/shared/review/PlaybackControls";
 import { useToast } from "@/hooks/use-toast";
@@ -105,7 +106,7 @@ export default function DailiesTab({ project }: { project: any }) {
             >
               <div className="relative aspect-video bg-muted group-hover:opacity-90 transition-opacity">
                 <img
-                  src={`https://picsum.photos/seed/${thumbSeed}/640/360`}
+                  src={getPlaceholderThumbnail(thumbSeed, 640, 360)}
                   alt={shot.name}
                   className="w-full h-full object-cover"
                 />
@@ -267,7 +268,7 @@ function TheaterPlayer({
     <>
       <div className="relative aspect-video bg-black">
         <img
-          src={`https://picsum.photos/seed/${thumbSeed}/1280/720`}
+          src={getPlaceholderThumbnail(thumbSeed, 1280, 720)}
           alt={shot.name}
           className="w-full h-full object-contain"
         />

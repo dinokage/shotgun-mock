@@ -35,10 +35,8 @@ import { useReviewStore, PRESENTED_VERSION_ID } from "@/store/reviews";
 import { useShotStore } from "@/store/shots";
 import { useBroadcastsStore } from "@/store/broadcasts";
 import { cn } from "@/lib/utils";
-import {
-  getPlaceholderThumbnail,
-  getPlaceholderVideoSrc,
-} from "@/lib/placeholderArt";
+import { getPlaceholderThumbnail } from "@/lib/placeholderArt";
+import { usePlaceholderVideoSrc } from "@/hooks/usePlaceholderVideo";
 import {
   AnnotationToolbar,
   AnnotationCanvas,
@@ -85,14 +83,6 @@ function resolveThumbnailSeed(shot: {
       v.versionNumber === shot.currentVersion,
   );
   return currentVersionRecord?.thumbnailSeed ?? shot.thumbnailSeed;
-}
-
-function resolveShotVideoSrc(shot: {
-  id: string;
-  currentVersion: string;
-  thumbnailSeed: number;
-}): string {
-  return getPlaceholderVideoSrc(resolveThumbnailSeed(shot));
 }
 
 export default function ClientReview() {
@@ -252,9 +242,8 @@ export default function ClientReview() {
 
   // Real per-shot media reference for playback, instead of one hardcoded
   // clip shared by every shot regardless of which one was clicked.
-  const activeVideoSrc = useMemo(
-    () => (activeShot ? resolveShotVideoSrc(activeShot) : undefined),
-    [activeShot],
+  const activeVideoSrc = usePlaceholderVideoSrc(
+    activeShot ? resolveThumbnailSeed(activeShot) : 0,
   );
 
   // Client feedback moderation: notes submitted here are held pending until
