@@ -46,7 +46,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useAuthStore } from "@/store/auth";
 import { useCapability } from "@/hooks/use-capability";
 import { hashString, seededFraction } from "@/lib/seededMock";
-import { getAssigneeId } from "@/lib/taskShape";
+import { getAssigneeId, getShotId } from "@/lib/taskShape";
 
 // Fictional "today" this studio's books are closed against - matches the
 // anchor financials.tsx uses. The mock dataset (task/review/publish
@@ -528,7 +528,7 @@ export default function Analytics() {
                       const burnRate = Math.round((actuals / bids) * 100);
                       const isOverBudget = actuals > bids;
 
-                      const shot = SHOTS.find((s) => s.id === task.shotId);
+                      const shot = SHOTS.find((s) => s.id === getShotId(task));
                       const project = PROJECTS.find(
                         (p) => p.id === shot?.projectId,
                       );

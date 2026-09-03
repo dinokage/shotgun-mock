@@ -2,6 +2,7 @@ import React from "react";
 import { CheckCircle2, Circle, Clock, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PIPELINE_ORDER, Task } from "@/data/mockData";
+import { getAssigneeId } from "@/lib/taskShape";
 
 interface PipelineVisualizerProps {
   tasks: Task[];
@@ -75,7 +76,7 @@ export function PipelineVisualizer({
                 <div className="absolute top-10 opacity-0 group-hover:opacity-100 transition-opacity bg-popover text-popover-foreground text-xs p-2 rounded shadow-md z-50 pointer-events-none min-w-[120px] text-center border border-border">
                   <div className="font-semibold">{task.title}</div>
                   <div className="text-[10px] text-muted-foreground mt-1">
-                    Assignee: {task.assigneeId}
+                    Assignee: {getAssigneeId(task)}
                   </div>
                 </div>
               </div>

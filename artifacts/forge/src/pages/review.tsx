@@ -73,6 +73,7 @@ import { hashString } from "@/lib/seededMock";
 import { getPlaceholderThumbnail } from "@/lib/placeholderArt";
 import { useAuthStore } from "@/store/auth";
 import { useTasksStore } from "@/store/tasks";
+import { getShotId } from "@/lib/taskShape";
 import {
   useReviewStore,
   PRESENTED_VERSION_ID,
@@ -435,8 +436,9 @@ export default function Review() {
   const tasks = useTasksStore((s) => s.tasks);
   const recordApprovalEvent = useTasksStore((s) => s.recordApprovalEvent);
   const reviewedTask = tasks.find((t) => t.id === REVIEWED_TASK_ID);
-  const reviewedShot = reviewedTask?.shotId
-    ? SHOTS.find((s) => s.id === reviewedTask.shotId)
+  const reviewedTaskShotId = reviewedTask ? getShotId(reviewedTask) : undefined;
+  const reviewedShot = reviewedTaskShotId
+    ? SHOTS.find((s) => s.id === reviewedTaskShotId)
     : undefined;
   const reviewWorkflowStatus: "wip" | "lead-review" | "approved" =
     reviewedTask?.status === "lead-review" ||
