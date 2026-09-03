@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuthStore } from "@/store/auth";
 import { useUIStore } from "@/store/ui";
 import { useTasksStore } from "@/store/tasks";
@@ -8,6 +8,8 @@ import { useProjectStore } from "@/store/projects";
 import { useEpisodes } from "@/hooks/useEpisodes";
 import { useSequences } from "@/hooks/useSequences";
 import { useShots } from "@/hooks/useShots";
+import { useUploadFile } from "@/hooks/useUploads";
+import { apiFetch } from "@/lib/apiClient";
 import {
   Dialog,
   DialogContent,
@@ -29,7 +31,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Task, TaskStatus } from "@/data/mockData";
 import { STUDIO_LEADERSHIP_ROLES } from "@/store/permissions";
-import { UploadCloud } from "lucide-react";
+import { UploadCloud, X, FileIcon } from "lucide-react";
 
 export function CreateTaskModal() {
   const {
@@ -38,12 +40,14 @@ export function CreateTaskModal() {
     createTaskDefaultAssigneeId,
     setCreateTaskDefaultAssigneeId,
   } = useUIStore();
-  const { addTask, tasks } = useTasksStore();
+  const { tasks, setTasks } = useTasksStore();
   const { currentUser } = useAuthStore();
   const { toast } = useToast();
   const users = useUserStore((s) => s.users);
   const departments = useDepartmentStore((s) => s.departments);
   const projects = useProjectStore((s) => s.projects);
+  const uploadFile = useUploadFile();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -55,6 +59,8 @@ export function CreateTaskModal() {
   const [priority, setPriority] = useState<
     "low" | "medium" | "high" | "critical"
   >("medium");
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [submitting, setSubmitting] = useState(false);
 
   const { data: episodes = [] } = useEpisodes(projectId || undefined);
   const { data: sequences = [] } = useSequences(
@@ -95,6 +101,7 @@ export function CreateTaskModal() {
     setCreateTaskModalOpen(open);
     if (!open) {
       setCreateTaskDefaultAssigneeId(null);
+      setPendingFiles([]);
     }
   };
 
@@ -110,7 +117,7 @@ export function CreateTaskModal() {
     (u) => isStudioLeadership || u.departmentId === currentUser.departmentId,
   );
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!title || !projectId || !shotId || !assigneeId) {
@@ -127,62 +134,100 @@ export function CreateTaskModal() {
     const departmentName =
       departments.find((d) => d.id === dept)?.name || "General";
 
-    // Derived from the live store, not the frozen TASKS import — using
-    // TASKS.length here meant every task created after the first in a
-    // session got the same id, a real duplicate-key bug once persistence
-    // exists (see product review §6).
-    const nextNumericId = tasks.reduce((max, t) => {
-      const n = parseInt(t.id.replace(/\D/g, ""), 10);
-      return Number.isFinite(n) ? Math.max(max, n) : max;
-    }, 100);
+    setSubmitting(true);
+    try {
+      // Create against the real backend directly (rather than the
+      // optimistic-only useTasksStore.addTask) so this modal gets back the
+      // task's REAL id -- attachments must be linked to that real id via
+      // POST /tasks/:id/attachments, which doesn't exist until creation
+      // succeeds.
+      const created = await apiFetch<{
+        id: string;
+        status: string;
+        createdAt: string;
+      }>("/tasks", {
+        method: "POST",
+        body: JSON.stringify({
+          entityId: shotId,
+          entityType: "shot",
+          title,
+          description,
+          priority,
+          department: departmentName,
+          pipelinePhase: "MAIN",
+          dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          estimatedHours: 8,
+          assignedTo: assigneeId,
+        }),
+      });
 
-    const newTask: Task = {
-      id: `t${nextNumericId + 1}`,
-      title,
-      description,
-      projectId,
-      shotId,
-      assigneeId,
-      assignedById: currentUser.id,
-      status: "todo",
-      priority,
-      dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-        .toISOString()
-        .split("T")[0], // Next week
-      estimatedHours: 8,
-      actualHours: 0,
-      tags: [],
-      dependencies: [],
-      checklist: [],
-      comments: [],
-      attachments: [],
-      department: departmentName,
-      createdAt: new Date().toISOString(),
-      lastStatusUpdate: new Date().toISOString(),
-      dailyLogs: [],
-      pipelinePhase: "MAIN",
-      approvalHistory: [],
-    };
+      for (const file of pendingFiles) {
+        const uploaded = await uploadFile.mutateAsync(file);
+        await apiFetch(`/tasks/${created.id}/attachments`, {
+          method: "POST",
+          body: JSON.stringify({ url: uploaded.url }),
+        });
+      }
 
-    // Add to Zustand store
-    addTask(newTask);
+      // Mirror the real record into the local optimistic store using the
+      // mock Task shape the rest of the app still reads (see store/tasks.ts
+      // -- full migration off this shape is tracked separately), but keyed
+      // by the REAL id this time.
+      const newTask: Task = {
+        id: created.id,
+        title,
+        description,
+        projectId,
+        shotId,
+        assigneeId,
+        assignedById: currentUser.id,
+        status: (created.status as TaskStatus) || "todo",
+        priority,
+        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+          .toISOString()
+          .split("T")[0],
+        estimatedHours: 8,
+        actualHours: 0,
+        tags: [],
+        dependencies: [],
+        checklist: [],
+        comments: [],
+        attachments: [],
+        department: departmentName,
+        createdAt: created.createdAt || new Date().toISOString(),
+        lastStatusUpdate: new Date().toISOString(),
+        dailyLogs: [],
+        pipelinePhase: "MAIN",
+        approvalHistory: [],
+      };
+      setTasks([newTask, ...tasks]);
 
-    toast({
-      title: "Task Assigned",
-      description: `Successfully assigned "${title}" to ${users.find((u) => u.id === assigneeId)?.name}.`,
-    });
+      toast({
+        title: "Task Assigned",
+        description: `Successfully assigned "${title}" to ${users.find((u) => u.id === assigneeId)?.name}.`,
+      });
 
-    // Reset and close
-    setTitle("");
-    setDescription("");
-    setProjectId("");
-    setEpisodeId("");
-    setSequenceId("");
-    setShotId("");
-    setAssigneeId("");
-    setPriority("medium");
-    setCreateTaskDefaultAssigneeId(null);
-    setCreateTaskModalOpen(false);
+      // Reset and close
+      setTitle("");
+      setDescription("");
+      setProjectId("");
+      setEpisodeId("");
+      setSequenceId("");
+      setShotId("");
+      setAssigneeId("");
+      setPriority("medium");
+      setPendingFiles([]);
+      setCreateTaskDefaultAssigneeId(null);
+      setCreateTaskModalOpen(false);
+    } catch (err: any) {
+      toast({
+        title: "Failed to assign task",
+        description: err?.message || "Something went wrong.",
+        variant: "destructive",
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -329,15 +374,61 @@ export function CreateTaskModal() {
 
           <div className="space-y-2 pt-2">
             <Label>Attachments (Reference Art, Scripts, DCC Files)</Label>
-            <div className="border-2 border-dashed border-border rounded-lg p-6 text-center hover:bg-muted/50 transition-colors cursor-pointer">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                const files = Array.from(e.target.files ?? []);
+                setPendingFiles((prev) => [...prev, ...files]);
+                e.target.value = "";
+              }}
+            />
+            <div
+              className="border-2 border-dashed border-border rounded-lg p-6 text-center hover:bg-muted/50 transition-colors cursor-pointer"
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                const files = Array.from(e.dataTransfer.files ?? []);
+                setPendingFiles((prev) => [...prev, ...files]);
+              }}
+            >
               <UploadCloud className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
               <p className="text-sm font-medium">
                 Drag & drop files here, or click to browse
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                Supports any format (.ma, .blend, .pdf, .mp4, .png)
+                Supports any format (.ma, .blend, .pdf, .mp4, .png) up to 200MB
               </p>
             </div>
+            {pendingFiles.length > 0 && (
+              <ul className="space-y-1 pt-1">
+                {pendingFiles.map((file, i) => (
+                  <li
+                    key={`${file.name}-${i}`}
+                    className="flex items-center justify-between text-sm bg-muted/50 rounded px-2 py-1"
+                  >
+                    <span className="flex items-center gap-2 truncate">
+                      <FileIcon className="w-4 h-4 shrink-0 text-muted-foreground" />
+                      <span className="truncate">{file.name}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPendingFiles((prev) =>
+                          prev.filter((_, idx) => idx !== i),
+                        )
+                      }
+                      className="text-muted-foreground hover:text-foreground shrink-0 ml-2"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           <DialogFooter className="mt-6">
@@ -345,10 +436,13 @@ export function CreateTaskModal() {
               type="button"
               variant="outline"
               onClick={() => handleOpenChange(false)}
+              disabled={submitting}
             >
               Cancel
             </Button>
-            <Button type="submit">Assign Task</Button>
+            <Button type="submit" disabled={submitting}>
+              {submitting ? "Assigning..." : "Assign Task"}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

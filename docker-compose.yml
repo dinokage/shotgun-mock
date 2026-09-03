@@ -69,6 +69,11 @@ services:
       # localhost by default; set to the Tailscale address or real company
       # domain so a link works for whoever actually clicks it.
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost}
+      # Outside /app/prod so uploaded files survive a rebuild/redeploy --
+      # /app/prod is entirely replaced by each image build.
+      - UPLOAD_DIR=/app/uploads
+    volumes:
+      - forge-uploads-data:/app/uploads
     ports:
       # <configurable host port>:<fixed container port>
       - "${API_PORT:-3001}:3001"
@@ -97,3 +102,4 @@ services:
 
 volumes:
   forge-db-data:
+  forge-uploads-data:

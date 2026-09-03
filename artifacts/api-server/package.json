@@ -21,6 +21,7 @@
     "drizzle-orm": "catalog:",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
+    "multer": "^2.0.2",
     "nodemailer": "^7.0.9",
     "pino": "^9.14.0",
     "pino-http": "^10.5.0"
@@ -30,6 +31,7 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
+    "@types/multer": "^2.2.0",
     "@types/nodemailer": "^7.0.4",
     "@types/node": "catalog:",
     "esbuild": "0.27.3",
