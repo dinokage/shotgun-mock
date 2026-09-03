@@ -26,7 +26,7 @@ export function useUsers() {
 }
 export function useSendInvite() {
   return useMutation({
-    mutationFn: (body: { email: string; roleId: string }) =>
+    mutationFn: (body: { email: string; roleId: string; departmentId?: string }) =>
       apiClient.post<{ email: string; roleId: string; expiresAt: string }>(
         "/invites",
         body,

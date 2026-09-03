@@ -103,8 +103,9 @@ export default function AdminPanel() {
   async function handleInvite(formData: FormData) {
     const email = String(formData.get("email") ?? "");
     const roleId = String(formData.get("roleId") ?? "");
+    const departmentId = String(formData.get("departmentId") ?? "") || undefined;
     try {
-      await sendInvite.mutateAsync({ email, roleId });
+      await sendInvite.mutateAsync({ email, roleId, departmentId });
       toast({ title: "Invite sent", description: `Sent to ${email}` });
       setInviteOpen(false);
     } catch (err: any) {
@@ -239,6 +240,21 @@ export default function AdminPanel() {
                     {roles.map((r) => (
                       <SelectItem key={r.id} value={r.id}>
                         {r.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="invite-departmentId">Department</Label>
+                <Select name="departmentId">
+                  <SelectTrigger id="invite-departmentId">
+                    <SelectValue placeholder="None — assign later" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {departments.map((d) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.name}
                       </SelectItem>
                     ))}
                   </SelectContent>

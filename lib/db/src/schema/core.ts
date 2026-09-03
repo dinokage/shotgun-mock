@@ -65,6 +65,9 @@ export const pendingInvitesTable = pgTable("pending_invites", {
     .references(() => tenantsTable.id, { onDelete: "cascade" }),
   email: text("email").notNull(),
   roleId: text("role_id").notNull(),
+  departmentId: text("department_id").references(() => departmentsTable.id, {
+    onDelete: "set null",
+  }),
   token: text("token").notNull().unique(),
   expiresAt: timestamp("expires_at").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),

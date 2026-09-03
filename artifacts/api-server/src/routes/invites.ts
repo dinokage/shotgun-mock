@@ -5,6 +5,7 @@ import {
   usersTable,
   tenantRolesTable,
   tenantsTable,
+  departmentsTable,
 } from "@workspace/db/schema";
 import { eq, and, gt } from "drizzle-orm";
 import * as crypto from "crypto";
@@ -28,7 +29,7 @@ invitesRouter.post(
   async (req, res) => {
     try {
       const tenantId = req.tenantId!;
-      const { email, roleId } = req.body;
+      const { email, roleId, departmentId } = req.body;
       if (!email || typeof email !== "string" || !roleId)
         return res.status(400).json({ error: "email and roleId are required" });
 
@@ -42,6 +43,19 @@ invitesRouter.post(
           ),
         );
       if (!role) return res.status(400).json({ error: "Invalid roleId" });
+
+      if (departmentId) {
+        const [dept] = await db
+          .select({ id: departmentsTable.id })
+          .from(departmentsTable)
+          .where(
+            and(
+              eq(departmentsTable.id, departmentId),
+              eq(departmentsTable.tenantId, tenantId),
+            ),
+          );
+        if (!dept) return res.status(400).json({ error: "Invalid departmentId" });
+      }
 
       const [existingUser] = await db
         .select({ id: usersTable.id })
@@ -61,6 +75,7 @@ invitesRouter.post(
         tenantId,
         email,
         roleId,
+        departmentId: departmentId ?? null,
         token,
         expiresAt: new Date(Date.now() + INVITE_TTL_MS),
       });
@@ -150,7 +165,7 @@ invitesRouter.post("/:token/accept", async (req, res) => {
       id: userId,
       tenantId: invite.tenantId,
       roleId: invite.roleId,
-      departmentId: null,
+      departmentId: invite.departmentId,
       email: invite.email,
       hashedPassword,
       name,

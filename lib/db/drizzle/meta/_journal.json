@@ -36,6 +36,13 @@
       "when": 1788262080371,
       "tag": "0004_old_amphibian",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788427320000,
+      "tag": "0005_wandering_meltdown",
+      "breakpoints": true
     }
   ]
 }
