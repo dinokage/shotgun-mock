@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -15,7 +15,6 @@ import {
   SkipBack,
   SkipForward,
   Volume2,
-  MousePointer2,
   CheckCircle2,
   MessageSquare,
   XCircle,
@@ -395,6 +394,28 @@ export default function Review() {
   } | null>(null);
   const [draggingElement, setDraggingElement] =
     useState<DraggingElement | null>(null);
+  // Local-only preview of an in-progress annotation drag/resize. The old
+  // code called applyAnnotationsUpdate -- a real server mutation -- on
+  // every single mousemove tick, so a drag of even a few dozen pixels fired
+  // dozens of concurrent PUT requests; whichever response happened to land
+  // last "won", which was often NOT the final drop position (out-of-order
+  // network responses), making edits appear to snap back instead of
+  // staying where the user actually released them. Now the drag only
+  // updates this local preview (merged into what's rendered below) and the
+  // real update is sent exactly once, in the corresponding mouseup.
+  const [annotationPreview, setAnnotationPreview] = useState<{
+    id: string;
+    patch: Partial<Annotation>;
+  } | null>(null);
+  const displayAnnotations = useMemo(
+    () =>
+      annotationPreview
+        ? annotations.map((a) =>
+            a.id === annotationPreview.id ? { ...a, ...annotationPreview.patch } : a,
+          )
+        : annotations,
+    [annotations, annotationPreview],
+  );
 
   const [abWipe, setAbWipe] = useState(false);
   const [abWipePosition, setAbWipePosition] = useState(50);
@@ -516,71 +537,6 @@ export default function Review() {
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
   const timelineRef = useRef<HTMLDivElement>(null);
   const videoCanvasContainerRef = useRef<HTMLDivElement>(null);
-
-  // Mock Remote Cursors
-  const [remoteCursors, setRemoteCursors] = useState<
-    {
-      id: string;
-      name: string;
-      color: string;
-      x: number;
-      y: number;
-      active: boolean;
-    }[]
-  >([
-    {
-      id: "rc1",
-      name: "Akira S.",
-      color: "#10b981",
-      x: 0,
-      y: 0,
-      active: false,
-    },
-    { id: "rc2", name: "Jada W.", color: "#8b5cf6", x: 0, y: 0, active: false },
-  ]);
-
-  useEffect(() => {
-    // Simulate real-time remote cursor movement and collaborative annotation
-    const interval = setInterval(() => {
-      setRemoteCursors((prev) =>
-        prev.map((c) => {
-          if (Math.random() > 0.9) {
-            return { ...c, active: Math.random() > 0.3 };
-          }
-          if (!c.active) return c;
-
-          const targetX = c.x + (Math.random() - 0.5) * 150;
-          const targetY = c.y + (Math.random() - 0.5) * 150;
-          const newX = Math.max(10, Math.min(800, targetX));
-          const newY = Math.max(10, Math.min(500, targetY));
-
-          // Occasionally simulate them drawing a box
-          if (Math.random() > 0.95 && !isPlaying) {
-            applyAnnotationsUpdate((prevAnns) => [
-              ...prevAnns,
-              {
-                id: `remote-${Date.now()}`,
-                frame,
-                type: "rectangle",
-                color: c.color,
-                x: newX,
-                y: newY,
-                w: 50 + Math.random() * 100,
-                h: 50 + Math.random() * 100,
-                text: "Needs adjustment",
-                startFrame: frame,
-                endFrame: Math.min(maxFrames, frame + 30),
-              },
-            ]);
-            toast({ description: `${c.name} added an annotation.` });
-          }
-
-          return { ...c, x: newX, y: newY };
-        }),
-      );
-    }, 1200);
-    return () => clearInterval(interval);
-  }, [frame, isPlaying, maxFrames]);
 
   // Keyboard shortcuts. This is the single global key handler for the page —
   // playback/scrub also used to be bound a second time by a raw
@@ -827,30 +783,40 @@ export default function Review() {
           }),
         );
       } else {
-        applyAnnotationsUpdate((prev) =>
-          prev.map((a) => {
-            if (a.id !== resizing.id) return a;
-            const currentStart = a.startFrame ?? a.frame;
-            const currentEnd = a.endFrame ?? Math.min(maxFrames, a.frame + 60);
-            if (resizing.edge === "start")
-              return {
-                ...a,
-                startFrame: Math.min(hoveredFrame, currentEnd - 1),
-              };
-            return { ...a, endFrame: Math.max(hoveredFrame, currentStart + 1) };
-          }),
-        );
+        const a = displayAnnotations.find((x) => x.id === resizing.id);
+        if (!a) return;
+        const currentStart = a.startFrame ?? a.frame;
+        const currentEnd = a.endFrame ?? Math.min(maxFrames, a.frame + 60);
+        const patch =
+          resizing.edge === "start"
+            ? { startFrame: Math.min(hoveredFrame, currentEnd - 1) }
+            : { endFrame: Math.max(hoveredFrame, currentStart + 1) };
+        setAnnotationPreview({ id: resizing.id, patch });
       }
     };
 
-    const handleMouseUp = () => setResizing(null);
+    const handleMouseUp = () => {
+      setResizing((current) => {
+        if (current && current.type !== "video") {
+          setAnnotationPreview((preview) => {
+            if (preview && preview.id === current.id) {
+              applyAnnotationsUpdate((prev) =>
+                prev.map((a) => (a.id === preview.id ? { ...a, ...preview.patch } : a)),
+              );
+            }
+            return null;
+          });
+        }
+        return null;
+      });
+    };
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
     return () => {
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [resizing, maxFrames]);
+  }, [resizing, maxFrames, displayAnnotations]);
 
   // Handle global mouse move for canvas dragging
   useEffect(() => {
@@ -872,20 +838,31 @@ export default function Review() {
           }),
         );
       } else {
-        applyAnnotationsUpdate((prev) =>
-          prev.map((a) => {
-            if (a.id !== draggingElement.id) return a;
-            return {
-              ...a,
-              x: draggingElement.initialX + dx,
-              y: draggingElement.initialY + dy,
-            };
-          }),
-        );
+        setAnnotationPreview({
+          id: draggingElement.id,
+          patch: {
+            x: draggingElement.initialX + dx,
+            y: draggingElement.initialY + dy,
+          },
+        });
       }
     };
 
-    const handleMouseUp = () => setDraggingElement(null);
+    const handleMouseUp = () => {
+      setDraggingElement((current) => {
+        if (current && current.type !== "video") {
+          setAnnotationPreview((preview) => {
+            if (preview && preview.id === current.id) {
+              applyAnnotationsUpdate((prev) =>
+                prev.map((a) => (a.id === preview.id ? { ...a, ...preview.patch } : a)),
+              );
+            }
+            return null;
+          });
+        }
+        return null;
+      });
+    };
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
     return () => {
@@ -1426,15 +1403,22 @@ export default function Review() {
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (file) {
-                        const newId = `v${videoClips.length + 1}`;
-                        setVideoClips((prev) => [
-                          ...prev,
+                        // Inserting a video replaces whatever was playing --
+                        // a plain "review this footage" action, not a new
+                        // compositing track layered on top of the old one.
+                        // Release the previous clips' blob: URLs first so
+                        // they don't leak (createObjectURL memory is only
+                        // freed on explicit revoke or full page unload).
+                        videoClips.forEach((c) => {
+                          if (c.src.startsWith("blob:")) URL.revokeObjectURL(c.src);
+                        });
+                        setVideoClips([
                           {
-                            id: newId,
+                            id: "base-v1",
                             src: URL.createObjectURL(file),
-                            trackIndex: prev.length,
-                            startFrame: frame,
-                            endFrame: Math.min(frame + 60, maxFrames),
+                            trackIndex: 0,
+                            startFrame: 1,
+                            endFrame: maxFrames,
                             opacity: 100,
                             blendMode: "normal",
                             name: file.name,
@@ -1443,9 +1427,10 @@ export default function Review() {
                             scale: 1,
                           },
                         ]);
+                        setFrame(1);
                         toast({
-                          title: "Video Added",
-                          description: `Track ${videoClips.length + 1} added.`,
+                          title: "Video Inserted",
+                          description: `Now reviewing "${file.name}".`,
                         });
                       }
                     }}
@@ -1454,7 +1439,7 @@ export default function Review() {
                     size="icon"
                     variant="ghost"
                     className="h-8 w-8 text-muted-foreground hover:text-primary"
-                    title="Upload Demo Video"
+                    title="Insert Video"
                     onClick={() => fileInputRef.current?.click()}
                   >
                     <Upload className="w-4 h-4" />
@@ -1772,18 +1757,38 @@ export default function Review() {
                     <ContextMenu key={clip.id}>
                       <ContextMenuTrigger asChild>
                         {(() => {
-                          const ext = clip.src.split(".").pop()?.toLowerCase();
-                          const isVideo = ["mp4", "webm", "mov"].includes(
-                            ext || "",
-                          );
-                          const isImage = [
-                            "png",
-                            "jpg",
-                            "jpeg",
-                            "gif",
-                            "webp",
-                          ].includes(ext || "");
-                          const isDCC = !isVideo && !isImage;
+                          // blob: URLs (both real uploads via
+                          // URL.createObjectURL and generated placeholder
+                          // clips) carry no file extension -- `isDCC` must
+                          // not fall through to "no preview" for those, or
+                          // every real video ever inserted here would
+                          // render as an unplayable DCC-asset card instead
+                          // of a video.
+                          const isBlob = clip.src.startsWith("blob:");
+                          const isLoading = !clip.src;
+                          const ext = isBlob
+                            ? ""
+                            : clip.src.split(".").pop()?.toLowerCase();
+                          const isVideo =
+                            isBlob || ["mp4", "webm", "mov"].includes(ext || "");
+                          const isImage =
+                            !isBlob &&
+                            ["png", "jpg", "jpeg", "gif", "webp"].includes(
+                              ext || "",
+                            );
+                          const isDCC = !isLoading && !isVideo && !isImage;
+
+                          if (isLoading) {
+                            return (
+                              <div
+                                className={`absolute inset-0 w-full h-full bg-cover bg-center animate-pulse ${isActive ? "opacity-100" : "opacity-0 hidden"}`}
+                                style={{
+                                  backgroundImage: `url(${getPlaceholderThumbnail(hashString(clip.id), 1280, 720)})`,
+                                  opacity: clip.opacity / 100,
+                                }}
+                              />
+                            );
+                          }
 
                           if (isDCC) {
                             return (
@@ -1961,7 +1966,7 @@ export default function Review() {
                 )}
 
                 <AnnotationCanvas
-                  annotations={annotations}
+                  annotations={displayAnnotations}
                   onAnnotationsChange={applyAnnotationsUpdate}
                   frame={frame}
                   maxFrames={maxFrames}
@@ -1977,31 +1982,6 @@ export default function Review() {
                   readOnly={viewerMode || isLockedViewer}
                 />
 
-                {/* Mock Remote Cursors Overlay */}
-                {remoteCursors
-                  .filter((c) => c.active)
-                  .map((cursor) => (
-                    <div
-                      key={cursor.id}
-                      className="absolute pointer-events-none z-[60] transition-all duration-300 ease-out"
-                      style={{ left: cursor.x, top: cursor.y }}
-                    >
-                      <MousePointer2
-                        className="w-5 h-5 drop-shadow-md"
-                        style={{
-                          fill: cursor.color,
-                          stroke: "white",
-                          strokeWidth: 1.5,
-                        }}
-                      />
-                      <div
-                        className="absolute top-5 left-3 px-1.5 py-0.5 rounded text-[10px] text-white font-semibold whitespace-nowrap shadow-sm"
-                        style={{ backgroundColor: cursor.color }}
-                      >
-                        {cursor.name}
-                      </div>
-                    </div>
-                  ))}
               </div>
 
               {/* Presentation Mode lock indicator */}
@@ -2098,85 +2078,9 @@ export default function Review() {
                   setFrame(newFrame);
                 }}
               >
-                {/* Video Tracks */}
-                {videoClips.map((clip, index) => (
-                  <div
-                    key={clip.id}
-                    className="flex h-8 w-full bg-muted/20 rounded relative"
-                  >
-                    <ContextMenu>
-                      <ContextMenuTrigger asChild>
-                        <div
-                          className={`absolute h-full transition-colors ${selectedAnnotationId === clip.id ? "border-2 border-primary ring-2 ring-primary/50 hover:bg-blue-500/30" : "border border-blue-500/50 hover:bg-blue-500/30"} bg-blue-500/20 rounded flex items-center px-2 text-[10px] text-blue-500 font-medium overflow-hidden group cursor-pointer`}
-                          style={{
-                            left: `${(clip.startFrame / maxFrames) * 100}%`,
-                            width: `${((clip.endFrame - clip.startFrame) / maxFrames) * 100}%`,
-                          }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedAnnotationId(clip.id);
-                          }}
-                        >
-                          {clip.name} (V{index + 1})
-                          <div
-                            className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize opacity-0 group-hover:opacity-100 bg-blue-500/50 hover:w-3 z-20"
-                            onMouseDown={(e) => {
-                              if (!canEdit) return;
-                              e.stopPropagation();
-                              setResizing({
-                                id: clip.id,
-                                type: "video",
-                                edge: "start",
-                              });
-                            }}
-                          />
-                          <div
-                            className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize opacity-0 group-hover:opacity-100 bg-blue-500/50 hover:w-3 z-20"
-                            onMouseDown={(e) => {
-                              if (!canEdit) return;
-                              e.stopPropagation();
-                              setResizing({
-                                id: clip.id,
-                                type: "video",
-                                edge: "end",
-                              });
-                            }}
-                          />
-                        </div>
-                      </ContextMenuTrigger>
-                      <ContextMenuContent className="w-48 z-50">
-                        <ContextMenuItem
-                          disabled={clip.id === "base-v1" || !canEdit}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setVideoClips((prev) =>
-                              prev.filter((v) => v.id !== clip.id),
-                            );
-                            if (selectedAnnotationId === clip.id)
-                              setSelectedAnnotationId(null);
-                            toast({
-                              title: "Video Deleted",
-                              description: "Clip removed.",
-                            });
-                          }}
-                          className="text-red-500 focus:bg-red-500/10 focus:text-red-500"
-                        >
-                          Delete Video
-                        </ContextMenuItem>
-                        <ContextMenuSeparator />
-                        <ContextMenuItem
-                          disabled
-                          title={EXPORT_UNAVAILABLE_MESSAGE}
-                        >
-                          Merge & Render Composite (Unavailable)
-                        </ContextMenuItem>
-                      </ContextMenuContent>
-                    </ContextMenu>
-                  </div>
-                ))}
                 {/* Annotations Track */}
                 <div className="flex h-16 w-full bg-muted/20 rounded relative">
-                  {annotations.map((a) => {
+                  {displayAnnotations.map((a) => {
                     const start = a.startFrame ?? a.frame;
                     const end = a.endFrame ?? Math.min(maxFrames, a.frame + 60);
                     const left = (start / maxFrames) * 100;
@@ -2594,7 +2498,7 @@ export default function Review() {
                   </div>
                 ) : (
                   (() => {
-                    const ann = annotations.find(
+                    const ann = displayAnnotations.find(
                       (a) => a.id === selectedAnnotationId,
                     );
                     const clip = videoClips.find(
