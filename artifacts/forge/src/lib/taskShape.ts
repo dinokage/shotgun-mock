@@ -55,3 +55,46 @@ export function useEntityProjectMap(): Record<string, string> {
     return map;
   }, [liveShots, liveAssets]);
 }
+
+/**
+ * Resolves who can act as the production-manager approval gate for a task's
+ * department: that department's own `production_head`, falling back to the
+ * Production Management department's `production_head`(s) — the studio's
+ * overall production management — falling back to any `production_head` in
+ * the tenant if neither exists. Most departments don't have their own
+ * production_head assigned, so this fallback chain is the normal path, not
+ * an edge case.
+ */
+export function getProductionManagerApprovers(
+  departmentName: string | null | undefined,
+  users: { id: string; role: string; departmentId?: string | null }[],
+  departments: { id: string; name: string }[],
+): string[] {
+  const productionHeads = users.filter((u) => u.role === "production_head");
+  if (productionHeads.length === 0) return [];
+
+  const dept = departments.find((d) => d.name === departmentName);
+  const ownDeptPMs = dept
+    ? productionHeads.filter((u) => u.departmentId === dept.id)
+    : [];
+  if (ownDeptPMs.length > 0) return ownDeptPMs.map((u) => u.id);
+
+  const mainDept = departments.find((d) => d.name === "Production Management");
+  const mainPMs = mainDept
+    ? productionHeads.filter((u) => u.departmentId === mainDept.id)
+    : [];
+  if (mainPMs.length > 0) return mainPMs.map((u) => u.id);
+
+  return productionHeads.map((u) => u.id);
+}
+
+export function canApproveAsProductionManager(
+  currentUserId: string,
+  departmentName: string | null | undefined,
+  users: { id: string; role: string; departmentId?: string | null }[],
+  departments: { id: string; name: string }[],
+): boolean {
+  return getProductionManagerApprovers(departmentName, users, departments).includes(
+    currentUserId,
+  );
+}

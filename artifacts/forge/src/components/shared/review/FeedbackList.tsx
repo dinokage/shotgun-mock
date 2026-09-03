@@ -1,14 +1,15 @@
 import { Mic, MessageSquareOff, Play } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { USERS } from "@/data/mockData";
+import { useUserStore } from "@/store/users";
 import { useReviewStore, type ReviewComment } from "@/store/reviews";
 import { cn } from "@/lib/utils";
 
-type WorkflowStatus = "wip" | "lead-review" | "approved";
+type WorkflowStatus = "wip" | "lead-review" | "pm-review" | "approved";
 
 const WORKFLOW_STATUS_LABEL: Record<WorkflowStatus, string> = {
   wip: "Work in progress",
   "lead-review": "Awaiting Lead review",
+  "pm-review": "Awaiting Production Manager review",
   approved: "Approved",
 };
 
@@ -90,7 +91,8 @@ function FeedbackListItem({
   comment: ReviewComment;
   onJumpToFrame?: (frame: number) => void;
 }) {
-  const user = comment.fromClient ? null : USERS[comment.userIndex];
+  const users = useUserStore((s) => s.users);
+  const user = comment.fromClient ? null : users[comment.userIndex];
   const displayName = comment.fromClient
     ? comment.fromClient.authorName
     : (user?.name ?? "Unknown");

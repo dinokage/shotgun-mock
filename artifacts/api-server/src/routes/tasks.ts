@@ -132,7 +132,11 @@ tasksRouter.post("/", requireCapability("create_tasks"), async (req, res) => {
       tenantId,
       entityId,
       entityType,
-      status: status || "ready",
+      // "ready" (the DB column's own default) isn't a value the frontend's
+      // TaskStatus type recognizes at all, so a task created without an
+      // explicit status used to be invisible in every dashboard/kanban/status
+      // filter — it existed, but no status bucket ever matched it.
+      status: status || "not-started",
       title: title || "",
       description: description || "",
       priority: priority || "medium",

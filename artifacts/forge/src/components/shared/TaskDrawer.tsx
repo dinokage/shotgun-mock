@@ -1,6 +1,7 @@
 import { useUIStore } from "@/store/ui";
 import { cn } from "@/lib/utils";
 import { getNextDepartment, DEPENDENCY_TYPE_LABELS } from "@/data/mockData";
+import { canApproveAsProductionManager } from "@/lib/taskShape";
 import { useUserStore } from "@/store/users";
 import { useProjectStore } from "@/store/projects";
 import { useDepartmentStore } from "@/store/departments";
@@ -77,6 +78,7 @@ const STATUS_COLORS: Record<string, string> = {
   bottleneck: "bg-red-500/10 text-red-500",
   review: "bg-purple-500/10 text-purple-500",
   "lead-review": "bg-purple-500/10 text-purple-500",
+  "pm-review": "bg-amber-500/10 text-amber-500",
   approved: "bg-green-500/10 text-green-500",
   complete: "bg-green-500/10 text-green-500",
   cancelled: "bg-muted text-muted-foreground line-through",
@@ -525,25 +527,79 @@ export function TaskDrawer() {
                   </Button>
                 )}
 
-              {/* Approve/Reject Actions: only once the task has actually been
-                  submitted for review. Assignees reach that queue two ways in
-                  this app - the quick "Submit for Review" actions in this
+              {/* Stage 1 — Lead sign-off. Assignees reach this queue two ways
+                  in this app - the quick "Submit for Review" actions in this
                   drawer (which set status to 'review'), and the formal chain
                   driven from the review player (which sets 'lead-review'
                   directly) - so both values are treated as "awaiting review"
-                  here. This is the final internal sign-off (the former
-                  separate Manager tier is gone — approving here goes straight
-                  to 'approved'). Gated to the department's own
-                  Lead/Supervisor (Producer/Lead merge into the single
-                  surviving `lead` role per this phase's spec — studio-level
-                  production_head/admin get a dashboard/reporting view over
-                  already-approved work, not a second blocking gate here). If
-                  the task is linked to a shot, approving also forwards that
-                  shot into the client-facing review queue (client-review.tsx
-                  filters shots on exactly this status). */}
+                  here. Gated to the department's own Lead/Supervisor
+                  (Producer/Lead share the single `lead` role tier). This no
+                  longer goes straight to 'approved' — it hands off to the
+                  department's Production Manager (or the studio's overall
+                  production management if the department has none) for a
+                  second, final sign-off before anything reaches the client. */}
               {DEPARTMENT_LEADERSHIP_ROLES.includes(currentUser.role) &&
                 currentUser.departmentId === currentDept?.id &&
-                ["review", "lead-review"].includes(task.status) &&
+                ["review", "lead-review"].includes(task.status) && (
+                  <div className="flex w-full gap-2">
+                    <Button
+                      className="flex-1 bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
+                      onClick={() => {
+                        updateTaskMutation.mutate({
+                          id: task.id,
+                          status: "pm-review",
+                        });
+                        addApprovalEventMutation.mutate({
+                          action: "submitted-for-manager-review",
+                        });
+                        toast({
+                          title: "Sent to Production Manager",
+                          description: `${task.title} approved by Lead — awaiting final sign-off.`,
+                        });
+                      }}
+                    >
+                      <CheckCircle2 className="w-4 h-4 mr-2" /> Approve
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="flex-1 text-red-500 hover:bg-red-500/10"
+                      onClick={() => {
+                        updateTaskMutation.mutate({
+                          id: task.id,
+                          status: "in-progress",
+                        });
+                        addApprovalEventMutation.mutate({
+                          action: "rejected",
+                        });
+                        toast({
+                          title: "Review Rejected",
+                          description: `Sent back to team.`,
+                        });
+                      }}
+                    >
+                      <X className="w-4 h-4 mr-2" /> Reject
+                    </Button>
+                  </div>
+                )}
+
+              {/* Stage 2 — Production Manager's final sign-off, the last gate
+                  before anything reaches the client. Gated to the
+                  department's own production_head, falling back to the
+                  studio's overall Production Management production_head(s),
+                  falling back to any production_head — see
+                  getProductionManagerApprovers in lib/taskShape.ts. Approving
+                  here is what actually forwards a linked shot into the
+                  client-facing review queue (client-review.tsx filters shots
+                  on exactly that status), so it keeps the look-before-you-leap
+                  confirm step the old single-gate flow used to have. */}
+              {currentUser.role === "production_head" &&
+                canApproveAsProductionManager(
+                  currentUser.id,
+                  task.department,
+                  users,
+                  departments,
+                ) &&
+                task.status === "pm-review" &&
                 (clientSendConfirmOpen ? (
                   <div className="w-full rounded-md border border-accent-tally/30 bg-accent-tally/5 p-3 space-y-3">
                     <p className="text-sm">
@@ -615,18 +671,18 @@ export function TaskDrawer() {
                       onClick={() => {
                         updateTaskMutation.mutate({
                           id: task.id,
-                          status: "in-progress",
+                          status: "review",
                         });
                         addApprovalEventMutation.mutate({
-                          action: "rejected",
+                          action: "changes-requested",
                         });
                         toast({
-                          title: "Review Rejected",
-                          description: `Sent back to team.`,
+                          title: "Sent Back to Lead",
+                          description: `${task.title} needs another look before it can go to the client.`,
                         });
                       }}
                     >
-                      <X className="w-4 h-4 mr-2" /> Reject
+                      <X className="w-4 h-4 mr-2" /> Send Back to Lead
                     </Button>
                   </div>
                 ))}
@@ -874,7 +930,9 @@ export function TaskDrawer() {
                 exact task server-side, not a fixed demo route. Only shown
                 once the task has actually entered the review chain —
                 nothing to review before that. */}
-            {["review", "lead-review", "approved"].includes(task.status) && (
+            {["review", "lead-review", "pm-review", "approved"].includes(
+              task.status,
+            ) && (
               <div className="flex gap-2">
                 <Link
                   href={`/review/${task.id}`}

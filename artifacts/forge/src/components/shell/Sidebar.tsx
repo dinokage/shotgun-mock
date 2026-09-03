@@ -184,15 +184,20 @@ export function Sidebar() {
   const teamChatBadge = chatGroups.filter((g) =>
     g.memberIds.includes(currentUser.id),
   ).length;
-  const reviewsBadge = isLeadership
-    ? // Items awaiting a Lead sign-off across the studio (same status
-      // SupervisorDashboard treats as its department review queue).
-      tasks.filter((t) => t.status === "lead-review").length
-    : // Reviews this artist is waiting on (same query ArtistDashboard uses
-      // for its "Reviews Requested" stat).
-      reviews.filter(
-        (r) => r.reviewerId === currentUser.id && r.status === "pending",
-      ).length;
+  const reviewsBadge =
+    currentUser.role === "production_head"
+      ? // Production Manager's own queue: the final sign-off stage, not the
+        // Lead's — see TaskDrawer.tsx's two-stage approval gate.
+        tasks.filter((t) => t.status === "pm-review").length
+      : isLeadership
+        ? // Items awaiting a Lead sign-off across the studio (same status
+          // SupervisorDashboard treats as its department review queue).
+          tasks.filter((t) => t.status === "lead-review").length
+        : // Reviews this artist is waiting on (same query ArtistDashboard uses
+          // for its "Reviews Requested" stat).
+          reviews.filter(
+            (r) => r.reviewerId === currentUser.id && r.status === "pending",
+          ).length;
 
   // "Needs My Review" queue count for department leads/supervisors, scoped
   // the same way tasks.tsx's own needsReviewCount is — so a lead sees the

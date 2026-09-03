@@ -3,12 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-  USERS,
-  SHOTS,
-  ASSETS,
-  type ApprovalEvent,
-} from "@/data/mockData";
+import { type ApprovalEvent } from "@/data/mockData";
 import {
   Play,
   Pause,
@@ -72,7 +67,20 @@ import { hashString } from "@/lib/seededMock";
 import { getPlaceholderThumbnail, getPlaceholderVideoSrc } from "@/lib/placeholderArt";
 import { useAuthStore } from "@/store/auth";
 import { useTasksStore } from "@/store/tasks";
-import { getShotId, getAssetId } from "@/lib/taskShape";
+import { useUserStore } from "@/store/users";
+import { useDepartmentStore } from "@/store/departments";
+import { useShotStore } from "@/store/shots";
+import { useAssetStore } from "@/store/assets";
+import {
+  getShotId,
+  getAssetId,
+  canApproveAsProductionManager,
+} from "@/lib/taskShape";
+import {
+  useUpdateTask,
+  useAddTaskApprovalEvent,
+  useTaskApprovalEvents,
+} from "@/hooks/useTasks";
 import {
   useReviewStore,
   type ReviewComment,
@@ -129,6 +137,7 @@ const COLORS = [
 
 const APPROVAL_ACTION_LABEL: Record<ApprovalEvent["action"], string> = {
   "submitted-for-lead-review": "submitted for Lead review",
+  "submitted-for-manager-review": "submitted for Production Manager review",
   approved: "approved",
   "changes-requested": "requested changes",
   rejected: "rejected",
@@ -261,15 +270,22 @@ export default function Review() {
   const [, routeParams] = useRoute("/review/:taskId");
   const taskId = routeParams?.taskId;
   const tasks = useTasksStore((s) => s.tasks);
-  const recordApprovalEvent = useTasksStore((s) => s.recordApprovalEvent);
+  const users = useUserStore((s) => s.users);
+  const departments = useDepartmentStore((s) => s.departments);
+  const liveShotsForApproval = useShotStore((s) => s.shots);
+  const updateShotStatus = useShotStore((s) => s.updateShot);
+  const updateTaskMutation = useUpdateTask();
   const reviewedTask = taskId ? tasks.find((t) => t.id === taskId) : undefined;
+  const addApprovalEventMutation = useAddTaskApprovalEvent(reviewedTask?.id);
+  const { data: approvalEvents = [] } = useTaskApprovalEvents(reviewedTask?.id);
   const reviewedTaskShotId = reviewedTask ? getShotId(reviewedTask) : undefined;
   const reviewedTaskAssetId = reviewedTask ? getAssetId(reviewedTask) : undefined;
   const reviewedShot = reviewedTaskShotId
-    ? SHOTS.find((s) => s.id === reviewedTaskShotId)
+    ? liveShotsForApproval.find((s) => s.id === reviewedTaskShotId)
     : undefined;
+  const liveAssetsForApproval = useAssetStore((s) => s.assets);
   const reviewedAsset = reviewedTaskAssetId
-    ? ASSETS.find((a) => a.id === reviewedTaskAssetId)
+    ? liveAssetsForApproval.find((a) => a.id === reviewedTaskAssetId)
     : undefined;
 
   // The version this page's annotations/approval chain attach to. One real
@@ -324,12 +340,36 @@ export default function Review() {
   // (presenting, sharing the client link).
   const canSubmitReview = useCapability("submit_reviews");
   const canApproveReview = useCapability("approve_reviews");
-  // Index into USERS for the logged-in user, used to attribute anything this
-  // page writes into the shared comment stream (comments, stamps) to whoever
-  // is actually signed in — not a hardcoded seed user. -1 (renders as
-  // "Unknown") if somehow nobody is logged in.
+  // The Lead-stage approval gate is department-scoped, mirroring
+  // TaskDrawer.tsx: approve_reviews alone would let a Lead/Producer approve
+  // another department's work. The Production Manager stage below is its
+  // own separate gate (see getProductionManagerApprovers in taskShape.ts) —
+  // production_head/admin deliberately don't get this first gate.
+  const reviewedDept = departments.find(
+    (d) => d.name === reviewedTask?.department,
+  );
+  const canApproveAsLead = Boolean(
+    currentUser &&
+      canApproveReview &&
+      DEPARTMENT_LEADERSHIP_ROLES.includes(currentUser.role) &&
+      currentUser.departmentId === reviewedDept?.id,
+  );
+  const canApproveAsPM = Boolean(
+    currentUser &&
+      currentUser.role === "production_head" &&
+      canApproveAsProductionManager(
+        currentUser.id,
+        reviewedTask?.department,
+        users,
+        departments,
+      ),
+  );
+  // Index into the live user roster for the logged-in user, used to
+  // attribute anything this page writes into the shared comment stream
+  // (comments, stamps) to whoever is actually signed in — not a hardcoded
+  // seed user. -1 (renders as "Unknown") if somehow nobody is logged in.
   const currentUserIndex = currentUser
-    ? USERS.findIndex((u) => u.id === currentUser.id)
+    ? users.findIndex((u) => u.id === currentUser.id)
     : -1;
 
   // Presentation Mode: a Lead/Producer can broadcast their playhead to every
@@ -527,33 +567,45 @@ export default function Review() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount, this is one-time placeholder generation, not a reaction to changing props/state
   }, []);
 
-  const reviewWorkflowStatus: "wip" | "lead-review" | "approved" =
-    reviewedTask?.status === "lead-review" ||
-    reviewedTask?.status === "approved"
-      ? reviewedTask.status
-      : "wip";
+  const reviewWorkflowStatus: "wip" | "lead-review" | "pm-review" | "approved" =
+    reviewedTask?.status === "review" || reviewedTask?.status === "lead-review"
+      ? "lead-review"
+      : reviewedTask?.status === "pm-review" || reviewedTask?.status === "approved"
+        ? reviewedTask.status
+        : "wip";
   const addNotification = useNotificationStore((s) => s.addNotification);
   const APPROVAL_NOTIFICATION_CATEGORY: Record<
     ApprovalEvent["action"],
     NotificationCategory
   > = {
     "submitted-for-lead-review": "review",
+    "submitted-for-manager-review": "review",
     approved: "approval",
     "changes-requested": "workflow",
     rejected: "workflow",
     published: "publishing",
   };
   const submitApproval = (
-    status: "in-progress" | "lead-review" | "approved",
+    status: "in-progress" | "lead-review" | "pm-review" | "approved",
     action: ApprovalEvent["action"],
   ) => {
     if (!currentUser || !taskId) return;
-    recordApprovalEvent(taskId, status, {
-      action,
-      byUserId: currentUser.id,
-      byUserName: currentUser.name,
-      byRole: currentUser.role,
-    });
+    // Real, persisted mutations (not the legacy local-store approval path,
+    // which only synced status via a fire-and-forget PUT and kept its
+    // approval-event history in local-only state) — this is the same pair
+    // of calls TaskDrawer.tsx's approve/reject actions use, so a task's
+    // status and audit trail agree no matter which surface it was actioned
+    // from, and other open views (Kanban, task drawer, dashboards) refetch
+    // via the shared "tasks" query cache instead of going stale.
+    updateTaskMutation.mutate({ id: taskId, status });
+    addApprovalEventMutation.mutate({ action });
+    // The final Production Manager sign-off is what actually forwards a
+    // linked shot into the client-facing review queue — client-review.tsx
+    // filters shots on exactly this status, same as TaskDrawer.tsx's
+    // equivalent action.
+    if (action === "published" && reviewedShot) {
+      updateShotStatus(reviewedShot.id, { status: "client-review" });
+    }
     // A real event in the approval chain — surface it in the shared
     // Notifications feed, not just as a toast that vanishes with this tab.
     const shotLabel = reviewedShot
@@ -1320,7 +1372,37 @@ export default function Review() {
                     <Upload className="w-4 h-4 mr-2" /> Submit
                   </Button>
                 )}
-                {canApproveReview && reviewWorkflowStatus === "lead-review" && (
+                {canApproveAsLead && reviewWorkflowStatus === "lead-review" && (
+                  <>
+                    <Button
+                      size="sm"
+                      className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
+                      onClick={() => {
+                        submitApproval(
+                          "pm-review",
+                          "submitted-for-manager-review",
+                        );
+                        toast({
+                          title: "Sent to Production Manager",
+                          description: "Awaiting final sign-off",
+                        });
+                      }}
+                    >
+                      <CheckCircle2 className="w-4 h-4 mr-2" /> Approve
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white"
+                      onClick={() => {
+                        submitApproval("in-progress", "changes-requested");
+                        toast({ title: "Changes Requested" });
+                      }}
+                    >
+                      <MessageSquare className="w-4 h-4 mr-2" /> Request Changes
+                    </Button>
+                  </>
+                )}
+                {canApproveAsPM && reviewWorkflowStatus === "pm-review" && (
                   <>
                     <Button
                       size="sm"
@@ -1339,11 +1421,11 @@ export default function Review() {
                       size="sm"
                       className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white"
                       onClick={() => {
-                        submitApproval("in-progress", "changes-requested");
-                        toast({ title: "Changes Requested" });
+                        submitApproval("lead-review", "changes-requested");
+                        toast({ title: "Sent Back to Lead" });
                       }}
                     >
-                      <MessageSquare className="w-4 h-4 mr-2" /> Request Changes
+                      <MessageSquare className="w-4 h-4 mr-2" /> Send Back
                     </Button>
                   </>
                 )}
@@ -1373,25 +1455,30 @@ export default function Review() {
                 {/* Lead/Supervisor can only act once the Artist has actually
                     submitted for Lead review — mirrors the Artist button's
                     own 'wip' gate above so the UI can't fabricate an
-                    approval step that never happened. This is now the
-                    single, final internal sign-off (the former separate
-                    Manager tier is gone), so approving here publishes
+                    approval step that never happened. Gated to the reviewed
+                    task's own department (canApproveAsLead), matching
+                    TaskDrawer.tsx. Approving here hands off to the
+                    department's Production Manager for final sign-off — see
+                    the pm-review block below — it no longer publishes
                     straight to production. */}
-                {canApproveReview && reviewWorkflowStatus === "lead-review" && (
+                {canApproveAsLead && reviewWorkflowStatus === "lead-review" && (
                   <>
                     <Button
                       size="sm"
                       className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
                       onClick={() => {
-                        submitApproval("approved", "published");
+                        submitApproval(
+                          "pm-review",
+                          "submitted-for-manager-review",
+                        );
                         toast({
-                          title: "Published",
-                          description: "Approved & Published to Production",
+                          title: "Sent to Production Manager",
+                          description:
+                            "Approved by Lead — awaiting final sign-off",
                         });
                       }}
                     >
-                      <CheckCircle2 className="w-4 h-4 mr-2" /> Approve &
-                      Publish
+                      <CheckCircle2 className="w-4 h-4 mr-2" /> Approve
                     </Button>
                     <Button
                       size="sm"
@@ -1413,6 +1500,47 @@ export default function Review() {
                       }}
                     >
                       <XCircle className="w-4 h-4 mr-2" /> Reject
+                    </Button>
+                  </>
+                )}
+
+                {/* Production Manager's final sign-off — the last gate before
+                    a linked shot is forwarded into the client-facing review
+                    queue. Gated to the department's own production_head,
+                    falling back to the studio's overall Production
+                    Management production_head(s), falling back to any
+                    production_head — see canApproveAsPM above /
+                    getProductionManagerApprovers in lib/taskShape.ts. */}
+                {canApproveAsPM && reviewWorkflowStatus === "pm-review" && (
+                  <>
+                    <Button
+                      size="sm"
+                      className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
+                      onClick={() => {
+                        submitApproval("approved", "published");
+                        toast({
+                          title: "Published",
+                          description: "Approved & Published to Production",
+                        });
+                      }}
+                    >
+                      <CheckCircle2 className="w-4 h-4 mr-2" /> Approve &
+                      Send to Client
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white"
+                      onClick={() => {
+                        submitApproval("lead-review", "changes-requested");
+                        toast({
+                          title: "Sent Back to Lead",
+                          description:
+                            "Needs another look before it can go to the client",
+                        });
+                      }}
+                    >
+                      <MessageSquare className="w-4 h-4 mr-2" /> Send Back
+                      to Lead
                     </Button>
                   </>
                 )}
@@ -2329,52 +2457,69 @@ export default function Review() {
                               : "Approved"}
                           </span>
                         </div>
+                        <div className="flex items-center gap-2 text-sm">
+                          {reviewWorkflowStatus === "pm-review" ? (
+                            <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/50 border-t-primary animate-spin" />
+                          ) : reviewWorkflowStatus === "approved" ? (
+                            <CheckCircle2 className="w-4 h-4 text-[#1E7A34]" />
+                          ) : (
+                            <Circle className="w-4 h-4 text-muted-foreground/40" />
+                          )}
+                          Production Manager{" "}
+                          <span className="text-xs text-muted-foreground ml-auto">
+                            {reviewWorkflowStatus === "approved"
+                              ? "Approved"
+                              : reviewWorkflowStatus === "pm-review"
+                                ? "Pending"
+                                : "Waiting"}
+                          </span>
+                        </div>
                       </>
                     )}
                   </div>
 
-                  {reviewedTask &&
-                    (reviewedTask.approvalHistory?.length ?? 0) > 0 && (
-                      <div className="mt-3 pt-3 border-t border-border/60 space-y-1.5">
-                        <div className="text-[10px] font-semibold text-muted-foreground/70 tracking-wide mb-1.5">
-                          HISTORY
-                        </div>
-                        <AnimatePresence initial={false}>
-                          {[...reviewedTask.approvalHistory]
-                            .reverse()
-                            .map((ev) => (
-                              <motion.div
-                                key={ev.id}
-                                layout
-                                initial={{ opacity: 0, x: -8 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                transition={{ duration: 0.2 }}
-                                className="flex items-start gap-2 text-xs"
-                              >
-                                <ApprovalActionIcon action={ev.action} />
-                                <div className="flex-1 min-w-0">
-                                  <span className="text-foreground font-medium">
-                                    {ev.byUserName}
-                                  </span>{" "}
-                                  <span className="text-muted-foreground">
-                                    {APPROVAL_ACTION_LABEL[ev.action]}
-                                  </span>
-                                  <div className="text-[10px] text-muted-foreground/70">
-                                    {new Date(ev.timestamp).toLocaleString()}
-                                  </div>
-                                </div>
-                              </motion.div>
-                            ))}
-                        </AnimatePresence>
+                  {approvalEvents.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-border/60 space-y-1.5">
+                      <div className="text-[10px] font-semibold text-muted-foreground/70 tracking-wide mb-1.5">
+                        HISTORY
                       </div>
-                    )}
+                      <AnimatePresence initial={false}>
+                        {[...approvalEvents]
+                          .reverse()
+                          .map((ev) => (
+                            <motion.div
+                              key={ev.id}
+                              layout
+                              initial={{ opacity: 0, x: -8 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="flex items-start gap-2 text-xs"
+                            >
+                              <ApprovalActionIcon action={ev.action} />
+                              <div className="flex-1 min-w-0">
+                                <span className="text-foreground font-medium">
+                                  {users.find((u) => u.id === ev.byUserId)
+                                    ?.name ?? "Unknown"}
+                                </span>{" "}
+                                <span className="text-muted-foreground">
+                                  {APPROVAL_ACTION_LABEL[ev.action]}
+                                </span>
+                                <div className="text-[10px] text-muted-foreground/70">
+                                  {new Date(ev.createdAt).toLocaleString()}
+                                </div>
+                              </div>
+                            </motion.div>
+                          ))}
+                      </AnimatePresence>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
                   {comments.map((comment) => {
                     const user = comment.fromClient
                       ? null
-                      : USERS[comment.userIndex];
+                      : users[comment.userIndex];
                     const displayName = comment.fromClient
                       ? comment.fromClient.authorName
                       : (user?.name ?? "Unknown");

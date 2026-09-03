@@ -209,6 +209,7 @@ export interface ApprovalEvent {
   id: string;
   action:
     | "submitted-for-lead-review"
+    | "submitted-for-manager-review"
     | "approved"
     | "changes-requested"
     | "rejected"
@@ -226,6 +227,7 @@ export type TaskStatus =
   | "bottleneck"
   | "review"
   | "lead-review"
+  | "pm-review"
   | "approved"
   | "complete"
   | "cancelled";
