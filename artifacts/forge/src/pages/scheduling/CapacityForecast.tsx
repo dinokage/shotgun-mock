@@ -34,6 +34,13 @@ import {
 } from "./utils";
 import { ScopeTrace } from "@/components/shared/ScopeTrace";
 
+// store/auth.ts's login hydration overwrites useTasksStore's `tasks` with
+// raw, untranslated real TaskDTO[] data (field: `assignedTo`, no
+// `assigneeId`). Same normalizer shape as TasksKanban.tsx/TasksList.tsx/
+// department-detail.tsx/home.tsx.
+const getAssigneeId = (t: any): string | null | undefined =>
+  t.assignedTo ?? t.assigneeId;
+
 const PIPELINES = ["PROD", "3D", "VFX", "2D"] as const;
 
 const WEEK_LEN = 7;
@@ -102,10 +109,8 @@ export default function CapacityForecast() {
       const leaveDays = 0;
 
       const bookedDays = tasks.reduce((sum, task) => {
-        if (
-          !task.assigneeId ||
-          !studioUsers.some((u) => u.id === task.assigneeId)
-        )
+        const assigneeId = getAssigneeId(task);
+        if (!assigneeId || !studioUsers.some((u) => u.id === assigneeId))
           return sum;
         const { startDate, duration } = getTaskWindow(task);
         const endDate = task.dueDate;
@@ -155,7 +160,8 @@ export default function CapacityForecast() {
         const leaveDays = 0;
 
         const bookedDays = tasks.reduce((sum, task) => {
-          if (!deptUsers.some((u) => u.id === task.assigneeId)) return sum;
+          if (!deptUsers.some((u) => u.id === getAssigneeId(task)))
+            return sum;
           const { startDate, duration } = getTaskWindow(task);
           const overlap = overlapDays(
             deptWindow.start,
@@ -219,7 +225,8 @@ export default function CapacityForecast() {
         const leaveDays = 0;
 
         const bookedDays = tasks.reduce((sum, task) => {
-          if (!deptUsers.some((u) => u.id === task.assigneeId)) return sum;
+          if (!deptUsers.some((u) => u.id === getAssigneeId(task)))
+            return sum;
           const { startDate, duration } = getTaskWindow(task);
           const overlap = overlapDays(
             bucket.start,

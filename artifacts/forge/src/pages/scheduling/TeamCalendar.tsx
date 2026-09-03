@@ -20,6 +20,8 @@ import { Search, ZoomIn, ZoomOut } from "lucide-react";
 import { useUIStore } from "@/store/ui";
 import { useTasksStore } from "@/store/tasks";
 import { useToast } from "@/hooks/use-toast";
+import { useShots } from "@/hooks/useShots";
+import { useAssets } from "@/hooks/useAssets";
 import {
   addDays,
   getDaysDiff,
@@ -33,6 +35,19 @@ const LEAVE_LABEL: Record<string, string> = {
   sick: "SICK",
   holiday: "HOL",
 };
+
+// store/auth.ts's login hydration overwrites useTasksStore's `tasks` with
+// raw, untranslated real TaskDTO[] data (field: `assignedTo`, no
+// `assigneeId`; no `projectId` at all — a task's project is only reachable
+// via `entityId` -> shot/asset -> `projectId`). Same normalizer shape as
+// TasksKanban.tsx/TasksList.tsx/department-detail.tsx/home.tsx.
+const getAssigneeId = (t: any): string | null | undefined =>
+  t.assignedTo ?? t.assigneeId;
+
+const getProjectId = (
+  t: any,
+  entityProjectMap: Record<string, string>,
+): string | undefined => t.projectId ?? entityProjectMap[t.entityId];
 
 // utils.getDaysDiff floors zero-length ranges up to 1 (so a same-day
 // *duration* never renders as a zero-width bar), which is wrong whenever the
@@ -50,6 +65,18 @@ export default function TeamCalendar() {
   const { setActiveTaskDrawer } = useUIStore();
   const tasks = useTasksStore((s) => s.tasks);
   const updateTaskDates = useTasksStore((s) => s.updateTaskDates);
+  const { data: liveShots = [] } = useShots();
+  const { data: liveAssets = [] } = useAssets();
+  const entityProjectMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    liveShots.forEach((s) => {
+      map[s.id] = s.projectId;
+    });
+    liveAssets.forEach((a) => {
+      map[a.id] = a.projectId;
+    });
+    return map;
+  }, [liveShots, liveAssets]);
 
   const [projectFilter, setProjectFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
@@ -71,8 +98,11 @@ export default function TeamCalendar() {
   const tasksToDisplay = useMemo(() => {
     return tasks
       .filter((t) => {
-        if (!t.assigneeId) return false;
-        if (projectFilter !== "all" && t.projectId !== projectFilter)
+        if (!getAssigneeId(t)) return false;
+        if (
+          projectFilter !== "all" &&
+          getProjectId(t, entityProjectMap) !== projectFilter
+        )
           return false;
         if (search && !t.title.toLowerCase().includes(search.toLowerCase()))
           return false;
@@ -94,13 +124,14 @@ export default function TeamCalendar() {
             : duration,
         };
       });
-  }, [tasks, projectFilter, search, timelineStartStr]);
+  }, [tasks, projectFilter, search, timelineStartStr, entityProjectMap]);
 
   const groupedByUser = useMemo(() => {
     const groups: Record<string, typeof tasksToDisplay> = {};
     USERS.forEach((u) => (groups[u.id] = []));
     tasksToDisplay.forEach((t) => {
-      if (groups[t.assigneeId]) groups[t.assigneeId].push(t);
+      const assigneeId = getAssigneeId(t);
+      if (assigneeId && groups[assigneeId]) groups[assigneeId].push(t);
     });
     return Object.fromEntries(
       Object.entries(groups).filter(([, ts]) => ts.length > 0),
@@ -452,7 +483,7 @@ export default function TeamCalendar() {
 
                   {rows.map((task, i) => {
                     const project = PROJECTS.find(
-                      (p) => p.id === task.projectId,
+                      (p) => p.id === getProjectId(task, entityProjectMap),
                     );
                     const left = task.startOffset * cellWidth;
                     const width = task.visibleDuration * cellWidth;

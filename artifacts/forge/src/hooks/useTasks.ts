@@ -314,6 +314,21 @@ export function useDailyLogsByUser(userId: string | undefined) {
   });
 }
 
+// Studio-wide daily-log feed with no filter. GET /daily-logs only scopes by
+// tenant when neither `taskId` nor `userId` is supplied (see the route in
+// artifacts/api-server/src/routes/daily-logs.ts), so this mirrors useTasks()'s
+// "fetch everything, filter client-side" pattern. Used by pages/timesheets.tsx,
+// which needs to scope logged time across many tasks/users at once (an
+// artist's own logs, or a manager's whole team's) rather than one task or one
+// user at a time like useDailyLogs()/useDailyLogsByUser() above.
+export function useAllDailyLogs() {
+  return useQuery<DailyLogDTO[]>({
+    queryKey: ["daily-logs", "all"],
+    queryFn: async () => apiClient.get<DailyLogDTO[]>("/daily-logs"),
+    staleTime: 10000,
+  });
+}
+
 export function useAddDailyLog() {
   const queryClient = useQueryClient();
   return useMutation({

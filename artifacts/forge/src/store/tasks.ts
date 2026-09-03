@@ -22,11 +22,15 @@ interface TaskState {
   addComment: (taskId: string, userId: string, text: string) => void;
   toggleChecklistItem: (taskId: string, index: number) => void;
   /**
-   * Single canonical mutation path for logged time — appends a DailyLog and
-   * reconciles actualHours in one step. TaskDrawer's inline log form, the
-   * TimeClockWidget punch-out flow, and the Timesheets page (via
-   * store/timesheets.ts) all route through this instead of each hand-rolling
-   * the same actualHours arithmetic against Task.dailyLogs independently.
+   * Legacy client-only mutation path for logged time (appends a DailyLog and
+   * reconciles actualHours in one step, purely in this Zustand store). Real
+   * daily logs are now a backend resource (see hooks/useTasks.ts's
+   * DailyLogDTO/useAddDailyLog) — TaskDrawer and pages/timesheets.tsx both
+   * write through that instead, since this store's `tasks` get overwritten
+   * with real, untranslated TaskDTO[] on login (no inline `dailyLogs` field
+   * at all) and never sync back to the backend. Kept only in case another
+   * legacy-mock-data call site still depends on it; has no consumers as of
+   * this comment.
    */
   logTime: (taskId: string, log: DailyLog) => void;
   /** Edits one previously logged entry (by index) and reconciles actualHours. */

@@ -39,10 +39,27 @@ import { useDepartmentStore } from "@/store/departments";
 import { useTasksStore } from "@/store/tasks";
 import { useUIStore } from "@/store/ui";
 import { useToast } from "@/hooks/use-toast";
+import { useShots } from "@/hooks/useShots";
+import { useAssets } from "@/hooks/useAssets";
 import { cn } from "@/lib/utils";
 import { REFERENCE_DATE } from "./utils";
 
 const UNASSIGNED = "__unassigned__";
+
+// store/auth.ts's login hydration overwrites useTasksStore's `tasks` with
+// raw, untranslated real TaskDTO[] data (field: `assignedTo`, no
+// `assigneeId`; no `projectId` at all — a task's project is only reachable
+// via `entityId` -> shot/asset -> `projectId`). This mirrors the same
+// getAssigneeId/getProjectId normalizers used in TasksKanban.tsx/
+// TasksList.tsx/department-detail.tsx/home.tsx so this board doesn't
+// silently show every task as unassigned/project-less once real data lands.
+const getAssigneeId = (t: any): string | null | undefined =>
+  t.assignedTo ?? t.assigneeId;
+
+const getProjectId = (
+  t: any,
+  entityProjectMap: Record<string, string>,
+): string | undefined => t.projectId ?? entityProjectMap[t.entityId];
 
 function capacityColor(cap: number) {
   return cap > 90
@@ -242,6 +259,18 @@ export default function TeamBoard() {
   const revokeAssignment = useTasksStore((s) => s.revokeAssignment);
   const users = useUserStore((s) => s.users);
   const departments = useDepartmentStore((s) => s.departments);
+  const { data: liveShots = [] } = useShots();
+  const { data: liveAssets = [] } = useAssets();
+  const entityProjectMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    liveShots.forEach((s) => {
+      map[s.id] = s.projectId;
+    });
+    liveAssets.forEach((a) => {
+      map[a.id] = a.projectId;
+    });
+    return map;
+  }, [liveShots, liveAssets]);
 
   const [projectFilter, setProjectFilter] = useState("all");
   const [departmentFilter, setDepartmentFilter] = useState("all");
@@ -257,7 +286,10 @@ export default function TeamBoard() {
   const filteredTasks = useMemo(
     () =>
       tasks.filter((t) => {
-        if (projectFilter !== "all" && t.projectId !== projectFilter)
+        if (
+          projectFilter !== "all" &&
+          getProjectId(t, entityProjectMap) !== projectFilter
+        )
           return false;
         // Department filter needs to narrow the tasks themselves, not just which
         // people columns are visible — otherwise the Unassigned pool keeps
@@ -272,11 +304,11 @@ export default function TeamBoard() {
           return false;
         return true;
       }),
-    [tasks, projectFilter, departmentFilter, search, departments],
+    [tasks, projectFilter, departmentFilter, search, departments, entityProjectMap],
   );
 
   const unassignedTasks = useMemo(
-    () => filteredTasks.filter((t) => !t.assigneeId),
+    () => filteredTasks.filter((t) => !getAssigneeId(t)),
     [filteredTasks],
   );
 
@@ -289,7 +321,7 @@ export default function TeamBoard() {
       )
       .map((user) => ({
         user,
-        tasks: filteredTasks.filter((t) => t.assigneeId === user.id),
+        tasks: filteredTasks.filter((t) => getAssigneeId(t) === user.id),
       }))
       .filter((col) => showEmpty || col.tasks.length > 0)
       .sort(
@@ -309,7 +341,7 @@ export default function TeamBoard() {
     if (overId === UNASSIGNED) return "";
     if (users.some((u) => u.id === overId)) return overId;
     const overTask = findTask(overId);
-    if (overTask) return overTask.assigneeId ?? "";
+    if (overTask) return getAssigneeId(overTask) ?? "";
     return undefined;
   };
 
@@ -323,7 +355,7 @@ export default function TeamBoard() {
 
     const targetUserId = resolveTargetUserId(over.id as string);
     if (targetUserId === undefined) return;
-    if ((activeTaskItem.assigneeId || "") === targetUserId) return;
+    if ((getAssigneeId(activeTaskItem) || "") === targetUserId) return;
 
     if (targetUserId === "") {
       revokeAssignment(activeTaskItem.id);
