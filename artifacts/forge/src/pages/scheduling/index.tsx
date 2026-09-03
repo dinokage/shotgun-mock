@@ -32,6 +32,7 @@ import { useShots } from "@/hooks/useShots";
 import { useCapability } from "@/hooks/use-capability";
 import { apiFetch } from "@/lib/apiClient";
 import { parseSpreadsheet, getField } from "@/lib/excelImport";
+import { getAssigneeId } from "@/lib/taskShape";
 import TeamBoard from "./TeamBoard";
 import TeamCalendar from "./TeamCalendar";
 import CapacityForecast from "./CapacityForecast";
@@ -113,7 +114,7 @@ export default function Scheduling() {
           (u) =>
             u.role !== "client" &&
             u.status === "active" &&
-            u.id !== task.assigneeId,
+            u.id !== getAssigneeId(task),
         )
         .filter((u) => !dept || u.departmentId === dept.id)
         .sort(

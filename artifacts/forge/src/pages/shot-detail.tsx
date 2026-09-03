@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/empty";
 import { PROJECTS, USERS, TASKS, ASSETS, AUDIT_EVENTS } from "@/data/mockData";
 import { useShots } from "@/hooks/useShots";
+import { getAssigneeId, getAssetId, getShotId } from "@/lib/taskShape";
 import { useReviewStore } from "@/store/reviews";
 import { useUIStore } from "@/store/ui";
 import {
@@ -49,7 +50,10 @@ export default function ShotDetail() {
 
   const project = PROJECTS.find((p) => p.id === shot.projectId);
   const assignee = USERS.find((u) => u.id === shot.assigneeId);
-  const relatedTasks = TASKS.filter((t) => t.shotId === shot.id).slice(0, 5);
+  const relatedTasks = TASKS.filter((t) => getShotId(t) === shot.id).slice(
+    0,
+    5,
+  );
   const versions = liveVersions
     .filter((v) => v.entityId === shot.id)
     .sort((a, b) => b.versionNumber.localeCompare(a.versionNumber));
@@ -58,7 +62,7 @@ export default function ShotDetail() {
     10,
   );
   const usedAssets = ASSETS.filter((a) =>
-    TASKS.some((t) => t.shotId === shot.id && t.assetId === a.id),
+    TASKS.some((t) => getShotId(t) === shot.id && getAssetId(t) === a.id),
   ).slice(0, 5);
 
   return (
@@ -277,7 +281,7 @@ export default function ShotDetail() {
                 <div className="flex-1">
                   <div className="font-medium text-sm">{t.title}</div>
                   <div className="text-xs text-muted-foreground">
-                    {USERS.find((u) => u.id === t.assigneeId)?.name} · Due{" "}
+                    {USERS.find((u) => u.id === getAssigneeId(t))?.name} · Due{" "}
                     {t.dueDate}
                   </div>
                 </div>

@@ -33,6 +33,7 @@ import { useAuthStore } from "@/store/auth";
 import { useCapability } from "@/hooks/use-capability";
 import { useUpdateProfile } from "@/hooks/useUsers";
 import { useToast } from "@/hooks/use-toast";
+import { getAssigneeId, getProjectId, useEntityProjectMap } from "@/lib/taskShape";
 import {
   STUDIO_LEADERSHIP_ROLES,
   LEADERSHIP_ROLES,
@@ -50,6 +51,10 @@ export default function Profile() {
   const canAssignTasks = useCapability("assign_tasks");
   const { toast } = useToast();
   const updateProfile = useUpdateProfile();
+  // Called unconditionally (before the not-found/no-access early returns
+  // below) since it's a hook — see myTasks/myProjects further down, which
+  // need it to resolve a real TaskDTO's project via entityId -> shot/asset.
+  const entityProjectMap = useEntityProjectMap();
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState("");
   const [editTitle, setEditTitle] = useState("");
@@ -117,8 +122,14 @@ export default function Profile() {
     ? USERS.find((u) => u.id === user.supervisorId)
     : null;
 
-  const myTasks = TASKS.filter((t) => t.assigneeId === user.id);
-  const myProjects = [...new Set(myTasks.map((t) => t.projectId))]
+  const myTasks = TASKS.filter((t) => getAssigneeId(t) === user.id);
+  const myProjects = [
+    ...new Set(
+      myTasks
+        .map((t) => getProjectId(t, entityProjectMap))
+        .filter((pid): pid is string => Boolean(pid)),
+    ),
+  ]
     .map((pid) => PROJECTS.find((p) => p.id === pid))
     .filter(Boolean);
   // Shared isTaskActive classification (see data/mockData.ts) so this stat and the

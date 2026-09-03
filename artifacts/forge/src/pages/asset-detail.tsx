@@ -44,6 +44,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useReviewStore } from "@/store/reviews";
 import { useAssetActivityStore } from "@/store/assetActivity";
 import { useAssets, useUpdateAsset } from "@/hooks/useAssets";
+import { getAssigneeId, getAssetId, getShotId } from "@/lib/taskShape";
 import { useAuthStore } from "@/store/auth";
 import { useUIStore } from "@/store/ui";
 import { fadeInUp, confirmPulse } from "@/lib/motion";
@@ -163,9 +164,12 @@ export default function AssetDetail() {
 
   const project = PROJECTS.find((p) => p.id === asset.projectId);
   const assignee = USERS.find((u) => u.id === asset.assigneeId);
-  const relatedTasks = TASKS.filter((t) => t.assetId === asset.id).slice(0, 5);
+  const relatedTasks = TASKS.filter((t) => getAssetId(t) === asset.id).slice(
+    0,
+    5,
+  );
   const relatedShots = SHOTS.filter((s) =>
-    TASKS.some((t) => t.shotId === s.id && t.assetId === asset.id),
+    TASKS.some((t) => getShotId(t) === s.id && getAssetId(t) === asset.id),
   ).slice(0, 5);
   const versions = allVersions
     .filter((v) => v.entityId === asset.id)
@@ -688,7 +692,7 @@ export default function AssetDetail() {
                   <div className="flex-1">
                     <div className="font-medium text-sm">{t.title}</div>
                     <div className="text-xs text-muted-foreground">
-                      {USERS.find((u) => u.id === t.assigneeId)?.name} · Due{" "}
+                      {USERS.find((u) => u.id === getAssigneeId(t))?.name} · Due{" "}
                       {t.dueDate}
                     </div>
                   </div>

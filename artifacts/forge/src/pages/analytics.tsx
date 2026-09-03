@@ -46,6 +46,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useAuthStore } from "@/store/auth";
 import { useCapability } from "@/hooks/use-capability";
 import { hashString, seededFraction } from "@/lib/seededMock";
+import { getAssigneeId } from "@/lib/taskShape";
 
 // Fictional "today" this studio's books are closed against - matches the
 // anchor financials.tsx uses. The mock dataset (task/review/publish
@@ -331,8 +332,9 @@ export default function Analytics() {
   const contributorCounts = useMemo(() => {
     const counts = new Map<string, number>();
     filteredTasks.forEach((t) => {
-      if (isTaskDone(t.status))
-        counts.set(t.assigneeId, (counts.get(t.assigneeId) || 0) + 1);
+      const assigneeId = getAssigneeId(t);
+      if (assigneeId && isTaskDone(t.status))
+        counts.set(assigneeId, (counts.get(assigneeId) || 0) + 1);
     });
     filteredReviews.forEach((r) => {
       if (r.status === "approved")
@@ -1113,7 +1115,7 @@ export default function Analytics() {
                         Today (hrs)
                       </th>
                       <th className="pb-3 font-medium text-right">
-                        This Week (hrs)
+                        Session (hrs)
                       </th>
                       <th className="pb-3 font-medium text-right">
                         Utilization
@@ -1155,6 +1157,11 @@ export default function Analytics() {
                       // clock's punched-in session above. Every other row
                       // shows an honest "no data" placeholder instead of
                       // invented hours.
+                      //
+                      // sessionHrs is the same punched-in-session figure as
+                      // todayHrs (there's no real weekly aggregate to show) —
+                      // the column is labeled "Session (hrs)", not "This
+                      // Week", so it isn't presented as something it isn't.
                       const todayHrs = isCurrentUser
                         ? punchedInSession.hours.toFixed(1)
                         : null;

@@ -61,6 +61,7 @@ import { useShots, useUpdateShot } from "@/hooks/useShots";
 import { useAllEpisodes } from "@/hooks/useEpisodes";
 import { useAllSequences } from "@/hooks/useSequences";
 import { useTasksStore } from "@/store/tasks";
+import { getProjectId, useEntityProjectMap } from "@/lib/taskShape";
 import {
   useTrackingViewsStore,
   TrackingGroupKey,
@@ -490,6 +491,7 @@ export default function TrackingGrid() {
   const { data: liveShots = [] } = useShots();
   const updateShotMutation = useUpdateShot();
   const liveTasks = useTasksStore((state) => state.tasks);
+  const entityProjectMap = useEntityProjectMap();
 
   const savedViews = useTrackingViewsStore((state) => state.views);
   const activeViewId = useTrackingViewsStore((state) => state.activeViewId);
@@ -675,7 +677,9 @@ export default function TrackingGrid() {
     const relevantTasks =
       projectFilter === "all"
         ? liveTasks
-        : liveTasks.filter((t) => t.projectId === projectFilter);
+        : liveTasks.filter(
+            (t) => getProjectId(t, entityProjectMap) === projectFilter,
+          );
     return departments.map((dept) => {
       const deptTasks = relevantTasks.filter((t) => t.department === dept.name);
       const buckets: Record<string, number> = {
@@ -691,7 +695,7 @@ export default function TrackingGrid() {
       });
       return { dept, total: deptTasks.length, buckets };
     }).filter((d) => d.total > 0);
-  }, [liveTasks, projectFilter, departments]);
+  }, [liveTasks, projectFilter, departments, entityProjectMap]);
 
   const toggleGroup = (path: string) => {
     setCollapsedKeys((prev) => {

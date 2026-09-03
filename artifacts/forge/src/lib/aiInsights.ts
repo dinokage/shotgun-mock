@@ -17,6 +17,7 @@ import {
   type Department,
   type Task,
 } from "@/data/mockData";
+import { getAssetId, getProjectId } from "@/lib/taskShape";
 
 export type InsightSeverity = "critical" | "warning" | "positive";
 
@@ -63,7 +64,9 @@ const MIN_DEPT_SAMPLE = 8; // ignore departments too small to make a rate meanin
  * then finds the asset with the largest fan-out of still-active dependents,
  * preferring one that is itself stuck (bottleneck/at-risk).
  */
-function findBlockingAssetInsight(): AIInsight | null {
+function findBlockingAssetInsight(
+  entityProjectMap: Record<string, string>,
+): AIInsight | null {
   const assetById = new Map(ASSETS.map((a) => [a.id, a]));
   const dependents = new Map<string, string[]>();
   for (const asset of ASSETS) {
@@ -82,13 +85,19 @@ function findBlockingAssetInsight(): AIInsight | null {
         ACTIVE_ASSET_STATUSES.has(assetById.get(id)!.status),
       );
       const activeDependentSet = new Set(activeDependentIds);
-      const impactedTasks = TASKS.filter(
-        (t) =>
-          t.assetId &&
-          activeDependentSet.has(t.assetId) &&
-          UNRESOLVED_TASK_STATUSES.has(t.status),
-      );
-      const projectCount = new Set(impactedTasks.map((t) => t.projectId)).size;
+      const impactedTasks = TASKS.filter((t) => {
+        const assetId = getAssetId(t);
+        return (
+          assetId &&
+          activeDependentSet.has(assetId) &&
+          UNRESOLVED_TASK_STATUSES.has(t.status)
+        );
+      });
+      const projectCount = new Set(
+        impactedTasks
+          .map((t) => getProjectId(t, entityProjectMap))
+          .filter((pid): pid is string => Boolean(pid)),
+      ).size;
       return {
         source,
         activeDependents: activeDependentIds.length,
@@ -248,9 +257,10 @@ function findDepartmentOnTrackInsight(departments: Department[]): AIInsight | nu
  */
 export function generateProducerInsights(
   departments: Department[],
+  entityProjectMap: Record<string, string>,
 ): AIInsight[] {
   return [
-    findBlockingAssetInsight(),
+    findBlockingAssetInsight(entityProjectMap),
     findDepartmentPaceInsight(departments),
     findProjectRiskInsight(),
     findDepartmentOnTrackInsight(departments),

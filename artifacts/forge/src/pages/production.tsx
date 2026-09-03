@@ -9,6 +9,7 @@ import {
 import { PROJECTS, TASKS } from "@/data/mockData";
 import { useUserStore } from "@/store/users";
 import { useDepartmentStore } from "@/store/departments";
+import { getAssigneeId, getShotId } from "@/lib/taskShape";
 import {
   TableProperties,
   PlayCircle,
@@ -239,7 +240,7 @@ export default function ProductionDashboard() {
           const deptShots = filteredShots
             .filter((shot) =>
               TASKS.some(
-                (t) => t.shotId === shot.id && t.department === dept.name,
+                (t) => getShotId(t) === shot.id && t.department === dept.name,
               ),
             )
             .sort(
@@ -295,7 +296,9 @@ export default function ProductionDashboard() {
                     const project = PROJECTS.find(
                       (p) => p.id === shot.projectId,
                     );
-                    const shotTasks = TASKS.filter((t) => t.shotId === shot.id);
+                    const shotTasks = TASKS.filter(
+                      (t) => getShotId(t) === shot.id,
+                    );
 
                     return (
                       <div
@@ -386,7 +389,7 @@ export default function ProductionDashboard() {
                               </div>
                               {shotTasks.slice(0, 3).map((task) => {
                                 const assignee = users.find(
-                                  (u) => u.id === task.assigneeId,
+                                  (u) => u.id === getAssigneeId(task),
                                 );
                                 return (
                                   <div

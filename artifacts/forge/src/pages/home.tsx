@@ -20,7 +20,7 @@ import {
   TaskStatus,
   DailyLog,
 } from "@/data/mockData";
-import { getAssigneeId } from "@/lib/taskShape";
+import { getAssigneeId, useEntityProjectMap } from "@/lib/taskShape";
 import { generateProducerInsights, type AIInsight } from "@/lib/aiInsights";
 import { useDailyLogsByUser, useAddDailyLog } from "@/hooks/useTasks";
 import { useQueryClient } from "@tanstack/react-query";
@@ -234,12 +234,14 @@ function ProducerDashboard() {
   const projects = useProjectStore((state) => state.projects);
   const shots = useShotStore((state) => state.shots);
   const departments = useDepartmentStore((state) => state.departments);
+  const users = useUserStore((state) => state.users);
   const activeProjects = projects.filter((p) => p.status !== "COMPLETE");
+  const entityProjectMap = useEntityProjectMap();
   // Recomputed from the current mock data on every mount — not hand-written copy.
   // See src/lib/aiInsights.ts for the rule-based logic behind each card.
   const insights = useMemo(
-    () => generateProducerInsights(departments),
-    [departments],
+    () => generateProducerInsights(departments, entityProjectMap),
+    [departments, entityProjectMap],
   );
 
   // Review queue — real shots currently sitting in internal or client review.
@@ -267,8 +269,8 @@ function ProducerDashboard() {
   const quickReviewShots = useMemo(() => {
     return reviewQueueShots.slice(0, 3).map((s) => {
       const project = projects.find((p) => p.id === s.projectId);
-      const assignee = USERS.find((u) => u.id === s.assigneeId);
-      const dept = DEPARTMENTS.find((d) => d.id === assignee?.departmentId);
+      const assignee = users.find((u) => u.id === s.assigneeId);
+      const dept = departments.find((d) => d.id === assignee?.departmentId);
       return {
         id: s.id,
         shot: s.name,
@@ -279,7 +281,7 @@ function ProducerDashboard() {
         submitter: assignee?.name || "Unassigned",
       };
     });
-  }, [reviewQueueShots, projects]);
+  }, [reviewQueueShots, projects, users, departments]);
 
   // Active Shots / Sequences — shots not yet in a terminal (complete/approved/
   // published) state, and the count of distinct sequences (via the shot's own
@@ -361,7 +363,7 @@ function ProducerDashboard() {
               value: pendingClientReviews,
               icon: Activity,
             },
-            { label: "Total Artists", value: USERS.length, icon: Users },
+            { label: "Total Artists", value: users.length, icon: Users },
           ].map((s, i) => (
             <motion.div key={i} {...stagger(i)}>
               <Card className={STAT_TILE_CARD_CLASS}>

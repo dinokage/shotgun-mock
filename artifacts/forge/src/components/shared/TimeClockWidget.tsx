@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { useAuthStore } from "@/store/auth";
 import { useTasksStore } from "@/store/tasks";
 import { isTaskActive, type DailyLog } from "@/data/mockData";
+import { getAssigneeId } from "@/lib/taskShape";
 import { useToast } from "@/hooks/use-toast";
 
 const STORAGE_PREFIX = "forge-punch-in-time-";
@@ -49,7 +50,7 @@ export function TimeClockWidget() {
   const storageKey = currentUser ? `${STORAGE_PREFIX}${currentUser.id}` : null;
   const myTasks = currentUser
     ? tasks.filter(
-        (t) => t.assigneeId === currentUser.id && isTaskActive(t.status),
+        (t) => getAssigneeId(t) === currentUser.id && isTaskActive(t.status),
       )
     : [];
 

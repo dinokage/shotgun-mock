@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { useTasksStore } from "@/store/tasks";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { DEPENDENCY_TYPE_LABELS, MILESTONES } from "@/data/mockData";
+import { getAssigneeId, getProjectId, useEntityProjectMap } from "@/lib/taskShape";
 
 const PIXELS_PER_DAY = 30;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -15,7 +16,10 @@ export default function TasksTimelineView({
   projectId: string;
 }) {
   const { tasks, updateTaskDates } = useTasksStore();
-  const projectTasks = tasks.filter((t) => t.projectId === projectId);
+  const entityProjectMap = useEntityProjectMap();
+  const projectTasks = tasks.filter(
+    (t) => getProjectId(t, entityProjectMap) === projectId,
+  );
   const projectMilestones = MILESTONES.filter((m) => m.projectId === projectId);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -156,7 +160,7 @@ export default function TasksTimelineView({
               key={task.id}
               className="h-12 border-b border-border flex items-center px-3 gap-2"
             >
-              <UserAvatar userId={task.assigneeId} />
+              <UserAvatar userId={getAssigneeId(task) ?? ""} />
               <div className="text-sm truncate" title={task.title}>
                 {task.title}
               </div>
