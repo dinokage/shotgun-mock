@@ -1,6 +1,8 @@
 import { useState } from "react";
-import { USERS, ASSETS, SHOTS } from "@/data/mockData";
+import { USERS } from "@/data/mockData";
 import { useAuditLogs } from "@/hooks/useAuditLogs";
+import { useAssetStore } from "@/store/assets";
+import { useShotStore } from "@/store/shots";
 import {
   Select,
   SelectContent,
@@ -39,6 +41,8 @@ export default function AuditLog() {
   const [selectedEntity, setSelectedEntity] = useState("asset1");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const { toast } = useToast();
+  const assets = useAssetStore((s) => s.assets);
+  const shots = useShotStore((s) => s.shots);
 
   const rollbackPoints = useAuditStore((s) => s.rollbackPoints);
   const rollbackEntity = useAuditStore((s) => s.rollbackEntity);
@@ -87,7 +91,7 @@ export default function AuditLog() {
             <SelectContent>
               <SelectGroup>
                 <SelectLabel>Assets</SelectLabel>
-                {ASSETS.slice(0, 40).map((a) => (
+                {assets.slice(0, 40).map((a) => (
                   <SelectItem key={a.id} value={a.id}>
                     {a.name} ({a.id})
                   </SelectItem>
@@ -95,7 +99,7 @@ export default function AuditLog() {
               </SelectGroup>
               <SelectGroup>
                 <SelectLabel>Shots</SelectLabel>
-                {SHOTS.slice(0, 40).map((s) => (
+                {shots.slice(0, 40).map((s) => (
                   <SelectItem key={s.id} value={s.id}>
                     {s.name} ({s.id})
                   </SelectItem>
