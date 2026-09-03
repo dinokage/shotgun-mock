@@ -9,6 +9,7 @@ import {
 } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { tenantAuthMiddleware } from "../middleware/tenant";
+import { recordAuditLog } from "../lib/auditLog";
 import * as crypto from "crypto";
 
 // Each check confirms a foreign-key id actually belongs to the caller's
@@ -142,8 +143,12 @@ assetsRouter.put("/:id", async (req, res) => {
       return res.status(400).json({ error: "Invalid assigneeId" });
 
     const updates: Record<string, unknown> = {};
+    const before: Record<string, unknown> = {};
     for (const field of PATCHABLE_FIELDS) {
-      if (field in req.body) updates[field] = req.body[field];
+      if (field in req.body) {
+        updates[field] = req.body[field];
+        before[field] = (existing as Record<string, unknown>)[field];
+      }
     }
     updates.updatedAt = new Date();
 
@@ -156,6 +161,17 @@ assetsRouter.put("/:id", async (req, res) => {
       .select()
       .from(assetsTable)
       .where(and(eq(assetsTable.tenantId, tenantId), eq(assetsTable.id, assetId)));
+
+    recordAuditLog({
+      tenantId,
+      actorUserId: req.userId!,
+      action: "update",
+      targetEntityType: "asset",
+      targetEntityId: assetId,
+      before,
+      after: updates,
+    }).catch((err) => req.log.error(err, "audit log write failed"));
+
     return res.json(updated);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });

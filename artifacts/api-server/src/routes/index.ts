@@ -16,6 +16,7 @@ import { reviewsRouter } from "./reviews";
 import { dailyLogsRouter } from "./daily-logs";
 import { invitesRouter } from "./invites";
 import { uploadsRouter } from "./uploads";
+import { auditLogsRouter } from "./audit-logs";
 
 const router = Router();
 
@@ -38,5 +39,6 @@ router.use("/reviews", reviewsRouter);
 router.use("/daily-logs", dailyLogsRouter);
 router.use("/invites", invitesRouter);
 router.use("/uploads", uploadsRouter);
+router.use("/audit-logs", auditLogsRouter);
 
 export default router;
