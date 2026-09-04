@@ -18,6 +18,7 @@ import { requireCapability } from "../middleware/rbac";
 import * as crypto from "crypto";
 import { createNotification, findProductionManagers } from "./notifications";
 import { cacheGet, cacheSet, cacheDel, cacheKeys } from "../lib/cache";
+import { maybeReassignOnSequenceCompletion } from "../lib/sequenceReassignment";
 
 // A DB foreign key only verifies a referenced row exists, not who owns it,
 // so every foreign key accepted from a request body needs an explicit
@@ -266,6 +267,18 @@ tasksRouter.put("/:id", async (req, res) => {
       .from(tasksTable)
       .where(and(eq(tasksTable.tenantId, tenantId), eq(tasksTable.id, taskId)));
     await cacheDel(cacheKeys.tasksList(tenantId));
+
+    // Fire-and-forget: a task reaching "approved" is the one authoritative
+    // moment to check whether its whole sequence just wrapped early. Hooked
+    // here (not the approval-events route) because review.tsx's
+    // submitApproval() fires the status PUT and the approval-event POST as
+    // two independent, unordered mutations -- this status write is the one
+    // that actually commits "approved", so it's the only reliable trigger.
+    if (updates.status === "approved") {
+      maybeReassignOnSequenceCompletion(taskId, tenantId).catch((err) =>
+        req.log.error(err, "Sequence auto-reassignment check failed"),
+      );
+    }
     return res.json(updated);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
