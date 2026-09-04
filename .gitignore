@@ -58,3 +58,6 @@ Thumbs.db
 dump.rdb
 all_files.txt
 cookie.txt
+
+# Database backups (real tenant data -- never committed)
+/backups/
