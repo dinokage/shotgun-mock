@@ -23,3 +23,21 @@ export function useUploadFile() {
     },
   });
 }
+
+// Separate endpoint from useUploadFile: /uploads/video stores under its own
+// directory and is served back with a real video/* Content-Type (no forced
+// download), which is what lets the Review Player's <video> element play it
+// back at all -- see routes/uploads.ts's videoUpload for why this can't
+// reuse the generic attachment upload.
+export function useUploadVideo() {
+  return useMutation({
+    mutationFn: (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      return apiFetch<UploadedFileDTO>("/uploads/video", {
+        method: "POST",
+        body: formData,
+      });
+    },
+  });
+}

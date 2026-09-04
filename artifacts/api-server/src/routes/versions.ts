@@ -48,10 +48,10 @@ versionsRouter.post("/", async (req, res) => {
     const tenantId = req.tenantId!;
     const userId = req.userId!;
     const { entityId, entityType, versionNumber, mediaUrl, taskId } = req.body;
-    if (!entityId || !entityType || !mediaUrl)
+    if (!entityId || !entityType)
       return res
         .status(400)
-        .json({ error: "Missing entityId, entityType, or mediaUrl" });
+        .json({ error: "Missing entityId or entityType" });
 
     if (taskId && !(await taskInTenant(taskId, tenantId)))
       return res.status(400).json({ error: "Invalid taskId" });
@@ -63,7 +63,15 @@ versionsRouter.post("/", async (req, res) => {
       entityId,
       entityType,
       versionNumber: versionNumber || "v001",
-      mediaUrl,
+      // A version can (and, for a fresh task, always does) exist before any
+      // footage has been uploaded -- the Review page creates one as soon as
+      // it opens so annotations/comments/approval-events have somewhere to
+      // attach, then PUTs the real mediaUrl once the artist inserts video.
+      // Requiring mediaUrl here made that first, footage-less version
+      // impossible to create at all (this POST 400'd every time), which
+      // silently broke the whole "import video after finishing the task"
+      // flow before it could start.
+      mediaUrl: mediaUrl || "",
       taskId: taskId || null,
       createdById: userId,
     });
@@ -78,7 +86,7 @@ versionsRouter.post("/", async (req, res) => {
   }
 });
 
-const PATCHABLE_FIELDS = ["status", "notes", "thumbnail"] as const;
+const PATCHABLE_FIELDS = ["status", "notes", "thumbnail", "mediaUrl"] as const;
 
 versionsRouter.put("/:id", async (req, res) => {
   try {

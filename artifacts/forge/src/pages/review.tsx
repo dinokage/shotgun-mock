@@ -109,7 +109,8 @@ import {
   useUpdateAnnotation,
   useDeleteAnnotation,
 } from "@/hooks/useReviews";
-import { useVersions, useCreateVersion } from "@/hooks/useVersions";
+import { useVersions, useCreateVersion, useUpdateVersion } from "@/hooks/useVersions";
+import { useUploadVideo } from "@/hooks/useUploads";
 import { useCreateClientAccessLink } from "@/hooks/useClientAccess";
 
 interface MediaClip {
@@ -325,6 +326,9 @@ export default function Review() {
   }, [taskId, versionEntityId, versionEntityType, versionsLoading, existingVersion]);
   const versionId = existingVersion?.id;
   const createClientAccessLink = useCreateClientAccessLink();
+  const uploadVideo = useUploadVideo();
+  const updateVersion = useUpdateVersion();
+  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
 
   const isManager = currentUser && LEADERSHIP_ROLES.includes(currentUser.role);
 
@@ -566,6 +570,33 @@ export default function Review() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount, this is one-time placeholder generation, not a reaction to changing props/state
   }, []);
+
+  // Loads the version's real, persisted footage (uploaded via /uploads/video
+  // and saved to the version's mediaUrl) into the player -- without this,
+  // "Insert Video" only ever updated this component's own local state, so
+  // the artist who uploaded it was the only person who could ever see it:
+  // reloading the page, or a Lead/Production Manager opening the exact same
+  // review, saw "No footage uploaded yet" regardless of what was actually
+  // uploaded. Only overwrites the clip when it doesn't already show this
+  // exact media, so it doesn't fight an upload still in flight in this tab.
+  useEffect(() => {
+    if (!existingVersion?.mediaUrl) return;
+    setVideoClips((prev) =>
+      prev.map((c) => {
+        if (c.id !== "base-v1" || c.src === existingVersion.mediaUrl) return c;
+        // Replacing a locally-previewed blob: with the now-persisted real
+        // URL -- release it so the upload flow above doesn't leak one blob
+        // per insert.
+        if (c.src.startsWith("blob:")) URL.revokeObjectURL(c.src);
+        return { ...c, src: existingVersion.mediaUrl, name: "Main Sequence" };
+      }),
+    );
+    // Re-run whenever the persisted mediaUrl changes -- on initial load
+    // (versions query resolves after mount), after this tab's own upload
+    // completes, and when the 10s fetchMe poll (App.tsx) picks up another
+    // user's upload.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [existingVersion?.mediaUrl]);
 
   const reviewWorkflowStatus: "wip" | "lead-review" | "pm-review" | "approved" =
     reviewedTask?.status === "review" || reviewedTask?.status === "lead-review"
@@ -1354,24 +1385,26 @@ export default function Review() {
               // "approved" — skipping the Lead/Manager tiers entirely and
               // bypassing the submit/approve capability checks below.
               <div className="flex items-center gap-2">
-                {canSubmitReview && reviewWorkflowStatus === "wip" && (
-                  <Button
-                    size="sm"
-                    className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
-                    onClick={() => {
-                      submitApproval(
-                        "lead-review",
-                        "submitted-for-lead-review",
-                      );
-                      toast({
-                        title: "Submitted",
-                        description: "Submitted for Lead Review",
-                      });
-                    }}
-                  >
-                    <Upload className="w-4 h-4 mr-2" /> Submit
-                  </Button>
-                )}
+                {canSubmitReview &&
+                  reviewWorkflowStatus === "wip" &&
+                  existingVersion?.mediaUrl && (
+                    <Button
+                      size="sm"
+                      className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
+                      onClick={() => {
+                        submitApproval(
+                          "lead-review",
+                          "submitted-for-lead-review",
+                        );
+                        toast({
+                          title: "Submitted",
+                          description: "Submitted for Lead Review",
+                        });
+                      }}
+                    >
+                      <Upload className="w-4 h-4 mr-2" /> Submit
+                    </Button>
+                  )}
                 {canApproveAsLead && reviewWorkflowStatus === "lead-review" && (
                   <>
                     <Button
@@ -1432,25 +1465,31 @@ export default function Review() {
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                {canSubmitReview && reviewWorkflowStatus === "wip" && (
-                  <Button
-                    size="sm"
-                    className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
-                    onClick={() => {
-                      submitApproval(
-                        "lead-review",
-                        "submitted-for-lead-review",
-                      );
-                      toast({
-                        title: "Submitted",
-                        description: "Submitted for Lead Review",
-                      });
-                    }}
-                  >
-                    <Upload className="w-4 h-4 mr-2" /> Submit to
-                    Lead/Supervisor for Review
-                  </Button>
-                )}
+                {canSubmitReview &&
+                  reviewWorkflowStatus === "wip" &&
+                  (existingVersion?.mediaUrl ? (
+                    <Button
+                      size="sm"
+                      className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
+                      onClick={() => {
+                        submitApproval(
+                          "lead-review",
+                          "submitted-for-lead-review",
+                        );
+                        toast({
+                          title: "Submitted",
+                          description: "Submitted for Lead Review",
+                        });
+                      }}
+                    >
+                      <Upload className="w-4 h-4 mr-2" /> Submit to
+                      Lead/Supervisor for Review
+                    </Button>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">
+                      Insert your footage above to submit for review
+                    </span>
+                  ))}
 
                 {/* Lead/Supervisor can only act once the Artist has actually
                     submitted for Lead review — mirrors the Artist button's
@@ -1610,38 +1649,67 @@ export default function Review() {
                     accept="video/*"
                     className="hidden"
                     ref={fileInputRef}
-                    onChange={(e) => {
+                    onChange={async (e) => {
                       const file = e.target.files?.[0];
-                      if (file) {
-                        // Inserting a video replaces whatever was playing --
-                        // a plain "review this footage" action, not a new
-                        // compositing track layered on top of the old one.
-                        // Release the previous clips' blob: URLs first so
-                        // they don't leak (createObjectURL memory is only
-                        // freed on explicit revoke or full page unload).
-                        videoClips.forEach((c) => {
-                          if (c.src.startsWith("blob:")) URL.revokeObjectURL(c.src);
+                      // Reset so choosing the same file again still fires
+                      // onChange (the input's value doesn't change otherwise).
+                      e.target.value = "";
+                      if (!file) return;
+                      if (!versionId) {
+                        toast({
+                          title: "Not Ready Yet",
+                          description:
+                            "Still setting up this review — try again in a moment.",
+                          variant: "destructive",
                         });
-                        setVideoClips([
-                          {
-                            id: "base-v1",
-                            src: URL.createObjectURL(file),
-                            trackIndex: 0,
-                            startFrame: 1,
-                            endFrame: maxFrames,
-                            opacity: 100,
-                            blendMode: "normal",
-                            name: file.name,
-                            x: 0,
-                            y: 0,
-                            scale: 1,
-                          },
-                        ]);
-                        setFrame(1);
+                        return;
+                      }
+
+                      // Show the file immediately via a local blob URL so
+                      // scrubbing/playback feels instant, then swap to the
+                      // real served URL once the upload finishes -- that
+                      // real URL is what makes the footage visible to
+                      // everyone else (lead, PM, client), not just this tab.
+                      videoClips.forEach((c) => {
+                        if (c.src.startsWith("blob:")) URL.revokeObjectURL(c.src);
+                      });
+                      setVideoClips([
+                        {
+                          id: "base-v1",
+                          src: URL.createObjectURL(file),
+                          trackIndex: 0,
+                          startFrame: 1,
+                          endFrame: maxFrames,
+                          opacity: 100,
+                          blendMode: "normal",
+                          name: file.name,
+                          x: 0,
+                          y: 0,
+                          scale: 1,
+                        },
+                      ]);
+                      setFrame(1);
+
+                      setIsUploadingVideo(true);
+                      try {
+                        const uploaded = await uploadVideo.mutateAsync(file);
+                        await updateVersion.mutateAsync({
+                          id: versionId,
+                          mediaUrl: uploaded.url,
+                        });
                         toast({
                           title: "Video Inserted",
-                          description: `Now reviewing "${file.name}".`,
+                          description: `Now reviewing "${file.name}". Visible to the whole team.`,
                         });
+                      } catch {
+                        toast({
+                          title: "Upload Failed",
+                          description:
+                            "The video is only visible in this tab until upload succeeds — try inserting it again.",
+                          variant: "destructive",
+                        });
+                      } finally {
+                        setIsUploadingVideo(false);
                       }
                     }}
                   />
@@ -2002,8 +2070,22 @@ export default function Review() {
                                 }}
                               >
                                 <div className="bg-black/50 rounded-lg px-4 py-2 text-sm font-medium backdrop-blur-sm">
-                                  No footage uploaded yet — insert a video to begin reviewing.
+                                  No footage uploaded yet
+                                  {canSubmitReview && !viewerMode
+                                    ? " — insert your video to begin reviewing."
+                                    : "."}
                                 </div>
+                                {canSubmitReview && !viewerMode && (
+                                  <Button
+                                    size="sm"
+                                    disabled={isUploadingVideo}
+                                    className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white pointer-events-auto"
+                                    onClick={() => fileInputRef.current?.click()}
+                                  >
+                                    <Upload className="w-4 h-4 mr-2" />
+                                    {isUploadingVideo ? "Uploading..." : "Insert Video"}
+                                  </Button>
+                                )}
                               </div>
                             );
                           }
