@@ -17,6 +17,7 @@ import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability } from "../middleware/rbac";
 import * as crypto from "crypto";
 import { createNotification, findProductionManagers } from "./notifications";
+import { cacheGet, cacheSet, cacheDel, cacheKeys } from "../lib/cache";
 
 // A DB foreign key only verifies a referenced row exists, not who owns it,
 // so every foreign key accepted from a request body needs an explicit
@@ -90,11 +91,23 @@ tasksRouter.use(tenantAuthMiddleware);
 tasksRouter.get("/", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
+    // Every role reads this same unfiltered per-tenant list (RBAC visibility
+    // is applied client-side -- see this route's original comment history);
+    // an artist's task page, a lead's Team Board, a PM's oversight view, and
+    // the admin's monitoring view all hit this endpoint. Short TTL cache cuts
+    // DB load from that shared traffic; every write path below that touches
+    // a task's row calls cacheDel so a status change or reassignment is
+    // visible immediately rather than waiting out the TTL.
+    const cacheKey = cacheKeys.tasksList(tenantId);
+    const cached = await cacheGet<unknown[]>(cacheKey);
+    if (cached) return res.json(cached);
+
     // Note: In real logic, projectId filtering would join with entity (asset/shot).
     const tasksList = await db
       .select()
       .from(tasksTable)
       .where(eq(tasksTable.tenantId, tenantId));
+    await cacheSet(cacheKey, tasksList, 10);
     return res.json(tasksList);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -154,6 +167,7 @@ tasksRouter.post("/", requireCapability("create_tasks"), async (req, res) => {
       .select()
       .from(tasksTable)
       .where(and(eq(tasksTable.tenantId, tenantId), eq(tasksTable.id, newId)));
+    await cacheDel(cacheKeys.tasksList(tenantId));
     return res.status(201).json(created);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -251,6 +265,7 @@ tasksRouter.put("/:id", async (req, res) => {
       .select()
       .from(tasksTable)
       .where(and(eq(tasksTable.tenantId, tenantId), eq(tasksTable.id, taskId)));
+    await cacheDel(cacheKeys.tasksList(tenantId));
     return res.json(updated);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });

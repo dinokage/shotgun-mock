@@ -10,6 +10,7 @@ import {
 import { eq, and } from "drizzle-orm";
 import { verifyPassword, signSession, verifySession } from "../lib/auth";
 import { createNotification, findProductionManagers } from "./notifications";
+import { cacheGet, cacheSet, cacheKeys } from "../lib/cache";
 
 export const authRouter = Router();
 
@@ -130,6 +131,18 @@ authRouter.get("/me", async (req, res) => {
   // null userId and have no users row to look up.
   if (!session.userId) return res.status(401).json({ error: "Invalid session" });
 
+  // App.tsx polls this endpoint every 10s for every logged-in session,
+  // regardless of role -- artist, lead, production_head, producer, admin
+  // all hit it identically, and the 4 DB queries below return the same
+  // result on almost every one of those polls. A short TTL cache turns most
+  // of that polling traffic into a single Redis read; the write paths that
+  // actually change this payload (profile edit, avatar upload, an admin
+  // changing someone's role/department) call cacheDel on this same key so
+  // real changes still show up immediately rather than waiting out the TTL.
+  const cacheKey = cacheKeys.userMe(session.tenantId, session.userId);
+  const cached = await cacheGet<Record<string, unknown>>(cacheKey);
+  if (cached) return res.status(200).json(cached);
+
   const [user] = await db
     .select()
     .from(usersTable)
@@ -150,7 +163,7 @@ authRouter.get("/me", async (req, res) => {
     .where(eq(tenantRoleCapabilitiesTable.roleId, session.roleId));
   const capabilities = roleCaps.map((c) => c.capabilityId);
 
-  return res.status(200).json({
+  const payload = {
     user: {
       id: user.id,
       name: user.name,
@@ -162,5 +175,7 @@ authRouter.get("/me", async (req, res) => {
       id: tenant.id,
       name: tenant?.name || "",
     },
-  });
+  };
+  await cacheSet(cacheKey, payload, 15);
+  return res.status(200).json(payload);
 });

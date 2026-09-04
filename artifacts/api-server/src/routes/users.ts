@@ -10,6 +10,7 @@ const STUDIO_LEADERSHIP_ROLES = ["admin", "production_head"];
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability } from "../middleware/rbac";
 import { hashPassword, verifyPassword } from "../lib/auth";
+import { cacheDel, cacheKeys } from "../lib/cache";
 import * as crypto from "crypto";
 import * as fs from "fs";
 import * as path from "path";
@@ -216,6 +217,7 @@ router.patch("/me", async (req, res) => {
       .returning();
     if (!updated) return res.status(404).json({ error: "Not found" });
 
+    await cacheDel(cacheKeys.userMe(tenantId, userId));
     const { hashedPassword: _omit, ...user } = updated;
     return res.json(user);
   } catch (err) {
@@ -289,6 +291,7 @@ router.post("/me/avatar", (req, res) => {
         .returning();
       if (!updated) return res.status(404).json({ error: "Not found" });
 
+      await cacheDel(cacheKeys.userMe(tenantId, userId));
       const { hashedPassword: _omit, ...user } = updated;
       return res.status(201).json(user);
     } catch (innerErr) {
@@ -382,6 +385,11 @@ router.patch("/:id", requireCapability("manage_members"), async (req, res) => {
       .select()
       .from(usersTable)
       .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.id, userId)));
+    // roleId/departmentId directly change what GET /auth/me returns for this
+    // user (capabilities, departmentId) -- without this, someone the admin
+    // just promoted/reassigned would keep seeing their old capabilities
+    // until the 15s cache entry happened to expire.
+    await cacheDel(cacheKeys.userMe(tenantId, userId));
     const { hashedPassword: _omit, ...user } = updated;
     return res.json(user);
   } catch (err) {
