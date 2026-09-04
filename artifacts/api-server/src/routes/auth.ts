@@ -104,6 +104,7 @@ authRouter.post("/login", async (req, res) => {
         role: role?.name || "admin",
         departmentId: user.departmentId,
         capabilities,
+        punchedInAt: user.punchedInAt,
       },
       tenant: {
         id: tenant.id,
@@ -170,6 +171,7 @@ authRouter.get("/me", async (req, res) => {
       role: role?.name || "admin",
       departmentId: user.departmentId,
       capabilities,
+      punchedInAt: user.punchedInAt,
     },
     tenant: {
       id: tenant.id,

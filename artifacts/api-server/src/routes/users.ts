@@ -90,6 +90,7 @@ router.get("/", async (req, res) => {
         title: usersTable.title,
         avatar: usersTable.avatar,
         status: usersTable.status,
+        punchedInAt: usersTable.punchedInAt,
         createdAt: usersTable.createdAt,
       })
       .from(usersTable)
@@ -222,6 +223,58 @@ router.patch("/me", async (req, res) => {
     return res.json(user);
   } catch (err) {
     req.log.error(err, "Failed to update profile");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Real punch-clock state. Previously this lived entirely in a per-browser
+// localStorage key (TimeClockWidget.tsx), which meant: reloading the page
+// or opening a second device lost the session, and no other user could ever
+// see whether someone was actually punched in -- daily-standup.tsx's
+// "Payroll" table fell back to reading `status` (an account-enabled flag,
+// true for basically every real employee) and showed everyone as punched in
+// permanently. `punchedInAt` on the users table is the single source of
+// truth every session and every viewer now reads from.
+router.post("/me/punch-in", async (req, res) => {
+  try {
+    const tenantId = req.tenantId!;
+    const userId = req.userId;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+    const [updated] = await db
+      .update(usersTable)
+      .set({ punchedInAt: new Date() })
+      .where(and(eq(usersTable.id, userId), eq(usersTable.tenantId, tenantId)))
+      .returning();
+    if (!updated) return res.status(404).json({ error: "Not found" });
+
+    await cacheDel(cacheKeys.userMe(tenantId, userId));
+    const { hashedPassword: _omit, ...user } = updated;
+    return res.json(user);
+  } catch (err) {
+    req.log.error(err, "Failed to punch in");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/me/punch-out", async (req, res) => {
+  try {
+    const tenantId = req.tenantId!;
+    const userId = req.userId;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+    const [updated] = await db
+      .update(usersTable)
+      .set({ punchedInAt: null })
+      .where(and(eq(usersTable.id, userId), eq(usersTable.tenantId, tenantId)))
+      .returning();
+    if (!updated) return res.status(404).json({ error: "Not found" });
+
+    await cacheDel(cacheKeys.userMe(tenantId, userId));
+    const { hashedPassword: _omit, ...user } = updated;
+    return res.json(user);
+  } catch (err) {
+    req.log.error(err, "Failed to punch out");
     return res.status(500).json({ error: "Internal server error" });
   }
 });

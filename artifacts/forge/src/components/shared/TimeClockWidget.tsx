@@ -22,16 +22,21 @@ import { isTaskActive } from "@/data/mockData";
 import { getAssigneeId } from "@/lib/taskShape";
 import { useToast } from "@/hooks/use-toast";
 import { useAddDailyLog } from "@/hooks/useTasks";
-
-const STORAGE_PREFIX = "forge-punch-in-time-";
+import { usePunchIn, usePunchOut } from "@/hooks/useUsers";
 
 /**
- * Real punch clock: punching in only starts a local session timer (no time
- * is "logged" yet), and punching out posts one real daily log via
- * useAddDailyLog (hooks/useTasks.ts) — the same backend-synced mutation
- * TaskDrawer and the Timesheets page use — instead of the old
- * ever-growing, un-resettable localStorage counter that never produced any
- * real logged time and had no punch-out control at all.
+ * Real punch clock, backed by users.punched_in_at (not a per-browser
+ * localStorage timer, and not auto-started on login) -- so punch state
+ * survives a reload, is visible on any device, and only ever shows
+ * "punched in" after someone has actually clicked Punch In. This used to
+ * auto-open a session on every single login, which is exactly why
+ * daily-standup.tsx's Payroll table (and everyone else) saw every employee
+ * as permanently punched in.
+ *
+ * Punching in only starts the real timestamp (no time is "logged" yet);
+ * punching out posts one real daily log via useAddDailyLog (hooks/
+ * useTasks.ts) -- the same backend-synced mutation TaskDrawer and the
+ * Timesheets page use -- then clears punched_in_at.
  */
 export function TimeClockWidget() {
   const currentUser = useAuthStore((s) => s.currentUser);
@@ -40,37 +45,30 @@ export function TimeClockWidget() {
   const tasks = useTasksStore((s) => s.tasks);
   const { toast } = useToast();
   const addDailyLogMutation = useAddDailyLog();
+  const punchInMutation = usePunchIn();
+  const punchOutMutation = usePunchOut();
 
-  const [punchedIn, setPunchedIn] = useState(false);
-  const [startTime, setStartTime] = useState<number | null>(null);
   const [seconds, setSeconds] = useState(0);
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState("");
   const [note, setNote] = useState("");
 
-  const storageKey = currentUser ? `${STORAGE_PREFIX}${currentUser.id}` : null;
+  const punchedIn = Boolean(currentUser?.punchedInAt);
+  const startTime = currentUser?.punchedInAt
+    ? new Date(currentUser.punchedInAt).getTime()
+    : null;
   const myTasks = currentUser
     ? tasks.filter(
         (t) => getAssigneeId(t) === currentUser.id && isTaskActive(t.status),
       )
     : [];
 
-  // Pick up an in-progress punch session whenever the signed-in user
-  // changes; if there isn't one, start one automatically. Every login now
-  // begins a work session by itself — clocking in is no longer a separate
-  // manual step, matching punch-out's symmetric "punching out ends the
-  // session" behavior (which also signs the user out).
+  // Default the eventual punch-out log's task once a real session is
+  // active. Deliberately keyed on punchedIn (not myTasks) -- this should
+  // pick a default once when a session starts, not re-run and clobber a
+  // manual selection every time the task list changes while punched in.
   useEffect(() => {
-    if (!storageKey) {
-      setPunchedIn(false);
-      setStartTime(null);
-      return;
-    }
-    const stored = localStorage.getItem(storageKey);
-    const start = stored ? parseInt(stored, 10) : Date.now();
-    if (!stored) localStorage.setItem(storageKey, start.toString());
-    setStartTime(start);
-    setPunchedIn(true);
+    if (!punchedIn) return;
     setSelectedTaskId(
       (current) =>
         current ||
@@ -78,12 +76,8 @@ export function TimeClockWidget() {
         myTasks[0]?.id ||
         "",
     );
-    // Deliberately keyed on storageKey only (not myTasks) — this should run
-    // once per login/user-switch to open or resume a session, not re-run
-    // (and re-derive selectedTaskId) every time the task list changes while
-    // already punched in.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storageKey]);
+  }, [punchedIn]);
 
   useEffect(() => {
     if (!punchedIn || startTime === null) {
@@ -97,7 +91,7 @@ export function TimeClockWidget() {
     return () => clearInterval(interval);
   }, [punchedIn, startTime]);
 
-  if (!currentUser || !storageKey) return null;
+  if (!currentUser) return null;
 
   const formatTime = (totalSeconds: number) => {
     const h = Math.floor(totalSeconds / 3600);
@@ -106,24 +100,20 @@ export function TimeClockWidget() {
     return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
   };
 
-  const handlePunchIn = () => {
-    const now = Date.now();
-    localStorage.setItem(storageKey, now.toString());
-    setStartTime(now);
-    setPunchedIn(true);
-    // Default the eventual punch-out log to whatever task they're actively working, if any.
-    setSelectedTaskId(
-      myTasks.find((t) => t.status === "in-progress")?.id ??
-        myTasks[0]?.id ??
-        "",
-    );
-    setNote("");
+  const handlePunchIn = async () => {
+    try {
+      await punchInMutation.mutateAsync();
+      setNote("");
+    } catch {
+      toast({
+        title: "Couldn't Punch In",
+        description: "Something went wrong — try again.",
+        variant: "destructive",
+      });
+    }
   };
 
-  const resetSession = () => {
-    localStorage.removeItem(storageKey);
-    setPunchedIn(false);
-    setStartTime(null);
+  const resetLocalState = () => {
     setSeconds(0);
     setPopoverOpen(false);
     setNote("");
@@ -168,7 +158,14 @@ export function TimeClockWidget() {
           "No task selected — time was not logged. You've been signed out.",
       });
     }
-    resetSession();
+    try {
+      await punchOutMutation.mutateAsync();
+    } catch {
+      // Already logged the time above (or told the user we couldn't) --
+      // clearing punched_in_at is best-effort at this point, since the
+      // logout below ends the session either way.
+    }
+    resetLocalState();
     // Punching out ends the work session entirely — for every role, not
     // just artists — so it also signs the user out rather than leaving
     // them logged into an app they've just clocked off of.
@@ -181,7 +178,8 @@ export function TimeClockWidget() {
       <button
         type="button"
         onClick={handlePunchIn}
-        className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-muted/50 border border-border shrink-0 hover:bg-muted transition-colors"
+        disabled={punchInMutation.isPending}
+        className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-muted/50 border border-border shrink-0 hover:bg-muted transition-colors disabled:opacity-60"
       >
         <Clock className="w-3.5 h-3.5 hidden sm:block text-muted-foreground" />
         <span className="text-[11px] font-medium text-muted-foreground">

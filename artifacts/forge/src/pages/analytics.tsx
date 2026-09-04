@@ -38,8 +38,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useEffect, useMemo, useState } from "react";
-import { useAuthStore } from "@/store/auth";
+import { useMemo, useState } from "react";
 import { useCapability } from "@/hooks/use-capability";
 import { hashString, seededFraction } from "@/lib/seededMock";
 import { getAssigneeId, getShotId } from "@/lib/taskShape";
@@ -90,49 +89,18 @@ function getProjectBidMargin(p: Project): {
   return { bids, actuals, rate };
 }
 
-/**
- * Mirrors the header clock's punched-in state (TimeClockWidget reads/writes a
- * per-user 'forge-punch-in-time-<userId>' localStorage key - see STORAGE_PREFIX
- * in TimeClockWidget.tsx) so the logged-in user's own Timecards row never
- * contradicts the header's live PUNCHED IN indicator.
- */
-function usePunchedInSession(userId: string | undefined): {
-  hours: number;
-  since: string | null;
-} {
-  const [session, setSession] = useState<{
-    hours: number;
-    since: string | null;
-  }>({ hours: 0, since: null });
-
-  useEffect(() => {
-    if (!userId) {
-      setSession({ hours: 0, since: null });
-      return;
-    }
-    const compute = () => {
-      const startTime = localStorage.getItem(`forge-punch-in-time-${userId}`);
-      if (!startTime) {
-        setSession({ hours: 0, since: null });
-        return;
-      }
-      const startMs = parseInt(startTime, 10);
-      setSession({
-        hours: Math.max(0, (Date.now() - startMs) / 3600000),
-        since: new Date(startMs).toISOString(),
-      });
-    };
-    compute();
-    const interval = setInterval(compute, 30000);
-    return () => clearInterval(interval);
-  }, [userId]);
-
-  return session;
+// users.punched_in_at is now real backend state for every user (not just
+// the logged-in one -- see hooks/useUsers.ts's usePunchIn/usePunchOut and
+// GET /users), so a punched-in session's elapsed hours can be computed for
+// anyone directly at render time. No per-user hook/interval needed: the
+// Timecards table already re-renders on the users list's ~10s poll
+// (App.tsx's fetchMe), which is a fine enough cadence for this summary.
+function hoursSincePunchIn(punchedInAt: string): number {
+  return Math.max(0, (Date.now() - new Date(punchedInAt).getTime()) / 3600000);
 }
 
 export default function Analytics() {
   const { toast } = useToast();
-  const { currentUser } = useAuthStore();
   const users = useUserStore((s) => s.users);
   const departments = useDepartmentStore((s) => s.departments);
   const projects = useProjectStore((s) => s.projects);
@@ -140,7 +108,6 @@ export default function Analytics() {
   const reviews = useReviewStore((s) => s.reviews);
   const publishLogs = usePublishingStore((s) => s.logs);
   const shots = useShotStore((s) => s.shots);
-  const punchedInSession = usePunchedInSession(currentUser?.id);
   const canViewFinancials = useCapability("view_financials");
 
   const [dateRange, setDateRange] = useState<DateRangeKey>("30d");
@@ -1128,45 +1095,28 @@ export default function Analytics() {
                       const dept = departments.find(
                         (d) => d.id === user.departmentId,
                       );
-                      const isCurrentUser = currentUser?.id === user.id;
 
-                      // No real studio-wide time-log aggregation backend exists yet,
-                      // so only the logged-in user's own row has a real punched-in
-                      // status (mirrored from the header clock via usePunchedInSession
-                      // above) - which means this row must actually check
-                      // punchedInSession.since, not just identity, or a currentUser who
-                      // is punched OUT would still show PUNCHED IN here. Every other
-                      // row gets an honest "unknown" placeholder instead of a fabricated
-                      // punched-in/offline status.
-                      const mockStatus = isCurrentUser
-                        ? punchedInSession.since
-                          ? "punched-in"
-                          : "offline"
-                        : "unknown";
-                      const punchedInAt =
-                        mockStatus === "punched-in" && isCurrentUser
-                          ? punchedInSession.since!
-                          : undefined;
+                      // users.punched_in_at is real backend state for every
+                      // user now (GET /users), not just whoever's logged in
+                      // -- see hooks/useUsers.ts's usePunchIn/usePunchOut.
+                      const mockStatus = user.punchedInAt
+                        ? "punched-in"
+                        : "offline";
+                      const punchedInAt = user.punchedInAt ?? undefined;
 
-                      // No real studio-wide time-log aggregation backend
-                      // exists yet (only per-task daily-logs via
-                      // GET /daily-logs?taskId=/?userId=, not a full
-                      // per-user aggregate) — so only the logged-in user's
-                      // own row has real hours, mirrored from the header
-                      // clock's punched-in session above. Every other row
-                      // shows an honest "no data" placeholder instead of
-                      // invented hours.
-                      //
-                      // sessionHrs is the same punched-in-session figure as
-                      // todayHrs (there's no real weekly aggregate to show) —
-                      // the column is labeled "Session (hrs)", not "This
-                      // Week", so it isn't presented as something it isn't.
-                      const todayHrs = isCurrentUser
-                        ? punchedInSession.hours.toFixed(1)
+                      // Elapsed time since punch-in is real for every row.
+                      // There's still no full per-user daily-log aggregate
+                      // backend (only per-task GET /daily-logs?taskId=),
+                      // so "Today"/"Session" both show this same
+                      // punched-in-session figure rather than a real
+                      // studio-wide hours total -- the column is labeled
+                      // "Session (hrs)", not "This Week", so it isn't
+                      // presented as something it isn't.
+                      const sessionHours = user.punchedInAt
+                        ? hoursSincePunchIn(user.punchedInAt)
                         : null;
-                      const weekHrs = isCurrentUser
-                        ? punchedInSession.hours.toFixed(1)
-                        : null;
+                      const todayHrs = sessionHours?.toFixed(1) ?? null;
+                      const weekHrs = sessionHours?.toFixed(1) ?? null;
                       const util =
                         weekHrs !== null
                           ? Math.round((Number(weekHrs) / 40) * 100)
@@ -1209,9 +1159,7 @@ export default function Analytics() {
                             >
                               {mockStatus === "punched-in"
                                 ? `PUNCHED IN${punchedInAt ? ` (${new Date(punchedInAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})` : ""}`
-                                : mockStatus === "unknown"
-                                  ? "NO DATA"
-                                  : "OFFLINE"}
+                                : "OFFLINE"}
                             </Badge>
                           </td>
                           <td className="py-4 text-right tabular-nums font-medium">

@@ -63,6 +63,7 @@ export interface User {
   skills: string[];
   password: string; // For login simulation
   capabilities?: string[]; // Array of RBAC capability IDs
+  punchedInAt?: string | null; // Real backend punch-clock state (users.punched_in_at); undefined for generated mock rows
 }
 
 export interface Department {

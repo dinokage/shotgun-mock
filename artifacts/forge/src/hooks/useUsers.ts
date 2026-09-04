@@ -14,6 +14,7 @@ export interface UserDTO {
   title: string | null;
   avatar: string | null;
   status: string | null;
+  punchedInAt: string | null;
   createdAt: string;
 }
 
@@ -78,6 +79,38 @@ export function useChangePassword() {
   return useMutation({
     mutationFn: (body: { currentPassword: string; newPassword: string }) =>
       apiClient.put<{ ok: true }>("/users/me/password", body),
+  });
+}
+
+// Real punch clock, replacing the old per-browser localStorage timer
+// (TimeClockWidget.tsx) that no other user or device could ever see and
+// that reset on every login. Mirrors useUpdateProfile's cache/store sync so
+// the header widget, daily-standup.tsx's Payroll table, and analytics.tsx
+// all reflect the change immediately instead of waiting on the next 10s
+// fetchMe() poll.
+export function usePunchIn() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiClient.post<UserDTO>("/users/me/punch-in", {}),
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      useAuthStore.getState().updateCurrentUser({
+        punchedInAt: updated.punchedInAt,
+      });
+    },
+  });
+}
+
+export function usePunchOut() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiClient.post<UserDTO>("/users/me/punch-out", {}),
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      useAuthStore.getState().updateCurrentUser({
+        punchedInAt: updated.punchedInAt,
+      });
+    },
   });
 }
 

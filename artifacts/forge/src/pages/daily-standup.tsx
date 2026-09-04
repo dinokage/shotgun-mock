@@ -239,7 +239,7 @@ function PayrollRow({
         </div>
       </td>
       <td className="px-4 py-3 text-center">
-        {member.status === "active" ? (
+        {member.punchedInAt ? (
           <Badge
             variant="outline"
             className="bg-green-500/10 text-green-500 border-green-500/20 text-[10px]"
@@ -603,7 +603,7 @@ export default function DailyStandup() {
         member.name,
         member.title,
         memberDept?.name ?? "",
-        member.status === "active" ? "Punched In" : "Away",
+        member.punchedInAt ? "Punched In" : "Away",
         totalHoursToday,
         typeof member.capacity === "number" ? member.capacity : "",
         isApproved ? "Yes" : "No",
