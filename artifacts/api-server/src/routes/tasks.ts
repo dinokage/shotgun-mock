@@ -61,6 +61,94 @@ async function taskInTenant(id: string, tenantId: string) {
   return !!row;
 }
 
+// The review workflow's stage gates (submit -> lead-review -> pm-review ->
+// approved) were, until now, enforced only in review.tsx's UI (canApproveAsLead
+// /canApproveAsPM booleans that hide/show the action buttons) -- nothing
+// stopped a client that skipped the frontend from PUTting status directly to
+// "approved" via the API. These two helpers port review.tsx's/taskShape.ts's
+// exact same checks server-side so the two gated transitions (advancing to
+// "pm-review" and to "approved") can't be reached without holding the real
+// authority the UI implies. Ordinary status values (in-progress, done, the
+// free-text tracksheet-imported statuses, etc.) are untouched -- only these
+// two specific target statuses represent a genuine trust escalation.
+const DEPARTMENT_LEADERSHIP_ROLE_NAMES = ["lead", "producer"];
+
+async function canApproveAsDeptLead(
+  tenantId: string,
+  actorUserId: string,
+  actorRoleId: string,
+  taskDepartmentName: string | null,
+): Promise<boolean> {
+  const [grant] = await db
+    .select()
+    .from(tenantRoleCapabilitiesTable)
+    .where(
+      and(
+        eq(tenantRoleCapabilitiesTable.roleId, actorRoleId),
+        eq(tenantRoleCapabilitiesTable.capabilityId, "approve_reviews"),
+      ),
+    );
+  if (!grant) return false;
+
+  const [actorRole] = await db
+    .select({ name: tenantRolesTable.name })
+    .from(tenantRolesTable)
+    .where(and(eq(tenantRolesTable.id, actorRoleId), eq(tenantRolesTable.tenantId, tenantId)));
+  if (!actorRole || !DEPARTMENT_LEADERSHIP_ROLE_NAMES.includes(actorRole.name)) return false;
+  if (!taskDepartmentName) return false;
+
+  const [actor] = await db
+    .select({ departmentId: usersTable.departmentId })
+    .from(usersTable)
+    .where(and(eq(usersTable.id, actorUserId), eq(usersTable.tenantId, tenantId)));
+  const [dept] = await db
+    .select({ id: departmentsTable.id })
+    .from(departmentsTable)
+    .where(and(eq(departmentsTable.tenantId, tenantId), eq(departmentsTable.name, taskDepartmentName)));
+  return !!actor?.departmentId && !!dept?.id && actor.departmentId === dept.id;
+}
+
+async function canApproveAsProdManager(
+  tenantId: string,
+  actorUserId: string,
+  actorRoleId: string,
+  taskDepartmentName: string | null,
+): Promise<boolean> {
+  const [actorRole] = await db
+    .select({ name: tenantRolesTable.name })
+    .from(tenantRolesTable)
+    .where(and(eq(tenantRolesTable.id, actorRoleId), eq(tenantRolesTable.tenantId, tenantId)));
+  if (!actorRole || actorRole.name !== "production_head") return false;
+
+  const productionHeads = await db
+    .select({ id: usersTable.id, departmentId: usersTable.departmentId })
+    .from(usersTable)
+    .innerJoin(tenantRolesTable, eq(usersTable.roleId, tenantRolesTable.id))
+    .where(and(eq(usersTable.tenantId, tenantId), eq(tenantRolesTable.name, "production_head")));
+  if (productionHeads.length === 0) return false;
+
+  let dept: { id: string } | undefined;
+  if (taskDepartmentName) {
+    [dept] = await db
+      .select({ id: departmentsTable.id })
+      .from(departmentsTable)
+      .where(and(eq(departmentsTable.tenantId, tenantId), eq(departmentsTable.name, taskDepartmentName)));
+  }
+  const ownDeptPMs = dept ? productionHeads.filter((u) => u.departmentId === dept!.id) : [];
+  if (ownDeptPMs.length > 0) return ownDeptPMs.some((u) => u.id === actorUserId);
+
+  const [mainDept] = await db
+    .select({ id: departmentsTable.id })
+    .from(departmentsTable)
+    .where(
+      and(eq(departmentsTable.tenantId, tenantId), eq(departmentsTable.name, "Production Management")),
+    );
+  const mainPMs = mainDept ? productionHeads.filter((u) => u.departmentId === mainDept.id) : [];
+  if (mainPMs.length > 0) return mainPMs.some((u) => u.id === actorUserId);
+
+  return productionHeads.some((u) => u.id === actorUserId);
+}
+
 // The approval-events table is an append-only audit trail (see the schema
 // comment in tasks-detail.ts) — its whole purpose is to record who approved
 // what and in what capacity. Accepting `byRole` from the request body would
@@ -256,6 +344,19 @@ tasksRouter.put("/:id", async (req, res) => {
       }
     }
     updates.lastStatusUpdate = new Date();
+
+    if (updates.status === "pm-review") {
+      if (!(await canApproveAsDeptLead(tenantId, req.userId!, req.roleId!, existing.department)))
+        return res.status(403).json({
+          error:
+            "Forbidden: only the assigned department's Lead/Producer can advance this task to Production Manager review",
+        });
+    } else if (updates.status === "approved") {
+      if (!(await canApproveAsProdManager(tenantId, req.userId!, req.roleId!, existing.department)))
+        return res.status(403).json({
+          error: "Forbidden: only the eligible Production Manager can approve this task",
+        });
+    }
 
     await db
       .update(tasksTable)
@@ -544,8 +645,26 @@ tasksRouter.post("/:id/approval-events", async (req, res) => {
     const { action } = req.body;
     if (!action || !(APPROVAL_EVENT_ACTIONS as readonly string[]).includes(action))
       return res.status(400).json({ error: "Missing or invalid action" });
-    if (!(await taskInTenant(req.params.id, tenantId)))
-      return res.status(404).json({ error: "Not found" });
+    const [approvalTask] = await db
+      .select({ department: tasksTable.department })
+      .from(tasksTable)
+      .where(and(eq(tasksTable.tenantId, tenantId), eq(tasksTable.id, req.params.id)));
+    if (!approvalTask) return res.status(404).json({ error: "Not found" });
+
+    // The status-transition gate on PUT /:id is the authoritative check, but
+    // this append-only audit log's whole purpose is an honest record of who
+    // approved what -- letting anyone write an "approved"/"published"/
+    // "submitted-for-manager-review" event they didn't actually have
+    // authority for would falsify that record even if the task's real status
+    // never moved.
+    if (action === "submitted-for-manager-review") {
+      if (!(await canApproveAsDeptLead(tenantId, userId, roleId, approvalTask.department)))
+        return res.status(403).json({ error: "Forbidden: missing lead-approval authority" });
+    } else if (action === "approved" || action === "published") {
+      if (!(await canApproveAsProdManager(tenantId, userId, roleId, approvalTask.department)))
+        return res.status(403).json({ error: "Forbidden: missing production-manager approval authority" });
+    }
+
     const byRole = await roleNameForCaller(roleId, tenantId);
     if (!byRole) return res.status(400).json({ error: "Invalid role" });
     const newId = crypto.randomUUID();
