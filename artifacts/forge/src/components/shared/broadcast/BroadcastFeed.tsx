@@ -1,8 +1,9 @@
 import { Globe, Radio } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { USERS, ROLE_LABELS } from "@/data/mockData";
+import { ROLE_LABELS } from "@/data/mockData";
 import type { Broadcast } from "@/store/broadcasts";
+import { useUserStore } from "@/store/users";
 import { cn } from "@/lib/utils";
 
 // Maps a Broadcast's severity to the app's shared --status-* tokens
@@ -49,9 +50,10 @@ export function BroadcastFeed({ broadcasts, className }: BroadcastFeedProps) {
 }
 
 function BroadcastCard({ broadcast }: { broadcast: Broadcast }) {
+  const users = useUserStore((s) => s.users);
   // authorId is a real User['id'] at every real call site, but this feed
   // should never hard-crash on a stale/foreign id, so fall back gracefully.
-  const author = USERS.find((u) => u.id === broadcast.authorId);
+  const author = users.find((u) => u.id === broadcast.authorId);
   const styles = SEVERITY_STYLES[broadcast.severity];
 
   return (

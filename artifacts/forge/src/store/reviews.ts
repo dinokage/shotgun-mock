@@ -115,6 +115,14 @@ const INITIAL_CLIENT_NOTES: ClientNote[] = seedClientShot
 interface ReviewState {
   reviews: Review[];
   versions: Version[];
+  // Mirrors useUserStore/useTasksStore/etc's setX() pattern -- store/auth.ts's
+  // fetchMe() calls these on every login and every 10s poll so real
+  // versions/reviews created after the app first loaded actually show up
+  // (previously this store only ever read the pre-login mock snapshot,
+  // frozen for the whole session in every consumer: shot-detail.tsx,
+  // analytics.tsx, home.tsx, Sidebar.tsx, and 3 project-detail tabs).
+  setReviews: (reviews: Review[]) => void;
+  setVersions: (versions: Version[]) => void;
   addReview: (review: Omit<Review, "id" | "createdAt" | "updatedAt">) => void;
   addVersion: (version: Omit<Version, "id" | "createdAt">) => void;
 
@@ -162,6 +170,8 @@ export const useReviewStore = create<ReviewState>()(
     (set, get) => ({
       reviews: REVIEWS,
       versions: VERSIONS,
+      setReviews: (reviews) => set({ reviews }),
+      setVersions: (versions) => set({ versions }),
       addReview: (review) =>
         set((state) => ({
           reviews: [

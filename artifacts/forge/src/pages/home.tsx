@@ -13,8 +13,6 @@ import { useReviewStore } from "@/store/reviews";
 import { useDepartmentStore } from "@/store/departments";
 import { useUserStore } from "@/store/users";
 import {
-  USERS,
-  DEPARTMENTS,
   Project,
   User,
   isTaskDone,
@@ -938,6 +936,7 @@ function ArtistDashboard({ currentUser }: { currentUser: User }) {
   const tasks = useTasksStore((state) => state.tasks);
   const reviews = useReviewStore((state) => state.reviews);
   const versions = useReviewStore((state) => state.versions);
+  const users = useUserStore((state) => state.users);
   const myTasks = tasks.filter((t) => getAssigneeId(t) === currentUser.id);
 
   // Active tasks — anything blocked (bottleneck) is surfaced ahead of the
@@ -1370,7 +1369,7 @@ function ArtistDashboard({ currentUser }: { currentUser: User }) {
               <div className="space-y-3">
                 {myReceivedFeedback.slice(0, 3).map((r) => {
                   const version = versions.find((v) => v.id === r.versionId);
-                  const reviewer = USERS.find((u) => u.id === r.reviewerId);
+                  const reviewer = users.find((u) => u.id === r.reviewerId);
                   return (
                     <div
                       key={r.id}

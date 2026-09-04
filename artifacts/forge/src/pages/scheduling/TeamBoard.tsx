@@ -33,9 +33,10 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Switch } from "@/components/ui/switch";
 import { PriorityChip } from "@/components/shared/PriorityChip";
 import { Search, Inbox, Clock } from "lucide-react";
-import { PROJECTS, Task } from "@/data/mockData";
+import { Task } from "@/data/mockData";
 import { useUsers } from "@/hooks/useUsers";
 import { useDepartmentStore } from "@/store/departments";
+import { useProjectStore } from "@/store/projects";
 import { useTasksStore } from "@/store/tasks";
 import { useUIStore } from "@/store/ui";
 import { useToast } from "@/hooks/use-toast";
@@ -247,6 +248,7 @@ export default function TeamBoard() {
   // read as unknown rather than a verified 0%, same as profile.tsx.
   const { data: users = [] } = useUsers();
   const departments = useDepartmentStore((s) => s.departments);
+  const projects = useProjectStore((s) => s.projects);
   const entityProjectMap = useEntityProjectMap();
 
   const [projectFilter, setProjectFilter] = useState("all");
@@ -391,7 +393,7 @@ export default function TeamBoard() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Projects</SelectItem>
-              {PROJECTS.map((p) => (
+              {projects.map((p) => (
                 <SelectItem key={p.id} value={p.id}>
                   {p.name}
                 </SelectItem>

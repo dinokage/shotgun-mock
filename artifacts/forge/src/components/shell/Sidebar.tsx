@@ -40,7 +40,7 @@ import { useChatGroupsStore } from "@/store/chatGroups";
 import { useCapability, useIsLeadership } from "@/hooks/use-capability";
 import type { CapabilityId } from "@/store/permissions";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { DEPARTMENTS } from "@/data/mockData";
+import { useDepartmentStore } from "@/store/departments";
 import { DEPARTMENT_LEADERSHIP_ROLES } from "@/store/permissions";
 import { canAccessRoute } from "@/lib/roleRouteAccess";
 import { Badge } from "@/components/ui/badge";
@@ -164,6 +164,7 @@ export function Sidebar() {
   const isLeadership = useIsLeadership();
   const tasks = useTasksStore((s) => s.tasks);
   const reviews = useReviewStore((s) => s.reviews);
+  const departments = useDepartmentStore((s) => s.departments);
   const chatGroups = useChatGroupsStore((s) => s.groups);
 
   // The drawer's open/closed flag lives in the global UI store, not local
@@ -206,7 +207,7 @@ export function Sidebar() {
   const isDeptLeadership =
     !!currentUser && DEPARTMENT_LEADERSHIP_ROLES.includes(currentUser.role);
   const myDepartmentName = currentUser
-    ? DEPARTMENTS.find((d) => d.id === currentUser.departmentId)?.name
+    ? departments.find((d) => d.id === currentUser.departmentId)?.name
     : undefined;
   const tasksReviewBadge = isDeptLeadership
     ? tasks.filter(

@@ -22,9 +22,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { DEPARTMENTS, ROLE_LABELS } from "@/data/mockData";
+import { ROLE_LABELS } from "@/data/mockData";
 import { useUIStore } from "@/store/ui";
 import { useAuthStore } from "@/store/auth";
+import { useDepartmentStore } from "@/store/departments";
 import { useNotificationStore } from "@/store/notifications";
 import { useCapability } from "@/hooks/use-capability";
 import { resolveNotificationRoute } from "@/pages/notifications";
@@ -44,6 +45,7 @@ export function TopBar() {
     toggleMobileNav,
   } = useUIStore();
   const { currentUser, logout } = useAuthStore();
+  const departments = useDepartmentStore((s) => s.departments);
   const canAssignTasks = useCapability("assign_tasks");
   const isUnscoped = useDepartmentScope().scoped === false;
   const [, setLocation] = useLocation();
@@ -63,7 +65,7 @@ export function TopBar() {
   // no per-role department to look up for them; everyone else always sees
   // their own department's badge.
   const isGlobalRole = isUnscoped;
-  const dept = DEPARTMENTS.find((d) => d.id === currentUser.departmentId);
+  const dept = departments.find((d) => d.id === currentUser.departmentId);
 
   const handleLogout = () => {
     logout();

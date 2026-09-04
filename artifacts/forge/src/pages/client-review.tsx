@@ -18,7 +18,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiClient } from "@/lib/apiClient";
-import { PROJECTS, VERSIONS } from "@/data/mockData";
+import { useProjectStore } from "@/store/projects";
 import { useLocation } from "wouter";
 import { useAuthStore } from "@/store/auth";
 import { Badge } from "@/components/ui/badge";
@@ -71,12 +71,15 @@ const COLORS = [
  * reflects the delivered version, not just the shot), falling back to the
  * shot's own seed when no matching Version row exists in the mock data.
  */
-function resolveThumbnailSeed(shot: {
-  id: string;
-  currentVersion: string;
-  thumbnailSeed: number;
-}): number {
-  const currentVersionRecord = VERSIONS.find(
+function resolveThumbnailSeed(
+  shot: {
+    id: string;
+    currentVersion: string;
+    thumbnailSeed: number;
+  },
+  versions: { entityType: string; entityId: string; versionNumber: string; thumbnailSeed: number }[],
+): number {
+  const currentVersionRecord = versions.find(
     (v) =>
       v.entityType === "shot" &&
       v.entityId === shot.id &&
@@ -166,6 +169,8 @@ export default function ClientReview() {
   // the only actions available collapse down to Approve / Request Changes —
   // which is already the entirety of this portal's decision actions.
   const presentation = useReviewStore((s) => s.presentation);
+  const versions = useReviewStore((s) => s.versions);
+  const projects = useProjectStore((s) => s.projects);
   const isLockedViewer =
     presentation.isActive &&
     presentation.versionId === PRESENTED_VERSION_ID &&
@@ -187,7 +192,7 @@ export default function ClientReview() {
     .filter((s) => {
       if (!clientScope) return true;
       if (clientScope.versionId) {
-        const scopedVersion = VERSIONS.find(
+        const scopedVersion = versions.find(
           (v) => v.id === clientScope.versionId,
         );
         return scopedVersion ? scopedVersion.entityId === s.id : false;
@@ -200,7 +205,7 @@ export default function ClientReview() {
     ? shots.find((s) => s.id === activeReviewId)
     : null;
   const activeProject = activeShot
-    ? PROJECTS.find((p) => p.id === activeShot.projectId)
+    ? projects.find((p) => p.id === activeShot.projectId)
     : null;
 
   // Studio Updates: the one bridge from the internal status-broadcast
@@ -231,7 +236,7 @@ export default function ClientReview() {
   const activeVersionPoster = useMemo(
     () =>
       activeShot
-        ? getPlaceholderThumbnail(resolveThumbnailSeed(activeShot), 1280, 720)
+        ? getPlaceholderThumbnail(resolveThumbnailSeed(activeShot, versions), 1280, 720)
         : undefined,
     [activeShot],
   );
@@ -239,7 +244,7 @@ export default function ClientReview() {
   // Real per-shot media reference for playback, instead of one hardcoded
   // clip shared by every shot regardless of which one was clicked.
   const activeVideoSrc = usePlaceholderVideoSrc(
-    activeShot ? resolveThumbnailSeed(activeShot) : 0,
+    activeShot ? resolveThumbnailSeed(activeShot, versions) : 0,
   );
 
   // Client feedback moderation: notes submitted here are held pending until
@@ -526,7 +531,7 @@ export default function ClientReview() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {pendingReviews.map((shot) => {
-                const project = PROJECTS.find((p) => p.id === shot.projectId);
+                const project = projects.find((p) => p.id === shot.projectId);
                 return (
                   <div
                     key={shot.id}
@@ -536,7 +541,7 @@ export default function ClientReview() {
                     <div
                       className="relative aspect-video bg-zinc-800 overflow-hidden bg-cover bg-center"
                       style={{
-                        backgroundImage: `url(${getPlaceholderThumbnail(resolveThumbnailSeed(shot))})`,
+                        backgroundImage: `url(${getPlaceholderThumbnail(resolveThumbnailSeed(shot, versions))})`,
                       }}
                     >
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">

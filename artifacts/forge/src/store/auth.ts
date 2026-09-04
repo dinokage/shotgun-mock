@@ -144,6 +144,10 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       import("./departments").then((m) =>
         m.useDepartmentStore.getState().setDepartments(DEPARTMENTS.slice()),
       );
+      import("./reviews").then((m) => {
+        m.useReviewStore.getState().setReviews(REVIEWS.slice());
+        m.useReviewStore.getState().setVersions(normalizedVersions);
+      });
 
       set({
         currentUser: user,
