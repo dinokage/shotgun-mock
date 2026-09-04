@@ -397,7 +397,7 @@ export default function DailyStandup() {
   const pendingReviewTasks = tasks.filter(
     (t) =>
       (isAllDepts || t.department === dept?.name) &&
-      ["review", "lead-review"].includes(t.status),
+      ["review", "lead-review", "pm-review"].includes(t.status),
   );
 
   // Updates posted from the "My Updates" form, mapped with the full user

@@ -994,7 +994,10 @@ function ArtistDashboard({ currentUser }: { currentUser: User }) {
     () =>
       myTasks
         .filter(
-          (t) => t.status === "review" || t.status === "lead-review",
+          (t) =>
+            t.status === "review" ||
+            t.status === "lead-review" ||
+            t.status === "pm-review",
         )
         .sort(
           (a, b) =>

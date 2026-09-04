@@ -1897,6 +1897,7 @@ const taskStatuses: Task["status"][] = [
   "bottleneck",
   "review",
   "lead-review",
+  "pm-review",
   "approved",
   "complete",
 ];
@@ -1990,7 +1991,7 @@ function checklistDoneCount(
     return 0;
   if (status === "bottleneck") return 1;
   if (status === "in-progress") return 1 + (seed % 2); // 1-2 items: work is underway but not done
-  if (status === "review" || status === "lead-review")
+  if (status === "review" || status === "lead-review" || status === "pm-review")
     return 3; // submitted, final polish still pending sign-off
   return 0;
 }
