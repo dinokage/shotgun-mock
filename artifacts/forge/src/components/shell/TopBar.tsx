@@ -27,13 +27,18 @@ import { useUIStore } from "@/store/ui";
 import { useAuthStore } from "@/store/auth";
 import { useDepartmentStore } from "@/store/departments";
 import { useNotificationStore } from "@/store/notifications";
+import {
+  useNotifications,
+  useMarkNotificationRead,
+  useMarkAllNotificationsRead,
+} from "@/hooks/useNotifications";
 import { useCapability } from "@/hooks/use-capability";
 import { resolveNotificationRoute } from "@/pages/notifications";
 import { useDepartmentScope } from "@/hooks/useDepartmentScope";
 import { DEPARTMENT_LEADERSHIP_ROLES } from "@/store/permissions";
 import { Link, useLocation } from "wouter";
 import { TimeClockWidget } from "@/components/shared/TimeClockWidget";
-import { USERS } from "@/data/mockData";
+import { formatDistanceToNowStrict } from "date-fns";
 
 export function TopBar() {
   const { setTheme, resolvedTheme } = useTheme();
@@ -49,13 +54,19 @@ export function TopBar() {
   const canAssignTasks = useCapability("assign_tasks");
   const isUnscoped = useDepartmentScope().scoped === false;
   const [, setLocation] = useLocation();
-  const notifications = useNotificationStore((s) => s.notifications);
+  // Real, backend-sourced notifications (routes/notifications.ts) -- see
+  // hooks/useNotifications.ts's comment for why this replaced
+  // store/notifications.ts, a per-browser-only localStorage store that
+  // never talked to the server.
+  const { data: notifications = [] } = useNotifications();
   const notificationPreferences = useNotificationStore((s) => s.preferences);
-  const markAsRead = useNotificationStore((s) => s.markAsRead);
-  const markAllAsRead = useNotificationStore((s) => s.markAllAsRead);
+  const markReadMutation = useMarkNotificationRead();
+  const markAllReadMutation = useMarkAllNotificationsRead();
   // Muted categories (see Settings > Notifications) are hidden here too, same as the full notifications page.
   const visibleNotifs = notifications.filter(
-    (n) => notificationPreferences[n.category]?.push !== false,
+    (n) =>
+      notificationPreferences[n.category as keyof typeof notificationPreferences]
+        ?.push !== false,
   );
   const unreadNotifs = visibleNotifs.filter((n) => !n.read).length;
 
@@ -220,7 +231,7 @@ export function TopBar() {
                 disabled={unreadNotifs === 0}
                 onClick={(e) => {
                   e.stopPropagation();
-                  markAllAsRead();
+                  markAllReadMutation.mutate();
                 }}
               >
                 Mark all read
@@ -233,7 +244,7 @@ export function TopBar() {
                 className="flex-col items-start gap-1 py-3 cursor-pointer"
                 onSelect={(e) => {
                   e.preventDefault();
-                  if (!notif.read) markAsRead(notif.id);
+                  if (!notif.read) markReadMutation.mutate(notif.id);
                   const route = resolveNotificationRoute(notif);
                   if (route) setLocation(route);
                 }}
@@ -258,7 +269,9 @@ export function TopBar() {
                   {notif.description}
                 </p>
                 <span className="text-[10px] text-muted-foreground/60 pl-4">
-                  {notif.timestamp}
+                  {formatDistanceToNowStrict(new Date(notif.createdAt), {
+                    addSuffix: true,
+                  })}
                 </span>
               </DropdownMenuItem>
             ))}

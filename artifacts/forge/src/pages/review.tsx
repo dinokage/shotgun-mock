@@ -86,10 +86,6 @@ import {
   type ReviewComment,
 } from "@/store/reviews";
 import {
-  useNotificationStore,
-  type NotificationCategory,
-} from "@/store/notifications";
-import {
   AnnotationToolbar,
   AnnotationCanvas,
   PlaybackControls,
@@ -604,18 +600,6 @@ export default function Review() {
       : reviewedTask?.status === "pm-review" || reviewedTask?.status === "approved"
         ? reviewedTask.status
         : "wip";
-  const addNotification = useNotificationStore((s) => s.addNotification);
-  const APPROVAL_NOTIFICATION_CATEGORY: Record<
-    ApprovalEvent["action"],
-    NotificationCategory
-  > = {
-    "submitted-for-lead-review": "review",
-    "submitted-for-manager-review": "review",
-    approved: "approval",
-    "changes-requested": "workflow",
-    rejected: "workflow",
-    published: "publishing",
-  };
   const submitApproval = (
     status: "in-progress" | "lead-review" | "pm-review" | "approved",
     action: ApprovalEvent["action"],
@@ -637,20 +621,11 @@ export default function Review() {
     if (action === "published" && reviewedShot) {
       updateShotStatus(reviewedShot.id, { status: "client-review" });
     }
-    // A real event in the approval chain — surface it in the shared
-    // Notifications feed, not just as a toast that vanishes with this tab.
-    const shotLabel = reviewedShot
-      ? `${reviewedShot.name} ${reviewedShot.currentVersion}`
-      : "this version";
-    addNotification({
-      title: `${shotLabel} ${APPROVAL_ACTION_LABEL[action]}`,
-      description: `${currentUser.name} ${APPROVAL_ACTION_LABEL[action]} on ${shotLabel}.`,
-      category: APPROVAL_NOTIFICATION_CATEGORY[action],
-      priority: action === "rejected" ? "high" : "medium",
-      entityType: "review",
-      entityId: taskId,
-      actionUrl: `/review/${taskId}`,
-    });
+    // The real, cross-user notification for this event is already sent
+    // server-side (routes/tasks.ts's POST /:id/approval-events handler,
+    // via createNotification) to whoever needs to act next -- a local
+    // addNotification() call here used to write into store/notifications.ts,
+    // a per-browser-only store nothing else reads from anymore.
   };
 
   // Client feedback moderation: notes a client leaves in the client portal

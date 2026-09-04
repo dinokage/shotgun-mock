@@ -12,15 +12,26 @@ import {
   EmptyDescription,
 } from "@/components/ui/empty";
 import { useNotificationStore } from "@/store/notifications";
-import type { Notification } from "@/data/mockData";
+import {
+  useNotifications,
+  useMarkNotificationRead,
+  useMarkAllNotificationsRead,
+} from "@/hooks/useNotifications";
+import { formatDistanceToNowStrict } from "date-fns";
 import { cut, stagger } from "@/lib/motion";
 
 /**
  * Resolves a notification's entityType/entityId to a route. Falls back to
  * `actionUrl` if the type isn't one we have a dedicated detail route for,
- * and returns null if there's nowhere sensible to send the user.
+ * and returns null if there's nowhere sensible to send the user. Takes a
+ * minimal structural shape (not the real NotificationDTO type directly) so
+ * this stays reusable regardless of which fields the caller has on hand.
  */
-export function resolveNotificationRoute(notif: Notification): string | null {
+export function resolveNotificationRoute(notif: {
+  entityType?: string | null;
+  entityId?: string | null;
+  actionUrl?: string | null;
+}): string | null {
   const { entityType, entityId, actionUrl } = notif;
   if (entityType && entityId) {
     switch (entityType) {
@@ -41,17 +52,20 @@ export function resolveNotificationRoute(notif: Notification): string | null {
 }
 
 export default function Notifications() {
-  const notifications = useNotificationStore((s) => s.notifications);
+  // Real, backend-sourced notifications (routes/notifications.ts) -- not
+  // store/notifications.ts, a per-browser localStorage store that never
+  // talks to the server and so could never show another user's activity
+  // or survive a reload on a different device.
+  const { data: notifications = [] } = useNotifications();
   const preferences = useNotificationStore((s) => s.preferences);
-  const markAsRead = useNotificationStore((s) => s.markAsRead);
-  const markAllAsRead = useNotificationStore((s) => s.markAllAsRead);
+  const markReadMutation = useMarkNotificationRead();
+  const markAllReadMutation = useMarkAllNotificationsRead();
   const [, setLocation] = useLocation();
 
-  // Preferences are enforced at generation time in the store for any dynamic source
-  // (see addNotification), but since today's notifications are static mock seed data,
-  // muted categories are filtered out here at render time instead.
+  // Mute-by-category is still a per-browser display preference (no backend
+  // equivalent needed) -- applied at render time here.
   const visible = notifications.filter(
-    (n) => preferences[n.category]?.push !== false,
+    (n) => preferences[n.category as keyof typeof preferences]?.push !== false,
   );
   const unreadCount = visible.filter((n) => !n.read).length;
 
@@ -78,7 +92,7 @@ export default function Notifications() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={markAllAsRead}
+                onClick={() => markAllReadMutation.mutate()}
                 className="gap-2"
               >
                 <CheckCheck className="w-4 h-4" /> Mark all as read
@@ -93,7 +107,7 @@ export default function Notifications() {
           {visible.map((notif, i) => {
             const route = resolveNotificationRoute(notif);
             const activate = () => {
-              if (!notif.read) markAsRead(notif.id);
+              if (!notif.read) markReadMutation.mutate(notif.id);
               if (route) setLocation(route);
             };
             return (
@@ -141,7 +155,9 @@ export default function Notifications() {
                         {notif.title}
                       </span>
                       <span className="text-xs text-muted-foreground ml-4 shrink-0">
-                        {notif.timestamp}
+                        {formatDistanceToNowStrict(new Date(notif.createdAt), {
+                          addSuffix: true,
+                        })}
                       </span>
                     </div>
                     <p className="text-sm text-muted-foreground mb-2">
