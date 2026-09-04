@@ -52,12 +52,10 @@ import { useAuthStore } from "@/store/auth";
 import { useIsLeadership, useCapability } from "@/hooks/use-capability";
 import { useToast } from "@/hooks/use-toast";
 import { TracksheetImportDialog } from "@/components/tracking/TracksheetImportDialog";
-import {
-  PROJECTS,
-  TaskStatus,
-} from "@/data/mockData";
+import { TaskStatus } from "@/data/mockData";
 import { useUserStore } from "@/store/users";
 import { useDepartmentStore } from "@/store/departments";
+import { useProjectStore } from "@/store/projects";
 import { useShots, useUpdateShot } from "@/hooks/useShots";
 import { useAllEpisodes } from "@/hooks/useEpisodes";
 import { useAllSequences } from "@/hooks/useSequences";
@@ -473,6 +471,7 @@ export default function TrackingGrid() {
   const { toast } = useToast();
   const users = useUserStore((s) => s.users);
   const departments = useDepartmentStore((s) => s.departments);
+  const projects = useProjectStore((s) => s.projects);
   const { data: allEpisodes = [] } = useAllEpisodes();
   const { data: allSequences = [] } = useAllSequences();
   const canImportTracksheet = useCapability("create_tasks");
@@ -656,7 +655,7 @@ export default function TrackingGrid() {
     if (search) {
       const term = search.toLowerCase();
       filteredShots = filteredShots.filter((s) => {
-        const projName = PROJECTS.find((p) => p.id === s.projectId)?.name || "";
+        const projName = projects.find((p) => p.id === s.projectId)?.name || "";
         const epName = allEpisodes.find((e) => e.id === s.episodeId)?.name || "";
         const seqName =
           allSequences.find((sq) => sq.id === s.sequenceId)?.name || "";
@@ -672,7 +671,7 @@ export default function TrackingGrid() {
     }
 
     let mapped: TrackingRow[] = filteredShots.map((shot, i) => {
-      const proj = PROJECTS.find((p) => p.id === shot.projectId);
+      const proj = projects.find((p) => p.id === shot.projectId);
       const ep = allEpisodes.find((e) => e.id === shot.episodeId);
       const seq = allSequences.find((sq) => sq.id === shot.sequenceId);
       const assignee = users.find((u) => u.id === shot.assigneeId);
@@ -1329,7 +1328,7 @@ export default function TrackingGrid() {
           </SelectTrigger>
           <SelectContent className="bg-background border-border text-foreground">
             <SelectItem value="all">All Projects</SelectItem>
-            {PROJECTS.map((p) => (
+            {projects.map((p) => (
               <SelectItem key={p.id} value={p.id}>
                 {p.name}
               </SelectItem>

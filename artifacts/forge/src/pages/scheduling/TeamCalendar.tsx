@@ -11,11 +11,11 @@ import {
 } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
-  USERS,
-  PROJECTS,
   DEPENDENCY_TYPE_LABELS,
   type LeaveEvent,
 } from "@/data/mockData";
+import { useUserStore } from "@/store/users";
+import { useProjectStore } from "@/store/projects";
 import { Search, ZoomIn, ZoomOut } from "lucide-react";
 import { useUIStore } from "@/store/ui";
 import { useTasksStore } from "@/store/tasks";
@@ -51,6 +51,8 @@ export default function TeamCalendar() {
   const { setActiveTaskDrawer } = useUIStore();
   const tasks = useTasksStore((s) => s.tasks);
   const updateTaskDates = useTasksStore((s) => s.updateTaskDates);
+  const users = useUserStore((s) => s.users);
+  const projects = useProjectStore((s) => s.projects);
   const entityProjectMap = useEntityProjectMap();
 
   const [projectFilter, setProjectFilter] = useState<string>("all");
@@ -103,7 +105,7 @@ export default function TeamCalendar() {
 
   const groupedByUser = useMemo(() => {
     const groups: Record<string, typeof tasksToDisplay> = {};
-    USERS.forEach((u) => (groups[u.id] = []));
+    users.forEach((u) => (groups[u.id] = []));
     tasksToDisplay.forEach((t) => {
       const assigneeId = getAssigneeId(t);
       if (assigneeId && groups[assigneeId]) groups[assigneeId].push(t);
@@ -111,7 +113,7 @@ export default function TeamCalendar() {
     return Object.fromEntries(
       Object.entries(groups).filter(([, ts]) => ts.length > 0),
     );
-  }, [tasksToDisplay]);
+  }, [tasksToDisplay, users]);
 
   const cellWidth = 40 * zoom;
 
@@ -192,7 +194,7 @@ export default function TeamCalendar() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Projects</SelectItem>
-              {PROJECTS.map((p) => (
+              {projects.map((p) => (
                 <SelectItem key={p.id} value={p.id}>
                   {p.name}
                 </SelectItem>
@@ -228,7 +230,7 @@ export default function TeamCalendar() {
           </div>
           <div className="flex-1 overflow-y-auto">
             {Object.keys(groupedByUser).map((userId) => {
-              const user = USERS.find((u) => u.id === userId);
+              const user = users.find((u) => u.id === userId);
               const rows = groupedByUser[userId];
               return (
                 <div
@@ -457,7 +459,7 @@ export default function TeamCalendar() {
                   })}
 
                   {rows.map((task, i) => {
-                    const project = PROJECTS.find(
+                    const project = projects.find(
                       (p) => p.id === getProjectId(task, entityProjectMap),
                     );
                     const left = task.startOffset * cellWidth;
