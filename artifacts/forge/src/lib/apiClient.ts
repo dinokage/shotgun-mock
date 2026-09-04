@@ -36,7 +36,12 @@ export async function apiFetch<T = any>(
   });
 
   if (!response.ok) {
-    let message = "An error occurred";
+    // Falls back to the HTTP status line rather than a bare "An error
+    // occurred" when the body isn't JSON (e.g. nginx's own error pages for
+    // a request it rejected before the API ever saw it, like a body over
+    // its client_max_body_size) -- a status-coded message is at least
+    // actionable, where a wholly generic one hid the real problem.
+    let message = `Request failed (${response.status} ${response.statusText || "Error"})`;
     let data;
     try {
       data = await response.json();
