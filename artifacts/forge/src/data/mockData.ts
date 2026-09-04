@@ -231,7 +231,13 @@ export type TaskStatus =
   | "pm-review"
   | "approved"
   | "complete"
-  | "cancelled";
+  | "cancelled"
+  // Catch-all for a status string this app doesn't otherwise recognize --
+  // real tracksheet imports carry a studio's own pipeline-stage vocabulary
+  // (e.g. "TK_01_APP", "WFF", "Client_App") that doesn't map onto any of
+  // the stages above. Never written by this app itself except when a user
+  // explicitly drags a card into the Kanban's "Other" column.
+  | "other";
 
 // Shared status classification so every page's "active"/"done" task rollups agree with each
 // other. Previously each page (departments overview, department detail, tracking grid) rolled

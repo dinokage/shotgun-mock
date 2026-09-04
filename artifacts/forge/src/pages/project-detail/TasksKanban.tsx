@@ -56,6 +56,16 @@ const COLUMNS: { id: TaskStatus; title: string }[] = [
   { id: "complete", title: "Complete" },
   { id: "cancelled", title: "Cancelled" },
 ];
+const KNOWN_STATUS_IDS = new Set<string>(COLUMNS.map((c) => c.id));
+// Real tracksheet-imported tasks carry a studio's own pipeline-stage
+// vocabulary (e.g. "TK_01_APP", "WFF", "Client_App") that matches none of
+// the stages above -- without this catch-all, every such task was silently
+// invisible on every Kanban board (confirmed live: 1065 real tasks, every
+// column showing 0). This column is purely a visibility safety net.
+const OTHER_COLUMN: { id: TaskStatus; title: string } = {
+  id: "other",
+  title: "Other",
+};
 
 function SortableTaskCard({
   task,
@@ -450,6 +460,20 @@ export default function KanbanView({
             />
           );
         })}
+        {(() => {
+          const otherTasks = projectTasks.filter(
+            (t) => getAssigneeId(t) && !KNOWN_STATUS_IDS.has(t.status),
+          );
+          return (
+            <DroppableColumn
+              key={OTHER_COLUMN.id}
+              col={OTHER_COLUMN}
+              tasks={otherTasks}
+              onUpdateTask={updateTask}
+              entityProjectMap={resolvedEntityProjectMap}
+            />
+          );
+        })()}
       </div>
       {createPortal(
         <DragOverlay>
