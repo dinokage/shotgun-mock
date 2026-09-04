@@ -9,6 +9,7 @@ import {
 } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { tenantAuthMiddleware } from "../middleware/tenant";
+import { requireCapability } from "../middleware/rbac";
 import { recordAuditLog } from "../lib/auditLog";
 import * as crypto from "crypto";
 
@@ -69,7 +70,7 @@ assetsRouter.get("/", async (req, res) => {
   }
 });
 
-assetsRouter.post("/", async (req, res) => {
+assetsRouter.post("/", requireCapability("manage_pipeline"), async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const { projectId, name, type, episodeId, sequenceId, assigneeId } = req.body;
@@ -124,10 +125,17 @@ const PATCHABLE_FIELDS = [
   "notes",
 ] as const;
 
-assetsRouter.put("/:id", async (req, res) => {
+// The only current frontend caller (asset-detail.tsx's Publish button) sets
+// publishStatus on the artist's own asset -- submit_reviews (not
+// manage_pipeline) matches that real usage without locking artists out of
+// publishing their own work, while still closing the "any authenticated
+// session, including a client-access link" gap this route previously had.
+assetsRouter.put("/:id", requireCapability("submit_reviews"), async (req, res) => {
   try {
     const tenantId = req.tenantId!;
-    const assetId = req.params.id;
+    // Cast needed: requireCapability() + this route's "/:id" typing widens
+    // req.params.id to `string | string[]` for overload resolution.
+    const assetId = req.params.id as string;
 
     const [existing] = await db
       .select()

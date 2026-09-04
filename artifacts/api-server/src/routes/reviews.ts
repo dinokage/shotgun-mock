@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { reviewsTable, annotationsTable, versionsTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { tenantAuthMiddleware } from "../middleware/tenant";
+import { requireCapability } from "../middleware/rbac";
 import * as crypto from "crypto";
 
 // Confirms versionId actually belongs to the caller's tenant before it's
@@ -43,7 +44,7 @@ reviewsRouter.get("/", async (req, res) => {
   }
 });
 
-reviewsRouter.post("/", async (req, res) => {
+reviewsRouter.post("/", requireCapability("submit_reviews"), async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const userId = req.userId!;
@@ -98,11 +99,14 @@ reviewsRouter.get("/:versionId/annotations", async (req, res) => {
   }
 });
 
-reviewsRouter.post("/:versionId/annotations", async (req, res) => {
+reviewsRouter.post("/:versionId/annotations", requireCapability("submit_reviews"), async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const userId = req.userId!;
-    const { versionId } = req.params;
+    // Cast needed: requireCapability() + this route's "/:versionId" typing
+    // widens req.params.versionId to `string | string[]` for overload
+    // resolution, even though a plain path segment is always one string.
+    const versionId = req.params.versionId as string;
     const {
       frame,
       type,
@@ -178,11 +182,13 @@ const ANNOTATION_PATCHABLE_FIELDS = [
   "backgroundColor",
 ] as const;
 
-reviewsRouter.put("/annotations/:id", async (req, res) => {
+reviewsRouter.put("/annotations/:id", requireCapability("submit_reviews"), async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const userId = req.userId;
-    const { id } = req.params;
+    // Cast needed: requireCapability() + this route's "/:id" typing widens
+    // req.params.id to `string | string[]` for overload resolution.
+    const id = req.params.id as string;
     const [existing] = await db
       .select()
       .from(annotationsTable)
@@ -213,11 +219,13 @@ reviewsRouter.put("/annotations/:id", async (req, res) => {
   }
 });
 
-reviewsRouter.delete("/annotations/:id", async (req, res) => {
+reviewsRouter.delete("/annotations/:id", requireCapability("submit_reviews"), async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const userId = req.userId;
-    const { id } = req.params;
+    // Cast needed: requireCapability() + this route's "/:id" typing widens
+    // req.params.id to `string | string[]` for overload resolution.
+    const id = req.params.id as string;
     const [existing] = await db
       .select()
       .from(annotationsTable)

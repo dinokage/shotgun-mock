@@ -9,6 +9,7 @@ import {
 } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { tenantAuthMiddleware } from "../middleware/tenant";
+import { requireCapability } from "../middleware/rbac";
 import * as crypto from "crypto";
 
 // See the identical comment in routes/episodes.ts — the FK constraint alone
@@ -55,7 +56,11 @@ sequencesRouter.get("/", async (req, res) => {
   }
 });
 
-sequencesRouter.post("/", async (req, res) => {
+// create_tasks matches TracksheetImportDialog.tsx's own gate -- sequences
+// are created as part of the same tracksheet-import flow episodes/shots
+// are. The self-service .../team routes below are deliberately left
+// ungated (any authenticated user joins/leaves on their own).
+sequencesRouter.post("/", requireCapability("create_tasks"), async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const { projectId, episodeId, name } = req.body;

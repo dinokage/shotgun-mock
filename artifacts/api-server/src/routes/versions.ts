@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { versionsTable, tasksTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { tenantAuthMiddleware } from "../middleware/tenant";
+import { requireCapability } from "../middleware/rbac";
 import * as crypto from "crypto";
 
 // Confirms taskId actually belongs to the caller's tenant before it's
@@ -43,7 +44,7 @@ versionsRouter.get("/", async (req, res) => {
   }
 });
 
-versionsRouter.post("/", async (req, res) => {
+versionsRouter.post("/", requireCapability("submit_reviews"), async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const userId = req.userId!;
@@ -88,10 +89,13 @@ versionsRouter.post("/", async (req, res) => {
 
 const PATCHABLE_FIELDS = ["status", "notes", "thumbnail", "mediaUrl"] as const;
 
-versionsRouter.put("/:id", async (req, res) => {
+versionsRouter.put("/:id", requireCapability("submit_reviews"), async (req, res) => {
   try {
     const tenantId = req.tenantId!;
-    const versionId = req.params.id;
+    // Cast needed: requireCapability() + this route's "/:id" typing widens
+    // req.params.id to `string | string[]` for overload resolution, even
+    // though a plain ":id" segment is always a single string at runtime.
+    const versionId = req.params.id as string;
 
     const [existing] = await db
       .select()

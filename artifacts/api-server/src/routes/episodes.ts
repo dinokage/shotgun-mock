@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { episodesTable, projectsTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { tenantAuthMiddleware } from "../middleware/tenant";
+import { requireCapability } from "../middleware/rbac";
 import * as crypto from "crypto";
 
 // Confirms projectId actually belongs to the caller's tenant before it's
@@ -40,7 +41,10 @@ episodesRouter.get("/", async (req, res) => {
   }
 });
 
-episodesRouter.post("/", async (req, res) => {
+// create_tasks matches TracksheetImportDialog.tsx's own gate -- episodes
+// are created as part of the same tracksheet-import flow shots/sequences
+// are, which leads (no manage_pipeline) legitimately use.
+episodesRouter.post("/", requireCapability("create_tasks"), async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const { projectId, name } = req.body;

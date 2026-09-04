@@ -9,6 +9,7 @@ import {
 } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { tenantAuthMiddleware } from "../middleware/tenant";
+import { requireCapability } from "../middleware/rbac";
 import { recordAuditLog } from "../lib/auditLog";
 import * as crypto from "crypto";
 
@@ -69,7 +70,12 @@ shotsRouter.get("/", async (req, res) => {
   }
 });
 
-shotsRouter.post("/", async (req, res) => {
+// create_tasks (not manage_pipeline) -- matches the one real frontend
+// caller of bulk shot creation, TracksheetImportDialog.tsx's own
+// useCapability("create_tasks") gate, which leads (who lack
+// manage_pipeline) legitimately use today. Gating this route with
+// manage_pipeline would silently break tracksheet import for every lead.
+shotsRouter.post("/", requireCapability("create_tasks"), async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const { projectId, name, episodeId, sequenceId, assigneeId } = req.body;
@@ -124,10 +130,20 @@ const PATCHABLE_FIELDS = [
   "notes",
 ] as const;
 
-shotsRouter.put("/:id", async (req, res) => {
+// edit_tasks -- the real frontend caller (tracking.tsx's inline grid "Save
+// Changes") has no dedicated gate today, and edit_tasks is the least
+// restrictive real capability that still excludes a client-access session
+// while covering every internal role (including artists) that legitimately
+// edits shot status/notes.
+shotsRouter.put("/:id", requireCapability("edit_tasks"), async (req, res) => {
   try {
     const tenantId = req.tenantId!;
-    const shotId = req.params.id;
+    // Cast needed: combining requireCapability() (typed against the generic,
+    // path-agnostic Express Request) with this route's "/:id" path typing
+    // makes TS widen req.params.id to `string | string[]` for overload
+    // resolution purposes, even though a plain ":id" segment is always a
+    // single string at runtime.
+    const shotId = req.params.id as string;
 
     const [existing] = await db
       .select()

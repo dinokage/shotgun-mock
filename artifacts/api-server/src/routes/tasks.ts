@@ -303,18 +303,22 @@ tasksRouter.get("/:id/checklist", async (req, res) => {
   }
 });
 
-tasksRouter.post("/:id/checklist", async (req, res) => {
+tasksRouter.post("/:id/checklist", requireCapability("edit_tasks"), async (req, res) => {
   try {
     const tenantId = req.tenantId!;
+    // Cast needed: requireCapability() + this route's "/:id" typing widens
+    // req.params.id to `string | string[]` for overload resolution, even
+    // though a plain ":id" segment is always a single string at runtime.
+    const taskId = req.params.id as string;
     const { text, position } = req.body;
     if (!text) return res.status(400).json({ error: "Missing text" });
-    if (!(await taskInTenant(req.params.id, tenantId)))
+    if (!(await taskInTenant(taskId, tenantId)))
       return res.status(404).json({ error: "Not found" });
     const newId = crypto.randomUUID();
     await db.insert(taskChecklistItemsTable).values({
       id: newId,
       tenantId,
-      taskId: req.params.id,
+      taskId,
       text,
       position: position ?? 0,
     });
@@ -328,9 +332,13 @@ tasksRouter.post("/:id/checklist", async (req, res) => {
   }
 });
 
-tasksRouter.put("/:id/checklist/:itemId", async (req, res) => {
+tasksRouter.put("/:id/checklist/:itemId", requireCapability("edit_tasks"), async (req, res) => {
   try {
     const tenantId = req.tenantId!;
+    // Cast needed: requireCapability() + this route's ":itemId" typing
+    // widens req.params.itemId to `string | string[]` for overload
+    // resolution, even though a plain path segment is always one string.
+    const itemId = req.params.itemId as string;
     const { done, text } = req.body;
     const [existing] = await db
       .select()
@@ -338,7 +346,7 @@ tasksRouter.put("/:id/checklist/:itemId", async (req, res) => {
       .where(
         and(
           eq(taskChecklistItemsTable.tenantId, tenantId),
-          eq(taskChecklistItemsTable.id, req.params.itemId),
+          eq(taskChecklistItemsTable.id, itemId),
         ),
       );
     if (!existing) return res.status(404).json({ error: "Not found" });
@@ -351,7 +359,7 @@ tasksRouter.put("/:id/checklist/:itemId", async (req, res) => {
       .where(
         and(
           eq(taskChecklistItemsTable.tenantId, tenantId),
-          eq(taskChecklistItemsTable.id, req.params.itemId),
+          eq(taskChecklistItemsTable.id, itemId),
         ),
       );
     const [updated] = await db
@@ -360,7 +368,7 @@ tasksRouter.put("/:id/checklist/:itemId", async (req, res) => {
       .where(
         and(
           eq(taskChecklistItemsTable.tenantId, tenantId),
-          eq(taskChecklistItemsTable.id, req.params.itemId),
+          eq(taskChecklistItemsTable.id, itemId),
         ),
       );
     return res.json(updated);
@@ -384,19 +392,22 @@ tasksRouter.get("/:id/comments", async (req, res) => {
   }
 });
 
-tasksRouter.post("/:id/comments", async (req, res) => {
+tasksRouter.post("/:id/comments", requireCapability("edit_tasks"), async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const userId = req.userId!;
+    // Cast needed: requireCapability() + this route's "/:id" typing widens
+    // req.params.id to `string | string[]` for overload resolution.
+    const taskId = req.params.id as string;
     const { text } = req.body;
     if (!text) return res.status(400).json({ error: "Missing text" });
-    if (!(await taskInTenant(req.params.id, tenantId)))
+    if (!(await taskInTenant(taskId, tenantId)))
       return res.status(404).json({ error: "Not found" });
     const newId = crypto.randomUUID();
     await db.insert(taskCommentsTable).values({
       id: newId,
       tenantId,
-      taskId: req.params.id,
+      taskId,
       userId,
       text,
     });
@@ -428,13 +439,16 @@ tasksRouter.get("/:id/dependencies", async (req, res) => {
   }
 });
 
-tasksRouter.post("/:id/dependencies", async (req, res) => {
+tasksRouter.post("/:id/dependencies", requireCapability("edit_tasks"), async (req, res) => {
   try {
     const tenantId = req.tenantId!;
+    // Cast needed: requireCapability() + this route's "/:id" typing widens
+    // req.params.id to `string | string[]` for overload resolution.
+    const taskId = req.params.id as string;
     const { dependsOnTaskId, type, lagDays } = req.body;
     if (!dependsOnTaskId)
       return res.status(400).json({ error: "Missing dependsOnTaskId" });
-    if (!(await taskInTenant(req.params.id, tenantId)))
+    if (!(await taskInTenant(taskId, tenantId)))
       return res.status(404).json({ error: "Not found" });
     if (!(await taskInTenant(dependsOnTaskId, tenantId)))
       return res.status(400).json({ error: "Invalid dependsOnTaskId" });
@@ -442,7 +456,7 @@ tasksRouter.post("/:id/dependencies", async (req, res) => {
     await db.insert(taskDependenciesTable).values({
       id: newId,
       tenantId,
-      taskId: req.params.id,
+      taskId,
       dependsOnTaskId,
       type: type || "FS",
       lagDays: lagDays ?? null,
@@ -475,19 +489,22 @@ tasksRouter.get("/:id/attachments", async (req, res) => {
   }
 });
 
-tasksRouter.post("/:id/attachments", async (req, res) => {
+tasksRouter.post("/:id/attachments", requireCapability("edit_tasks"), async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const userId = req.userId!;
+    // Cast needed: requireCapability() + this route's "/:id" typing widens
+    // req.params.id to `string | string[]` for overload resolution.
+    const taskId = req.params.id as string;
     const { url } = req.body;
     if (!url) return res.status(400).json({ error: "Missing url" });
-    if (!(await taskInTenant(req.params.id, tenantId)))
+    if (!(await taskInTenant(taskId, tenantId)))
       return res.status(404).json({ error: "Not found" });
     const newId = crypto.randomUUID();
     await db.insert(taskAttachmentsTable).values({
       id: newId,
       tenantId,
-      taskId: req.params.id,
+      taskId,
       url,
       uploadedById: userId,
     });
