@@ -34,7 +34,7 @@ import { Switch } from "@/components/ui/switch";
 import { PriorityChip } from "@/components/shared/PriorityChip";
 import { Search, Inbox, Clock } from "lucide-react";
 import { PROJECTS, Task } from "@/data/mockData";
-import { useUserStore } from "@/store/users";
+import { useUsers } from "@/hooks/useUsers";
 import { useDepartmentStore } from "@/store/departments";
 import { useTasksStore } from "@/store/tasks";
 import { useUIStore } from "@/store/ui";
@@ -241,14 +241,24 @@ export default function TeamBoard() {
   const tasks = useTasksStore((s) => s.tasks);
   const reassignTask = useTasksStore((s) => s.reassignTask);
   const revokeAssignment = useTasksStore((s) => s.revokeAssignment);
-  const users = useUserStore((s) => s.users);
+  // Live query, not useUserStore's once-at-login snapshot -- a newly added
+  // employee wouldn't appear as a column here for anyone already logged in
+  // otherwise. Real User rows have no `capacity` column (mock-only field);
+  // read as unknown rather than a verified 0%, same as profile.tsx.
+  const { data: users = [] } = useUsers();
   const departments = useDepartmentStore((s) => s.departments);
   const entityProjectMap = useEntityProjectMap();
 
   const [projectFilter, setProjectFilter] = useState("all");
   const [departmentFilter, setDepartmentFilter] = useState("all");
   const [search, setSearch] = useState("");
-  const [showEmpty, setShowEmpty] = useState(false);
+  // Defaults to true: this board's whole purpose is bulk-assigning currently
+  // *unassigned* work onto people, so on a fresh import (or any moment where
+  // most/all tasks are still unassigned) everyone legitimately has zero
+  // tasks yet -- defaulting to hide empty-handed people made the board look
+  // entirely empty ("No team members match these filters") for exactly the
+  // situation it exists to fix.
+  const [showEmpty, setShowEmpty] = useState(true);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
 
   const sensors = useSensors(
@@ -297,11 +307,7 @@ export default function TeamBoard() {
         tasks: filteredTasks.filter((t) => getAssigneeId(t) === user.id),
       }))
       .filter((col) => showEmpty || col.tasks.length > 0)
-      .sort(
-        (a, b) =>
-          b.tasks.length - a.tasks.length ||
-          (b.user.capacity ?? 0) - (a.user.capacity ?? 0),
-      );
+      .sort((a, b) => b.tasks.length - a.tasks.length);
   }, [users, filteredTasks, departmentFilter, showEmpty]);
 
   const findTask = (id: string) => tasks.find((t) => t.id === id);
@@ -420,9 +426,8 @@ export default function TeamBoard() {
                 key={user.id}
                 id={user.id}
                 name={user.name}
-                subtitle={user.title}
-                avatar={user.avatar}
-                capacity={user.capacity}
+                subtitle={user.title ?? undefined}
+                avatar={user.avatar ?? undefined}
                 tasks={userTasks}
               />
             ))}

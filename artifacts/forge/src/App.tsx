@@ -277,6 +277,20 @@ function App() {
 
   useEffect(() => {
     fetchMe();
+    // fetchMe() re-hydrates every shared store (tasks, users, shots, assets,
+    // projects, departments) from the real backend -- previously it only
+    // ran once at login, so a task reassigned/self-claimed by one person
+    // (or a new employee the admin just added) never appeared for anyone
+    // else already logged in until they reloaded or logged back in. Polling
+    // it keeps the whole app's shared state converging within seconds
+    // without needing every consumer migrated onto react-query individually.
+    // Skips while logged out so it doesn't hammer the login screen.
+    const interval = setInterval(() => {
+      if (useAuthStore.getState().isAuthenticated) {
+        fetchMe();
+      }
+    }, 10000);
+    return () => clearInterval(interval);
   }, [fetchMe]);
 
   return (
