@@ -41,6 +41,10 @@ export const usersTable = pgTable("users", {
   title: text("title"),
   avatar: text("avatar"),
   status: text("status").default("active"),
+  // Real punch clock state, replacing the old client-only localStorage timer
+  // (which auto-started on every login and never told anyone else's browser
+  // whether this person was actually clocked in). Null = punched out.
+  punchedInAt: timestamp("punched_in_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   deletedAt: timestamp("deleted_at"),
 });

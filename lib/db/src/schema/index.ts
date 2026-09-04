@@ -5,3 +5,4 @@ export * from "./rbac";
 export * from "./departments";
 export * from "./reviews";
 export * from "./client-access";
+export * from "./notifications";

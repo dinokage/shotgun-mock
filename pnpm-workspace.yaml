@@ -155,9 +155,15 @@ overrides:
   "@expo/ngrok-bin>@expo/ngrok-bin-sunos-x64": "-"
   "@expo/ngrok-bin>@expo/ngrok-bin-win32-ia32": "-"
   "@expo/ngrok-bin>@expo/ngrok-bin-win32-x64": "-"
-  # drizzle-kit uses esbuild internally on an older version that's vulnerable, this overrides it
+  # drizzle-kit uses esbuild internally on an older version that's vulnerable, this overrides it.
+  # Was pinned to 0.27.3; bumped to 0.28.1 after 0.27.3 repeatedly failed its
+  # own postinstall version check on this host ("Expected 0.27.3 but got
+  # 0.28.1") even after a full pnpm store wipe + clean reinstall -- an
+  # environment/registry-specific issue with that exact version, not
+  # something a cache clear fixes. 0.28.1 is newer than 0.27.3, so it carries
+  # the same security intent forward.
   "@esbuild-kit/esm-loader": "npm:tsx@^4.21.0"
-  esbuild: "0.27.3"
+  esbuild: "0.28.1"
 
 allowBuilds:
   "@sentry/node-cpu-profiler": true
