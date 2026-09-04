@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, integer, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, integer, jsonb, unique } from "drizzle-orm/pg-core";
 import { tenantsTable, usersTable } from "./core";
 
 export const projectsTable = pgTable("projects", {
@@ -43,6 +43,35 @@ export const sequencesTable = pgTable("sequences", {
   name: text("name").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+// Self-service "who's currently working this sequence" roster: an artist
+// joins/leaves on their own, no lead/PM assignment step. This is what the
+// early-completion auto-reassignment feature (routes/tasks.ts's approval
+// flow) reads to find who's free and which department they belong to —
+// department itself isn't duplicated here since it's already on
+// usersTable and can drift (a transfer shouldn't require rewriting old
+// roster rows).
+export const sequenceTeamMembersTable = pgTable(
+  "sequence_team_members",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenantsTable.id, { onDelete: "cascade" }),
+    sequenceId: text("sequence_id")
+      .notNull()
+      .references(() => sequencesTable.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    joinedAt: timestamp("joined_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    // A user can only join a given sequence's roster once -- joining again
+    // should be a no-op, not a duplicate row that then shows up twice.
+    sequenceUserUnique: unique().on(table.sequenceId, table.userId),
+  }),
+);
 
 export const assetsTable = pgTable("assets", {
   id: text("id").primaryKey(),

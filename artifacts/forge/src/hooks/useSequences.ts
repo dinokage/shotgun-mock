@@ -55,3 +55,47 @@ export function useCreateSequence() {
       }),
   });
 }
+
+export interface SequenceTeamMemberDTO {
+  id: string;
+  userId: string;
+  joinedAt: string;
+  name: string;
+  avatar: string | null;
+  departmentId: string | null;
+}
+
+// Self-service "who's working this sequence" roster -- an artist joins or
+// leaves on their own (routes/sequences.ts's POST/DELETE .../team), no
+// lead/PM assignment step. This is also what the early-completion
+// auto-reassignment feature reads to find who just freed up.
+export function useSequenceTeam(sequenceId: string | undefined) {
+  return useQuery<SequenceTeamMemberDTO[]>({
+    queryKey: ["sequence-team", sequenceId ?? "none"],
+    queryFn: () => apiFetch<SequenceTeamMemberDTO[]>(`/sequences/${sequenceId}/team`),
+    enabled: !!sequenceId,
+    staleTime: 15000,
+  });
+}
+
+export function useJoinSequenceTeam() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (sequenceId: string) =>
+      apiFetch<SequenceTeamMemberDTO>(`/sequences/${sequenceId}/team`, {
+        method: "POST",
+      }),
+    onSuccess: (_, sequenceId) =>
+      queryClient.invalidateQueries({ queryKey: ["sequence-team", sequenceId] }),
+  });
+}
+
+export function useLeaveSequenceTeam() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (sequenceId: string) =>
+      apiFetch(`/sequences/${sequenceId}/team/me`, { method: "DELETE" }),
+    onSuccess: (_, sequenceId) =>
+      queryClient.invalidateQueries({ queryKey: ["sequence-team", sequenceId] }),
+  });
+}
