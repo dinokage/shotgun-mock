@@ -10,11 +10,13 @@ import {
   taskCommentsTable,
   taskAttachmentsTable,
   taskApprovalEventsTable,
+  departmentsTable,
 } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability } from "../middleware/rbac";
 import * as crypto from "crypto";
+import { createNotification, findProductionManagers } from "./notifications";
 
 // A DB foreign key only verifies a referenced row exists, not who owns it,
 // so every foreign key accepted from a request body needs an explicit
@@ -514,6 +516,82 @@ tasksRouter.post("/:id/approval-events", async (req, res) => {
       .select()
       .from(taskApprovalEventsTable)
       .where(and(eq(taskApprovalEventsTable.tenantId, tenantId), eq(taskApprovalEventsTable.id, newId)));
+
+    // Fire-and-forget: a notification failure should never fail the approval
+    // action itself. Each stage notifies whoever needs to act next (or, for
+    // the final publish/reject actions, the artist whose work it concerns).
+    (async () => {
+      try {
+        const [task] = await db
+          .select()
+          .from(tasksTable)
+          .where(and(eq(tasksTable.tenantId, tenantId), eq(tasksTable.id, req.params.id)));
+        if (!task) return;
+        const [actor] = await db
+          .select({ name: usersTable.name })
+          .from(usersTable)
+          .where(eq(usersTable.id, userId));
+        const actorName = actor?.name || "Someone";
+
+        const notify = (recipientUserId: string, title: string, description: string) =>
+          createNotification({
+            tenantId,
+            recipientUserId,
+            category: action === "rejected" || action === "changes-requested" ? "workflow" : "review",
+            title,
+            description,
+            entityType: "task",
+            entityId: task.id,
+            actionUrl: `/review/${task.id}`,
+          });
+
+        if (action === "submitted-for-lead-review") {
+          const leads = await db
+            .select({ id: usersTable.id })
+            .from(usersTable)
+            .innerJoin(tenantRolesTable, eq(usersTable.roleId, tenantRolesTable.id))
+            .innerJoin(departmentsTable, eq(usersTable.departmentId, departmentsTable.id))
+            .where(
+              and(
+                eq(usersTable.tenantId, tenantId),
+                eq(departmentsTable.name, task.department || ""),
+              ),
+            );
+          for (const l of leads) {
+            await notify(
+              l.id,
+              `"${task.title}" is awaiting your review`,
+              `${actorName} submitted "${task.title}" for Lead review.`,
+            );
+          }
+        } else if (action === "submitted-for-manager-review") {
+          const pms = await findProductionManagers(tenantId, task.department);
+          for (const pm of pms) {
+            await notify(
+              pm.id,
+              `"${task.title}" needs final sign-off`,
+              `${actorName} approved "${task.title}" — awaiting Production Manager sign-off.`,
+            );
+          }
+        } else if (
+          (action === "published" ||
+            action === "rejected" ||
+            action === "changes-requested") &&
+          task.assignedTo
+        ) {
+          await notify(
+            task.assignedTo,
+            action === "published"
+              ? `"${task.title}" was approved`
+              : `"${task.title}" needs changes`,
+            `${actorName} ${action === "published" ? "approved and published" : action === "rejected" ? "rejected" : "requested changes on"} "${task.title}".`,
+          );
+        }
+      } catch (err) {
+        req.log.error(err, "Failed to send approval-event notification");
+      }
+    })();
+
     return res.status(201).json(created);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });

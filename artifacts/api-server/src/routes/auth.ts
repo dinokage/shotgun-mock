@@ -5,9 +5,11 @@ import {
   tenantsTable,
   tenantRolesTable,
   tenantRoleCapabilitiesTable,
+  departmentsTable,
 } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { verifyPassword, signSession, verifySession } from "../lib/auth";
+import { createNotification, findProductionManagers } from "./notifications";
 
 export const authRouter = Router();
 
@@ -60,6 +62,39 @@ authRouter.post("/login", async (req, res) => {
       sameSite: "lax",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
+
+    // Fire-and-forget: never let a notification failure block login itself.
+    // Skip notifying a production_head that they logged in themselves --
+    // that's not a signal anyone (including them) needs to see.
+    if (role?.name !== "production_head") {
+      (async () => {
+        try {
+          const [dept] = user.departmentId
+            ? await db
+                .select()
+                .from(departmentsTable)
+                .where(eq(departmentsTable.id, user.departmentId!))
+            : [];
+          const recipients = await findProductionManagers(
+            user.tenantId,
+            dept?.name,
+          );
+          for (const recipient of recipients) {
+            await createNotification({
+              tenantId: user.tenantId,
+              recipientUserId: recipient.id,
+              category: "system",
+              title: `${user.name} logged in`,
+              description: `${user.name} (${role?.name || "member"}${dept ? `, ${dept.name}` : ""}) just signed in.`,
+              entityType: "user",
+              entityId: user.id,
+            });
+          }
+        } catch (err) {
+          req.log.error(err, "Failed to send login notification");
+        }
+      })();
+    }
 
     return res.status(200).json({
       user: {

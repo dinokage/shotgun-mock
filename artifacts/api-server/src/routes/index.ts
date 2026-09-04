@@ -17,6 +17,7 @@ import { dailyLogsRouter } from "./daily-logs";
 import { invitesRouter } from "./invites";
 import { uploadsRouter } from "./uploads";
 import { auditLogsRouter } from "./audit-logs";
+import { notificationsRouter } from "./notifications";
 
 const router = Router();
 
@@ -40,5 +41,6 @@ router.use("/daily-logs", dailyLogsRouter);
 router.use("/invites", invitesRouter);
 router.use("/uploads", uploadsRouter);
 router.use("/audit-logs", auditLogsRouter);
+router.use("/notifications", notificationsRouter);
 
 export default router;
