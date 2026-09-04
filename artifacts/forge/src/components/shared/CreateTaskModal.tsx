@@ -2,13 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { useAuthStore } from "@/store/auth";
 import { useUIStore } from "@/store/ui";
 import { useTasksStore } from "@/store/tasks";
-import { useUserStore } from "@/store/users";
 import { useDepartmentStore } from "@/store/departments";
 import { useProjectStore } from "@/store/projects";
 import { useEpisodes } from "@/hooks/useEpisodes";
 import { useSequences } from "@/hooks/useSequences";
 import { useShots } from "@/hooks/useShots";
 import { useUploadFile } from "@/hooks/useUploads";
+import { useUsers } from "@/hooks/useUsers";
 import { apiFetch } from "@/lib/apiClient";
 import {
   Dialog,
@@ -43,7 +43,11 @@ export function CreateTaskModal() {
   const { tasks, setTasks } = useTasksStore();
   const { currentUser } = useAuthStore();
   const { toast } = useToast();
-  const users = useUserStore((s) => s.users);
+  // Live query, not useUserStore's snapshot -- that store is only populated
+  // once at login (auth.ts's fetchMe()) and never refreshed, so a newly
+  // added employee wouldn't appear in this modal's assignee list for anyone
+  // already logged in until they logged out and back in.
+  const { data: users = [] } = useUsers();
   const departments = useDepartmentStore((s) => s.departments);
   const projects = useProjectStore((s) => s.projects);
   const uploadFile = useUploadFile();
@@ -296,14 +300,22 @@ export function CreateTaskModal() {
 
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
-              <Label>Episode {episodes.length === 0 && "(none)"}</Label>
+              <Label>Episode</Label>
               <Select
                 value={episodeId}
                 onValueChange={setEpisodeId}
                 disabled={!projectId || episodes.length === 0}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select Episode" />
+                  <SelectValue
+                    placeholder={
+                      !projectId
+                        ? "Select a project first"
+                        : episodes.length === 0
+                          ? "No episodes for this project"
+                          : "Select Episode"
+                    }
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   {episodes.map((e) => (
@@ -315,14 +327,22 @@ export function CreateTaskModal() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Sequence {sequences.length === 0 && "(none)"}</Label>
+              <Label>Sequence</Label>
               <Select
                 value={sequenceId}
                 onValueChange={setSequenceId}
                 disabled={!projectId || sequences.length === 0}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select Sequence" />
+                  <SelectValue
+                    placeholder={
+                      !projectId
+                        ? "Select a project first"
+                        : sequences.length === 0
+                          ? "No sequences available"
+                          : "Select Sequence"
+                    }
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   {sequences.map((s) => (
@@ -338,10 +358,18 @@ export function CreateTaskModal() {
               <Select
                 value={shotId}
                 onValueChange={setShotId}
-                disabled={!projectId}
+                disabled={!projectId || shotsInSequence.length === 0}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select Shot" />
+                  <SelectValue
+                    placeholder={
+                      !projectId
+                        ? "Select a project first"
+                        : shotsInSequence.length === 0
+                          ? "No shots available"
+                          : "Select Shot"
+                    }
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   {shotsInSequence.map((s) => (
