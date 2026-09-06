@@ -1,13 +1,5 @@
 import { Router } from "express";
-import { db } from "@workspace/db";
-import {
-  shotsTable,
-  projectsTable,
-  episodesTable,
-  sequencesTable,
-  usersTable,
-} from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { prisma } from "@workspace/db";
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability } from "../middleware/rbac";
 import { recordAuditLog } from "../lib/auditLog";
@@ -20,31 +12,19 @@ import * as crypto from "crypto";
 // checks the row exists, not who owns it), silently cross-linking tenants'
 // data — the FK constraint alone is not a tenant-isolation boundary.
 async function projectInTenant(id: string, tenantId: string) {
-  const [row] = await db
-    .select({ id: projectsTable.id })
-    .from(projectsTable)
-    .where(and(eq(projectsTable.id, id), eq(projectsTable.tenantId, tenantId)));
+  const row = await prisma.project.findFirst({ where: { id, tenantId }, select: { id: true } });
   return !!row;
 }
 async function episodeInTenant(id: string, tenantId: string) {
-  const [row] = await db
-    .select({ id: episodesTable.id })
-    .from(episodesTable)
-    .where(and(eq(episodesTable.id, id), eq(episodesTable.tenantId, tenantId)));
+  const row = await prisma.episode.findFirst({ where: { id, tenantId }, select: { id: true } });
   return !!row;
 }
 async function sequenceInTenant(id: string, tenantId: string) {
-  const [row] = await db
-    .select({ id: sequencesTable.id })
-    .from(sequencesTable)
-    .where(and(eq(sequencesTable.id, id), eq(sequencesTable.tenantId, tenantId)));
+  const row = await prisma.sequence.findFirst({ where: { id, tenantId }, select: { id: true } });
   return !!row;
 }
 async function userInTenant(id: string, tenantId: string) {
-  const [row] = await db
-    .select({ id: usersTable.id })
-    .from(usersTable)
-    .where(and(eq(usersTable.id, id), eq(usersTable.tenantId, tenantId)));
+  const row = await prisma.user.findFirst({ where: { id, tenantId }, select: { id: true } });
   return !!row;
 }
 
@@ -56,14 +36,9 @@ shotsRouter.get("/", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const { projectId } = req.query;
-    const conditions = [eq(shotsTable.tenantId, tenantId)];
-    if (typeof projectId === "string") {
-      conditions.push(eq(shotsTable.projectId, projectId));
-    }
-    const rows = await db
-      .select()
-      .from(shotsTable)
-      .where(and(...conditions));
+    const rows = await prisma.shot.findMany({
+      where: { tenantId, ...(typeof projectId === "string" ? { projectId } : {}) },
+    });
     return res.json(rows);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -91,21 +66,17 @@ shotsRouter.post("/", requireCapability("create_tasks"), async (req, res) => {
     if (assigneeId && !(await userInTenant(assigneeId, tenantId)))
       return res.status(400).json({ error: "Invalid assigneeId" });
 
-    const newId = crypto.randomUUID();
-    await db.insert(shotsTable).values({
-      id: newId,
-      tenantId,
-      projectId,
-      name,
-      episodeId: episodeId || null,
-      sequenceId: sequenceId || null,
-      assigneeId: assigneeId || null,
+    const created = await prisma.shot.create({
+      data: {
+        id: crypto.randomUUID(),
+        tenantId,
+        projectId,
+        name,
+        episodeId: episodeId || null,
+        sequenceId: sequenceId || null,
+        assigneeId: assigneeId || null,
+      },
     });
-
-    const [created] = await db
-      .select()
-      .from(shotsTable)
-      .where(and(eq(shotsTable.tenantId, tenantId), eq(shotsTable.id, newId)));
     return res.status(201).json(created);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -145,10 +116,7 @@ shotsRouter.put("/:id", requireCapability("edit_tasks"), async (req, res) => {
     // single string at runtime.
     const shotId = req.params.id as string;
 
-    const [existing] = await db
-      .select()
-      .from(shotsTable)
-      .where(and(eq(shotsTable.tenantId, tenantId), eq(shotsTable.id, shotId)));
+    const existing = await prisma.shot.findFirst({ where: { tenantId, id: shotId } });
     if (!existing) return res.status(404).json({ error: "Not found" });
 
     if (
@@ -168,15 +136,8 @@ shotsRouter.put("/:id", requireCapability("edit_tasks"), async (req, res) => {
     }
     updates.updatedAt = new Date();
 
-    await db
-      .update(shotsTable)
-      .set(updates)
-      .where(and(eq(shotsTable.tenantId, tenantId), eq(shotsTable.id, shotId)));
-
-    const [updated] = await db
-      .select()
-      .from(shotsTable)
-      .where(and(eq(shotsTable.tenantId, tenantId), eq(shotsTable.id, shotId)));
+    await prisma.shot.updateMany({ where: { tenantId, id: shotId }, data: updates });
+    const updated = await prisma.shot.findFirstOrThrow({ where: { tenantId, id: shotId } });
 
     // `updates` always carries `updatedAt`, but `before`/`after` should
     // reflect an actual field change -- skip logging an empty-`before` audit
