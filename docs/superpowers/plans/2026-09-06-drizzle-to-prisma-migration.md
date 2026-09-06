@@ -65,11 +65,15 @@ This is the exact mapping from each Postgres table (and its snake_case columns) 
 
 **Files:**
 - Create: `lib/db/schema.prisma`
-- Create: `lib/db/prisma/migrations/0000_baseline/migration.sql` (generated, not hand-written — see steps)
-- Create: `lib/db/prisma/migrations/migration_lock.toml` (generated)
+- Create: `lib/db/migrations/0000_baseline/migration.sql` (generated, not hand-written — see steps)
+- Create: `lib/db/migrations/migration_lock.toml` (generated)
 - Modify: `lib/db/src/index.ts`
 - Modify: `lib/db/src/migrate.ts`
 - Modify: `lib/db/package.json`
+
+**Note (added after Task 1's actual implementation): migrations live at `lib/db/migrations/`, NOT `lib/db/prisma/migrations/`.** Prisma resolves the migrations directory relative to `schema.prisma`'s own directory — the `prisma/migrations` convention only holds when `schema.prisma` itself lives inside a `prisma/` folder, which it does not here (`schema.prisma` sits directly in `lib/db/`). Confirmed experimentally during Task 1: `prisma migrate resolve --applied` fails with `P3017` against `lib/db/prisma/migrations/`, and only succeeds once the same files exist at `lib/db/migrations/`. Every later reference to `lib/db/prisma/...` in this plan (Task 10's Dockerfile COPY, in particular) has been corrected to `lib/db/migrations/...` below.
+
+**Note (added after Task 1's review): the Dockerfile's `prisma generate` step, `binaryTargets`, and a `.dockerignore` are pulled forward into this task, not deferred to Task 10.** Confirmed by an actual `docker build` + container inspection during review: with none of these in place, `lib/db/generated/` (gitignored, but present on disk from this task's local `prisma generate` run) gets copied into the build context as-is by the Dockerfile's existing `COPY lib/db ./lib/db`, `pnpm install`'s postinstall does NOT regenerate it for the container's actual platform, and the final image ships only a Windows engine binary (`query_engine-windows.dll.node`) — which would crash the instant any Prisma query actually runs. Since Tasks 2-9 each build and run this same Dockerfile for their own verification step, this cannot wait for Task 10. Added to Task 1's Files: `artifacts/api-server/Dockerfile` (one new `RUN` step + `binaryTargets` in `schema.prisma`'s generator block), `.dockerignore` (new file, repo root), `lib/db/package.json` (`prisma:generate` script). Task 10 Step 3 is adjusted accordingly — it only needs the Drizzle-removal-specific Dockerfile edits now, not the Prisma-generate step (already present from this task).
 - Delete (at the end, once everything else is converted — NOT in this task): `lib/db/drizzle/`, `lib/db/drizzle.config.ts`, `lib/db/src/schema/*.ts` — these stay in place and in use until Task 10, since every not-yet-converted route file still imports from `@workspace/db/schema` (Drizzle). Task 1 adds Prisma alongside Drizzle; it does not remove Drizzle yet.
 - Test: none (no test suite) — manual verification via steps below.
 
@@ -96,16 +100,21 @@ docker run -d --name forge-staging-db \
 until docker exec forge-staging-db pg_isready -U postgres -d forge; do sleep 1; done
 ```
 
-Find the most recent real backup (written by the live `db-backup` service to `./backups` relative to the repo root):
+Find the most recent real backup (written by the live `db-backup` service to `./backups` relative to the repo root) — **do not trust "newest" blindly**: the live backup service can silently produce a broken/empty dump (a valid gzip stream that decompresses to 0 bytes), confirmed to have actually happened once already. Walk backward from newest until a genuinely non-empty one is found:
 
 ```bash
-ls -t backups/forge-*.sql.gz | head -1
+for f in $(ls -t backups/forge-*.sql.gz); do
+  if [ "$(gunzip -c "$f" | wc -l)" -gt 100 ]; then echo "$f"; break; fi
+done
 ```
 
 Restore it into the staging container — **not** the `restore.sh` script (that script is written to run inside the live `db` service via `docker compose exec` and prompts interactively; here we're restoring into a brand-new, empty, isolated container, so a plain `gunzip | psql` is simpler and equally safe since there's nothing on this container to destroy):
 
 ```bash
-LATEST_BACKUP=$(ls -t backups/forge-*.sql.gz | head -1)
+for f in $(ls -t backups/forge-*.sql.gz); do
+  if [ "$(gunzip -c "$f" | wc -l)" -gt 100 ]; then LATEST_BACKUP="$f"; break; fi
+done
+if [ -z "$LATEST_BACKUP" ]; then echo "No valid non-empty backup found -- stop and investigate the backup service."; exit 1; fi
 gunzip -c "$LATEST_BACKUP" | docker exec -i forge-staging-db psql -U postgres -d forge
 ```
 
@@ -257,10 +266,19 @@ Update `lib/db/package.json`'s `exports` field to also expose the Prisma client:
 import { execSync } from "child_process";
 import path from "path";
 
+// This package is ESM ("type": "module"), so bare `__dirname` throws --
+// use import.meta.dirname (Node 20.11+/21.2+) instead.
+const dirname = import.meta.dirname;
+
 console.log("Running migrations...");
 try {
-  execSync("npx prisma migrate deploy --schema=./schema.prisma", {
-    cwd: path.join(__dirname, ".."),
+  // `./node_modules/.bin/prisma`, not `npx prisma`: npx can fall back to a
+  // network fetch at container start if resolution misses, which the
+  // pruned production deploy (no workspace root, prisma is a devDependency)
+  // must never do -- matches the pattern docker-compose already uses for
+  // `./node_modules/.bin/tsx`.
+  execSync("./node_modules/.bin/prisma migrate deploy --schema=./schema.prisma", {
+    cwd: path.join(dirname, ".."),
     stdio: "inherit",
   });
   console.log("Migrations complete.");
@@ -2940,7 +2958,7 @@ Update `lib/db/package.json`: remove `drizzle-orm`, `drizzle-zod`, `drizzle-kit`
 
 - [ ] **Step 3: Update the Dockerfile**
 
-The build stage's conditional migration-regeneration step (Dockerfile lines ~49–52, guarding against uncommitted Drizzle migrations) is entirely Drizzle-specific and no longer applies — Prisma's migrations are already committed from Task 1 and need no build-time regeneration. Remove that `RUN if [ ! -d "lib/db/drizzle" ]; then ...` block entirely. Add a `prisma generate` step before the api-server build (Prisma Client must be generated before anything that imports it can compile):
+**Note: the `prisma generate` build step, `binaryTargets`, and `.dockerignore` were pulled forward into Task 1** (a real, confirmed-by-build blocker: Tasks 2-9 each build this same Dockerfile for their own verification, so this couldn't wait). This step now only needs the Drizzle-removal-specific edit: the build stage's conditional migration-regeneration step (Dockerfile lines ~49–52, guarding against uncommitted Drizzle migrations) is entirely Drizzle-specific and no longer applies — Prisma's migrations are already committed and adopted from Task 1 and need no build-time regeneration. Remove that `RUN if [ ! -d "lib/db/drizzle" ]; then ...` block entirely. Confirm the `prisma generate` step from Task 1 is still present immediately before the api-server build step (it should already be there, untouched):
 
 ```dockerfile
 # Generate the Prisma Client before building anything that imports it.
@@ -2955,11 +2973,13 @@ Update the two `COPY --from=builder` lines in the runner stage that referenced D
 ```dockerfile
 # Was: COPY --from=builder /app/lib/db/drizzle /app/prod/db/drizzle
 COPY --from=builder /app/lib/db/schema.prisma /app/prod/db/schema.prisma
-COPY --from=builder /app/lib/db/prisma /app/prod/db/prisma
+COPY --from=builder /app/lib/db/migrations /app/prod/db/migrations
 COPY --from=builder /app/lib/db/generated /app/prod/db/generated
 # Was: COPY --from=builder /app/lib/db/src/migrate.ts /app/prod/db/src/migrate.ts
 COPY --from=builder /app/lib/db/src/migrate.ts /app/prod/db/src/migrate.ts
 ```
+
+(Corrected from the original `/app/lib/db/prisma` — Task 1's actual implementation put migrations at `lib/db/migrations/`, not `lib/db/prisma/migrations/`; see the note added to Task 1's Files section.)
 
 (Adjust the `generated` path to wherever Task 1's `schema.prisma` generator block actually points — Prisma Client's default output location if unspecified, or a custom `output` path if one was set.)
 
@@ -2989,7 +3009,13 @@ docker run -d --name forge-staging-db --network forge-staging \
   -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=staging_only_password -e POSTGRES_DB=forge \
   -p 5433:5432 postgres:15-alpine
 until docker exec forge-staging-db pg_isready -U postgres -d forge; do sleep 1; done
-LATEST_BACKUP=$(ls -t backups/forge-*.sql.gz | head -1)
+# Task 1 found the live backup service can produce broken/empty dumps (a
+# valid gzip stream that decompresses to 0 bytes) -- don't trust "newest" blindly,
+# walk backward from newest until a genuinely non-empty one is found:
+for f in $(ls -t backups/forge-*.sql.gz); do
+  if [ "$(gunzip -c "$f" | wc -l)" -gt 100 ]; then LATEST_BACKUP="$f"; break; fi
+done
+if [ -z "$LATEST_BACKUP" ]; then echo "No valid non-empty backup found -- stop and investigate the backup service."; exit 1; fi
 gunzip -c "$LATEST_BACKUP" | docker exec -i forge-staging-db psql -U postgres -d forge
 
 # Re-apply the baseline (Task 1 Step 7) since this is a fresh container
