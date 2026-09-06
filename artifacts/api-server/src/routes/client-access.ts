@@ -1,13 +1,5 @@
 import { Router } from "express";
-import { db } from "@workspace/db";
-import {
-  clientAccessLinksTable,
-  tenantRolesTable,
-  versionsTable,
-  projectsTable,
-  episodesTable,
-} from "@workspace/db/schema";
-import { eq, and, isNull, or, gt } from "drizzle-orm";
+import { prisma } from "@workspace/db";
 import { signSession } from "../lib/auth";
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability } from "../middleware/rbac";
@@ -36,19 +28,13 @@ clientAccessRouter.post("/redeem", async (req, res) => {
     if (!code || typeof code !== "string")
       return res.status(400).json({ error: "Missing code" });
 
-    const [link] = await db
-      .select()
-      .from(clientAccessLinksTable)
-      .where(
-        and(
-          eq(clientAccessLinksTable.code, code),
-          isNull(clientAccessLinksTable.revokedAt),
-          or(
-            isNull(clientAccessLinksTable.expiresAt),
-            gt(clientAccessLinksTable.expiresAt, new Date()),
-          ),
-        ),
-      );
+    const link = await prisma.clientAccessLink.findFirst({
+      where: {
+        code,
+        revokedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+      },
+    });
     if (!link) return res.status(401).json({ error: "Invalid or expired code" });
 
     // Every tenant is seeded with a system-default "client" role (Task 6's
@@ -56,15 +42,10 @@ clientAccessRouter.post("/redeem", async (req, res) => {
     // fall back to a 401 if a tenant somehow has none, rather than
     // fabricating a roleId that doesn't exist and would break every
     // downstream tenantRoleCapabilities lookup).
-    const [clientRole] = await db
-      .select({ id: tenantRolesTable.id })
-      .from(tenantRolesTable)
-      .where(
-        and(
-          eq(tenantRolesTable.tenantId, link.tenantId),
-          eq(tenantRolesTable.name, "client"),
-        ),
-      );
+    const clientRole = await prisma.tenantRole.findFirst({
+      where: { tenantId: link.tenantId, name: "client" },
+      select: { id: true },
+    });
     if (!clientRole)
       return res.status(500).json({ error: "Tenant has no client role configured" });
 
@@ -108,24 +89,24 @@ async function scopeInTenant(
   scope: { projectId?: string; episodeId?: string; versionId?: string },
 ): Promise<boolean> {
   if (scope.versionId) {
-    const [row] = await db
-      .select({ id: versionsTable.id })
-      .from(versionsTable)
-      .where(and(eq(versionsTable.id, scope.versionId), eq(versionsTable.tenantId, tenantId)));
+    const row = await prisma.version.findFirst({
+      where: { id: scope.versionId, tenantId },
+      select: { id: true },
+    });
     return !!row;
   }
   if (scope.episodeId) {
-    const [row] = await db
-      .select({ id: episodesTable.id })
-      .from(episodesTable)
-      .where(and(eq(episodesTable.id, scope.episodeId), eq(episodesTable.tenantId, tenantId)));
+    const row = await prisma.episode.findFirst({
+      where: { id: scope.episodeId, tenantId },
+      select: { id: true },
+    });
     return !!row;
   }
   if (scope.projectId) {
-    const [row] = await db
-      .select({ id: projectsTable.id })
-      .from(projectsTable)
-      .where(and(eq(projectsTable.id, scope.projectId), eq(projectsTable.tenantId, tenantId)));
+    const row = await prisma.project.findFirst({
+      where: { id: scope.projectId, tenantId },
+      select: { id: true },
+    });
     return !!row;
   }
   return false;
@@ -161,44 +142,33 @@ clientAccessRouter.post(
       // otherwise re-sharing the same version invalidates nothing but does
       // leave a trail of dead codes, and confuses a client who reuses an
       // old email with an old code that still needs to work.
-      const scopeColumn = versionId
-        ? eq(clientAccessLinksTable.versionId, versionId)
+      const scopeWhere = versionId
+        ? { versionId }
         : episodeId
-          ? eq(clientAccessLinksTable.episodeId, episodeId)
-          : eq(clientAccessLinksTable.projectId, projectId);
-      const [existing] = await db
-        .select()
-        .from(clientAccessLinksTable)
-        .where(
-          and(
-            eq(clientAccessLinksTable.tenantId, tenantId),
-            scopeColumn,
-            isNull(clientAccessLinksTable.revokedAt),
-            or(
-              isNull(clientAccessLinksTable.expiresAt),
-              gt(clientAccessLinksTable.expiresAt, new Date()),
-            ),
-          ),
-        );
+          ? { episodeId }
+          : { projectId };
+      const existing = await prisma.clientAccessLink.findFirst({
+        where: {
+          tenantId,
+          ...scopeWhere,
+          revokedAt: null,
+          OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+        },
+      });
       if (existing) return res.status(200).json(existing);
 
-      const newId = crypto.randomUUID();
-      const code = generateAccessCode();
-      await db.insert(clientAccessLinksTable).values({
-        id: newId,
-        tenantId,
-        code,
-        projectId: projectId || null,
-        episodeId: episodeId || null,
-        versionId: versionId || null,
-        createdByUserId: userId,
-        expiresAt: expiresAt ? new Date(expiresAt) : null,
+      const created = await prisma.clientAccessLink.create({
+        data: {
+          id: crypto.randomUUID(),
+          tenantId,
+          code: generateAccessCode(),
+          projectId: projectId || null,
+          episodeId: episodeId || null,
+          versionId: versionId || null,
+          createdByUserId: userId,
+          expiresAt: expiresAt ? new Date(expiresAt) : null,
+        },
       });
-
-      const [created] = await db
-        .select()
-        .from(clientAccessLinksTable)
-        .where(and(eq(clientAccessLinksTable.tenantId, tenantId), eq(clientAccessLinksTable.id, newId)));
       return res.status(201).json(created);
     } catch (err) {
       console.error(err);
@@ -218,17 +188,14 @@ clientAccessRouter.get(
     try {
       const tenantId = req.tenantId!;
       const { projectId, episodeId, versionId } = req.query;
-      const conditions = [eq(clientAccessLinksTable.tenantId, tenantId)];
-      if (typeof projectId === "string")
-        conditions.push(eq(clientAccessLinksTable.projectId, projectId));
-      if (typeof episodeId === "string")
-        conditions.push(eq(clientAccessLinksTable.episodeId, episodeId));
-      if (typeof versionId === "string")
-        conditions.push(eq(clientAccessLinksTable.versionId, versionId));
-      const rows = await db
-        .select()
-        .from(clientAccessLinksTable)
-        .where(and(...conditions));
+      const rows = await prisma.clientAccessLink.findMany({
+        where: {
+          tenantId,
+          ...(typeof projectId === "string" ? { projectId } : {}),
+          ...(typeof episodeId === "string" ? { episodeId } : {}),
+          ...(typeof versionId === "string" ? { versionId } : {}),
+        },
+      });
       return res.json(rows);
     } catch (err) {
       return res.status(500).json({ error: "Internal server error" });
@@ -254,25 +221,14 @@ clientAccessRouter.delete(
       // segment is always a single string at runtime (same issue already
       // documented in routes/users.ts's PATCH /:id).
       const linkId = req.params.id as string;
-      const [existing] = await db
-        .select()
-        .from(clientAccessLinksTable)
-        .where(
-          and(
-            eq(clientAccessLinksTable.tenantId, tenantId),
-            eq(clientAccessLinksTable.id, linkId),
-          ),
-        );
+      const existing = await prisma.clientAccessLink.findFirst({
+        where: { tenantId, id: linkId },
+      });
       if (!existing) return res.status(404).json({ error: "Not found" });
-      await db
-        .update(clientAccessLinksTable)
-        .set({ revokedAt: new Date() })
-        .where(
-          and(
-            eq(clientAccessLinksTable.tenantId, tenantId),
-            eq(clientAccessLinksTable.id, linkId),
-          ),
-        );
+      await prisma.clientAccessLink.updateMany({
+        where: { tenantId, id: linkId },
+        data: { revokedAt: new Date() },
+      });
       return res.status(204).send();
     } catch (err) {
       return res.status(500).json({ error: "Internal server error" });

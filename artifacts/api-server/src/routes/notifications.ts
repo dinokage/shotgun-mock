@@ -1,12 +1,5 @@
 import { Router } from "express";
-import {
-  db,
-  notificationsTable,
-  usersTable,
-  tenantRolesTable,
-  departmentsTable,
-} from "@workspace/db";
-import { eq, and, desc } from "drizzle-orm";
+import { prisma } from "@workspace/db";
 import * as crypto from "crypto";
 import { tenantAuthMiddleware } from "../middleware/tenant";
 
@@ -24,17 +17,11 @@ notificationsRouter.get("/", async (req, res) => {
     const userId = req.userId;
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-    const rows = await db
-      .select()
-      .from(notificationsTable)
-      .where(
-        and(
-          eq(notificationsTable.tenantId, tenantId),
-          eq(notificationsTable.recipientUserId, userId),
-        ),
-      )
-      .orderBy(desc(notificationsTable.createdAt))
-      .limit(100);
+    const rows = await prisma.notification.findMany({
+      where: { tenantId, recipientUserId: userId },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    });
     return res.json(rows);
   } catch (err) {
     req.log.error(err, "Failed to fetch notifications");
@@ -49,19 +36,19 @@ notificationsRouter.patch("/:id/read", async (req, res) => {
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
     const id = req.params.id as string;
 
-    const [updated] = await db
-      .update(notificationsTable)
-      .set({ read: true })
-      .where(
-        and(
-          eq(notificationsTable.id, id),
-          eq(notificationsTable.tenantId, tenantId),
-          // Never let one user mark another's notification read.
-          eq(notificationsTable.recipientUserId, userId),
-        ),
-      )
-      .returning();
-    if (!updated) return res.status(404).json({ error: "Not found" });
+    const result = await prisma.notification.updateMany({
+      where: {
+        id,
+        tenantId,
+        // Never let one user mark another's notification read.
+        recipientUserId: userId,
+      },
+      data: { read: true },
+    });
+    if (result.count === 0) return res.status(404).json({ error: "Not found" });
+    const updated = await prisma.notification.findFirstOrThrow({
+      where: { id, tenantId, recipientUserId: userId },
+    });
     return res.json(updated);
   } catch (err) {
     req.log.error(err, "Failed to mark notification read");
@@ -75,15 +62,10 @@ notificationsRouter.post("/read-all", async (req, res) => {
     const userId = req.userId;
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-    await db
-      .update(notificationsTable)
-      .set({ read: true })
-      .where(
-        and(
-          eq(notificationsTable.tenantId, tenantId),
-          eq(notificationsTable.recipientUserId, userId),
-        ),
-      );
+    await prisma.notification.updateMany({
+      where: { tenantId, recipientUserId: userId },
+      data: { read: true },
+    });
     return res.json({ ok: true });
   } catch (err) {
     req.log.error(err, "Failed to mark all notifications read");
@@ -109,16 +91,18 @@ export async function createNotification(params: {
   entityId?: string;
   actionUrl?: string;
 }) {
-  await db.insert(notificationsTable).values({
-    id: crypto.randomUUID(),
-    tenantId: params.tenantId,
-    recipientUserId: params.recipientUserId,
-    category: params.category,
-    title: params.title,
-    description: params.description,
-    entityType: params.entityType,
-    entityId: params.entityId,
-    actionUrl: params.actionUrl,
+  await prisma.notification.create({
+    data: {
+      id: crypto.randomUUID(),
+      tenantId: params.tenantId,
+      recipientUserId: params.recipientUserId,
+      category: params.category,
+      title: params.title,
+      description: params.description,
+      entityType: params.entityType,
+      entityId: params.entityId,
+      actionUrl: params.actionUrl,
+    },
   });
 }
 
@@ -131,22 +115,13 @@ export async function findProductionManagers(
   tenantId: string,
   departmentName: string | null | undefined,
 ): Promise<{ id: string }[]> {
-  const productionHeads = await db
-    .select({ id: usersTable.id, departmentId: usersTable.departmentId })
-    .from(usersTable)
-    .innerJoin(tenantRolesTable, eq(usersTable.roleId, tenantRolesTable.id))
-    .where(
-      and(
-        eq(usersTable.tenantId, tenantId),
-        eq(tenantRolesTable.name, "production_head"),
-      ),
-    );
+  const productionHeads = await prisma.user.findMany({
+    where: { tenantId, role: { name: "production_head" } },
+    select: { id: true, departmentId: true },
+  });
   if (productionHeads.length === 0) return [];
 
-  const depts = await db
-    .select()
-    .from(departmentsTable)
-    .where(eq(departmentsTable.tenantId, tenantId));
+  const depts = await prisma.department.findMany({ where: { tenantId } });
 
   const dept = depts.find((d) => d.name === departmentName);
   const ownDeptPMs = dept
