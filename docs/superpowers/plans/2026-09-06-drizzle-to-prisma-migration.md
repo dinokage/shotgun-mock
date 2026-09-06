@@ -2958,11 +2958,20 @@ Update `lib/db/package.json`: remove `drizzle-orm`, `drizzle-zod`, `drizzle-kit`
 
 - [ ] **Step 3: Update the Dockerfile**
 
-**Note: the `prisma generate` build step, `binaryTargets`, and `.dockerignore` were pulled forward into Task 1** (a real, confirmed-by-build blocker: Tasks 2-9 each build this same Dockerfile for their own verification, so this couldn't wait). This step now only needs the Drizzle-removal-specific edit: the build stage's conditional migration-regeneration step (Dockerfile lines ~49–52, guarding against uncommitted Drizzle migrations) is entirely Drizzle-specific and no longer applies — Prisma's migrations are already committed and adopted from Task 1 and need no build-time regeneration. Remove that `RUN if [ ! -d "lib/db/drizzle" ]; then ...` block entirely. Confirm the `prisma generate` step from Task 1 is still present immediately before the api-server build step (it should already be there, untouched):
+**Note: the `prisma generate` build step, `binaryTargets`, and `.dockerignore` were pulled forward into Task 1** (a real, confirmed-by-build blocker: Tasks 2-9 each build this same Dockerfile for their own verification, so this couldn't wait). This step now only needs the Drizzle-removal-specific edit: the build stage's conditional migration-regeneration step (guarding against uncommitted Drizzle migrations) is entirely Drizzle-specific and no longer applies — Prisma's migrations are already committed and adopted from Task 1 and need no build-time regeneration. Remove that `RUN if [ ! -d "lib/db/drizzle" ]; then ...` block entirely.
+
+**Do NOT move the `prisma:generate` step** — Task 1's fix round found (via an actual failing build, TS2307) that it must run right after `pnpm install --frozen-lockfile` and BEFORE the `api-spec codegen` step, not immediately before `run build` as an earlier draft of this plan said. The codegen step's workspace-wide `tsc --build` needs `lib/db/src/index.ts`'s `../generated/prisma-client` import already resolvable. The actual, correct current ordering (verify it still reads this way, don't "fix" it back):
 
 ```dockerfile
-# Generate the Prisma Client before building anything that imports it.
+RUN pnpm install --frozen-lockfile
+
+# Generate the Prisma Client for this container's actual platform... (Task 1's comment)
 RUN pnpm --filter "@workspace/db" run prisma:generate
+
+# Generate schemas before building.
+RUN pnpm --filter "@workspace/api-spec" run codegen
+
+# <-- the now-removed Drizzle conditional migration-regen block was here -->
 
 # Build the api server
 RUN pnpm --filter "@workspace/api-server" run build
