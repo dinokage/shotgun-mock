@@ -1,6 +1,5 @@
 import { Router } from "express";
-import { db, tenantRolesTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { prisma } from "@workspace/db";
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability } from "../middleware/rbac";
 
@@ -17,10 +16,10 @@ router.use(tenantAuthMiddleware);
 router.get("/", requireCapability("manage_members"), async (req, res) => {
   try {
     const tenantId = req.tenantId!;
-    const roles = await db
-      .select({ id: tenantRolesTable.id, name: tenantRolesTable.name })
-      .from(tenantRolesTable)
-      .where(eq(tenantRolesTable.tenantId, tenantId));
+    const roles = await prisma.tenantRole.findMany({
+      where: { tenantId },
+      select: { id: true, name: true },
+    });
     return res.json(roles);
   } catch (err) {
     req.log.error(err, "Failed to fetch roles");
