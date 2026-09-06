@@ -1,6 +1,5 @@
 import { Router } from "express";
-import { db, usersTable, tenantRolesTable, departmentsTable } from "@workspace/db";
-import { eq, and, inArray } from "drizzle-orm";
+import { prisma } from "@workspace/db";
 
 // Mirrors STUDIO_LEADERSHIP_ROLES in artifacts/forge/src/store/permissions.ts
 // -- the only roster rows an external client has any legitimate reason to
@@ -72,37 +71,33 @@ router.get("/", async (req, res) => {
     // the frontend), so scope the query itself rather than blocking the
     // whole endpoint -- a full 403 would otherwise fall through fetchMe()'s
     // `.catch(() => [])` and leave the client looking at stale mock names.
-    const [callerRole] = await db
-      .select({ name: tenantRolesTable.name })
-      .from(tenantRolesTable)
-      .where(eq(tenantRolesTable.id, req.roleId!));
+    const callerRole = await prisma.tenantRole.findFirst({
+      where: { id: req.roleId! },
+      select: { name: true },
+    });
     const isClient = callerRole?.name === "client";
 
-    const users = await db
-      .select({
-        id: usersTable.id,
-        tenantId: usersTable.tenantId,
-        roleId: usersTable.roleId,
-        role: tenantRolesTable.name,
-        departmentId: usersTable.departmentId,
-        email: usersTable.email,
-        name: usersTable.name,
-        title: usersTable.title,
-        avatar: usersTable.avatar,
-        status: usersTable.status,
-        punchedInAt: usersTable.punchedInAt,
-        createdAt: usersTable.createdAt,
-      })
-      .from(usersTable)
-      .leftJoin(tenantRolesTable, eq(usersTable.roleId, tenantRolesTable.id))
-      .where(
-        isClient
-          ? and(
-              eq(usersTable.tenantId, tenantId),
-              inArray(tenantRolesTable.name, STUDIO_LEADERSHIP_ROLES),
-            )
-          : eq(usersTable.tenantId, tenantId),
-      );
+    const rows = await prisma.user.findMany({
+      where: {
+        tenantId,
+        ...(isClient ? { role: { name: { in: STUDIO_LEADERSHIP_ROLES } } } : {}),
+      },
+      select: {
+        id: true,
+        tenantId: true,
+        roleId: true,
+        role: { select: { name: true } },
+        departmentId: true,
+        email: true,
+        name: true,
+        title: true,
+        avatar: true,
+        status: true,
+        punchedInAt: true,
+        createdAt: true,
+      },
+    });
+    const users = rows.map((u) => ({ ...u, role: u.role?.name ?? null }));
     return res.json(users);
   } catch (err) {
     req.log.error(err, "Failed to fetch users");
@@ -125,30 +120,18 @@ router.post("/", requireCapability("manage_members"), async (req, res) => {
     // caller's OWN tenant. Without this, a `manage_members` holder in tenant B
     // could pass a roleId from tenant A and mint a user in tenant B whose
     // capability set is defined by a role tenant B does not own.
-    const [role] = await db
-      .select()
-      .from(tenantRolesTable)
-      .where(
-        and(
-          eq(tenantRolesTable.id, roleId),
-          eq(tenantRolesTable.tenantId, tenantId),
-        ),
-      );
+    const role = await prisma.tenantRole.findFirst({
+      where: { id: roleId, tenantId },
+    });
 
     if (!role) {
       return res.status(400).json({ error: "Invalid roleId" });
     }
 
     if (departmentId) {
-      const [dept] = await db
-        .select()
-        .from(departmentsTable)
-        .where(
-          and(
-            eq(departmentsTable.id, departmentId),
-            eq(departmentsTable.tenantId, tenantId),
-          ),
-        );
+      const dept = await prisma.department.findFirst({
+        where: { id: departmentId, tenantId },
+      });
       if (!dept) {
         return res.status(400).json({ error: "Invalid departmentId" });
       }
@@ -158,19 +141,15 @@ router.post("/", requireCapability("manage_members"), async (req, res) => {
     // gets a clean 409 rather than a raw constraint-violation 500, and so login
     // (which looks users up by email with no tenant scoping) can never become
     // ambiguous between two tenants.
-    const [existing] = await db
-      .select()
-      .from(usersTable)
-      .where(eq(usersTable.email, email));
+    const existing = await prisma.user.findFirst({ where: { email } });
 
     if (existing) {
       return res.status(409).json({ error: "Email already in use" });
     }
 
     const hashedPassword = await hashPassword(password);
-    const [newUser] = await db
-      .insert(usersTable)
-      .values({
+    const newUser = await prisma.user.create({
+      data: {
         id: crypto.randomUUID(),
         tenantId,
         roleId,
@@ -179,8 +158,8 @@ router.post("/", requireCapability("manage_members"), async (req, res) => {
         name,
         title,
         hashedPassword,
-      })
-      .returning();
+      },
+    });
 
     const { hashedPassword: _omit, ...user } = newUser;
     return res.status(201).json(user);
@@ -202,21 +181,21 @@ router.patch("/me", async (req, res) => {
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
     const { name, title, avatar } = req.body;
-    const updates: Partial<typeof usersTable.$inferInsert> = {};
-    if (name !== undefined) updates.name = name;
-    if (title !== undefined) updates.title = title;
-    if (avatar !== undefined) updates.avatar = avatar;
+    const data: Record<string, unknown> = {};
+    if (name !== undefined) data.name = name;
+    if (title !== undefined) data.title = title;
+    if (avatar !== undefined) data.avatar = avatar;
 
-    if (Object.keys(updates).length === 0) {
+    if (Object.keys(data).length === 0) {
       return res.status(400).json({ error: "No valid fields to update" });
     }
 
-    const [updated] = await db
-      .update(usersTable)
-      .set(updates)
-      .where(and(eq(usersTable.id, userId), eq(usersTable.tenantId, tenantId)))
-      .returning();
-    if (!updated) return res.status(404).json({ error: "Not found" });
+    const result = await prisma.user.updateMany({
+      where: { id: userId, tenantId },
+      data,
+    });
+    if (result.count === 0) return res.status(404).json({ error: "Not found" });
+    const updated = await prisma.user.findFirstOrThrow({ where: { id: userId, tenantId } });
 
     await cacheDel(cacheKeys.userMe(tenantId, userId));
     const { hashedPassword: _omit, ...user } = updated;
@@ -241,12 +220,12 @@ router.post("/me/punch-in", async (req, res) => {
     const userId = req.userId;
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-    const [updated] = await db
-      .update(usersTable)
-      .set({ punchedInAt: new Date() })
-      .where(and(eq(usersTable.id, userId), eq(usersTable.tenantId, tenantId)))
-      .returning();
-    if (!updated) return res.status(404).json({ error: "Not found" });
+    const result = await prisma.user.updateMany({
+      where: { id: userId, tenantId },
+      data: { punchedInAt: new Date() },
+    });
+    if (result.count === 0) return res.status(404).json({ error: "Not found" });
+    const updated = await prisma.user.findFirstOrThrow({ where: { id: userId, tenantId } });
 
     await cacheDel(cacheKeys.userMe(tenantId, userId));
     const { hashedPassword: _omit, ...user } = updated;
@@ -263,12 +242,12 @@ router.post("/me/punch-out", async (req, res) => {
     const userId = req.userId;
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-    const [updated] = await db
-      .update(usersTable)
-      .set({ punchedInAt: null })
-      .where(and(eq(usersTable.id, userId), eq(usersTable.tenantId, tenantId)))
-      .returning();
-    if (!updated) return res.status(404).json({ error: "Not found" });
+    const result = await prisma.user.updateMany({
+      where: { id: userId, tenantId },
+      data: { punchedInAt: null },
+    });
+    if (result.count === 0) return res.status(404).json({ error: "Not found" });
+    const updated = await prisma.user.findFirstOrThrow({ where: { id: userId, tenantId } });
 
     await cacheDel(cacheKeys.userMe(tenantId, userId));
     const { hashedPassword: _omit, ...user } = updated;
@@ -302,10 +281,7 @@ router.put("/me/password", async (req, res) => {
         .json({ error: "New password must be at least 8 characters" });
     }
 
-    const [user] = await db
-      .select()
-      .from(usersTable)
-      .where(and(eq(usersTable.id, userId), eq(usersTable.tenantId, tenantId)));
+    const user = await prisma.user.findFirst({ where: { id: userId, tenantId } });
     if (!user) return res.status(404).json({ error: "Not found" });
 
     const isValid = await verifyPassword(currentPassword, user.hashedPassword);
@@ -314,10 +290,10 @@ router.put("/me/password", async (req, res) => {
     }
 
     const hashedPassword = await hashPassword(newPassword);
-    await db
-      .update(usersTable)
-      .set({ hashedPassword })
-      .where(and(eq(usersTable.id, userId), eq(usersTable.tenantId, tenantId)));
+    await prisma.user.updateMany({
+      where: { id: userId, tenantId },
+      data: { hashedPassword },
+    });
 
     return res.json({ ok: true });
   } catch (err) {
@@ -337,12 +313,12 @@ router.post("/me/avatar", (req, res) => {
       if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
       const url = `/api/users/me/avatar/${tenantId}/${req.file.filename}`;
-      const [updated] = await db
-        .update(usersTable)
-        .set({ avatar: url })
-        .where(and(eq(usersTable.id, userId), eq(usersTable.tenantId, tenantId)))
-        .returning();
-      if (!updated) return res.status(404).json({ error: "Not found" });
+      const result = await prisma.user.updateMany({
+        where: { id: userId, tenantId },
+        data: { avatar: url },
+      });
+      if (result.count === 0) return res.status(404).json({ error: "Not found" });
+      const updated = await prisma.user.findFirstOrThrow({ where: { id: userId, tenantId } });
 
       await cacheDel(cacheKeys.userMe(tenantId, userId));
       const { hashedPassword: _omit, ...user } = updated;
@@ -387,57 +363,39 @@ router.patch("/:id", requireCapability("manage_members"), async (req, res) => {
     const userId = req.params.id as string;
     const { roleId, departmentId } = req.body;
 
-    const [existing] = await db
-      .select()
-      .from(usersTable)
-      .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.id, userId)));
+    const existing = await prisma.user.findFirst({ where: { tenantId, id: userId } });
     if (!existing) return res.status(404).json({ error: "Not found" });
 
-    const updates: Partial<typeof usersTable.$inferInsert> = {};
+    const data: Record<string, unknown> = {};
 
     if (roleId !== undefined) {
-      const [role] = await db
-        .select()
-        .from(tenantRolesTable)
-        .where(
-          and(
-            eq(tenantRolesTable.id, roleId),
-            eq(tenantRolesTable.tenantId, tenantId),
-          ),
-        );
+      const role = await prisma.tenantRole.findFirst({
+        where: { id: roleId, tenantId },
+      });
       if (!role) return res.status(400).json({ error: "Invalid roleId" });
-      updates.roleId = roleId;
+      data.roleId = roleId;
     }
 
     if (departmentId !== undefined) {
       if (departmentId !== null) {
-        const [dept] = await db
-          .select()
-          .from(departmentsTable)
-          .where(
-            and(
-              eq(departmentsTable.id, departmentId),
-              eq(departmentsTable.tenantId, tenantId),
-            ),
-          );
+        const dept = await prisma.department.findFirst({
+          where: { id: departmentId, tenantId },
+        });
         if (!dept) return res.status(400).json({ error: "Invalid departmentId" });
       }
-      updates.departmentId = departmentId;
+      data.departmentId = departmentId;
     }
 
-    if (Object.keys(updates).length === 0) {
+    if (Object.keys(data).length === 0) {
       return res.status(400).json({ error: "No valid fields to update" });
     }
 
-    await db
-      .update(usersTable)
-      .set(updates)
-      .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.id, userId)));
+    await prisma.user.updateMany({
+      where: { tenantId, id: userId },
+      data,
+    });
 
-    const [updated] = await db
-      .select()
-      .from(usersTable)
-      .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.id, userId)));
+    const updated = await prisma.user.findFirstOrThrow({ where: { tenantId, id: userId } });
     // roleId/departmentId directly change what GET /auth/me returns for this
     // user (capabilities, departmentId) -- without this, someone the admin
     // just promoted/reassigned would keep seeing their old capabilities

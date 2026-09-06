@@ -15,6 +15,26 @@ COPY tsconfig.base.json tsconfig.json ./
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 RUN corepack enable && corepack install
 
+# Forces pnpm to materialize node_modules by copying instead of hardlinking
+# from its content-addressable store. Discovered via an actual `docker build`
+# hang (Task 3 verification): on this host, every `pnpm install`/`pnpm deploy`
+# invocation deterministically wedges forever partway through linking ~188
+# packages -- confirmed via `docker exec` into a live intermediate container
+# that the stuck process sits in `do_epoll_wait` indefinitely (root
+# filesystem is overlay2: `overlay / overlay rw,...`), and confirmed the fix
+# with repeated clean, from-scratch `docker run` reproductions: pnpm's
+# default hardlink-based "auto" import method hangs 3/3 times, while
+# `--package-import-method=copy` succeeds in ~10s every time. A plain
+# `ENV npm_config_package_import_method=copy` does NOT work here -- pnpm
+# does not read that npm-style env var for this key -- so this sets it via
+# pnpm's own global config instead, which every pnpm invocation in every
+# later RUN step (install, deploy, etc.) picks up regardless of cwd. This is
+# an environment/filesystem bug, not anything introduced by this task's
+# route changes (none of them touch build tooling or dependencies); harmless
+# for the final image either way, since "copy" is already pnpm's automatic
+# fallback whenever store and target aren't on the same filesystem.
+RUN pnpm config set package-import-method copy
+
 # Copy packages that api-server depends on.
 # lib/api-client-react is not an api-server runtime dependency, but the
 # api-spec codegen step below regenerates BOTH orval outputs (api-zod and
