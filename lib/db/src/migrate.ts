@@ -9,7 +9,7 @@ const dirname = import.meta.dirname;
 
 console.log("Running migrations...");
 try {
-  execSync("npx prisma migrate deploy --schema=./schema.prisma", {
+  execSync("./node_modules/.bin/prisma migrate deploy --schema=./schema.prisma", {
     cwd: path.join(dirname, ".."),
     stdio: "inherit",
   });

@@ -29,6 +29,19 @@ COPY artifacts/api-server ./artifacts/api-server
 # Install dependencies (ignoring scripts temporarily if there are issues, but we'll try normal first)
 RUN pnpm install --frozen-lockfile
 
+# Generate the Prisma Client for this container's actual platform
+# (linux-musl-openssl-3.0.x on node:22-alpine) before anything that imports
+# it (lib/db/src/index.ts) can compile. schema.prisma's generator block lists
+# both "native" and "linux-musl-openssl-3.0.x" as binaryTargets so the same
+# generated output also carries whatever engine matches a local/non-container
+# dev machine. This must run before the api-spec codegen step below, since
+# that step's `pnpm -w run typecheck:libs` (`tsc --build` across the whole
+# workspace) fails to resolve lib/db/src/index.ts's
+# `../generated/prisma-client` import otherwise (confirmed by an actual
+# `docker build` failure -- TS2307 -- when this was placed later, immediately
+# before the `run build` step, as originally instructed).
+RUN pnpm --filter "@workspace/db" run prisma:generate
+
 # Generate schemas before building.
 RUN pnpm --filter "@workspace/api-spec" run codegen
 

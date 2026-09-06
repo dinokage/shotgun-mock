@@ -1,0 +1,15 @@
+# Never let a locally-built, platform-specific artifact (or dependencies
+# installed on the host) leak into a Docker build context. Everything the
+# image needs is installed/generated fresh inside the container itself
+# (see artifacts/api-server/Dockerfile's `pnpm install` and
+# `pnpm --filter "@workspace/db" run prisma:generate` steps).
+**/node_modules
+
+# Prisma Client output is platform-specific (query engine binaries) and is
+# regenerated inside the container for its actual target platform; a
+# locally-generated copy (e.g. Windows engine binaries from host dev) must
+# never be copied in as-is.
+**/generated
+
+# Real tenant data -- never belongs in a build context.
+backups/
