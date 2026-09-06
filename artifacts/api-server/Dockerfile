@@ -88,6 +88,22 @@ COPY --from=builder /app/artifacts/api-server/dist /app/prod/api-server/dist
 COPY --from=builder /app/lib/db/drizzle /app/prod/db/drizzle
 COPY --from=builder /app/lib/db/src/migrate.ts /app/prod/db/src/migrate.ts
 
+# Prisma's generated client bakes the ABSOLUTE path it was generated at
+# (config.output, from `prisma generate`'s cwd of /app/lib/db in the builder
+# stage) into its compiled output, and esbuild inlines that literal string
+# into artifacts/api-server's dist/index.mjs. At runtime the engine binary is
+# located relative to that baked path, not relative to wherever @workspace/db
+# was actually deployed (/app/prod/db from `pnpm deploy` above) -- so without
+# this, the server starts and logs "Server listening" but the first real
+# Prisma query throws PrismaClientInitializationError ("could not locate the
+# Query Engine"), since /app/lib/db/generated never otherwise exists in this
+# runner stage. Recreating the exact same absolute path here is what makes
+# the engine resolve. (Found via an actual `docker run` + `curl` against a
+# converted route -- Task 1's verification never exercised a real Prisma
+# query through the compiled bundle, only confirmed the engine file's
+# presence under /app/prod/db/generated, which is a different path.)
+COPY --from=builder /app/lib/db/generated /app/lib/db/generated
+
 # We need pnpm available in the final image to run migrations easily, or we can just use node.
 # The runner's /app/prod tree is a pruned `pnpm deploy` output with no
 # "packageManager" field of its own, so plain `corepack enable` would leave
