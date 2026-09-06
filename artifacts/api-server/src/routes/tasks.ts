@@ -1,18 +1,5 @@
 import { Router } from "express";
-import { db } from "@workspace/db";
-import {
-  tasksTable,
-  usersTable,
-  tenantRolesTable,
-  tenantRoleCapabilitiesTable,
-  taskChecklistItemsTable,
-  taskDependenciesTable,
-  taskCommentsTable,
-  taskAttachmentsTable,
-  taskApprovalEventsTable,
-  departmentsTable,
-} from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { prisma } from "@workspace/db";
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability } from "../middleware/rbac";
 import * as crypto from "crypto";
@@ -25,10 +12,7 @@ import { maybeReassignOnSequenceCompletion } from "../lib/sequenceReassignment";
 // tenant-ownership check before use (same pattern already applied in
 // routes/shots.ts, routes/versions.ts, routes/reviews.ts).
 async function userInTenant(id: string, tenantId: string) {
-  const [row] = await db
-    .select({ id: usersTable.id })
-    .from(usersTable)
-    .where(and(eq(usersTable.id, id), eq(usersTable.tenantId, tenantId)));
+  const row = await prisma.user.findFirst({ where: { id, tenantId }, select: { id: true } });
   return !!row;
 }
 
@@ -37,12 +21,11 @@ async function userInTenant(id: string, tenantId: string) {
 // not just hidden in the UI, since a client that skips the frontend
 // could otherwise assign a task to a producer directly via the API.
 async function assignedToIsArtist(id: string, tenantId: string) {
-  const [row] = await db
-    .select({ roleName: tenantRolesTable.name })
-    .from(usersTable)
-    .innerJoin(tenantRolesTable, eq(usersTable.roleId, tenantRolesTable.id))
-    .where(and(eq(usersTable.id, id), eq(usersTable.tenantId, tenantId)));
-  return row?.roleName === "artist";
+  const row = await prisma.user.findFirst({
+    where: { id, tenantId },
+    select: { role: { select: { name: true } } },
+  });
+  return row?.role?.name === "artist";
 }
 
 // Used by every nested /:id/* sub-resource route below to confirm the
@@ -54,10 +37,7 @@ async function assignedToIsArtist(id: string, tenantId: string) {
 // integrity gap, same root cause as the FK-ownership issue elsewhere in
 // this plan).
 async function taskInTenant(id: string, tenantId: string) {
-  const [row] = await db
-    .select({ id: tasksTable.id })
-    .from(tasksTable)
-    .where(and(eq(tasksTable.id, id), eq(tasksTable.tenantId, tenantId)));
+  const row = await prisma.task.findFirst({ where: { id, tenantId }, select: { id: true } });
   return !!row;
 }
 
@@ -79,32 +59,20 @@ async function canApproveAsDeptLead(
   actorRoleId: string,
   taskDepartmentName: string | null,
 ): Promise<boolean> {
-  const [grant] = await db
-    .select()
-    .from(tenantRoleCapabilitiesTable)
-    .where(
-      and(
-        eq(tenantRoleCapabilitiesTable.roleId, actorRoleId),
-        eq(tenantRoleCapabilitiesTable.capabilityId, "approve_reviews"),
-      ),
-    );
+  const grant = await prisma.tenantRoleCapability.findFirst({
+    where: { roleId: actorRoleId, capabilityId: "approve_reviews" },
+  });
   if (!grant) return false;
 
-  const [actorRole] = await db
-    .select({ name: tenantRolesTable.name })
-    .from(tenantRolesTable)
-    .where(and(eq(tenantRolesTable.id, actorRoleId), eq(tenantRolesTable.tenantId, tenantId)));
+  const actorRole = await prisma.tenantRole.findFirst({
+    where: { id: actorRoleId, tenantId },
+    select: { name: true },
+  });
   if (!actorRole || !DEPARTMENT_LEADERSHIP_ROLE_NAMES.includes(actorRole.name)) return false;
   if (!taskDepartmentName) return false;
 
-  const [actor] = await db
-    .select({ departmentId: usersTable.departmentId })
-    .from(usersTable)
-    .where(and(eq(usersTable.id, actorUserId), eq(usersTable.tenantId, tenantId)));
-  const [dept] = await db
-    .select({ id: departmentsTable.id })
-    .from(departmentsTable)
-    .where(and(eq(departmentsTable.tenantId, tenantId), eq(departmentsTable.name, taskDepartmentName)));
+  const actor = await prisma.user.findFirst({ where: { id: actorUserId, tenantId }, select: { departmentId: true } });
+  const dept = await prisma.department.findFirst({ where: { tenantId, name: taskDepartmentName }, select: { id: true } });
   return !!actor?.departmentId && !!dept?.id && actor.departmentId === dept.id;
 }
 
@@ -114,35 +82,23 @@ async function canApproveAsProdManager(
   actorRoleId: string,
   taskDepartmentName: string | null,
 ): Promise<boolean> {
-  const [actorRole] = await db
-    .select({ name: tenantRolesTable.name })
-    .from(tenantRolesTable)
-    .where(and(eq(tenantRolesTable.id, actorRoleId), eq(tenantRolesTable.tenantId, tenantId)));
+  const actorRole = await prisma.tenantRole.findFirst({ where: { id: actorRoleId, tenantId }, select: { name: true } });
   if (!actorRole || actorRole.name !== "production_head") return false;
 
-  const productionHeads = await db
-    .select({ id: usersTable.id, departmentId: usersTable.departmentId })
-    .from(usersTable)
-    .innerJoin(tenantRolesTable, eq(usersTable.roleId, tenantRolesTable.id))
-    .where(and(eq(usersTable.tenantId, tenantId), eq(tenantRolesTable.name, "production_head")));
+  const productionHeads = await prisma.user.findMany({
+    where: { tenantId, role: { name: "production_head" } },
+    select: { id: true, departmentId: true },
+  });
   if (productionHeads.length === 0) return false;
 
-  let dept: { id: string } | undefined;
+  let dept: { id: string } | null = null;
   if (taskDepartmentName) {
-    [dept] = await db
-      .select({ id: departmentsTable.id })
-      .from(departmentsTable)
-      .where(and(eq(departmentsTable.tenantId, tenantId), eq(departmentsTable.name, taskDepartmentName)));
+    dept = await prisma.department.findFirst({ where: { tenantId, name: taskDepartmentName }, select: { id: true } });
   }
   const ownDeptPMs = dept ? productionHeads.filter((u) => u.departmentId === dept!.id) : [];
   if (ownDeptPMs.length > 0) return ownDeptPMs.some((u) => u.id === actorUserId);
 
-  const [mainDept] = await db
-    .select({ id: departmentsTable.id })
-    .from(departmentsTable)
-    .where(
-      and(eq(departmentsTable.tenantId, tenantId), eq(departmentsTable.name, "Production Management")),
-    );
+  const mainDept = await prisma.department.findFirst({ where: { tenantId, name: "Production Management" }, select: { id: true } });
   const mainPMs = mainDept ? productionHeads.filter((u) => u.departmentId === mainDept.id) : [];
   if (mainPMs.length > 0) return mainPMs.some((u) => u.id === actorUserId);
 
@@ -157,10 +113,7 @@ async function canApproveAsProdManager(
 // server-side from the caller's own session (req.roleId), never trusted
 // from the client.
 async function roleNameForCaller(roleId: string, tenantId: string) {
-  const [row] = await db
-    .select({ name: tenantRolesTable.name })
-    .from(tenantRolesTable)
-    .where(and(eq(tenantRolesTable.id, roleId), eq(tenantRolesTable.tenantId, tenantId)));
+  const row = await prisma.tenantRole.findFirst({ where: { id: roleId, tenantId }, select: { name: true } });
   return row?.name;
 }
 
@@ -192,10 +145,7 @@ tasksRouter.get("/", async (req, res) => {
     if (cached) return res.json(cached);
 
     // Note: In real logic, projectId filtering would join with entity (asset/shot).
-    const tasksList = await db
-      .select()
-      .from(tasksTable)
-      .where(eq(tasksTable.tenantId, tenantId));
+    const tasksList = await prisma.task.findMany({ where: { tenantId } });
     await cacheSet(cacheKey, tasksList, 10);
     return res.json(tasksList);
   } catch (err) {
@@ -230,32 +180,28 @@ tasksRouter.post("/", requireCapability("create_tasks"), async (req, res) => {
     if (assignedTo && !(await assignedToIsArtist(assignedTo, tenantId)))
       return res.status(400).json({ error: "assignedTo must be an artist" });
 
-    const newId = crypto.randomUUID();
-    await db.insert(tasksTable).values({
-      id: newId,
-      tenantId,
-      entityId,
-      entityType,
-      // "ready" (the DB column's own default) isn't a value the frontend's
-      // TaskStatus type recognizes at all, so a task created without an
-      // explicit status used to be invisible in every dashboard/kanban/status
-      // filter — it existed, but no status bucket ever matched it.
-      status: status || "not-started",
-      title: title || "",
-      description: description || "",
-      priority: priority || "medium",
-      department: department || null,
-      pipelinePhase: pipelinePhase || null,
-      startDate: startDate ? new Date(startDate) : null,
-      dueDate: dueDate ? new Date(dueDate) : null,
-      estimatedHours: estimatedHours || 0,
-      assignedTo: assignedTo || null,
+    const created = await prisma.task.create({
+      data: {
+        id: crypto.randomUUID(),
+        tenantId,
+        entityId,
+        entityType,
+        // "ready" (the DB column's own default) isn't a value the frontend's
+        // TaskStatus type recognizes at all, so a task created without an
+        // explicit status used to be invisible in every dashboard/kanban/status
+        // filter — it existed, but no status bucket ever matched it.
+        status: status || "not-started",
+        title: title || "",
+        description: description || "",
+        priority: priority || "medium",
+        department: department || null,
+        pipelinePhase: pipelinePhase || null,
+        startDate: startDate ? new Date(startDate) : null,
+        dueDate: dueDate ? new Date(dueDate) : null,
+        estimatedHours: estimatedHours || 0,
+        assignedTo: assignedTo || null,
+      },
     });
-
-    const [created] = await db
-      .select()
-      .from(tasksTable)
-      .where(and(eq(tasksTable.tenantId, tenantId), eq(tasksTable.id, newId)));
     await cacheDel(cacheKeys.tasksList(tenantId));
     return res.status(201).json(created);
   } catch (err) {
@@ -284,11 +230,7 @@ tasksRouter.put("/:id", async (req, res) => {
     const tenantId = req.tenantId!;
     const taskId = req.params.id;
 
-    const [existing] = await db
-      .select()
-      .from(tasksTable)
-      .where(and(eq(tasksTable.tenantId, tenantId), eq(tasksTable.id, taskId)));
-
+    const existing = await prisma.task.findFirst({ where: { tenantId, id: taskId } });
     if (!existing) return res.status(404).json({ error: "Not found" });
 
     // Artists have `edit_tasks` but not `assign_tasks` — the one exception is
@@ -307,15 +249,9 @@ tasksRouter.put("/:id", async (req, res) => {
     if (!onlyClaimingSelf) {
       const requiredCapability =
         "assignedTo" in req.body ? "assign_tasks" : "edit_tasks";
-      const [grant] = await db
-        .select()
-        .from(tenantRoleCapabilitiesTable)
-        .where(
-          and(
-            eq(tenantRoleCapabilitiesTable.roleId, req.roleId!),
-            eq(tenantRoleCapabilitiesTable.capabilityId, requiredCapability),
-          ),
-        );
+      const grant = await prisma.tenantRoleCapability.findFirst({
+        where: { roleId: req.roleId!, capabilityId: requiredCapability },
+      });
       if (!grant)
         return res.status(403).json({ error: "Forbidden: Missing capability" });
     }
@@ -358,15 +294,8 @@ tasksRouter.put("/:id", async (req, res) => {
         });
     }
 
-    await db
-      .update(tasksTable)
-      .set(updates)
-      .where(and(eq(tasksTable.tenantId, tenantId), eq(tasksTable.id, taskId)));
-
-    const [updated] = await db
-      .select()
-      .from(tasksTable)
-      .where(and(eq(tasksTable.tenantId, tenantId), eq(tasksTable.id, taskId)));
+    await prisma.task.updateMany({ where: { tenantId, id: taskId }, data: updates });
+    const updated = await prisma.task.findFirstOrThrow({ where: { tenantId, id: taskId } });
     await cacheDel(cacheKeys.tasksList(tenantId));
 
     // Fire-and-forget: a task reaching "approved" is the one authoritative
@@ -389,15 +318,9 @@ tasksRouter.put("/:id", async (req, res) => {
 tasksRouter.get("/:id/checklist", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
-    const rows = await db
-      .select()
-      .from(taskChecklistItemsTable)
-      .where(
-        and(
-          eq(taskChecklistItemsTable.tenantId, tenantId),
-          eq(taskChecklistItemsTable.taskId, req.params.id),
-        ),
-      );
+    const rows = await prisma.taskChecklistItem.findMany({
+      where: { tenantId, taskId: req.params.id },
+    });
     return res.json(rows);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -415,18 +338,15 @@ tasksRouter.post("/:id/checklist", requireCapability("edit_tasks"), async (req, 
     if (!text) return res.status(400).json({ error: "Missing text" });
     if (!(await taskInTenant(taskId, tenantId)))
       return res.status(404).json({ error: "Not found" });
-    const newId = crypto.randomUUID();
-    await db.insert(taskChecklistItemsTable).values({
-      id: newId,
-      tenantId,
-      taskId,
-      text,
-      position: position ?? 0,
+    const created = await prisma.taskChecklistItem.create({
+      data: {
+        id: crypto.randomUUID(),
+        tenantId,
+        taskId,
+        text,
+        position: position ?? 0,
+      },
     });
-    const [created] = await db
-      .select()
-      .from(taskChecklistItemsTable)
-      .where(and(eq(taskChecklistItemsTable.tenantId, tenantId), eq(taskChecklistItemsTable.id, newId)));
     return res.status(201).json(created);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -441,37 +361,20 @@ tasksRouter.put("/:id/checklist/:itemId", requireCapability("edit_tasks"), async
     // resolution, even though a plain path segment is always one string.
     const itemId = req.params.itemId as string;
     const { done, text } = req.body;
-    const [existing] = await db
-      .select()
-      .from(taskChecklistItemsTable)
-      .where(
-        and(
-          eq(taskChecklistItemsTable.tenantId, tenantId),
-          eq(taskChecklistItemsTable.id, itemId),
-        ),
-      );
+    const existing = await prisma.taskChecklistItem.findFirst({
+      where: { tenantId, id: itemId },
+    });
     if (!existing) return res.status(404).json({ error: "Not found" });
     const updates: Record<string, unknown> = {};
     if (typeof done === "boolean") updates.done = done;
     if (typeof text === "string") updates.text = text;
-    await db
-      .update(taskChecklistItemsTable)
-      .set(updates)
-      .where(
-        and(
-          eq(taskChecklistItemsTable.tenantId, tenantId),
-          eq(taskChecklistItemsTable.id, itemId),
-        ),
-      );
-    const [updated] = await db
-      .select()
-      .from(taskChecklistItemsTable)
-      .where(
-        and(
-          eq(taskChecklistItemsTable.tenantId, tenantId),
-          eq(taskChecklistItemsTable.id, itemId),
-        ),
-      );
+    await prisma.taskChecklistItem.updateMany({
+      where: { tenantId, id: itemId },
+      data: updates,
+    });
+    const updated = await prisma.taskChecklistItem.findFirstOrThrow({
+      where: { tenantId, id: itemId },
+    });
     return res.json(updated);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -481,12 +384,9 @@ tasksRouter.put("/:id/checklist/:itemId", requireCapability("edit_tasks"), async
 tasksRouter.get("/:id/comments", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
-    const rows = await db
-      .select()
-      .from(taskCommentsTable)
-      .where(
-        and(eq(taskCommentsTable.tenantId, tenantId), eq(taskCommentsTable.taskId, req.params.id)),
-      );
+    const rows = await prisma.taskComment.findMany({
+      where: { tenantId, taskId: req.params.id },
+    });
     return res.json(rows);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -504,18 +404,15 @@ tasksRouter.post("/:id/comments", requireCapability("edit_tasks"), async (req, r
     if (!text) return res.status(400).json({ error: "Missing text" });
     if (!(await taskInTenant(taskId, tenantId)))
       return res.status(404).json({ error: "Not found" });
-    const newId = crypto.randomUUID();
-    await db.insert(taskCommentsTable).values({
-      id: newId,
-      tenantId,
-      taskId,
-      userId,
-      text,
+    const created = await prisma.taskComment.create({
+      data: {
+        id: crypto.randomUUID(),
+        tenantId,
+        taskId,
+        userId,
+        text,
+      },
     });
-    const [created] = await db
-      .select()
-      .from(taskCommentsTable)
-      .where(and(eq(taskCommentsTable.tenantId, tenantId), eq(taskCommentsTable.id, newId)));
     return res.status(201).json(created);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -525,15 +422,9 @@ tasksRouter.post("/:id/comments", requireCapability("edit_tasks"), async (req, r
 tasksRouter.get("/:id/dependencies", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
-    const rows = await db
-      .select()
-      .from(taskDependenciesTable)
-      .where(
-        and(
-          eq(taskDependenciesTable.tenantId, tenantId),
-          eq(taskDependenciesTable.taskId, req.params.id),
-        ),
-      );
+    const rows = await prisma.taskDependency.findMany({
+      where: { tenantId, taskId: req.params.id },
+    });
     return res.json(rows);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -553,19 +444,16 @@ tasksRouter.post("/:id/dependencies", requireCapability("edit_tasks"), async (re
       return res.status(404).json({ error: "Not found" });
     if (!(await taskInTenant(dependsOnTaskId, tenantId)))
       return res.status(400).json({ error: "Invalid dependsOnTaskId" });
-    const newId = crypto.randomUUID();
-    await db.insert(taskDependenciesTable).values({
-      id: newId,
-      tenantId,
-      taskId,
-      dependsOnTaskId,
-      type: type || "FS",
-      lagDays: lagDays ?? null,
+    const created = await prisma.taskDependency.create({
+      data: {
+        id: crypto.randomUUID(),
+        tenantId,
+        taskId,
+        dependsOnTaskId,
+        type: type || "FS",
+        lagDays: lagDays ?? null,
+      },
     });
-    const [created] = await db
-      .select()
-      .from(taskDependenciesTable)
-      .where(and(eq(taskDependenciesTable.tenantId, tenantId), eq(taskDependenciesTable.id, newId)));
     return res.status(201).json(created);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -575,15 +463,9 @@ tasksRouter.post("/:id/dependencies", requireCapability("edit_tasks"), async (re
 tasksRouter.get("/:id/attachments", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
-    const rows = await db
-      .select()
-      .from(taskAttachmentsTable)
-      .where(
-        and(
-          eq(taskAttachmentsTable.tenantId, tenantId),
-          eq(taskAttachmentsTable.taskId, req.params.id),
-        ),
-      );
+    const rows = await prisma.taskAttachment.findMany({
+      where: { tenantId, taskId: req.params.id },
+    });
     return res.json(rows);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -601,18 +483,15 @@ tasksRouter.post("/:id/attachments", requireCapability("edit_tasks"), async (req
     if (!url) return res.status(400).json({ error: "Missing url" });
     if (!(await taskInTenant(taskId, tenantId)))
       return res.status(404).json({ error: "Not found" });
-    const newId = crypto.randomUUID();
-    await db.insert(taskAttachmentsTable).values({
-      id: newId,
-      tenantId,
-      taskId,
-      url,
-      uploadedById: userId,
+    const created = await prisma.taskAttachment.create({
+      data: {
+        id: crypto.randomUUID(),
+        tenantId,
+        taskId,
+        url,
+        uploadedById: userId,
+      },
     });
-    const [created] = await db
-      .select()
-      .from(taskAttachmentsTable)
-      .where(and(eq(taskAttachmentsTable.tenantId, tenantId), eq(taskAttachmentsTable.id, newId)));
     return res.status(201).json(created);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -622,15 +501,9 @@ tasksRouter.post("/:id/attachments", requireCapability("edit_tasks"), async (req
 tasksRouter.get("/:id/approval-events", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
-    const rows = await db
-      .select()
-      .from(taskApprovalEventsTable)
-      .where(
-        and(
-          eq(taskApprovalEventsTable.tenantId, tenantId),
-          eq(taskApprovalEventsTable.taskId, req.params.id),
-        ),
-      );
+    const rows = await prisma.taskApprovalEvent.findMany({
+      where: { tenantId, taskId: req.params.id },
+    });
     return res.json(rows);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -645,10 +518,11 @@ tasksRouter.post("/:id/approval-events", async (req, res) => {
     const { action } = req.body;
     if (!action || !(APPROVAL_EVENT_ACTIONS as readonly string[]).includes(action))
       return res.status(400).json({ error: "Missing or invalid action" });
-    const [approvalTask] = await db
-      .select({ department: tasksTable.department })
-      .from(tasksTable)
-      .where(and(eq(tasksTable.tenantId, tenantId), eq(tasksTable.id, req.params.id)));
+
+    const approvalTask = await prisma.task.findFirst({
+      where: { tenantId, id: req.params.id },
+      select: { department: true },
+    });
     if (!approvalTask) return res.status(404).json({ error: "Not found" });
 
     // The status-transition gate on PUT /:id is the authoritative check, but
@@ -667,34 +541,19 @@ tasksRouter.post("/:id/approval-events", async (req, res) => {
 
     const byRole = await roleNameForCaller(roleId, tenantId);
     if (!byRole) return res.status(400).json({ error: "Invalid role" });
-    const newId = crypto.randomUUID();
-    await db.insert(taskApprovalEventsTable).values({
-      id: newId,
-      tenantId,
-      taskId: req.params.id,
-      action,
-      byUserId: userId,
-      byRole,
+
+    const created = await prisma.taskApprovalEvent.create({
+      data: { id: crypto.randomUUID(), tenantId, taskId: req.params.id, action, byUserId: userId, byRole },
     });
-    const [created] = await db
-      .select()
-      .from(taskApprovalEventsTable)
-      .where(and(eq(taskApprovalEventsTable.tenantId, tenantId), eq(taskApprovalEventsTable.id, newId)));
 
     // Fire-and-forget: a notification failure should never fail the approval
     // action itself. Each stage notifies whoever needs to act next (or, for
     // the final publish/reject actions, the artist whose work it concerns).
     (async () => {
       try {
-        const [task] = await db
-          .select()
-          .from(tasksTable)
-          .where(and(eq(tasksTable.tenantId, tenantId), eq(tasksTable.id, req.params.id)));
+        const task = await prisma.task.findFirst({ where: { tenantId, id: req.params.id } });
         if (!task) return;
-        const [actor] = await db
-          .select({ name: usersTable.name })
-          .from(usersTable)
-          .where(eq(usersTable.id, userId));
+        const actor = await prisma.user.findFirst({ where: { id: userId }, select: { name: true } });
         const actorName = actor?.name || "Someone";
 
         const notify = (recipientUserId: string, title: string, description: string) =>
@@ -710,17 +569,15 @@ tasksRouter.post("/:id/approval-events", async (req, res) => {
           });
 
         if (action === "submitted-for-lead-review") {
-          const leads = await db
-            .select({ id: usersTable.id })
-            .from(usersTable)
-            .innerJoin(tenantRolesTable, eq(usersTable.roleId, tenantRolesTable.id))
-            .innerJoin(departmentsTable, eq(usersTable.departmentId, departmentsTable.id))
-            .where(
-              and(
-                eq(usersTable.tenantId, tenantId),
-                eq(departmentsTable.name, task.department || ""),
-              ),
-            );
+          // NOTE (preserved from the Drizzle version): this query filters
+          // only by department name, not by role -- it does NOT actually
+          // check that the recipient is a lead. That's a pre-existing
+          // imprecision in the original code, not something to "fix" here;
+          // the migration must reproduce behavior verbatim.
+          const leads = await prisma.user.findMany({
+            where: { tenantId, department: { name: task.department || "" } },
+            select: { id: true },
+          });
           for (const l of leads) {
             await notify(
               l.id,
