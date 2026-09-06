@@ -55,7 +55,7 @@ All four are fixed in the working tree now (see §4). Once you rebuild and redep
 `artifacts/api-server/.env` was **committed to git** (added in commit `f05841b`) and contains a **live Neon Postgres connection string with a real username and password**:
 
 ```
-DATABASE_URL="postgresql://neondb_owner:npg_****REDACTED****@ep-lingering-bar-azva7gtp-pooler.c-3.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+DATABASE_URL="postgresql://neondb_owner:<REDACTED>@<neon-host>/neondb?sslmode=require&channel_binding=require"
 ```
 
 Anyone with read access to this repository (or its git history — deleting the file doesn't erase history) has your production database credentials.
