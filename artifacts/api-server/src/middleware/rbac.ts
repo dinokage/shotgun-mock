@@ -1,7 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { db } from "@workspace/db";
-import { tenantRoleCapabilitiesTable } from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { prisma } from "@workspace/db";
 
 export function requireCapability(capabilityId: string) {
   return async (req: Request, res: Response, next: NextFunction) => {
@@ -10,15 +8,9 @@ export function requireCapability(capabilityId: string) {
       return;
     }
 
-    const [grant] = await db
-      .select()
-      .from(tenantRoleCapabilitiesTable)
-      .where(
-        and(
-          eq(tenantRoleCapabilitiesTable.roleId, req.roleId),
-          eq(tenantRoleCapabilitiesTable.capabilityId, capabilityId),
-        ),
-      );
+    const grant = await prisma.tenantRoleCapability.findFirst({
+      where: { roleId: req.roleId, capabilityId },
+    });
 
     if (!grant) {
       res.status(403).json({ error: "Forbidden: Missing capability" });
