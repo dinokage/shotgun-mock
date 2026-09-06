@@ -6,13 +6,7 @@
 // password, which the admin is expected to hand out and have people change.
 // Run once, locally (not in Docker), against the dev DB exposed on
 // localhost:5432 -- the source .xlsx lives on the host filesystem.
-import { db } from "@workspace/db";
-import {
-  usersTable,
-  tenantRolesTable,
-  departmentsTable,
-} from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { prisma } from "@workspace/db";
 import * as argon2 from "argon2";
 import * as crypto from "crypto";
 import * as XLSX from "xlsx";
@@ -109,16 +103,16 @@ async function main() {
     process.exit(1);
   }
 
-  const roles = await db
-    .select({ id: tenantRolesTable.id, name: tenantRolesTable.name })
-    .from(tenantRolesTable)
-    .where(eq(tenantRolesTable.tenantId, TENANT_ID));
+  const roles = await prisma.tenantRole.findMany({
+    where: { tenantId: TENANT_ID },
+    select: { id: true, name: true },
+  });
   const roleIdByName = new Map(roles.map((r) => [r.name, r.id]));
 
-  const departments = await db
-    .select({ id: departmentsTable.id, name: departmentsTable.name, abbr: departmentsTable.abbr })
-    .from(departmentsTable)
-    .where(eq(departmentsTable.tenantId, TENANT_ID));
+  const departments = await prisma.department.findMany({
+    where: { tenantId: TENANT_ID },
+    select: { id: true, name: true, abbr: true },
+  });
 
   function guessDepartment(sourceDept: string) {
     const d = sourceDept.trim().toLowerCase();
@@ -132,10 +126,10 @@ async function main() {
     );
   }
 
-  const existingUsers = await db
-    .select({ email: usersTable.email, name: usersTable.name })
-    .from(usersTable)
-    .where(eq(usersTable.tenantId, TENANT_ID));
+  const existingUsers = await prisma.user.findMany({
+    where: { tenantId: TENANT_ID },
+    select: { email: true, name: true },
+  });
   const existingNames = new Set(existingUsers.map((u) => u.name.toLowerCase()));
   const usedEmails = new Set(existingUsers.map((u) => u.email.toLowerCase()));
 
@@ -161,16 +155,18 @@ async function main() {
     const dept = guessDepartment(row.sourceDept);
     const email = slugifyEmail(row.name, usedEmails);
 
-    await db.insert(usersTable).values({
-      id: crypto.randomUUID(),
-      tenantId: TENANT_ID,
-      roleId,
-      departmentId: dept?.id ?? null,
-      email,
-      hashedPassword,
-      name: row.name,
-      title: row.sourceDesignation || null,
-      status: "active",
+    await prisma.user.create({
+      data: {
+        id: crypto.randomUUID(),
+        tenantId: TENANT_ID,
+        roleId,
+        departmentId: dept?.id ?? null,
+        email,
+        hashedPassword,
+        name: row.name,
+        title: row.sourceDesignation || null,
+        status: "active",
+      },
     });
     existingNames.add(row.name.toLowerCase());
     created++;

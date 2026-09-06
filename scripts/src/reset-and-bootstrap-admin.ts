@@ -12,13 +12,7 @@
 // hashed with the same argon2 hashPassword() helper every other user's
 // password goes through (artifacts/api-server/src/lib/auth.ts), and the
 // plaintext value is discarded the moment this process exits.
-import { db } from "@workspace/db";
-import {
-  tenantsTable,
-  tenantRolesTable,
-  tenantRoleCapabilitiesTable,
-  usersTable,
-} from "@workspace/db/schema";
+import { prisma } from "@workspace/db";
 import * as argon2 from "argon2";
 import * as crypto from "crypto";
 
@@ -116,42 +110,39 @@ async function main() {
   // approval-events), versions, reviews, annotations, daily logs, and
   // client access links in one operation, with no risk of missing a table
   // or getting delete order wrong across 20+ tables by hand.
-  await db.delete(tenantsTable);
+  await prisma.tenant.deleteMany({});
 
   console.log("Creating tenant, all six standard roles, and the admin user...");
   const tenantId = crypto.randomUUID();
-  await db.insert(tenantsTable).values({
-    id: tenantId,
-    name: TENANT_NAME,
-    slug: TENANT_SLUG,
+  await prisma.tenant.create({
+    data: { id: tenantId, name: TENANT_NAME, slug: TENANT_SLUG },
   });
 
   const roleIdByName: Record<string, string> = {};
   for (const [roleName, capabilities] of Object.entries(ROLE_CAPABILITIES)) {
     const roleId = crypto.randomUUID();
     roleIdByName[roleName] = roleId;
-    await db.insert(tenantRolesTable).values({
-      id: roleId,
-      tenantId,
-      name: roleName,
-      isSystemDefault: true,
+    await prisma.tenantRole.create({
+      data: { id: roleId, tenantId, name: roleName, isSystemDefault: true },
     });
-    await db.insert(tenantRoleCapabilitiesTable).values(
-      capabilities.map((capabilityId) => ({ roleId, capabilityId })),
-    );
+    await prisma.tenantRoleCapability.createMany({
+      data: capabilities.map((capabilityId) => ({ roleId, capabilityId })),
+    });
   }
   const adminRoleId = roleIdByName.admin;
 
   const hashedPassword = await hashPassword(password);
-  await db.insert(usersTable).values({
-    id: crypto.randomUUID(),
-    tenantId,
-    roleId: adminRoleId,
-    departmentId: null,
-    email: ADMIN_EMAIL,
-    hashedPassword,
-    name: ADMIN_NAME,
-    status: "active",
+  await prisma.user.create({
+    data: {
+      id: crypto.randomUUID(),
+      tenantId,
+      roleId: adminRoleId,
+      departmentId: null,
+      email: ADMIN_EMAIL,
+      hashedPassword,
+      name: ADMIN_NAME,
+      status: "active",
+    },
   });
 
   console.log(
