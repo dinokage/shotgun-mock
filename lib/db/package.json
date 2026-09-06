@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./schema": "./src/schema/index.ts"
+    "./schema": "./src/schema/index.ts",
+    "./prisma": "./src/index.ts"
   },
   "scripts": {
     "push": "drizzle-kit push --config ./drizzle.config.ts",
@@ -14,6 +15,7 @@
     "migrate": "tsx src/migrate.ts"
   },
   "dependencies": {
+    "@prisma/client": "^6.19.3",
     "drizzle-orm": "catalog:",
     "drizzle-zod": "^0.8.3",
     "pg": "^8.22.0",
@@ -24,6 +26,7 @@
     "@types/pg": "^8.20.0",
     "dotenv": "^17.4.2",
     "drizzle-kit": "^0.31.10",
+    "prisma": "6.19.3",
     "tsx": "catalog:"
   }
 }

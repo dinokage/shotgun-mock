@@ -61,3 +61,7 @@ cookie.txt
 
 # Database backups (real tenant data -- never committed)
 /backups/
+
+# Generated Prisma Client (regenerated via `prisma generate`, not committed --
+# same convention as dist/, node_modules)
+lib/db/generated/
