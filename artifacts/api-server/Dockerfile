@@ -65,25 +65,6 @@ RUN pnpm --filter "@workspace/db" run prisma:generate
 # Generate schemas before building.
 RUN pnpm --filter "@workspace/api-spec" run codegen
 
-# Only generate DB migrations if none are committed yet (lib/db/drizzle).
-# Regenerating on every build gives each migration a fresh hash, which makes
-# `drizzle-orm/migrator` try to re-apply it on every redeploy and fail with
-# "relation already exists" against a database that's already migrated.
-# Once migrations are committed to git, this step is skipped and the
-# committed, stable migration files are used instead.
-# drizzle-kit generate only diffs the TS schema against ./drizzle — it never
-# connects to a database — but drizzle.config.ts requires DATABASE_URL to be
-# set just to load, so we pass a placeholder here when generating.
-# While migrations remain uncommitted, lib/db/src/migrate.ts's "object already
-# exists" guard is what stops the regenerate-and-replay cycle from crash-looping
-# this container. That guard is a safety net, NOT a fix: it cannot distinguish
-# "already applied" from "a real new migration is needed", so it will silently
-# skip genuine schema changes. See forge-final.md §5 step 3.
-RUN if [ ! -d "lib/db/drizzle" ]; then \
-      DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder" \
-      pnpm --filter "@workspace/db" run generate; \
-    fi
-
 # Build the api server
 RUN pnpm --filter "@workspace/api-server" run build
 
@@ -105,7 +86,9 @@ WORKDIR /app
 
 COPY --from=builder /prod /app/prod
 COPY --from=builder /app/artifacts/api-server/dist /app/prod/api-server/dist
-COPY --from=builder /app/lib/db/drizzle /app/prod/db/drizzle
+COPY --from=builder /app/lib/db/schema.prisma /app/prod/db/schema.prisma
+COPY --from=builder /app/lib/db/migrations /app/prod/db/migrations
+COPY --from=builder /app/lib/db/generated /app/prod/db/generated
 COPY --from=builder /app/lib/db/src/migrate.ts /app/prod/db/src/migrate.ts
 
 # Prisma's generated client bakes the ABSOLUTE path it was generated at
