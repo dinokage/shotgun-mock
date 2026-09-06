@@ -7,7 +7,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env to a real random value}
       POSTGRES_DB: ${POSTGRES_DB:-forge}
     volumes:
       - forge-db-data:/var/lib/postgresql/data
@@ -43,7 +43,7 @@ services:
     environment:
       PGHOST: db
       PGUSER: ${POSTGRES_USER:-postgres}
-      PGPASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env to a real random value}
       PGDATABASE: ${POSTGRES_DB:-forge}
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
       BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-21600}
@@ -87,7 +87,7 @@ services:
       # Container-to-container traffic never goes through the host port mapping,
       # so API_PORT below only controls host-side exposure.
       - NODE_ENV=production
-      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-forge}
+      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env to a real random value}@db:5432/${POSTGRES_DB:-forge}
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in .env to a real random value}
       - CORS_ORIGIN=${CORS_ORIGIN:-*}
