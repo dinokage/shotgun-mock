@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { prisma } from "@workspace/db";
 import { tenantAuthMiddleware } from "../middleware/tenant";
-import { requireCapability } from "../middleware/rbac";
+import { requireCapability, denyClientAccess } from "../middleware/rbac";
 import { getClientScope } from "../lib/clientScope";
 import * as crypto from "crypto";
 
@@ -64,7 +64,11 @@ versionsRouter.get("/", async (req, res) => {
   }
 });
 
-versionsRouter.post("/", requireCapability("submit_reviews"), async (req, res) => {
+// denyClientAccess first: creating a version row is an internal "footage
+// uploaded" action, not feedback -- once submit_reviews is granted to the
+// client role (for leaving reviews/annotations below), this route would
+// otherwise become reachable by any client-access session too.
+versionsRouter.post("/", denyClientAccess, requireCapability("submit_reviews"), async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const userId = req.userId!;
@@ -105,7 +109,10 @@ versionsRouter.post("/", requireCapability("submit_reviews"), async (req, res) =
 
 const PATCHABLE_FIELDS = ["status", "notes", "thumbnail", "mediaUrl"] as const;
 
-versionsRouter.put("/:id", requireCapability("submit_reviews"), async (req, res) => {
+// denyClientAccess first, same reasoning as POST / above -- a client's
+// feedback goes through reviews/annotations, not by editing the version
+// record's own status/notes/mediaUrl/thumbnail directly.
+versionsRouter.put("/:id", denyClientAccess, requireCapability("submit_reviews"), async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     // Cast needed: requireCapability() + this route's "/:id" typing widens

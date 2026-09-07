@@ -10,29 +10,38 @@ datasource db {
 }
 
 model Annotation {
-  id              String   @id
-  tenantId        String   @map("tenant_id")
-  versionId       String   @map("version_id")
-  frame           Int
-  type            String
-  color           String
-  x               Float
-  y               Float
-  w               Float?
-  h               Float?
-  points          Json?
-  text            String?
-  startFrame      Int?     @map("start_frame")
-  endFrame        Int?     @map("end_frame")
-  fontFamily      String?  @map("font_family")
-  fontSize        Int?     @map("font_size")
-  backgroundColor String?  @map("background_color")
-  createdById     String   @map("created_by_id")
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  id                          String   @id
+  tenantId                    String   @map("tenant_id")
+  versionId                   String   @map("version_id")
+  frame                       Int
+  type                        String
+  color                       String
+  x                           Float
+  y                           Float
+  w                           Float?
+  h                           Float?
+  points                      Json?
+  text                        String?
+  startFrame                  Int?     @map("start_frame")
+  endFrame                    Int?     @map("end_frame")
+  fontFamily                  String?  @map("font_family")
+  fontSize                    Int?     @map("font_size")
+  backgroundColor             String?  @map("background_color")
+  // Exactly one of createdById/createdByClientAccessLinkId is set -- an
+  // employee annotation has a real users row behind it; a client-access
+  // session (session payload's userId is always null -- no users row
+  // exists for it) is attributed by which link it redeemed instead. Both
+  // nullable rather than a real DB CHECK constraint -- enforced at the
+  // route layer (reviews.ts), same as the rest of this schema's
+  // application-level invariants.
+  createdById                 String?  @map("created_by_id")
+  createdByClientAccessLinkId String?  @map("created_by_client_access_link_id")
+  createdAt                   DateTime @default(now()) @map("created_at") @db.Timestamp(6)
 
-  createdBy User    @relation(fields: [createdById], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "annotations_created_by_id_users_id_fk")
-  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "annotations_tenant_id_tenants_id_fk")
-  version   Version @relation(fields: [versionId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "annotations_version_id_versions_id_fk")
+  createdBy                 User?             @relation(fields: [createdById], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "annotations_created_by_id_users_id_fk")
+  createdByClientAccessLink ClientAccessLink? @relation(fields: [createdByClientAccessLinkId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "annotations_created_by_client_access_link_id_fk")
+  tenant                    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "annotations_tenant_id_tenants_id_fk")
+  version                   Version           @relation(fields: [versionId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "annotations_version_id_versions_id_fk")
 
   @@map("annotations")
 }
@@ -97,11 +106,13 @@ model ClientAccessLink {
   revokedAt       DateTime? @map("revoked_at") @db.Timestamp(6)
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
 
-  createdByUser User     @relation(fields: [createdByUserId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_access_links_created_by_user_id_users_id_fk")
-  episode       Episode? @relation(fields: [episodeId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_access_links_episode_id_episodes_id_fk")
-  project       Project? @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_access_links_project_id_projects_id_fk")
-  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_access_links_tenant_id_tenants_id_fk")
-  version       Version? @relation(fields: [versionId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_access_links_version_id_versions_id_fk")
+  createdByUser User         @relation(fields: [createdByUserId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_access_links_created_by_user_id_users_id_fk")
+  episode       Episode?     @relation(fields: [episodeId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_access_links_episode_id_episodes_id_fk")
+  project       Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_access_links_project_id_projects_id_fk")
+  tenant        Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_access_links_tenant_id_tenants_id_fk")
+  version       Version?     @relation(fields: [versionId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_access_links_version_id_versions_id_fk")
+  reviews       Review[]
+  annotations   Annotation[]
 
   @@unique([tenantId, code], map: "client_access_links_tenant_id_code_unique")
   @@map("client_access_links")
@@ -179,14 +190,14 @@ model Notification {
 }
 
 model PendingInvite {
-  id           String    @id
-  tenantId     String    @map("tenant_id")
+  id           String   @id
+  tenantId     String   @map("tenant_id")
   email        String
-  roleId       String    @map("role_id")
-  token        String    @unique(map: "pending_invites_token_unique")
-  expiresAt    DateTime  @map("expires_at") @db.Timestamp(6)
-  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
-  departmentId String?   @map("department_id")
+  roleId       String   @map("role_id")
+  token        String   @unique(map: "pending_invites_token_unique")
+  expiresAt    DateTime @map("expires_at") @db.Timestamp(6)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  departmentId String?  @map("department_id")
 
   department Department? @relation(fields: [departmentId], references: [id], onUpdate: NoAction, map: "pending_invites_department_id_departments_id_fk")
   tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "pending_invites_tenant_id_tenants_id_fk")
@@ -204,22 +215,22 @@ model PlatformUser {
 }
 
 model Project {
-  id                String                @id
-  tenantId          String                @map("tenant_id")
-  name              String
-  status            String                @default("active")
-  startDate         DateTime?             @map("start_date") @db.Timestamp(6)
-  endDate           DateTime?             @map("end_date") @db.Timestamp(6)
-  createdAt         DateTime              @default(now()) @map("created_at") @db.Timestamp(6)
-  deletedAt         DateTime?             @map("deleted_at") @db.Timestamp(6)
-  code              String?
-  type              String?
-  client            String?
+  id        String    @id
+  tenantId  String    @map("tenant_id")
+  name      String
+  status    String    @default("active")
+  startDate DateTime? @map("start_date") @db.Timestamp(6)
+  endDate   DateTime? @map("end_date") @db.Timestamp(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamp(6)
+  code      String?
+  type      String?
+  client    String?
 
   assets            Asset[]
   clientAccessLinks ClientAccessLink[]
   episodes          Episode[]
-  tenant            Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "projects_tenant_id_tenants_id_fk")
+  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "projects_tenant_id_tenants_id_fk")
   sequences         Sequence[]
   shots             Shot[]
 
@@ -227,21 +238,26 @@ model Project {
 }
 
 model Review {
-  id         String   @id
-  tenantId   String   @map("tenant_id")
-  entityId   String   @map("entity_id")
-  entityType String   @map("entity_type")
-  versionId  String   @map("version_id")
-  reviewerId String   @map("reviewer_id")
-  status     String   @default("pending")
-  comments   String   @default("")
-  frame      Int?
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamp(6)
-  updatedAt  DateTime @default(now()) @map("updated_at") @db.Timestamp(6)
+  id                         String   @id
+  tenantId                   String   @map("tenant_id")
+  entityId                   String   @map("entity_id")
+  entityType                 String   @map("entity_type")
+  versionId                  String   @map("version_id")
+  // Exactly one of reviewerId/reviewerClientAccessLinkId is set -- see the
+  // matching comment on Annotation.createdById/createdByClientAccessLinkId
+  // for why (client-access sessions have no real users row to attribute to).
+  reviewerId                 String?  @map("reviewer_id")
+  reviewerClientAccessLinkId String?  @map("reviewer_client_access_link_id")
+  status                     String   @default("pending")
+  comments                   String   @default("")
+  frame                      Int?
+  createdAt                  DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt                  DateTime @default(now()) @map("updated_at") @db.Timestamp(6)
 
-  reviewer User    @relation(fields: [reviewerId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "reviews_reviewer_id_users_id_fk")
-  tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "reviews_tenant_id_tenants_id_fk")
-  version  Version @relation(fields: [versionId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "reviews_version_id_versions_id_fk")
+  reviewer                 User?             @relation(fields: [reviewerId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "reviews_reviewer_id_users_id_fk")
+  reviewerClientAccessLink ClientAccessLink? @relation(fields: [reviewerClientAccessLinkId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "reviews_reviewer_client_access_link_id_fk")
+  tenant                   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "reviews_tenant_id_tenants_id_fk")
+  version                  Version           @relation(fields: [versionId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "reviews_version_id_versions_id_fk")
 
   @@map("reviews")
 }
@@ -262,12 +278,12 @@ model SequenceTeamMember {
 }
 
 model Sequence {
-  id         String   @id
-  tenantId   String   @map("tenant_id")
-  projectId  String   @map("project_id")
-  episodeId  String?  @map("episode_id")
-  name       String
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  id        String   @id
+  tenantId  String   @map("tenant_id")
+  projectId String   @map("project_id")
+  episodeId String?  @map("episode_id")
+  name      String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
 
   assets              Asset[]
   sequenceTeamMembers SequenceTeamMember[]
@@ -429,15 +445,15 @@ model Task {
   lastStatusUpdate DateTime  @default(now()) @map("last_status_update") @db.Timestamp(6)
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
 
-  dailyLogs            DailyLog[]
-  taskApprovalEvents   TaskApprovalEvent[]
-  taskAttachments      TaskAttachment[]
-  taskChecklistItems   TaskChecklistItem[]
-  taskComments         TaskComment[]
-  dependentTaskLinks   TaskDependency[]     @relation("TaskDependents")
-  taskDependencies     TaskDependency[]     @relation("TaskDependencies")
-  tenant               Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tasks_tenant_id_tenants_id_fk")
-  versions             Version[]
+  dailyLogs          DailyLog[]
+  taskApprovalEvents TaskApprovalEvent[]
+  taskAttachments    TaskAttachment[]
+  taskChecklistItems TaskChecklistItem[]
+  taskComments       TaskComment[]
+  dependentTaskLinks TaskDependency[]    @relation("TaskDependents")
+  taskDependencies   TaskDependency[]    @relation("TaskDependencies")
+  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tasks_tenant_id_tenants_id_fk")
+  versions           Version[]
 
   @@map("tasks")
 }

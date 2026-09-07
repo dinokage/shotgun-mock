@@ -80,7 +80,11 @@ const ROLE_CAPABILITIES: Record<string, readonly string[]> = {
     "approve_reviews",
   ],
   artist: ["edit_tasks", "submit_reviews"],
-  client: ["approve_reviews"],
+  // submit_reviews is what actually lets a client-access session create a
+  // review/annotation (reviews.ts) -- approve_reviews alone gates nothing
+  // reachable by the client role once client-access.ts's own link-management
+  // routes are correctly locked to internal sessions (denyClientAccess).
+  client: ["approve_reviews", "submit_reviews"],
 };
 
 async function main() {

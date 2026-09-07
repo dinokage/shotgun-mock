@@ -173,7 +173,11 @@ async function main() {
       email: "client@acme.com",
       user: "Acme Client",
       department: null,
-      capabilities: ["approve_reviews"],
+      // submit_reviews is what actually lets a client-access session create
+      // a review/annotation (reviews.ts) -- approve_reviews alone gated
+      // nothing reachable by the client role once client-access.ts's own
+      // link-management routes were correctly locked to internal sessions.
+      capabilities: ["approve_reviews", "submit_reviews"],
     },
   ];
 

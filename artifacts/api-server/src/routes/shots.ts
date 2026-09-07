@@ -175,3 +175,54 @@ shotsRouter.put("/:id", requireCapability("edit_tasks"), async (req, res) => {
     return res.status(500).json({ error: "Internal server error" });
   }
 });
+
+// The one write a client-access session legitimately needs: recording its
+// approve / request-changes decision. Deliberately narrower than the
+// generic PUT /:id above (which requires edit_tasks and, per that route's
+// own comment, exists specifically to exclude client sessions) -- this
+// route accepts only a status value, only for a shot inside the client's
+// own granted project/episode/version, and touches only clientReviewStatus
+// (plus the shot's overall status, mirroring what the client-review page's
+// local state update already does). Client-access sessions only: internal
+// roles that need to change more than this use the generic PUT /:id, which
+// they already have capability for.
+shotsRouter.put("/:id/client-review", async (req, res) => {
+  try {
+    if (!req.clientAccessLinkId) {
+      return res.status(403).json({ error: "Forbidden: client-access sessions only" });
+    }
+
+    const tenantId = req.tenantId!;
+    const shotId = req.params.id as string;
+    const { status } = req.body;
+    if (status !== "approved" && status !== "changes-requested") {
+      return res
+        .status(400)
+        .json({ error: "status must be 'approved' or 'changes-requested'" });
+    }
+
+    const existing = await prisma.shot.findFirst({ where: { tenantId, id: shotId } });
+    if (!existing) return res.status(404).json({ error: "Not found" });
+
+    const clientScope = await getClientScope(req);
+    const inScope =
+      !!clientScope &&
+      existing.projectId === clientScope.projectId &&
+      (!clientScope.episodeId || existing.episodeId === clientScope.episodeId) &&
+      (!clientScope.shotId || existing.id === clientScope.shotId);
+    if (!inScope) return res.status(403).json({ error: "Forbidden" });
+
+    await prisma.shot.updateMany({
+      where: { tenantId, id: shotId },
+      data: {
+        clientReviewStatus: status,
+        status: status === "approved" ? "approved" : "in-progress",
+        updatedAt: new Date(),
+      },
+    });
+    const updated = await prisma.shot.findFirstOrThrow({ where: { tenantId, id: shotId } });
+    return res.json(updated);
+  } catch (err) {
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
