@@ -1,4 +1,4 @@
-version: "3.8"
+name: shotgun-mock
 
 services:
   db:
@@ -7,7 +7,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env to a real random value}
       POSTGRES_DB: ${POSTGRES_DB:-forge}
     volumes:
       - forge-db-data:/var/lib/postgresql/data
@@ -29,6 +29,46 @@ services:
       retries: 10
       start_period: 10s
 
+  # Periodic pg_dump of the `db` service. Writes to ./backups on the HOST
+  # (bind mount, not a named volume) so backups survive `docker compose down
+  # -v` -- a named volume would be deleted by the exact command a backup is
+  # meant to protect against. See ops/db-backup/backup.sh and restore.sh.
+  db-backup:
+    image: postgres:15-alpine
+    container_name: forge-db-backup
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER:-postgres}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env to a real random value}
+      PGDATABASE: ${POSTGRES_DB:-forge}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-21600}
+    volumes:
+      - ./backups:/backups
+      - ./ops/db-backup/backup.sh:/backup.sh:ro
+    entrypoint: ["sh", "/backup.sh"]
+
+  redis:
+    image: redis:7-alpine
+    container_name: forge-redis
+    restart: unless-stopped
+    # No host port published -- this is an internal cache the api container
+    # talks to over the compose network, never accessed from outside.
+    # --save disabled: this is a cache, not a source of truth, so an
+    # AOF/RDB reload after a restart just means a few cold cache misses,
+    # not data loss -- Postgres (backed up above) is the only store that
+    # needs durability here.
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   api:
     build:
       context: .
@@ -38,6 +78,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       # PORT is deliberately NOT set here: the container's internal listening
       # port is fixed at 3001 by the Dockerfile's `ENV PORT=3001`, which is what
@@ -45,9 +87,36 @@ services:
       # Container-to-container traffic never goes through the host port mapping,
       # so API_PORT below only controls host-side exposure.
       - NODE_ENV=production
-      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-forge}
-      - JWT_SECRET=${JWT_SECRET:-super-secret-jwt-key}
+      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env to a real random value}@db:5432/${POSTGRES_DB:-forge}
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in .env to a real random value}
       - CORS_ORIGIN=${CORS_ORIGIN:-*}
+      # Session cookie's Secure flag. Defaults to false: this stack has no
+      # TLS termination configured anywhere yet (nginx serves plain HTTP),
+      # and a Secure cookie is silently dropped by the browser on any
+      # non-HTTPS origin except localhost's special-cased exemption -- which
+      # is exactly why login worked on localhost but silently failed (POST
+      # /auth/login 200, then GET /auth/me 401) on the LAN IP and would fail
+      # identically on a real deployed domain without HTTPS. Set to "true"
+      # once real TLS is actually terminated in front of this stack.
+      - COOKIE_SECURE=${COOKIE_SECURE:-false}
+      # Invite emails (nodemailer, artifacts/api-server/src/lib/mailer.ts).
+      # SMTP_USER/SMTP_PASSWORD have no dev default -- unset means invites
+      # fail loudly (mailer.ts throws) rather than silently going nowhere.
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - SMTP_FROM_NAME=${SMTP_FROM_NAME:-Forge}
+      # Base URL used to build the accept-invite link in the email --
+      # localhost by default; set to the Tailscale address or real company
+      # domain so a link works for whoever actually clicks it.
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost}
+      # Outside /app/prod so uploaded files survive a rebuild/redeploy --
+      # /app/prod is entirely replaced by each image build.
+      - UPLOAD_DIR=/app/uploads
+    volumes:
+      - forge-uploads-data:/app/uploads
     ports:
       # <configurable host port>:<fixed container port>
       - "${API_PORT:-3001}:3001"
@@ -76,3 +145,4 @@ services:
 
 volumes:
   forge-db-data:
+  forge-uploads-data:

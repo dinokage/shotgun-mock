@@ -6,7 +6,6 @@ import {
   User,
   Shield,
   Eye,
-  ChevronDown,
   Building2,
   LogOut,
   Menu,
@@ -23,17 +22,23 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { DEPARTMENTS, ROLE_LABELS } from "@/data/mockData";
+import { ROLE_LABELS } from "@/data/mockData";
 import { useUIStore } from "@/store/ui";
 import { useAuthStore } from "@/store/auth";
+import { useDepartmentStore } from "@/store/departments";
 import { useNotificationStore } from "@/store/notifications";
-import { useWorkspaceStore } from "@/store/workspace";
+import {
+  useNotifications,
+  useMarkNotificationRead,
+  useMarkAllNotificationsRead,
+} from "@/hooks/useNotifications";
 import { useCapability } from "@/hooks/use-capability";
+import { resolveNotificationRoute } from "@/pages/notifications";
 import { useDepartmentScope } from "@/hooks/useDepartmentScope";
 import { DEPARTMENT_LEADERSHIP_ROLES } from "@/store/permissions";
 import { Link, useLocation } from "wouter";
 import { TimeClockWidget } from "@/components/shared/TimeClockWidget";
-import { USERS } from "@/data/mockData";
+import { formatDistanceToNowStrict } from "date-fns";
 
 export function TopBar() {
   const { setTheme, resolvedTheme } = useTheme();
@@ -45,36 +50,33 @@ export function TopBar() {
     toggleMobileNav,
   } = useUIStore();
   const { currentUser, logout } = useAuthStore();
-  const { activeDepartmentId, setActiveDepartment } = useWorkspaceStore();
+  const departments = useDepartmentStore((s) => s.departments);
   const canAssignTasks = useCapability("assign_tasks");
   const isUnscoped = useDepartmentScope().scoped === false;
   const [, setLocation] = useLocation();
-  const notifications = useNotificationStore((s) => s.notifications);
+  // Real, backend-sourced notifications (routes/notifications.ts) -- see
+  // hooks/useNotifications.ts's comment for why this replaced
+  // store/notifications.ts, a per-browser-only localStorage store that
+  // never talked to the server.
+  const { data: notifications = [] } = useNotifications();
   const notificationPreferences = useNotificationStore((s) => s.preferences);
-  const markAsRead = useNotificationStore((s) => s.markAsRead);
-  const markAllAsRead = useNotificationStore((s) => s.markAllAsRead);
+  const markReadMutation = useMarkNotificationRead();
+  const markAllReadMutation = useMarkAllNotificationsRead();
   // Muted categories (see Settings > Notifications) are hidden here too, same as the full notifications page.
   const visibleNotifs = notifications.filter(
-    (n) => notificationPreferences[n.category]?.push !== false,
+    (n) =>
+      notificationPreferences[n.category as keyof typeof notificationPreferences]
+        ?.push !== false,
   );
   const unreadNotifs = visibleNotifs.filter((n) => !n.read).length;
 
   if (!currentUser) return null;
 
-  // Global roles can scope their view to a single department via the
-  // switcher below (persisted in the workspace store); everyone else always
-  // sees their own department. activeDepartmentId is a standalone store, not
-  // reset on switchUser, so it must stay gated on role here — otherwise a
-  // producer's department filter would leak into whichever department badge
-  // renders next after switching to a non-global-role demo user.
+  // Global roles (admin/production_head) see every department, so there is
+  // no per-role department to look up for them; everyone else always sees
+  // their own department's badge.
   const isGlobalRole = isUnscoped;
-  const dept = DEPARTMENTS.find(
-    (d) =>
-      d.id ===
-      (isGlobalRole
-        ? (activeDepartmentId ?? currentUser.departmentId)
-        : currentUser.departmentId),
-  );
+  const dept = departments.find((d) => d.id === currentUser.departmentId);
 
   const handleLogout = () => {
     logout();
@@ -106,42 +108,21 @@ export function TopBar() {
 
         <div className="h-5 w-px bg-border hidden md:block" />
 
-        {/* Current User Role/Dept/Tenant Switcher */}
+        {/* Current User Role/Dept indicator. Global roles (admin/
+            production_head) see every department already, so there is
+            nothing to switch between here -- this used to be an
+            interactive dropdown, but the department it "switched" to
+            (activeDepartmentId in store/workspace.ts) was never actually
+            read by any page's filtering logic, so it was decorative, not
+            functional. Simplified to a plain badge, same style leadership
+            roles already use below. */}
         {isGlobalRole ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full border border-accent-tally/30 bg-accent-tally/10 text-xs shadow-sm transition-all hover:shadow-md hover:border-accent-tally/50 shrink-0 outline-none text-accent-tally">
-                <Building2 className="w-3.5 h-3.5 shrink-0 text-accent-tally" />
-                <span className="font-semibold truncate">
-                  {ROLE_LABELS[currentUser.role] || currentUser.title}
-                </span>
-                <span className="opacity-50 shrink-0">•</span>
-                <span className="font-medium opacity-90 shrink-0">
-                  {dept ? dept.abbreviation : "All Depts"}
-                </span>
-                <ChevronDown className="w-3 h-3 ml-1 opacity-50" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-48">
-              <DropdownMenuLabel>Switch Department</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={() => setActiveDepartment(null)}
-                className={`cursor-pointer font-medium ${activeDepartmentId === null ? "bg-primary/10" : ""}`}
-              >
-                Global Overview
-              </DropdownMenuItem>
-              {DEPARTMENTS.map((d) => (
-                <DropdownMenuItem
-                  key={d.id}
-                  onClick={() => setActiveDepartment(d.id)}
-                  className={`cursor-pointer ${activeDepartmentId === d.id ? "bg-primary/10" : ""}`}
-                >
-                  {d.name} ({d.abbreviation})
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full border border-accent-tally/30 bg-accent-tally/10 text-xs shadow-sm shrink-0 text-accent-tally">
+            <Building2 className="w-3.5 h-3.5 shrink-0 text-accent-tally" />
+            <span className="font-semibold truncate">
+              {ROLE_LABELS[currentUser.role] || currentUser.title}
+            </span>
+          </div>
         ) : (
           <div
             className={`hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs shadow-sm transition-all shrink-0 ${
@@ -250,7 +231,7 @@ export function TopBar() {
                 disabled={unreadNotifs === 0}
                 onClick={(e) => {
                   e.stopPropagation();
-                  markAllAsRead();
+                  markAllReadMutation.mutate();
                 }}
               >
                 Mark all read
@@ -263,7 +244,9 @@ export function TopBar() {
                 className="flex-col items-start gap-1 py-3 cursor-pointer"
                 onSelect={(e) => {
                   e.preventDefault();
-                  if (!notif.read) markAsRead(notif.id);
+                  if (!notif.read) markReadMutation.mutate(notif.id);
+                  const route = resolveNotificationRoute(notif);
+                  if (route) setLocation(route);
                 }}
               >
                 <div className="flex items-center gap-2 w-full">
@@ -286,7 +269,9 @@ export function TopBar() {
                   {notif.description}
                 </p>
                 <span className="text-[10px] text-muted-foreground/60 pl-4">
-                  {notif.timestamp}
+                  {formatDistanceToNowStrict(new Date(notif.createdAt), {
+                    addSuffix: true,
+                  })}
                 </span>
               </DropdownMenuItem>
             ))}

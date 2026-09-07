@@ -14,9 +14,11 @@ import {
 export function useCapability(id: CapabilityId): boolean {
   const user = useAuthStore((s) => s.currentUser);
   if (!user) return false;
-  // Fallback to true for admin just in case, but real RBAC handles admin fully
-  if (user.role === "admin") return true;
-  // Read directly from the capabilities array returned by API
+  // Read directly from the capabilities array returned by API -- no
+  // role-based bypass. The admin's grants (Settings > Roles, and this
+  // session's tenant_role_capabilities rows) are deliberately restrictive
+  // (view-only + user/integration management); a hardcoded "admin always
+  // passes" here would silently override that everywhere in the app.
   return user.capabilities?.includes(id) ?? false;
 }
 

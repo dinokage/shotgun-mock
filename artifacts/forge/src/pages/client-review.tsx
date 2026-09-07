@@ -17,7 +17,8 @@ import {
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { PROJECTS, STUDIOS, VERSIONS } from "@/data/mockData";
+import { apiClient } from "@/lib/apiClient";
+import { useProjectStore } from "@/store/projects";
 import { useLocation } from "wouter";
 import { useAuthStore } from "@/store/auth";
 import { Badge } from "@/components/ui/badge";
@@ -34,10 +35,8 @@ import { useReviewStore, PRESENTED_VERSION_ID } from "@/store/reviews";
 import { useShotStore } from "@/store/shots";
 import { useBroadcastsStore } from "@/store/broadcasts";
 import { cn } from "@/lib/utils";
-import {
-  getPlaceholderThumbnail,
-  getPlaceholderVideoSrc,
-} from "@/lib/placeholderArt";
+import { getPlaceholderThumbnail } from "@/lib/placeholderArt";
+import { usePlaceholderVideoSrc } from "@/hooks/usePlaceholderVideo";
 import {
   AnnotationToolbar,
   AnnotationCanvas,
@@ -48,7 +47,14 @@ import {
   type AnnotationTool,
   type Annotation,
   type DraggingElement,
+  type SetAnnotations,
 } from "@/components/shared/review";
+import {
+  useAnnotations,
+  useCreateAnnotation,
+  useUpdateAnnotation,
+  useDeleteAnnotation,
+} from "@/hooks/useReviews";
 
 const COLORS = [
   "#10b981",
@@ -65,12 +71,15 @@ const COLORS = [
  * reflects the delivered version, not just the shot), falling back to the
  * shot's own seed when no matching Version row exists in the mock data.
  */
-function resolveThumbnailSeed(shot: {
-  id: string;
-  currentVersion: string;
-  thumbnailSeed: number;
-}): number {
-  const currentVersionRecord = VERSIONS.find(
+function resolveThumbnailSeed(
+  shot: {
+    id: string;
+    currentVersion: string;
+    thumbnailSeed: number;
+  },
+  versions: { entityType: string; entityId: string; versionNumber: string; thumbnailSeed: number }[],
+): number {
+  const currentVersionRecord = versions.find(
     (v) =>
       v.entityType === "shot" &&
       v.entityId === shot.id &&
@@ -79,23 +88,24 @@ function resolveThumbnailSeed(shot: {
   return currentVersionRecord?.thumbnailSeed ?? shot.thumbnailSeed;
 }
 
-function resolveShotVideoSrc(shot: {
-  id: string;
-  currentVersion: string;
-  thumbnailSeed: number;
-}): string {
-  return getPlaceholderVideoSrc(resolveThumbnailSeed(shot));
-}
-
 export default function ClientReview() {
-  const { currentUser, logout } = useAuthStore();
+  const { currentUser, logout, tenantName } = useAuthStore();
   const [, setLocation] = useLocation();
 
-  const searchParams = new URLSearchParams(window.location.search);
-  const hasToken = searchParams.get("token") === "demo";
-
   const [accessCode, setAccessCode] = useState("");
-  const [clientAuthenticated, setClientAuthenticated] = useState(hasToken);
+  const [clientAuthenticated, setClientAuthenticated] = useState(false);
+  // Set once an access code is successfully redeemed against the real
+  // POST /client-access/redeem route below — null for an explicit
+  // 'client'-role user, who bypasses the code entirely and keeps this
+  // page's prior unscoped behavior. When set, it scopes what this page
+  // requests to the redeemed link's granted project/episode/version (see
+  // pendingReviews below) — client-side only; full server-side enforcement
+  // of this scope is a later task's responsibility.
+  const [clientScope, setClientScope] = useState<{
+    projectId: string | null;
+    episodeId: string | null;
+    versionId: string | null;
+  } | null>(null);
 
   // If a user has the explicit 'client' role, they automatically bypass the access code.
   // Otherwise, everyone (even managers testing the portal) must enter the access code.
@@ -109,7 +119,41 @@ export default function ClientReview() {
 
   const [tool, setTool] = useState<AnnotationTool>("select");
   const [color, setColor] = useState("#10b981");
-  const [annotations, setAnnotations] = useState<Annotation[]>([]);
+  // Annotations are persisted server-side, keyed to the version currently
+  // being reviewed (PRESENTED_VERSION_ID — the same id review.tsx uses for
+  // this concept, and the one this page already imports for Presentation
+  // Mode's lock check above).
+  const { data: annotations = [] } = useAnnotations(PRESENTED_VERSION_ID);
+  const createAnnotation = useCreateAnnotation(PRESENTED_VERSION_ID);
+  const updateAnnotation = useUpdateAnnotation(PRESENTED_VERSION_ID);
+  const deleteAnnotation = useDeleteAnnotation(PRESENTED_VERSION_ID);
+  // Bridges AnnotationCanvas's raw dispatch-style API onto the server-backed
+  // list above — added ids become createAnnotation.mutate calls, dropped
+  // ids become deleteAnnotation.mutate calls, and ids present in both but
+  // with changed fields become updateAnnotation.mutate calls against
+  // PUT /reviews/annotations/:id.
+  const applyAnnotationsUpdate: SetAnnotations = (update) => {
+    const prevList = annotations;
+    const nextList =
+      typeof update === "function"
+        ? (update as (prev: Annotation[]) => Annotation[])(prevList)
+        : update;
+    const prevById = new Map(prevList.map((a) => [a.id, a]));
+    const nextIds = new Set(nextList.map((a) => a.id));
+    nextList.forEach((a) => {
+      const prev = prevById.get(a.id);
+      if (!prev) {
+        const { id, ...rest } = a;
+        createAnnotation.mutate(rest);
+      } else if (JSON.stringify(prev) !== JSON.stringify(a)) {
+        const { id, ...rest } = a;
+        updateAnnotation.mutate({ id, ...rest });
+      }
+    });
+    prevList
+      .filter((a) => !nextIds.has(a.id))
+      .forEach((a) => deleteAnnotation.mutate(a.id));
+  };
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<
     string | null
   >(null);
@@ -125,6 +169,8 @@ export default function ClientReview() {
   // the only actions available collapse down to Approve / Request Changes —
   // which is already the entirety of this portal's decision actions.
   const presentation = useReviewStore((s) => s.presentation);
+  const versions = useReviewStore((s) => s.versions);
+  const projects = useProjectStore((s) => s.projects);
   const isLockedViewer =
     presentation.isActive &&
     presentation.versionId === PRESENTED_VERSION_ID &&
@@ -135,16 +181,30 @@ export default function ClientReview() {
   // reflected here immediately, and stays reflected across reloads.
   const shots = useShotStore((s) => s.shots);
   const updateReviewStatus = useShotStore((s) => s.updateReviewStatus);
-  const updateShot = useShotStore((s) => s.updateShot);
-  const pendingReviews = shots.filter((s) => s.status === "client-review");
+  // Scoped to the redeemed access link's grant (see clientScope above), most
+  // specific field first — a versionId grant limits to that single shot's
+  // delivered version, an episodeId grant to that episode's shots, a
+  // projectId grant to that project's shots. clientScope is null for the
+  // legacy bypass paths, which keep seeing every pending review as before.
+  const pendingReviews = shots
+    .filter((s) => s.status === "client-review")
+    .filter((s) => {
+      if (!clientScope) return true;
+      if (clientScope.versionId) {
+        const scopedVersion = versions.find(
+          (v) => v.id === clientScope.versionId,
+        );
+        return scopedVersion ? scopedVersion.entityId === s.id : false;
+      }
+      if (clientScope.episodeId) return s.episodeId === clientScope.episodeId;
+      if (clientScope.projectId) return s.projectId === clientScope.projectId;
+      return true;
+    });
   const activeShot = activeReviewId
     ? shots.find((s) => s.id === activeReviewId)
     : null;
   const activeProject = activeShot
-    ? PROJECTS.find((p) => p.id === activeShot.projectId)
-    : null;
-  const activeStudio = activeProject
-    ? STUDIOS.find((s) => s.id === activeProject.studioId)
+    ? projects.find((p) => p.id === activeShot.projectId)
     : null;
 
   // Studio Updates: the one bridge from the internal status-broadcast
@@ -175,16 +235,15 @@ export default function ClientReview() {
   const activeVersionPoster = useMemo(
     () =>
       activeShot
-        ? getPlaceholderThumbnail(resolveThumbnailSeed(activeShot), 1280, 720)
+        ? getPlaceholderThumbnail(resolveThumbnailSeed(activeShot, versions), 1280, 720)
         : undefined,
     [activeShot],
   );
 
   // Real per-shot media reference for playback, instead of one hardcoded
   // clip shared by every shot regardless of which one was clicked.
-  const activeVideoSrc = useMemo(
-    () => (activeShot ? resolveShotVideoSrc(activeShot) : undefined),
-    [activeShot],
+  const activeVideoSrc = usePlaceholderVideoSrc(
+    activeShot ? resolveThumbnailSeed(activeShot, versions) : 0,
   );
 
   // Client feedback moderation: notes submitted here are held pending until
@@ -265,9 +324,7 @@ export default function ClientReview() {
         setFrame((f) => Math.min(maxFrames, f + 1));
       } else if (e.code === "Backspace" || e.code === "Delete") {
         if (selectedAnnotationId) {
-          setAnnotations((prev) =>
-            prev.filter((a) => a.id !== selectedAnnotationId),
-          );
+          deleteAnnotation.mutate(selectedAnnotationId);
           setSelectedAnnotationId(null);
         }
       } else if (e.code === "Escape") {
@@ -292,7 +349,7 @@ export default function ClientReview() {
       const dy = e.clientY - draggingElement.startY;
 
       if (draggingElement.type === "annotation") {
-        setAnnotations((prev) =>
+        applyAnnotationsUpdate((prev) =>
           prev.map((a) => {
             if (a.id !== draggingElement.id) return a;
             return {
@@ -319,15 +376,16 @@ export default function ClientReview() {
       // Persist the real decision: the shot's clientReviewStatus (the
       // review-pipeline record) and its overall status (what takes it out of
       // "Awaiting Review" on this dashboard and on the producer home page,
-      // both of which filter on status === 'client-review').
+      // both of which filter on status === 'client-review'). Both fields are
+      // set together by PUT /shots/:id/client-review (the only write a
+      // client-access session is capable of) -- a separate updateShot() call
+      // here would hit the generic PUT /shots/:id, which requires edit_tasks
+      // and always 403s for a client session.
       updateReviewStatus(
         activeShot.id,
         false,
         action === "approved" ? "approved" : "changes-requested",
       );
-      updateShot(activeShot.id, {
-        status: action === "approved" ? "approved" : "in-progress",
-      });
     }
     toast({
       title: action === "approved" ? "Approved" : "Changes Requested",
@@ -343,13 +401,21 @@ export default function ClientReview() {
     setLocation("/login");
   };
 
-  const handleAccessSubmit = () => {
-    if (accessCode.toLowerCase() === "demo") {
+  const handleAccessSubmit = async () => {
+    try {
+      const res = await apiClient.post<{
+        scope: {
+          projectId: string | null;
+          episodeId: string | null;
+          versionId: string | null;
+        };
+      }>("/client-access/redeem", { code: accessCode });
+      setClientScope(res.scope);
       setClientAuthenticated(true);
-    } else {
+    } catch {
       toast({
         title: "Invalid Code",
-        description: "Please check your email for the correct access code.",
+        description: "That access code is invalid or has expired.",
         variant: "destructive",
       });
     }
@@ -400,15 +466,6 @@ export default function ClientReview() {
             </Button>
             <p className="text-xs text-center text-muted-foreground mt-4">
               Protected by Forge Secure Share
-            </p>
-            {/* This is a mock with no real email-delivery system behind the
-                access code, so unlike a real product there is no other way
-                to learn it. Stated plainly here instead of disguised inside
-                the input's placeholder (which read the code out to anyone
-                who focused the field, without even needing to submit). */}
-            <p className="text-xs text-center text-muted-foreground/70 border-t border-border/50 pt-3 mt-2">
-              Demo mode — access code is{" "}
-              <span className="font-mono text-foreground/80">demo</span>
             </p>
           </CardContent>
         </Card>
@@ -474,10 +531,7 @@ export default function ClientReview() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {pendingReviews.map((shot) => {
-                const project = PROJECTS.find((p) => p.id === shot.projectId);
-                const studio = project
-                  ? STUDIOS.find((s) => s.id === project.studioId)
-                  : null;
+                const project = projects.find((p) => p.id === shot.projectId);
                 return (
                   <div
                     key={shot.id}
@@ -487,16 +541,16 @@ export default function ClientReview() {
                     <div
                       className="relative aspect-video bg-zinc-800 overflow-hidden bg-cover bg-center"
                       style={{
-                        backgroundImage: `url(${getPlaceholderThumbnail(resolveThumbnailSeed(shot))})`,
+                        backgroundImage: `url(${getPlaceholderThumbnail(resolveThumbnailSeed(shot, versions))})`,
                       }}
                     >
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                         <Play className="w-12 h-12 text-white drop-shadow-md" />
                       </div>
-                      {studio && (
+                      {tenantName && (
                         <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-black/60 backdrop-blur px-2 py-1 rounded-md text-[11px] font-medium text-zinc-100 border border-white/10">
                           <Building2 className="w-3 h-3 text-zinc-300" />
-                          <span>{studio.name}</span>
+                          <span>{tenantName}</span>
                         </div>
                       )}
                     </div>
@@ -564,13 +618,13 @@ export default function ClientReview() {
           </div>
         </div>
         <div className="flex items-center gap-4">
-          {activeStudio && (
+          {tenantName && (
             <div className="flex items-center gap-2 pr-4 border-r border-white/10 text-xs text-white/60">
               <Building2 className="w-4 h-4 text-white/40" />
               <span>
                 Delivered by{" "}
                 <span className="text-white font-medium">
-                  {activeStudio.name}
+                  {tenantName}
                 </span>
               </span>
             </div>
@@ -602,7 +656,7 @@ export default function ClientReview() {
               >
                 <div className="flex items-center justify-between gap-2 mb-1">
                   <span className="text-xs font-medium text-zinc-200">
-                    {activeStudio?.name || "Studio"}
+                    {tenantName || "Studio"}
                   </span>
                   <span className="text-[10px] text-zinc-500 timecode shrink-0">
                     {new Date(update.timestamp).toLocaleString(undefined, {
@@ -641,7 +695,7 @@ export default function ClientReview() {
 
             <AnnotationCanvas
               annotations={annotations}
-              onAnnotationsChange={setAnnotations}
+              onAnnotationsChange={applyAnnotationsUpdate}
               frame={frame}
               maxFrames={maxFrames}
               tool={isLockedViewer ? "select" : tool}
@@ -650,6 +704,7 @@ export default function ClientReview() {
               selectedAnnotationId={selectedAnnotationId}
               onSelectedAnnotationIdChange={setSelectedAnnotationId}
               onDraggingElementChange={setDraggingElement}
+              currentUserId={currentUser?.id}
               selectionRingClassName="border-emerald-500 ring-2 ring-emerald-500/50"
               ghosting={ghosting}
             />
@@ -781,7 +836,7 @@ export default function ClientReview() {
                   });
                   // Clear the canvas now that this markup has been captured
                   // with the note, so the next note starts from a blank frame.
-                  setAnnotations([]);
+                  applyAnnotationsUpdate([]);
                   setSelectedAnnotationId(null);
                   setFeedback("");
                   toast({

@@ -70,7 +70,9 @@ import { cn } from "@/lib/utils";
 import { useSchemaStore } from "@/store/schema";
 import { useTasksStore } from "@/store/tasks";
 import { useAuthStore } from "@/store/auth";
-import { DEPARTMENTS, PROJECTS, type Task } from "@/data/mockData";
+import { useProjectStore } from "@/store/projects";
+import { useDepartmentStore } from "@/store/departments";
+import { type Task } from "@/data/mockData";
 import { TemplateTaskRow } from "./TemplateTaskRow";
 import { useToast } from "@/hooks/use-toast";
 import { stagger, DURATION, EASE_DISSOLVE } from "@/lib/motion";
@@ -88,6 +90,8 @@ export function TaskTemplatesTab() {
 
   const addTask = useTasksStore((s) => s.addTask);
   const currentUser = useAuthStore((s) => s.currentUser);
+  const projects = useProjectStore((s) => s.projects);
+  const departments = useDepartmentStore((s) => s.departments);
   const { toast } = useToast();
   const [, navigate] = useLocation();
 
@@ -156,12 +160,12 @@ export function TaskTemplatesTab() {
 
   const handleApply = () => {
     if (!selected || !applyProjectId || !currentUser) return;
-    const project = PROJECTS.find((p) => p.id === applyProjectId);
+    const project = projects.find((p) => p.id === applyProjectId);
     if (!project) return;
 
     const sortedTasks = [...selected.tasks].sort((a, b) => a.order - b.order);
     sortedTasks.forEach((tt, i) => {
-      const dept = DEPARTMENTS.find((d) => d.id === tt.department);
+      const dept = departments.find((d) => d.id === tt.department);
       const assigneeId = dept?.leadId || dept?.supervisorId || currentUser.id;
       const newTask: Task = {
         id: `tmpl-${Date.now().toString(36)}-${i}-${Math.random().toString(36).slice(2, 6)}`,
@@ -475,7 +479,7 @@ export function TaskTemplatesTab() {
                       <SelectValue placeholder="Select a project…" />
                     </SelectTrigger>
                     <SelectContent>
-                      {PROJECTS.map((p) => (
+                      {projects.map((p) => (
                         <SelectItem key={p.id} value={p.id}>
                           {p.name}
                         </SelectItem>
@@ -496,7 +500,7 @@ export function TaskTemplatesTab() {
                 </div>
                 <p className="text-sm font-medium">
                   {selected?.tasks.length ?? 0} tasks added to{" "}
-                  {PROJECTS.find((p) => p.id === applyProjectId)?.name}
+                  {projects.find((p) => p.id === applyProjectId)?.name}
                 </p>
               </motion.div>
             )}

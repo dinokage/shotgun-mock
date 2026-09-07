@@ -63,6 +63,7 @@ export interface User {
   skills: string[];
   password: string; // For login simulation
   capabilities?: string[]; // Array of RBAC capability IDs
+  punchedInAt?: string | null; // Real backend punch-clock state (users.punched_in_at); undefined for generated mock rows
 }
 
 export interface Department {
@@ -89,6 +90,8 @@ export interface Project {
   assetsCount: number;
   dueDate: string;
   startDate: string;
+  /** Real API field name for the project end date (unlike dueDate above, which the real backend never populates). */
+  endDate?: string;
   thumbnail: string;
   lastActivity: string;
   studioId: string;
@@ -197,8 +200,8 @@ export interface DailyLog {
 }
 
 /**
- * One step in a task's multi-tier approval chain (Artist -> Lead/Supervisor ->
- * Producer/Manager). Unlike a single `status` field, this is a real, growing
+ * One step in a task's approval chain (Artist -> Lead/Supervisor). Unlike a
+ * single `status` field, this is a real, growing
  * audit trail: every submit/approve/reject/changes-requested action along the
  * chain is appended here and persisted with the task, so the full history of
  * who moved a version through review — and when — survives reload/navigation.
@@ -225,10 +228,16 @@ export type TaskStatus =
   | "bottleneck"
   | "review"
   | "lead-review"
-  | "manager-review"
+  | "pm-review"
   | "approved"
   | "complete"
-  | "cancelled";
+  | "cancelled"
+  // Catch-all for a status string this app doesn't otherwise recognize --
+  // real tracksheet imports carry a studio's own pipeline-stage vocabulary
+  // (e.g. "TK_01_APP", "WFF", "Client_App") that doesn't map onto any of
+  // the stages above. Never written by this app itself except when a user
+  // explicitly drags a card into the Kanban's "Other" column.
+  | "other";
 
 // Shared status classification so every page's "active"/"done" task rollups agree with each
 // other. Previously each page (departments overview, department detail, tracking grid) rolled
@@ -1895,7 +1904,7 @@ const taskStatuses: Task["status"][] = [
   "bottleneck",
   "review",
   "lead-review",
-  "manager-review",
+  "pm-review",
   "approved",
   "complete",
 ];
@@ -1989,11 +1998,7 @@ function checklistDoneCount(
     return 0;
   if (status === "bottleneck") return 1;
   if (status === "in-progress") return 1 + (seed % 2); // 1-2 items: work is underway but not done
-  if (
-    status === "review" ||
-    status === "lead-review" ||
-    status === "manager-review"
-  )
+  if (status === "review" || status === "lead-review" || status === "pm-review")
     return 3; // submitted, final polish still pending sign-off
   return 0;
 }
@@ -2186,14 +2191,6 @@ for (let i = 0; i < 300; i++) {
   });
 }
 
-/**
- * The task backing "the version under review" on the internal review page —
- * a mock stand-in for what would otherwise arrive via routing (the review
- * page is a fixed demo route, not parameterized by task/shot id). Picked
- * deterministically (first seeded task with a linked shot) so its approval
- * chain is the same task across reloads.
- */
-export const REVIEWED_TASK_ID = TASKS.find((t) => t.shotId)?.id ?? TASKS[0].id;
 
 // --- Versions (200) --------------------------------------------------------
 
@@ -2280,37 +2277,17 @@ for (let i = 0; i < 80; i++) {
   });
 }
 
-// --- Publish Logs (40) -----------------------------------------------------
+// --- Publish Logs ------------------------------------------------------
+//
+// No generator loop here (unlike VERSIONS/REVIEWS above, both of which get
+// correctly overwritten with real API data by store/auth.ts's fetchMe()
+// after login) -- the publishing feature has no real backend at all yet
+// (no publishLogsTable, no /api/publish-logs route), so there is nothing
+// to hydrate from. Genuinely empty until that gets built; populated at
+// runtime only via usePublishingStore's addPublishLog on a real "Confirm
+// Publish" action.
 
 export const PUBLISH_LOGS: PublishLog[] = [];
-for (let i = 0; i < 40; i++) {
-  const asset = ASSETS[i % ASSETS.length];
-  PUBLISH_LOGS.push({
-    id: `pub${i + 1}`,
-    assetId: asset.id,
-    version: asset.version,
-    publishedById: `u${(i % 20) + 1}`,
-    publishedAt: `2024-09-${String((i % 28) + 1).padStart(2, "0")}T${String(8 + (i % 14)).padStart(2, "0")}:${String(i % 60).padStart(2, "0")}:00Z`,
-    status: (["success", "failed", "validating", "queued"] as const)[i % 4],
-    target: ["production", "staging", "archive", "client-delivery"][i % 4],
-    duration: `${(i % 5) + 1}m ${(i * 7) % 60}s`,
-    fileSize: asset.fileSize,
-    checks: [
-      { name: "Geometry Validation", passed: i % 5 !== 3 },
-      { name: "Texture Resolution", passed: i % 7 !== 4 },
-      { name: "Naming Convention", passed: true },
-      { name: "Dependencies Resolved", passed: i % 3 !== 2 },
-      { name: "File Size Limit", passed: i % 8 !== 5 },
-    ],
-    log: [
-      `[${String(8 + (i % 14)).padStart(2, "0")}:00] Starting publish pipeline...`,
-      `[${String(8 + (i % 14)).padStart(2, "0")}:01] Running validation checks...`,
-      `[${String(8 + (i % 14)).padStart(2, "0")}:02] ${i % 4 === 1 ? "ERROR: Geometry validation failed" : "All checks passed"}`,
-      `[${String(8 + (i % 14)).padStart(2, "0")}:03] ${i % 4 === 1 ? "Publish aborted" : "Publishing to " + ["production", "staging", "archive", "client-delivery"][i % 4]}...`,
-      `[${String(8 + (i % 14)).padStart(2, "0")}:04] ${i % 4 === 1 ? "" : "Publish complete. Notifying downstream."}`,
-    ].filter(Boolean),
-  });
-}
 
 // --- Workflows & Runs -------------------------------------------------------
 

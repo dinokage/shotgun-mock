@@ -15,6 +15,7 @@ import {
   BookmarkPlus,
   Trash2,
   Building2,
+  UploadCloud,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cut } from "@/lib/motion";
@@ -46,19 +47,20 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useSearch } from "wouter";
 import { useAuthStore } from "@/store/auth";
-import { useIsLeadership } from "@/hooks/use-capability";
+import { useIsLeadership, useCapability } from "@/hooks/use-capability";
 import { useToast } from "@/hooks/use-toast";
-import {
-  PROJECTS,
-  EPISODES,
-  SEQUENCES,
-  USERS,
-  DEPARTMENTS,
-  TaskStatus,
-} from "@/data/mockData";
-import { useShotStore } from "@/store/shots";
+import { TracksheetImportDialog } from "@/components/tracking/TracksheetImportDialog";
+import { TaskStatus } from "@/data/mockData";
+import { useUserStore } from "@/store/users";
+import { useDepartmentStore } from "@/store/departments";
+import { useProjectStore } from "@/store/projects";
+import { useShots, useUpdateShot } from "@/hooks/useShots";
+import { useAllEpisodes } from "@/hooks/useEpisodes";
+import { useAllSequences } from "@/hooks/useSequences";
 import { useTasksStore } from "@/store/tasks";
+import { getProjectId, useEntityProjectMap } from "@/lib/taskShape";
 import {
   useTrackingViewsStore,
   TrackingGroupKey,
@@ -72,7 +74,7 @@ import {
 const GRID_COLS =
   "44px 130px 100px 120px 160px 130px 104px 110px 120px 120px minmax(220px,1fr)";
 const CELL =
-  "border-r border-b border-[#333] p-2 flex items-center overflow-hidden";
+  "border-r border-b border-border p-2 flex items-center overflow-hidden";
 const CELL_CENTER = `${CELL} justify-center text-center`;
 
 const GROUP_OPTIONS: { value: TrackingGroupKey; label: string }[] = [
@@ -174,11 +176,7 @@ function bucketShotStatus(status: string): keyof typeof SHOT_BUCKET_COLOR {
 function bucketTaskStatus(status: TaskStatus): keyof typeof TASK_BUCKET_COLOR {
   if (status === "todo" || status === "not-started") return "todo";
   if (status === "in-progress") return "in-progress";
-  if (
-    status === "review" ||
-    status === "lead-review" ||
-    status === "manager-review"
-  )
+  if (status === "review" || status === "lead-review" || status === "pm-review")
     return "review";
   if (status === "bottleneck") return "bottleneck";
   if (status === "complete" || status === "approved") return "complete";
@@ -199,6 +197,7 @@ interface TrackingRow {
   shot: string;
   assignee: string;
   assigneeId: string;
+  position: string;
   departmentId: string;
   department: string;
   departmentColor: string;
@@ -339,7 +338,7 @@ function MiniStatusBar({ rows }: { rows: TrackingRow[] }) {
   ];
   return (
     <div className="flex items-center gap-2 shrink-0">
-      <div className="flex h-1.5 w-20 rounded-full overflow-hidden bg-[#222]">
+      <div className="flex h-1.5 w-20 rounded-full overflow-hidden bg-muted">
         {order.map(
           (key) =>
             counts[key] > 0 && (
@@ -400,18 +399,18 @@ function GroupSection({
   const isCollapsed = collapsedKeys.has(path);
   const count = node.rows.length;
   return (
-    <div className="border-b border-[#242424] last:border-b-0">
+    <div className="border-b border-border last:border-b-0">
       <motion.button
         type="button"
         whileTap={{ scale: 0.995 }}
         onClick={() => toggleGroup(path)}
-        className="w-full flex items-center gap-2 px-3 py-2 text-left bg-[#151515] hover:bg-[#1c1c1c] transition-colors"
+        className="w-full flex items-center gap-2 px-3 py-2 text-left bg-muted/40 hover:bg-muted/60 transition-colors"
         style={{ paddingLeft: 12 + depth * 22 }}
       >
         <motion.span
           animate={{ rotate: isCollapsed ? -90 : 0 }}
           transition={{ duration: 0.15 }}
-          className="text-[#888] shrink-0"
+          className="text-muted-foreground shrink-0"
         >
           <ChevronDown className="w-3.5 h-3.5" />
         </motion.span>
@@ -421,10 +420,10 @@ function GroupSection({
             style={{ background: node.color }}
           />
         )}
-        <span className="text-[12px] font-semibold text-white truncate">
+        <span className="text-[12px] font-semibold text-foreground truncate">
           {node.label}
         </span>
-        <span className="text-[10px] text-[#777] font-normal shrink-0">
+        <span className="text-[10px] text-muted-foreground font-normal shrink-0">
           {count} shot{count === 1 ? "" : "s"}
         </span>
         <div className="flex-1" />
@@ -470,9 +469,24 @@ export default function TrackingGrid() {
   const { currentUser } = useAuthStore();
   const isLeadership = useIsLeadership();
   const { toast } = useToast();
+  const users = useUserStore((s) => s.users);
+  const departments = useDepartmentStore((s) => s.departments);
+  const projects = useProjectStore((s) => s.projects);
+  const { data: allEpisodes = [] } = useAllEpisodes();
+  const { data: allSequences = [] } = useAllSequences();
+  const canImportTracksheet = useCapability("create_tasks");
+  const [importOpen, setImportOpen] = useState(false);
 
   const [search, setSearchState] = useState("");
   const [projectFilter, setProjectFilterState] = useState("all");
+  const [episodeFilter, setEpisodeFilterState] = useState("all");
+  const [sequenceFilter, setSequenceFilterState] = useState("all");
+  const [assigneeFilter, setAssigneeFilterState] = useState("all");
+  const [positionFilter, setPositionFilterState] = useState("all");
+  const deptParam = new URLSearchParams(useSearch()).get("dept");
+  const [departmentFilter, setDepartmentFilterState] = useState(
+    deptParam ?? "all",
+  );
   const [view, setViewState] = useState<"list" | "card">("list");
   const [groupBy1, setGroupBy1State] = useState<TrackingGroupKey>("none");
   const [groupBy2, setGroupBy2State] = useState<TrackingGroupKey>("none");
@@ -484,10 +498,10 @@ export default function TrackingGrid() {
   // Toggles visibility of the grouping/sorting/saved-views filter controls (row 2 below).
   const [showFilterControls, setShowFilterControls] = useState(true);
 
-  const liveShots = useShotStore((state) => state.shots);
-  const updateShot = useShotStore((state) => state.updateShot);
-  const updateReviewStatus = useShotStore((state) => state.updateReviewStatus);
+  const { data: liveShots = [] } = useShots();
+  const updateShotMutation = useUpdateShot();
   const liveTasks = useTasksStore((state) => state.tasks);
+  const entityProjectMap = useEntityProjectMap();
 
   const savedViews = useTrackingViewsStore((state) => state.views);
   const activeViewId = useTrackingViewsStore((state) => state.activeViewId);
@@ -509,6 +523,33 @@ export default function TrackingGrid() {
   };
   const setProjectFilter = (v: string) => {
     setProjectFilterState(v);
+    // Episode/sequence filters scope to a project -- switching projects
+    // (or clearing back to "All Projects") invalidates whatever episode/
+    // sequence was previously selected, since it may not exist under the
+    // new scope (or "all" no longer means the same set of episodes).
+    setEpisodeFilterState("all");
+    setSequenceFilterState("all");
+    markDirty();
+  };
+  const setEpisodeFilter = (v: string) => {
+    setEpisodeFilterState(v);
+    setSequenceFilterState("all");
+    markDirty();
+  };
+  const setSequenceFilter = (v: string) => {
+    setSequenceFilterState(v);
+    markDirty();
+  };
+  const setAssigneeFilter = (v: string) => {
+    setAssigneeFilterState(v);
+    markDirty();
+  };
+  const setPositionFilter = (v: string) => {
+    setPositionFilterState(v);
+    markDirty();
+  };
+  const setDepartmentFilter = (v: string) => {
+    setDepartmentFilterState(v);
     markDirty();
   };
   const setView = (v: "list" | "card") => {
@@ -584,6 +625,15 @@ export default function TrackingGrid() {
         (s) => s.projectId === projectFilter,
       );
     }
+    if (episodeFilter !== "all") {
+      filteredShots = filteredShots.filter((s) => s.episodeId === episodeFilter);
+    }
+    if (sequenceFilter !== "all") {
+      filteredShots = filteredShots.filter((s) => s.sequenceId === sequenceFilter);
+    }
+    if (assigneeFilter !== "all") {
+      filteredShots = filteredShots.filter((s) => s.assigneeId === assigneeFilter);
+    }
 
     // Default hierarchical ordering: Project -> Episode -> Sequence -> Shot
     filteredShots = [...filteredShots].sort((a, b) => {
@@ -605,15 +655,15 @@ export default function TrackingGrid() {
     if (search) {
       const term = search.toLowerCase();
       filteredShots = filteredShots.filter((s) => {
-        const projName = PROJECTS.find((p) => p.id === s.projectId)?.name || "";
-        const epName = EPISODES.find((e) => e.id === s.episodeId)?.name || "";
+        const projName = projects.find((p) => p.id === s.projectId)?.name || "";
+        const epName = allEpisodes.find((e) => e.id === s.episodeId)?.name || "";
+        const seqName =
+          allSequences.find((sq) => sq.id === s.sequenceId)?.name || "";
         return (
           String(s.name || "")
             .toLowerCase()
             .includes(term) ||
-          String(s.sequence || "")
-            .toLowerCase()
-            .includes(term) ||
+          seqName.toLowerCase().includes(term) ||
           projName.toLowerCase().includes(term) ||
           epName.toLowerCase().includes(term)
         );
@@ -621,12 +671,12 @@ export default function TrackingGrid() {
     }
 
     let mapped: TrackingRow[] = filteredShots.map((shot, i) => {
-      const proj = PROJECTS.find((p) => p.id === shot.projectId);
-      const ep = EPISODES.find((e) => e.id === shot.episodeId);
-      const seq = SEQUENCES.find((sq) => sq.id === shot.sequenceId);
-      const assignee = USERS.find((u) => u.id === shot.assigneeId);
+      const proj = projects.find((p) => p.id === shot.projectId);
+      const ep = allEpisodes.find((e) => e.id === shot.episodeId);
+      const seq = allSequences.find((sq) => sq.id === shot.sequenceId);
+      const assignee = users.find((u) => u.id === shot.assigneeId);
       const dept = assignee
-        ? DEPARTMENTS.find((d) => d.id === assignee.departmentId)
+        ? departments.find((d) => d.id === assignee.departmentId)
         : undefined;
 
       return {
@@ -634,11 +684,12 @@ export default function TrackingGrid() {
         no: i + 1,
         project: proj?.name || "Unknown",
         projectId: shot.projectId,
-        episode: ep?.name || "EP_01",
-        sequence: seq?.name || shot.sequence,
+        episode: ep?.name || "—",
+        sequence: seq?.name || "—",
         shot: shot.name,
         assignee: assignee?.name || "Unassigned",
-        assigneeId: shot.assigneeId,
+        assigneeId: shot.assigneeId ?? "",
+        position: assignee?.title || "—",
         departmentId: dept?.id || "unassigned",
         department: dept?.name || "Unassigned",
         departmentColor: dept?.color || "#555555",
@@ -656,12 +707,71 @@ export default function TrackingGrid() {
       };
     });
 
+    if (departmentFilter !== "all") {
+      mapped = mapped.filter((row) => row.departmentId === departmentFilter);
+    }
+    if (positionFilter !== "all") {
+      mapped = mapped.filter((row) => row.position === positionFilter);
+    }
+
     if (sortBy !== "hierarchy") {
       mapped = [...mapped].sort((a, b) => compareRows(a, b, sortBy));
     }
 
     return mapped.map((row, i) => ({ ...row, no: i + 1 }));
-  }, [search, projectFilter, localOverrides, liveShots, sortBy]);
+  }, [
+    search,
+    projectFilter,
+    episodeFilter,
+    sequenceFilter,
+    assigneeFilter,
+    positionFilter,
+    departmentFilter,
+    localOverrides,
+    liveShots,
+    sortBy,
+    users,
+    departments,
+    allEpisodes,
+    allSequences,
+  ]);
+
+  // Episode/sequence options scope to whatever's selected above them so the
+  // dropdown never offers a combination that would filter to zero rows.
+  const episodeOptions = useMemo(() => {
+    const scoped =
+      projectFilter === "all"
+        ? allEpisodes
+        : allEpisodes.filter((e) => e.projectId === projectFilter);
+    return [...scoped].sort((a, b) => a.name.localeCompare(b.name));
+  }, [allEpisodes, projectFilter]);
+
+  const sequenceOptions = useMemo(() => {
+    let scoped = allSequences;
+    if (episodeFilter !== "all") {
+      scoped = scoped.filter((s) => s.episodeId === episodeFilter);
+    } else if (projectFilter !== "all") {
+      scoped = scoped.filter((s) => s.projectId === projectFilter);
+    }
+    return [...scoped].sort((a, b) => a.name.localeCompare(b.name));
+  }, [allSequences, episodeFilter, projectFilter]);
+
+  // Artist filter lists artists only, matching who shots can actually be
+  // assigned to (assignment is server-enforced to the "artist" role).
+  const artistOptions = useMemo(
+    () =>
+      [...users]
+        .filter((u) => u.role === "artist")
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [users],
+  );
+
+  const positionOptions = useMemo(() => {
+    const titles = new Set(
+      users.map((u) => u.title).filter((t): t is string => !!t),
+    );
+    return [...titles].sort((a, b) => a.localeCompare(b));
+  }, [users]);
 
   const groupTree = useMemo(() => {
     if (groupBy1 === "none") return null;
@@ -673,8 +783,10 @@ export default function TrackingGrid() {
     const relevantTasks =
       projectFilter === "all"
         ? liveTasks
-        : liveTasks.filter((t) => t.projectId === projectFilter);
-    return DEPARTMENTS.map((dept) => {
+        : liveTasks.filter(
+            (t) => getProjectId(t, entityProjectMap) === projectFilter,
+          );
+    return departments.map((dept) => {
       const deptTasks = relevantTasks.filter((t) => t.department === dept.name);
       const buckets: Record<string, number> = {
         todo: 0,
@@ -689,7 +801,7 @@ export default function TrackingGrid() {
       });
       return { dept, total: deptTasks.length, buckets };
     }).filter((d) => d.total > 0);
-  }, [liveTasks, projectFilter]);
+  }, [liveTasks, projectFilter, departments, entityProjectMap]);
 
   const toggleGroup = (path: string) => {
     setCollapsedKeys((prev) => {
@@ -716,6 +828,13 @@ export default function TrackingGrid() {
     applyingRef.current = true;
     setSearchState(v.filters.search);
     setProjectFilterState(v.filters.projectFilter);
+    // Older saved views predate these filters -- default to "all" rather
+    // than leaving the control undefined.
+    setEpisodeFilterState(v.filters.episodeFilter ?? "all");
+    setSequenceFilterState(v.filters.sequenceFilter ?? "all");
+    setAssigneeFilterState(v.filters.assigneeFilter ?? "all");
+    setPositionFilterState(v.filters.positionFilter ?? "all");
+    setDepartmentFilterState(v.filters.departmentFilter ?? "all");
     setGroupBy1State(v.filters.groupBy1);
     setGroupBy2State(v.filters.groupBy2);
     setSortByState(v.filters.sortBy);
@@ -731,7 +850,19 @@ export default function TrackingGrid() {
   const handleSaveView = () => {
     const name = newViewName.trim();
     if (!name) return;
-    addView(name, { search, projectFilter, groupBy1, groupBy2, sortBy, view });
+    addView(name, {
+      search,
+      projectFilter,
+      episodeFilter,
+      sequenceFilter,
+      assigneeFilter,
+      positionFilter,
+      departmentFilter,
+      groupBy1,
+      groupBy2,
+      sortBy,
+      view,
+    });
     setNewViewName("");
     setSaveViewOpen(false);
     toast({
@@ -761,6 +892,7 @@ export default function TrackingGrid() {
       "Sequence",
       "Shot",
       "Assignee",
+      "Position",
       "Department",
       "Status",
       "USD Version",
@@ -776,6 +908,7 @@ export default function TrackingGrid() {
       row.sequence,
       row.shot,
       row.assignee,
+      row.position,
       row.department,
       row.status,
       row.usdVersion,
@@ -838,7 +971,7 @@ export default function TrackingGrid() {
       case "published":
         return "text-cyan-500";
       case "not-started":
-        return "text-[#888]";
+        return "text-muted-foreground";
       default:
         return "text-muted-foreground";
     }
@@ -855,7 +988,7 @@ export default function TrackingGrid() {
       case "pending":
         return "text-blue-500 bg-blue-500/10";
       case "not-submitted":
-        return "text-[#888] bg-[#333]/40";
+        return "text-muted-foreground bg-muted";
       default:
         return "text-muted-foreground bg-muted/20";
     }
@@ -864,71 +997,71 @@ export default function TrackingGrid() {
   const renderListRow = (row: TrackingRow) => (
     <div
       key={row.id}
-      className="grid hover:bg-[#252525] transition-colors"
+      className="grid hover:bg-accent transition-colors"
       style={{ gridTemplateColumns: GRID_COLS }}
     >
-      <div className={`${CELL_CENTER} text-[#888]`}>{row.no}</div>
-      <div className={`${CELL} text-white font-medium`}>
+      <div className={`${CELL_CENTER} text-muted-foreground`}>{row.no}</div>
+      <div className={`${CELL} text-foreground font-medium`}>
         <span className="truncate">{row.project}</span>
       </div>
-      <div className={`${CELL} text-[#ccc]`}>
+      <div className={`${CELL} text-foreground`}>
         <span className="truncate">{row.episode}</span>
       </div>
-      <div className={`${CELL} text-[#ccc]`}>
+      <div className={`${CELL} text-foreground`}>
         <span className="truncate">{row.sequence}</span>
       </div>
-      <div className={`${CELL} text-[#4facfe] font-medium`}>
+      <div className={`${CELL} text-primary font-medium`}>
         <span className="truncate">{row.shot}</span>
       </div>
-      <div className={`${CELL} text-[#aaa]`}>
+      <div className={`${CELL} text-muted-foreground`}>
         <span className="truncate">{row.assignee}</span>
       </div>
-      <div className="border-r border-b border-[#333] p-0 text-center font-semibold capitalize relative">
+      <div className="border-r border-b border-border p-0 text-center font-semibold capitalize relative">
         <select
-          className={`w-full h-full bg-transparent outline-none appearance-none cursor-pointer text-center ${getStatusColor(row.status)} hover:bg-[#333]/50 transition-colors p-2`}
+          className={`w-full h-full bg-transparent outline-none appearance-none cursor-pointer text-center ${getStatusColor(row.status)} hover:bg-accent/50 transition-colors p-2`}
           value={row.status}
           onChange={(e) => updateCell(row.id, "status", e.target.value)}
         >
           {SHOT_STATUS_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value} className="bg-[#1a1a1a]">
+            <option key={o.value} value={o.value} className="bg-popover">
               {o.label}
             </option>
           ))}
         </select>
       </div>
-      <div className={`${CELL_CENTER} text-xs text-[#00cec9] font-mono`}>
+      <div className={`${CELL_CENTER} text-xs text-accent-scope font-mono`}>
         {row.usdVersion}
       </div>
-      <div className="border-r border-b border-[#333] p-0 text-center relative">
+      <div className="border-r border-b border-border p-0 text-center relative">
         <select
-          className={`w-full h-full bg-transparent outline-none appearance-none cursor-pointer text-center px-2 py-2 font-bold uppercase text-[10px] ${getReviewColor(row.internalReview)} hover:bg-[#333]/50 transition-colors`}
+          className={`w-full h-full bg-transparent outline-none appearance-none cursor-pointer text-center px-2 py-2 font-bold uppercase text-[10px] ${getReviewColor(row.internalReview)} hover:bg-accent/50 transition-colors`}
           value={row.internalReview}
           onChange={(e) => updateCell(row.id, "internalReview", e.target.value)}
         >
           {REVIEW_STATUS_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value} className="bg-[#1a1a1a]">
+            <option key={o.value} value={o.value} className="bg-popover">
               {o.label}
             </option>
           ))}
         </select>
       </div>
-      <div className="border-r border-b border-[#333] p-0 text-center relative">
+      <div className="border-r border-b border-border p-0 text-center relative">
         <select
-          className={`w-full h-full bg-transparent outline-none appearance-none cursor-pointer text-center px-2 py-2 font-bold uppercase text-[10px] ${getReviewColor(row.clientReview)} hover:bg-[#333]/50 transition-colors`}
+          className={`w-full h-full bg-transparent outline-none appearance-none cursor-pointer text-center px-2 py-2 font-bold uppercase text-[10px] ${getReviewColor(row.clientReview)} hover:bg-accent/50 transition-colors`}
           value={row.clientReview}
           onChange={(e) => updateCell(row.id, "clientReview", e.target.value)}
         >
           {REVIEW_STATUS_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value} className="bg-[#1a1a1a]">
+            <option key={o.value} value={o.value} className="bg-popover">
               {o.label}
             </option>
           ))}
         </select>
       </div>
-      <div className="border-b border-[#333] p-0">
+      <div className="border-b border-border p-0">
         <input
           type="text"
-          className="w-full h-full bg-transparent outline-none px-2 py-2 text-[11px] text-[#ccc] hover:bg-[#333]/50 transition-colors focus:bg-[#333] focus:text-white"
+          className="w-full h-full bg-transparent outline-none px-2 py-2 text-[11px] text-foreground hover:bg-accent/50 transition-colors focus:bg-accent focus:text-foreground"
           value={row.notes}
           onChange={(e) => updateCell(row.id, "notes", e.target.value)}
         />
@@ -939,12 +1072,12 @@ export default function TrackingGrid() {
   const renderCard = (row: TrackingRow) => (
     <div
       key={row.id}
-      className="bg-[#1a1a1a] border border-[#333] rounded-sm p-3 flex flex-col gap-3 shadow-sm hover:border-[#555] transition-colors"
+      className="bg-card border border-border rounded-sm p-3 flex flex-col gap-3 shadow-sm hover:border-primary/40 transition-colors"
     >
       <div className="flex justify-between items-start">
         <div>
-          <div className="text-sm font-semibold text-white">{row.shot}</div>
-          <div className="text-[10px] text-[#888] flex items-center gap-1">
+          <div className="text-sm font-semibold text-foreground">{row.shot}</div>
+          <div className="text-[10px] text-muted-foreground flex items-center gap-1">
             <span>
               {row.project} • {row.sequence}
             </span>
@@ -958,15 +1091,15 @@ export default function TrackingGrid() {
           </div>
         </div>
         <div
-          className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded-sm ${getStatusColor(row.status)} bg-black/20 border border-[#333]`}
+          className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded-sm ${getStatusColor(row.status)} bg-black/20 border border-border`}
         >
           {row.status.replace("-", " ")}
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-2 text-[11px]">
-        <div className="bg-[#111] p-2 rounded-sm border border-[#222]">
-          <div className="text-[#666] mb-1 text-[9px] uppercase">Internal</div>
+        <div className="bg-card p-2 rounded-sm border border-border">
+          <div className="text-muted-foreground/70 mb-1 text-[9px] uppercase">Internal</div>
           <select
             className={`w-full bg-transparent outline-none appearance-none cursor-pointer font-semibold ${getReviewColor(row.internalReview).split(" ")[0]}`}
             value={row.internalReview}
@@ -981,8 +1114,8 @@ export default function TrackingGrid() {
             ))}
           </select>
         </div>
-        <div className="bg-[#111] p-2 rounded-sm border border-[#222]">
-          <div className="text-[#666] mb-1 text-[9px] uppercase">Client</div>
+        <div className="bg-card p-2 rounded-sm border border-border">
+          <div className="text-muted-foreground/70 mb-1 text-[9px] uppercase">Client</div>
           <select
             className={`w-full bg-transparent outline-none appearance-none cursor-pointer font-semibold ${getReviewColor(row.clientReview).split(" ")[0]}`}
             value={row.clientReview}
@@ -997,9 +1130,9 @@ export default function TrackingGrid() {
         </div>
       </div>
 
-      <div className="flex items-center justify-between text-[11px] text-[#888] mt-1">
+      <div className="flex items-center justify-between text-[11px] text-muted-foreground mt-1">
         <span>Assignee: {row.assignee}</span>
-        <span className="font-mono text-[#00cec9] text-[10px]">
+        <span className="font-mono text-accent-scope text-[10px]">
           {row.usdVersion}
         </span>
       </div>
@@ -1007,14 +1140,14 @@ export default function TrackingGrid() {
   );
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3.5rem)] p-4 bg-[#0a0a0a] text-foreground">
+    <div className="flex flex-col h-[calc(100vh-3.5rem)] p-4 bg-background text-foreground">
       {/* Header */}
       <div className="flex items-center justify-between shrink-0 mb-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">
             Global Tracking Grid
           </h1>
-          <p className="text-[#888] text-sm mt-1">
+          <p className="text-muted-foreground text-sm mt-1">
             Hierarchical sequence & shot tracking with Review pipelines.
           </p>
         </div>
@@ -1032,25 +1165,42 @@ export default function TrackingGrid() {
             variant="outline"
             size="sm"
             onClick={handleExportCSV}
-            className="border-[#333] text-[#ccc]"
+            className="border-border text-foreground"
           >
             <Download className="w-4 h-4 mr-2" /> Export CSV
           </Button>
+          {canImportTracksheet && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setImportOpen(true)}
+              className="border-border text-foreground"
+            >
+              <UploadCloud className="w-4 h-4 mr-2" /> Import Tracksheet
+            </Button>
+          )}
           <Button
             size="sm"
             className="bg-emerald-600 hover:bg-emerald-700 text-white border-0"
             onClick={() => {
               Object.entries(localOverrides).forEach(([id, changes]) => {
                 if ("status" in changes || "notes" in changes) {
-                  updateShot(id, {
+                  updateShotMutation.mutate({
+                    id,
                     ...("status" in changes ? { status: changes.status } : {}),
                     ...("notes" in changes ? { notes: changes.notes } : {}),
                   });
                 }
                 if (changes.internalReview)
-                  updateReviewStatus(id, true, changes.internalReview);
+                  updateShotMutation.mutate({
+                    id,
+                    internalReviewStatus: changes.internalReview,
+                  });
                 if (changes.clientReview)
-                  updateReviewStatus(id, false, changes.clientReview);
+                  updateShotMutation.mutate({
+                    id,
+                    clientReviewStatus: changes.clientReview,
+                  });
               });
               setLocalOverrides({});
               toast({
@@ -1067,8 +1217,8 @@ export default function TrackingGrid() {
       {/* Department status rollup strip */}
       <div className="mb-4 shrink-0">
         <div className="flex items-center gap-1.5 mb-2">
-          <Building2 className="w-3.5 h-3.5 text-[#666]" />
-          <h2 className="text-[11px] font-semibold uppercase tracking-wide text-[#888]">
+          <Building2 className="w-3.5 h-3.5 text-muted-foreground/70" />
+          <h2 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             Department Status Rollup
           </h2>
         </div>
@@ -1081,7 +1231,7 @@ export default function TrackingGrid() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.25, delay: i * 0.02 }}
                 whileHover={{ y: -2 }}
-                className="shrink-0 w-[168px] bg-[#111] border border-[#2a2a2a] rounded-sm p-2.5 hover:border-[#444] transition-colors"
+                className="shrink-0 w-[168px] bg-card border border-border rounded-sm p-2.5 hover:border-primary/40 transition-colors"
               >
                 <div className="flex items-center gap-1.5 mb-1.5">
                   <span
@@ -1089,18 +1239,18 @@ export default function TrackingGrid() {
                     style={{ background: dept.color }}
                   />
                   <span
-                    className="text-[11px] font-semibold text-white truncate flex-1"
+                    className="text-[11px] font-semibold text-foreground truncate flex-1"
                     title={dept.name}
                   >
                     {dept.abbreviation}
                   </span>
-                  <span className="text-[10px] text-[#777] font-mono">
+                  <span className="text-[10px] text-muted-foreground font-mono">
                     {total}
                   </span>
                 </div>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <div className="flex h-2 rounded-full overflow-hidden bg-[#1e1e1e] cursor-default">
+                    <div className="flex h-2 rounded-full overflow-hidden bg-muted cursor-default">
                       {TASK_BUCKET_ORDER.map(
                         (key) =>
                           buckets[key] > 0 && (
@@ -1140,7 +1290,7 @@ export default function TrackingGrid() {
                     ))}
                   </TooltipContent>
                 </Tooltip>
-                <div className="flex justify-between mt-1.5 text-[9px] text-[#666]">
+                <div className="flex justify-between mt-1.5 text-[9px] text-muted-foreground/70">
                   <span>
                     {Math.round((buckets.complete / total) * 100)}% done
                   </span>
@@ -1153,7 +1303,7 @@ export default function TrackingGrid() {
               </motion.div>
             ))}
             {deptRollup.length === 0 && (
-              <div className="text-[11px] text-[#666] py-2">
+              <div className="text-[11px] text-muted-foreground/70 py-2">
                 No task data for the current project filter.
               </div>
             )}
@@ -1162,35 +1312,100 @@ export default function TrackingGrid() {
       </div>
 
       {/* Filters row 1 */}
-      <div className="flex items-center gap-3 p-3 bg-[#111] border border-[#333] rounded-sm mb-2 shrink-0">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#666]" />
+      <div className="flex items-center gap-3 p-3 bg-card border border-border rounded-sm mb-2 shrink-0 flex-wrap">
+        <div className="relative flex-1 min-w-[180px] max-w-sm">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/70" />
           <Input
             placeholder="Search shot, sequence, or episode..."
-            className="pl-9 h-9 bg-[#1a1a1a] border-[#333] text-white"
+            className="pl-9 h-9 bg-background border-border text-foreground"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
         <Select value={projectFilter} onValueChange={setProjectFilter}>
-          <SelectTrigger className="w-48 h-9 bg-[#1a1a1a] border-[#333] text-white">
+          <SelectTrigger className="w-40 h-9 bg-background border-border text-foreground">
             <SelectValue placeholder="Project" />
           </SelectTrigger>
-          <SelectContent className="bg-[#1a1a1a] border-[#333] text-white">
+          <SelectContent className="bg-background border-border text-foreground">
             <SelectItem value="all">All Projects</SelectItem>
-            {PROJECTS.map((p) => (
+            {projects.map((p) => (
               <SelectItem key={p.id} value={p.id}>
                 {p.name}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
-        <div className="flex bg-[#1a1a1a] p-0.5 rounded-sm border border-[#333]">
+        <Select value={episodeFilter} onValueChange={setEpisodeFilter}>
+          <SelectTrigger className="w-36 h-9 bg-background border-border text-foreground">
+            <SelectValue placeholder="Episode" />
+          </SelectTrigger>
+          <SelectContent className="bg-background border-border text-foreground">
+            <SelectItem value="all">All Episodes</SelectItem>
+            {episodeOptions.map((e) => (
+              <SelectItem key={e.id} value={e.id}>
+                {e.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={sequenceFilter} onValueChange={setSequenceFilter}>
+          <SelectTrigger className="w-36 h-9 bg-background border-border text-foreground">
+            <SelectValue placeholder="Sequence" />
+          </SelectTrigger>
+          <SelectContent className="bg-background border-border text-foreground">
+            <SelectItem value="all">All Sequences</SelectItem>
+            {sequenceOptions.map((s) => (
+              <SelectItem key={s.id} value={s.id}>
+                {s.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
+          <SelectTrigger className="w-40 h-9 bg-background border-border text-foreground">
+            <SelectValue placeholder="Artist" />
+          </SelectTrigger>
+          <SelectContent className="bg-background border-border text-foreground">
+            <SelectItem value="all">All Artists</SelectItem>
+            {artistOptions.map((u) => (
+              <SelectItem key={u.id} value={u.id}>
+                {u.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={positionFilter} onValueChange={setPositionFilter}>
+          <SelectTrigger className="w-40 h-9 bg-background border-border text-foreground">
+            <SelectValue placeholder="Position" />
+          </SelectTrigger>
+          <SelectContent className="bg-background border-border text-foreground">
+            <SelectItem value="all">All Positions</SelectItem>
+            {positionOptions.map((title) => (
+              <SelectItem key={title} value={title}>
+                {title}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+          <SelectTrigger className="w-40 h-9 bg-background border-border text-foreground">
+            <SelectValue placeholder="Department" />
+          </SelectTrigger>
+          <SelectContent className="bg-background border-border text-foreground">
+            <SelectItem value="all">All Departments</SelectItem>
+            {departments.map((d) => (
+              <SelectItem key={d.id} value={d.id}>
+                {d.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <div className="flex bg-background p-0.5 rounded-sm border border-border">
           <Button
             variant={view === "list" ? "secondary" : "ghost"}
             size="sm"
             onClick={() => setView("list")}
-            className={`h-8 px-3 shadow-none ${view === "list" ? "bg-[#333] text-white" : "text-[#888]"}`}
+            className={`h-8 px-3 shadow-none ${view === "list" ? "bg-accent text-accent-foreground" : "text-muted-foreground"}`}
           >
             <List className="w-4 h-4" />
           </Button>
@@ -1198,7 +1413,7 @@ export default function TrackingGrid() {
             variant={view === "card" ? "secondary" : "ghost"}
             size="sm"
             onClick={() => setView("card")}
-            className={`h-8 px-3 shadow-none ${view === "card" ? "bg-[#333] text-white" : "text-[#888]"}`}
+            className={`h-8 px-3 shadow-none ${view === "card" ? "bg-accent text-accent-foreground" : "text-muted-foreground"}`}
           >
             <LayoutGrid className="w-4 h-4" />
           </Button>
@@ -1212,7 +1427,7 @@ export default function TrackingGrid() {
               ? "Hide grouping & sort filters"
               : "Show grouping & sort filters"
           }
-          className={`h-9 w-9 hover:text-white ${showFilterControls ? "text-white bg-[#252525]" : "text-[#888]"}`}
+          className={`h-9 w-9 hover:text-foreground ${showFilterControls ? "text-accent-foreground bg-accent" : "text-muted-foreground"}`}
         >
           <Filter className="w-4 h-4" />
         </Button>
@@ -1229,17 +1444,17 @@ export default function TrackingGrid() {
             transition={cut.transition}
             className="overflow-hidden shrink-0"
           >
-            <div className="flex items-center gap-3 p-3 bg-[#111] border border-[#333] rounded-sm mb-4 flex-wrap">
+            <div className="flex items-center gap-3 p-3 bg-card border border-border rounded-sm mb-4 flex-wrap">
               <div className="flex items-center gap-1.5">
-                <Layers className="w-3.5 h-3.5 text-[#666]" />
+                <Layers className="w-3.5 h-3.5 text-muted-foreground/70" />
                 <Select
                   value={groupBy1}
                   onValueChange={(v) => setGroupBy1(v as TrackingGroupKey)}
                 >
-                  <SelectTrigger className="w-[150px] h-8 bg-[#1a1a1a] border-[#333] text-white text-[12px]">
+                  <SelectTrigger className="w-[150px] h-8 bg-background border-border text-foreground text-[12px]">
                     <SelectValue placeholder="Group by" />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#1a1a1a] border-[#333] text-white">
+                  <SelectContent className="bg-background border-border text-foreground">
                     {GROUP_OPTIONS.map((o) => (
                       <SelectItem key={o.value} value={o.value}>
                         {o.label}
@@ -1256,17 +1471,17 @@ export default function TrackingGrid() {
                       transition={{ duration: 0.18 }}
                       className="flex items-center gap-1.5 overflow-hidden"
                     >
-                      <ChevronRight className="w-3.5 h-3.5 text-[#555] shrink-0" />
+                      <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/60 shrink-0" />
                       <Select
                         value={groupBy2}
                         onValueChange={(v) =>
                           setGroupBy2(v as TrackingGroupKey)
                         }
                       >
-                        <SelectTrigger className="w-[150px] h-8 bg-[#1a1a1a] border-[#333] text-white text-[12px]">
+                        <SelectTrigger className="w-[150px] h-8 bg-background border-border text-foreground text-[12px]">
                           <SelectValue placeholder="Then by" />
                         </SelectTrigger>
-                        <SelectContent className="bg-[#1a1a1a] border-[#333] text-white">
+                        <SelectContent className="bg-background border-border text-foreground">
                           {GROUP_OPTIONS.filter(
                             (o) => o.value === "none" || o.value !== groupBy1,
                           ).map((o) => (
@@ -1281,18 +1496,18 @@ export default function TrackingGrid() {
                 </AnimatePresence>
               </div>
 
-              <div className="w-px h-6 bg-[#333]" />
+              <div className="w-px h-6 bg-border" />
 
               <div className="flex items-center gap-1.5">
-                <ArrowUpDown className="w-3.5 h-3.5 text-[#666]" />
+                <ArrowUpDown className="w-3.5 h-3.5 text-muted-foreground/70" />
                 <Select
                   value={sortBy}
                   onValueChange={(v) => setSortBy(v as TrackingSortKey)}
                 >
-                  <SelectTrigger className="w-[168px] h-8 bg-[#1a1a1a] border-[#333] text-white text-[12px]">
+                  <SelectTrigger className="w-[168px] h-8 bg-background border-border text-foreground text-[12px]">
                     <SelectValue placeholder="Sort by" />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#1a1a1a] border-[#333] text-white">
+                  <SelectContent className="bg-background border-border text-foreground">
                     {SORT_OPTIONS.map((o) => (
                       <SelectItem key={o.value} value={o.value}>
                         {o.label}
@@ -1309,7 +1524,7 @@ export default function TrackingGrid() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-8 border-[#333] text-[#ccc] gap-1.5"
+                    className="h-8 border-border text-foreground gap-1.5"
                   >
                     <Bookmark className="w-3.5 h-3.5" />
                     <span className="max-w-[120px] truncate">
@@ -1320,14 +1535,14 @@ export default function TrackingGrid() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
                   align="end"
-                  className="w-60 bg-[#1a1a1a] border-[#333] text-white"
+                  className="w-60 bg-background border-border text-foreground"
                 >
-                  <DropdownMenuLabel className="text-[#888] text-[10px] uppercase tracking-wide">
+                  <DropdownMenuLabel className="text-muted-foreground text-[10px] uppercase tracking-wide">
                     Saved Views
                   </DropdownMenuLabel>
-                  <DropdownMenuSeparator className="bg-[#333]" />
+                  <DropdownMenuSeparator className="bg-border" />
                   {savedViews.length === 0 && (
-                    <div className="px-2 py-3 text-[11px] text-[#666]">
+                    <div className="px-2 py-3 text-[11px] text-muted-foreground/70">
                       No saved views yet. Set your filters, then click Save
                       View.
                     </div>
@@ -1336,7 +1551,7 @@ export default function TrackingGrid() {
                     <DropdownMenuItem
                       key={v.id}
                       onClick={() => applyView(v.id)}
-                      className={`flex items-center justify-between gap-2 cursor-pointer ${activeViewId === v.id ? "bg-[#252525] text-white" : ""}`}
+                      className={`flex items-center justify-between gap-2 cursor-pointer ${activeViewId === v.id ? "bg-accent text-accent-foreground" : ""}`}
                     >
                       <span className="truncate">{v.name}</span>
                       <button
@@ -1345,7 +1560,7 @@ export default function TrackingGrid() {
                           e.stopPropagation();
                           handleDeleteView(v.id, v.name);
                         }}
-                        className="text-[#666] hover:text-red-400 shrink-0 transition-colors"
+                        className="text-muted-foreground/70 hover:text-red-400 shrink-0 transition-colors"
                       >
                         <Trash2 className="w-3 h-3" />
                       </button>
@@ -1359,20 +1574,20 @@ export default function TrackingGrid() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-8 border-[#333] text-[#ccc] gap-1.5"
+                    className="h-8 border-border text-foreground gap-1.5"
                   >
                     <BookmarkPlus className="w-3.5 h-3.5" /> Save View
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent
                   align="end"
-                  className="w-72 bg-[#161616] border-[#333] text-white"
+                  className="w-72 bg-popover border-border text-foreground"
                 >
                   <div className="space-y-2">
                     <div className="text-xs font-semibold">
                       Save current view
                     </div>
-                    <p className="text-[11px] text-[#888]">
+                    <p className="text-[11px] text-muted-foreground">
                       Saves your search, filters, grouping and sort order so you
                       can jump back anytime.
                     </p>
@@ -1381,7 +1596,7 @@ export default function TrackingGrid() {
                       placeholder="e.g. Animation Bottlenecks"
                       value={newViewName}
                       onChange={(e) => setNewViewName(e.target.value)}
-                      className="h-8 bg-[#1a1a1a] border-[#333] text-white text-[12px]"
+                      className="h-8 bg-background border-border text-foreground text-[12px]"
                       onKeyDown={(e) => {
                         if (e.key === "Enter") handleSaveView();
                       }}
@@ -1390,7 +1605,7 @@ export default function TrackingGrid() {
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="h-7 text-[#888]"
+                        className="h-7 text-muted-foreground"
                         onClick={() => setSaveViewOpen(false)}
                       >
                         Cancel
@@ -1414,32 +1629,32 @@ export default function TrackingGrid() {
 
       {/* Grid */}
       {view === "list" ? (
-        <div className="flex-1 border border-[#333] rounded-sm overflow-hidden flex flex-col bg-[#0f0f0f]">
+        <div className="flex-1 border border-border rounded-sm overflow-hidden flex flex-col bg-background">
           <div className="overflow-auto flex-1">
             <div style={{ minWidth: "1480px" }} className="text-[12px]">
               <div
-                className="grid sticky top-0 z-10 bg-[#1e237e] text-white shadow-sm font-medium"
+                className="grid sticky top-0 z-10 bg-primary text-primary-foreground shadow-sm font-medium"
                 style={{ gridTemplateColumns: GRID_COLS }}
               >
-                <div className={`${CELL_CENTER} bg-[#1e237e]`}>No</div>
-                <div className={`${CELL} bg-[#1e237e]`}>Project</div>
-                <div className={`${CELL} bg-[#1e237e]`}>Episode</div>
-                <div className={`${CELL} bg-[#1e237e]`}>Sequence</div>
-                <div className={`${CELL} bg-[#1e237e]`}>Shot</div>
-                <div className={`${CELL} bg-[#1e237e]`}>Assignee</div>
-                <div className={`${CELL_CENTER} bg-[#1e237e]`}>Status</div>
-                <div className={`${CELL_CENTER} bg-[#1e237e]`}>USD Version</div>
-                <div className={`${CELL_CENTER} bg-[#1e237e]`}>
+                <div className={`${CELL_CENTER} bg-primary`}>No</div>
+                <div className={`${CELL} bg-primary`}>Project</div>
+                <div className={`${CELL} bg-primary`}>Episode</div>
+                <div className={`${CELL} bg-primary`}>Sequence</div>
+                <div className={`${CELL} bg-primary`}>Shot</div>
+                <div className={`${CELL} bg-primary`}>Assignee</div>
+                <div className={`${CELL_CENTER} bg-primary`}>Status</div>
+                <div className={`${CELL_CENTER} bg-primary`}>USD Version</div>
+                <div className={`${CELL_CENTER} bg-primary`}>
                   Internal Review
                 </div>
-                <div className={`${CELL_CENTER} bg-[#1e237e]`}>
+                <div className={`${CELL_CENTER} bg-primary`}>
                   Client Review
                 </div>
-                <div className={`${CELL_CENTER} bg-[#1e237e]`}>
+                <div className={`${CELL_CENTER} bg-primary`}>
                   Production Notes
                 </div>
               </div>
-              <div className="bg-[#1a1a1a]">
+              <div className="bg-card">
                 {groupTree
                   ? groupTree.map((node) => (
                       <GroupSection
@@ -1470,7 +1685,7 @@ export default function TrackingGrid() {
           </div>
         </div>
       ) : (
-        <div className="flex-1 overflow-auto bg-[#0f0f0f] border border-[#333] rounded-sm">
+        <div className="flex-1 overflow-auto bg-background border border-border rounded-sm">
           {groupTree
             ? groupTree.map((node) => (
                 <GroupSection
@@ -1495,7 +1710,7 @@ export default function TrackingGrid() {
       )}
 
       {/* Footer Stats */}
-      <div className="bg-[#111] border-t border-[#333] p-2 flex justify-between items-center text-xs text-[#888]">
+      <div className="bg-card border-t border-border p-2 flex justify-between items-center text-xs text-muted-foreground">
         <div>Showing {trackingData.length} entries</div>
         <div className="flex gap-4">
           <span className="flex items-center gap-1">
@@ -1509,6 +1724,8 @@ export default function TrackingGrid() {
           </span>
         </div>
       </div>
+
+      <TracksheetImportDialog open={importOpen} onOpenChange={setImportOpen} />
     </div>
   );
 }

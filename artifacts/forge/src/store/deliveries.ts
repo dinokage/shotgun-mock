@@ -1,6 +1,5 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { PROJECTS, SHOTS, USERS } from "@/data/mockData";
 
 /**
  * A Delivery is a one-time, scoped handoff of specific FINAL approved files
@@ -83,63 +82,6 @@ function generateAccessCode(): string {
   return `${word}-${digits}`;
 }
 
-/** A handful of seeded example deliveries so the feature has real demo
- * content immediately, built from real approved/published shots rather than
- * placeholder rows. */
-function buildSeedDeliveries(): Delivery[] {
-  const producer = USERS.find((u) => u.role === "production_head");
-  const deliveries: Delivery[] = [];
-
-  const candidateProjects = PROJECTS.filter(
-    (p) => p.status === "COMPLETE" || p.status === "ON_TRACK",
-  ).slice(0, 2);
-  candidateProjects.forEach((project, i) => {
-    const finishedShots = SHOTS.filter(
-      (s) =>
-        s.projectId === project.id &&
-        (DELIVERY_ELIGIBLE_STATUSES as readonly string[]).includes(s.status),
-    ).slice(0, 4);
-    if (finishedShots.length === 0) return;
-
-    const createdDaysAgo = i === 0 ? 2 : 9;
-    const createdAt = new Date(
-      Date.now() - createdDaysAgo * 24 * 60 * 60 * 1000,
-    ).toISOString();
-
-    deliveries.push({
-      id: `del${i + 1}`,
-      projectId: project.id,
-      title: `${project.name} — Final Delivery ${i + 1}`,
-      clientName: project.client,
-      items: finishedShots.map((s) => ({
-        shotId: s.id,
-        name: s.name,
-        thumbnailSeed: s.thumbnailSeed,
-      })),
-      accessCode: i === 0 ? "orbit-4471" : "ember-1928",
-      status: i === 1 ? "revoked" : "active",
-      createdById: producer?.id ?? USERS[0].id,
-      createdByName: producer?.name ?? USERS[0].name,
-      createdAt,
-      expiresAt:
-        i === 0
-          ? new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toISOString()
-          : null,
-      notes:
-        i === 0
-          ? "Final approved shots for the trailer cut — masters only, no proxies."
-          : "",
-      downloadCount: i === 0 ? 3 : 7,
-      lastAccessedAt:
-        i === 0
-          ? new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString()
-          : new Date(Date.now() - 12 * 24 * 60 * 60 * 1000).toISOString(),
-    });
-  });
-
-  return deliveries;
-}
-
 interface DeliveryState {
   deliveries: Delivery[];
   createDelivery: (input: {
@@ -160,7 +102,9 @@ interface DeliveryState {
 export const useDeliveryStore = create<DeliveryState>()(
   persist(
     (set, get) => ({
-      deliveries: buildSeedDeliveries(),
+      // No mock seed here on purpose -- deliveries only exist once a
+      // producer actually creates one via createDelivery below.
+      deliveries: [],
 
       createDelivery: (input) => {
         const delivery: Delivery = {
@@ -205,6 +149,12 @@ export const useDeliveryStore = create<DeliveryState>()(
     }),
     {
       name: "forge-deliveries",
+      // Bumped from the implicit default (0): this store used to seed
+      // fabricated demo deliveries via buildSeedDeliveries() (now removed),
+      // and any browser that already persisted that fake data would keep
+      // showing it forever otherwise -- a version bump forces a fresh,
+      // genuinely empty start.
+      version: 1,
     },
   ),
 );

@@ -11,15 +11,16 @@ import {
 } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
-  USERS,
-  PROJECTS,
-  LEAVE_EVENTS,
   DEPENDENCY_TYPE_LABELS,
+  type LeaveEvent,
 } from "@/data/mockData";
+import { useUserStore } from "@/store/users";
+import { useProjectStore } from "@/store/projects";
 import { Search, ZoomIn, ZoomOut } from "lucide-react";
 import { useUIStore } from "@/store/ui";
 import { useTasksStore } from "@/store/tasks";
 import { useToast } from "@/hooks/use-toast";
+import { getAssigneeId, getProjectId, useEntityProjectMap } from "@/lib/taskShape";
 import {
   addDays,
   getDaysDiff,
@@ -50,6 +51,9 @@ export default function TeamCalendar() {
   const { setActiveTaskDrawer } = useUIStore();
   const tasks = useTasksStore((s) => s.tasks);
   const updateTaskDates = useTasksStore((s) => s.updateTaskDates);
+  const users = useUserStore((s) => s.users);
+  const projects = useProjectStore((s) => s.projects);
+  const entityProjectMap = useEntityProjectMap();
 
   const [projectFilter, setProjectFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
@@ -71,8 +75,11 @@ export default function TeamCalendar() {
   const tasksToDisplay = useMemo(() => {
     return tasks
       .filter((t) => {
-        if (!t.assigneeId) return false;
-        if (projectFilter !== "all" && t.projectId !== projectFilter)
+        if (!getAssigneeId(t)) return false;
+        if (
+          projectFilter !== "all" &&
+          getProjectId(t, entityProjectMap) !== projectFilter
+        )
           return false;
         if (search && !t.title.toLowerCase().includes(search.toLowerCase()))
           return false;
@@ -94,18 +101,19 @@ export default function TeamCalendar() {
             : duration,
         };
       });
-  }, [tasks, projectFilter, search, timelineStartStr]);
+  }, [tasks, projectFilter, search, timelineStartStr, entityProjectMap]);
 
   const groupedByUser = useMemo(() => {
     const groups: Record<string, typeof tasksToDisplay> = {};
-    USERS.forEach((u) => (groups[u.id] = []));
+    users.forEach((u) => (groups[u.id] = []));
     tasksToDisplay.forEach((t) => {
-      if (groups[t.assigneeId]) groups[t.assigneeId].push(t);
+      const assigneeId = getAssigneeId(t);
+      if (assigneeId && groups[assigneeId]) groups[assigneeId].push(t);
     });
     return Object.fromEntries(
       Object.entries(groups).filter(([, ts]) => ts.length > 0),
     );
-  }, [tasksToDisplay]);
+  }, [tasksToDisplay, users]);
 
   const cellWidth = 40 * zoom;
 
@@ -167,7 +175,7 @@ export default function TeamCalendar() {
         <div>
           <h3 className="text-sm font-semibold">Per-Person Time Allocation</h3>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Drag a bar to reschedule &middot; dashed blocks are leave / PTO
+            Drag a bar to reschedule
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -186,7 +194,7 @@ export default function TeamCalendar() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Projects</SelectItem>
-              {PROJECTS.map((p) => (
+              {projects.map((p) => (
                 <SelectItem key={p.id} value={p.id}>
                   {p.name}
                 </SelectItem>
@@ -222,7 +230,7 @@ export default function TeamCalendar() {
           </div>
           <div className="flex-1 overflow-y-auto">
             {Object.keys(groupedByUser).map((userId) => {
-              const user = USERS.find((u) => u.id === userId);
+              const user = users.find((u) => u.id === userId);
               const rows = groupedByUser[userId];
               return (
                 <div
@@ -401,12 +409,12 @@ export default function TeamCalendar() {
             {Object.keys(groupedByUser).map((userId) => {
               const rows = groupedByUser[userId];
               const rowHeight = Math.max(48, rows.length * 40 + 8);
-              const userLeave = LEAVE_EVENTS.filter(
-                (v) =>
-                  v.userId === userId &&
-                  v.start <= timelineEndStr &&
-                  v.end >= timelineStartStr,
-              );
+              // No real leave/PTO backend exists yet (only the fully-fake
+              // LEAVE_EVENTS mock array did before) — see
+              // CapacityForecast.tsx's identical leaveDays=0 comment. Render
+              // no leave bars against real employees rather than invented
+              // days off.
+              const userLeave: LeaveEvent[] = [];
               return (
                 <div
                   key={userId}
@@ -451,8 +459,8 @@ export default function TeamCalendar() {
                   })}
 
                   {rows.map((task, i) => {
-                    const project = PROJECTS.find(
-                      (p) => p.id === task.projectId,
+                    const project = projects.find(
+                      (p) => p.id === getProjectId(task, entityProjectMap),
                     );
                     const left = task.startOffset * cellWidth;
                     const width = task.visibleDuration * cellWidth;

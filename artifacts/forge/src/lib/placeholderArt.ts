@@ -122,22 +122,24 @@ export function getPlaceholderThumbnail(
 }
 
 // This mock has no real render/transcode pipeline, so there's no actual
-// per-shot media file to stream. Rather than play the same stock clip for
-// every shot (which makes any player look broken — click any shot, get the
-// same footage), deterministically pick from a small pool of distinct public
-// sample videos keyed off the shot's own seed, so each shot at least
-// consistently maps to its own "preview" playback source. Shared between
-// the client review portal and the delivery viewer so both play the same
-// clip for the same shot.
-const SAMPLE_VIDEO_POOL = [
-  "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
-  "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-  "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-  "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
-  "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
-];
-
-export function getPlaceholderVideoSrc(seed: number): string {
-  const index = Math.abs(seed) % SAMPLE_VIDEO_POOL.length;
-  return SAMPLE_VIDEO_POOL[index];
+// per-shot media file to stream, and this office network has no internet
+// access, so a `<video src="https://...">` pointed at a public CDN (the
+// original approach) would show a blank/broken player for every real user.
+//
+// An earlier version of this function tried to synthesize a short looping
+// clip entirely client-side (canvas -> the seeded SVG art ->
+// MediaRecorder -> a blob: URL). That produced a byte-valid WebM file, but
+// canvas.captureStream() reliability turned out to vary across browser/GPU
+// configurations -- it silently produced zero decodable video frames in
+// testing (readyState stuck at HAVE_NOTHING indefinitely, no error event),
+// and there was no reliable way to verify it would behave differently on
+// the actual office deployment's browsers. A placeholder that might not
+// even play is worse than no placeholder: callers already treat `undefined`
+// here as "show the static seeded thumbnail instead" (see
+// usePlaceholderVideoSrc and every call site), which is honest about there
+// being no real footage yet rather than risking a broken video element.
+export async function getPlaceholderVideoSrc(
+  _seed: number,
+): Promise<string | undefined> {
+  return undefined;
 }

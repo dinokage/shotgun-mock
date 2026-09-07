@@ -22,7 +22,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
-import { DEPARTMENTS, type Task } from "@/data/mockData";
+import { type Task } from "@/data/mockData";
+import { useDepartmentStore } from "@/store/departments";
 import type { TaskTemplateItem } from "@/store/schema";
 import { DURATION, EASE_DISSOLVE } from "@/lib/motion";
 
@@ -52,6 +53,7 @@ export function TemplateTaskRow({
     transition,
     isDragging,
   } = useSortable({ id: task.id });
+  const departments = useDepartmentStore((s) => s.departments);
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -100,7 +102,7 @@ export function TemplateTaskRow({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {DEPARTMENTS.map((d) => (
+          {departments.map((d) => (
             <SelectItem key={d.id} value={d.id} className="text-xs">
               <span className="inline-flex items-center gap-1.5">
                 <span

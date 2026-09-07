@@ -33,10 +33,14 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Switch } from "@/components/ui/switch";
 import { PriorityChip } from "@/components/shared/PriorityChip";
 import { Search, Inbox, Clock } from "lucide-react";
-import { USERS, PROJECTS, DEPARTMENTS, Task } from "@/data/mockData";
+import { Task } from "@/data/mockData";
+import { useUsers } from "@/hooks/useUsers";
+import { useDepartmentStore } from "@/store/departments";
+import { useProjectStore } from "@/store/projects";
 import { useTasksStore } from "@/store/tasks";
 import { useUIStore } from "@/store/ui";
 import { useToast } from "@/hooks/use-toast";
+import { getAssigneeId, getProjectId, useEntityProjectMap } from "@/lib/taskShape";
 import { cn } from "@/lib/utils";
 import { REFERENCE_DATE } from "./utils";
 
@@ -238,11 +242,25 @@ export default function TeamBoard() {
   const tasks = useTasksStore((s) => s.tasks);
   const reassignTask = useTasksStore((s) => s.reassignTask);
   const revokeAssignment = useTasksStore((s) => s.revokeAssignment);
+  // Live query, not useUserStore's once-at-login snapshot -- a newly added
+  // employee wouldn't appear as a column here for anyone already logged in
+  // otherwise. Real User rows have no `capacity` column (mock-only field);
+  // read as unknown rather than a verified 0%, same as profile.tsx.
+  const { data: users = [] } = useUsers();
+  const departments = useDepartmentStore((s) => s.departments);
+  const projects = useProjectStore((s) => s.projects);
+  const entityProjectMap = useEntityProjectMap();
 
   const [projectFilter, setProjectFilter] = useState("all");
   const [departmentFilter, setDepartmentFilter] = useState("all");
   const [search, setSearch] = useState("");
-  const [showEmpty, setShowEmpty] = useState(false);
+  // Defaults to true: this board's whole purpose is bulk-assigning currently
+  // *unassigned* work onto people, so on a fresh import (or any moment where
+  // most/all tasks are still unassigned) everyone legitimately has zero
+  // tasks yet -- defaulting to hide empty-handed people made the board look
+  // entirely empty ("No team members match these filters") for exactly the
+  // situation it exists to fix.
+  const [showEmpty, setShowEmpty] = useState(true);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
 
   const sensors = useSensors(
@@ -253,7 +271,10 @@ export default function TeamBoard() {
   const filteredTasks = useMemo(
     () =>
       tasks.filter((t) => {
-        if (projectFilter !== "all" && t.projectId !== projectFilter)
+        if (
+          projectFilter !== "all" &&
+          getProjectId(t, entityProjectMap) !== projectFilter
+        )
           return false;
         // Department filter needs to narrow the tasks themselves, not just which
         // people columns are visible — otherwise the Unassigned pool keeps
@@ -261,38 +282,35 @@ export default function TeamBoard() {
         // e.g. Lighting's people, which reads as "Lighting has a huge backlog"
         // when most of it isn't Lighting work at all.
         if (departmentFilter !== "all") {
-          const dept = DEPARTMENTS.find((d) => d.id === departmentFilter);
+          const dept = departments.find((d) => d.id === departmentFilter);
           if (!dept || t.department !== dept.name) return false;
         }
         if (search && !t.title.toLowerCase().includes(search.toLowerCase()))
           return false;
         return true;
       }),
-    [tasks, projectFilter, departmentFilter, search],
+    [tasks, projectFilter, departmentFilter, search, departments, entityProjectMap],
   );
 
   const unassignedTasks = useMemo(
-    () => filteredTasks.filter((t) => !t.assigneeId),
+    () => filteredTasks.filter((t) => !getAssigneeId(t)),
     [filteredTasks],
   );
 
   const people = useMemo(() => {
-    return USERS.filter((u) => u.role !== "client")
+    return users
+      .filter((u) => u.role !== "client")
       .filter(
         (u) =>
           departmentFilter === "all" || u.departmentId === departmentFilter,
       )
       .map((user) => ({
         user,
-        tasks: filteredTasks.filter((t) => t.assigneeId === user.id),
+        tasks: filteredTasks.filter((t) => getAssigneeId(t) === user.id),
       }))
       .filter((col) => showEmpty || col.tasks.length > 0)
-      .sort(
-        (a, b) =>
-          b.tasks.length - a.tasks.length ||
-          (b.user.capacity ?? 0) - (a.user.capacity ?? 0),
-      );
-  }, [filteredTasks, departmentFilter, showEmpty]);
+      .sort((a, b) => b.tasks.length - a.tasks.length);
+  }, [users, filteredTasks, departmentFilter, showEmpty]);
 
   const findTask = (id: string) => tasks.find((t) => t.id === id);
 
@@ -302,9 +320,9 @@ export default function TeamBoard() {
 
   const resolveTargetUserId = (overId: string): string | undefined => {
     if (overId === UNASSIGNED) return "";
-    if (USERS.some((u) => u.id === overId)) return overId;
+    if (users.some((u) => u.id === overId)) return overId;
     const overTask = findTask(overId);
-    if (overTask) return overTask.assigneeId ?? "";
+    if (overTask) return getAssigneeId(overTask) ?? "";
     return undefined;
   };
 
@@ -318,7 +336,7 @@ export default function TeamBoard() {
 
     const targetUserId = resolveTargetUserId(over.id as string);
     if (targetUserId === undefined) return;
-    if ((activeTaskItem.assigneeId || "") === targetUserId) return;
+    if ((getAssigneeId(activeTaskItem) || "") === targetUserId) return;
 
     if (targetUserId === "") {
       revokeAssignment(activeTaskItem.id);
@@ -327,7 +345,7 @@ export default function TeamBoard() {
         description: `${activeTaskItem.title} moved back to the unassigned pool.`,
       });
     } else {
-      const person = USERS.find((u) => u.id === targetUserId);
+      const person = users.find((u) => u.id === targetUserId);
       reassignTask(activeTaskItem.id, targetUserId);
       toast({
         title: "Task assigned",
@@ -362,7 +380,7 @@ export default function TeamBoard() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Departments</SelectItem>
-              {DEPARTMENTS.map((d) => (
+              {departments.map((d) => (
                 <SelectItem key={d.id} value={d.id}>
                   {d.name}
                 </SelectItem>
@@ -375,7 +393,7 @@ export default function TeamBoard() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Projects</SelectItem>
-              {PROJECTS.map((p) => (
+              {projects.map((p) => (
                 <SelectItem key={p.id} value={p.id}>
                   {p.name}
                 </SelectItem>
@@ -410,9 +428,8 @@ export default function TeamBoard() {
                 key={user.id}
                 id={user.id}
                 name={user.name}
-                subtitle={user.title}
-                avatar={user.avatar}
-                capacity={user.capacity}
+                subtitle={user.title ?? undefined}
+                avatar={user.avatar ?? undefined}
                 tasks={userTasks}
               />
             ))}

@@ -6,17 +6,22 @@
  * status) rather than hand-written prose. The `reasoning` string is built
  * from the same numbers surfaced in the UI, so it stays traceable: change
  * the mock data and the flagged entity, counts, and copy all change with it.
+ *
+ * Every function below takes assets/projects/shots/tasks as explicit
+ * parameters rather than reading the raw ASSETS/PROJECTS/SHOTS/TASKS mock
+ * arrays directly. Those arrays are mutated in place by fetchMe() on login
+ * (real data replaces the seeded content), which updates their *contents*
+ * but not their object identity -- a caller's useMemo gated on some other
+ * dependency (e.g. departments) can settle before that mutation lands and
+ * then never recompute again, freezing the dashboard's insights at
+ * whatever was true (often the seeded mock data) at first render. Passing
+ * the arrays in lets the caller depend on the same live-store/react-query
+ * values everywhere else in the app already does, so recomputation is
+ * driven by real reference/state changes instead of a mutation React can't see.
  */
 
-import {
-  ASSETS,
-  DEPARTMENTS,
-  PROJECTS,
-  SHOTS,
-  TASKS,
-  type Asset,
-  type Task,
-} from "@/data/mockData";
+import type { Asset, Department, Project, Shot, Task } from "@/data/mockData";
+import { getAssetId, getProjectId } from "@/lib/taskShape";
 
 export type InsightSeverity = "critical" | "warning" | "positive";
 
@@ -39,7 +44,7 @@ const UNRESOLVED_TASK_STATUSES = new Set<Task["status"]>([
   "bottleneck",
   "review",
   "lead-review",
-  "manager-review",
+  "pm-review",
 ]);
 
 // Assets in these states are still "live" — a dependency on one of these can
@@ -64,10 +69,15 @@ const MIN_DEPT_SAMPLE = 8; // ignore departments too small to make a rate meanin
  * then finds the asset with the largest fan-out of still-active dependents,
  * preferring one that is itself stuck (bottleneck/at-risk).
  */
-function findBlockingAssetInsight(): AIInsight | null {
-  const assetById = new Map(ASSETS.map((a) => [a.id, a]));
+function findBlockingAssetInsight(
+  assets: Asset[],
+  tasks: Task[],
+  projects: Project[],
+  entityProjectMap: Record<string, string>,
+): AIInsight | null {
+  const assetById = new Map(assets.map((a) => [a.id, a]));
   const dependents = new Map<string, string[]>();
-  for (const asset of ASSETS) {
+  for (const asset of assets) {
     for (const depId of asset.dependencies) {
       const list = dependents.get(depId) ?? [];
       list.push(asset.id);
@@ -83,13 +93,19 @@ function findBlockingAssetInsight(): AIInsight | null {
         ACTIVE_ASSET_STATUSES.has(assetById.get(id)!.status),
       );
       const activeDependentSet = new Set(activeDependentIds);
-      const impactedTasks = TASKS.filter(
-        (t) =>
-          t.assetId &&
-          activeDependentSet.has(t.assetId) &&
-          UNRESOLVED_TASK_STATUSES.has(t.status),
-      );
-      const projectCount = new Set(impactedTasks.map((t) => t.projectId)).size;
+      const impactedTasks = tasks.filter((t) => {
+        const assetId = getAssetId(t);
+        return (
+          assetId &&
+          activeDependentSet.has(assetId) &&
+          UNRESOLVED_TASK_STATUSES.has(t.status)
+        );
+      });
+      const projectCount = new Set(
+        impactedTasks
+          .map((t) => getProjectId(t, entityProjectMap))
+          .filter((pid): pid is string => Boolean(pid)),
+      ).size;
       return {
         source,
         activeDependents: activeDependentIds.length,
@@ -111,7 +127,7 @@ function findBlockingAssetInsight(): AIInsight | null {
   const top = candidates[0];
   if (!top) return null;
 
-  const project = PROJECTS.find((p) => p.id === top.source.projectId);
+  const project = projects.find((p) => p.id === top.source.projectId);
 
   return {
     id: `blocker-${top.source.id}`,
@@ -126,9 +142,9 @@ function findBlockingAssetInsight(): AIInsight | null {
 }
 
 /** Groups unresolved tasks by department, keeping only departments with a meaningful sample. */
-function groupActiveTasksByDept(): Map<string, Task[]> {
+function groupActiveTasksByDept(tasks: Task[]): Map<string, Task[]> {
   const byDept = new Map<string, Task[]>();
-  for (const t of TASKS) {
+  for (const t of tasks) {
     if (!UNRESOLVED_TASK_STATUSES.has(t.status)) continue;
     const list = byDept.get(t.department) ?? [];
     list.push(t);
@@ -138,8 +154,11 @@ function groupActiveTasksByDept(): Map<string, Task[]> {
 }
 
 /** Finds the department with the highest share of self-reported "behind" pace tasks. */
-function findDepartmentPaceInsight(): AIInsight | null {
-  const ranked = Array.from(groupActiveTasksByDept().entries())
+function findDepartmentPaceInsight(
+  tasks: Task[],
+  departments: Department[],
+): AIInsight | null {
+  const ranked = Array.from(groupActiveTasksByDept(tasks).entries())
     .filter(([, tasks]) => tasks.length >= MIN_DEPT_SAMPLE)
     .map(([department, tasks]) => {
       const behind = tasks.filter((t) => t.weeklyRating === "behind").length;
@@ -155,7 +174,7 @@ function findDepartmentPaceInsight(): AIInsight | null {
   const top = ranked[0];
   if (!top || top.behind === 0) return null;
 
-  const dept = DEPARTMENTS.find((d) => d.name === top.department);
+  const dept = departments.find((d) => d.name === top.department);
   const pct = Math.round(top.rate * 100);
 
   return {
@@ -168,32 +187,60 @@ function findDepartmentPaceInsight(): AIInsight | null {
   };
 }
 
-/** Finds the non-complete project carrying the highest studio-assigned risk score. */
-function findProjectRiskInsight(): AIInsight | null {
-  const candidates = PROJECTS.filter((p) => p.status !== "COMPLETE").sort(
-    (a, b) => b.riskScore - a.riskScore,
-  );
-  const top = candidates[0];
-  if (!top) return null;
-
-  const shots = SHOTS.filter((s) => s.projectId === top.id);
+function computeProjectRiskScore(
+  allShots: Shot[],
+  projectId: string,
+): {
+  score: number;
+  flaggedShots: number;
+  totalShots: number;
+} {
+  const shots = allShots.filter((s) => s.projectId === projectId);
+  if (shots.length === 0) return { score: 0, flaggedShots: 0, totalShots: 0 };
   const flaggedShots = shots.filter(
     (s) => s.status === "bottleneck" || s.status === "at-risk",
   ).length;
+  return {
+    score: Math.round((flaggedShots / shots.length) * 100),
+    flaggedShots,
+    totalShots: shots.length,
+  };
+}
+
+/** Finds the non-complete project carrying the highest studio-assigned risk score. */
+function findProjectRiskInsight(
+  projects: Project[],
+  shots: Shot[],
+): AIInsight | null {
+  const ranked = projects
+    .filter((p) => p.status !== "COMPLETE")
+    .map((p) => ({ project: p, risk: computeProjectRiskScore(shots, p.id) }))
+    .filter((r) => r.risk.totalShots > 0)
+    .sort((a, b) => b.risk.score - a.risk.score);
+
+  const top = ranked[0];
+  if (!top || top.risk.score === 0) return null;
+
+  const deadlineClause = top.project.endDate
+    ? ` against a ${new Date(top.project.endDate).toLocaleDateString()} deadline`
+    : "";
 
   return {
-    id: `risk-${top.id}`,
-    severity: top.riskScore >= 60 ? "critical" : "warning",
-    title: `Elevated Risk: ${top.name}`,
-    reasoning: `Flagged because ${top.name} carries the highest studio risk score (${top.riskScore}/100) among non-complete projects — ${top.progress}% complete against a ${new Date(top.dueDate).toLocaleDateString()} deadline, with ${flaggedShots} of ${shots.length} shots in a bottleneck or at-risk state.`,
+    id: `risk-${top.project.id}`,
+    severity: top.risk.score >= 60 ? "critical" : "warning",
+    title: `Elevated Risk: ${top.project.name}`,
+    reasoning: `Flagged because ${top.project.name} carries the highest studio risk score (${top.risk.score}/100) among non-complete projects${deadlineClause}, with ${top.risk.flaggedShots} of ${top.risk.totalShots} shots in a bottleneck or at-risk state.`,
     actionLabel: "View Project",
-    actionHref: `/projects/${top.id}`,
+    actionHref: `/projects/${top.project.id}`,
   };
 }
 
 /** Finds the department with the highest share of self-reported "on-track" tasks — a genuine positive signal, not just the inverse of the pace warning. */
-function findDepartmentOnTrackInsight(): AIInsight | null {
-  const ranked = Array.from(groupActiveTasksByDept().entries())
+function findDepartmentOnTrackInsight(
+  tasks: Task[],
+  departments: Department[],
+): AIInsight | null {
+  const ranked = Array.from(groupActiveTasksByDept(tasks).entries())
     .filter(([, tasks]) => tasks.length >= MIN_DEPT_SAMPLE)
     .map(([department, tasks]) => {
       const onTrack = tasks.filter((t) => t.weeklyRating === "on-track").length;
@@ -209,7 +256,7 @@ function findDepartmentOnTrackInsight(): AIInsight | null {
   const top = ranked[0];
   if (!top || top.rate === 0) return null;
 
-  const dept = DEPARTMENTS.find((d) => d.name === top.department);
+  const dept = departments.find((d) => d.name === top.department);
   const pct = Math.round(top.rate * 100);
 
   return {
@@ -229,11 +276,18 @@ function findDepartmentOnTrackInsight(): AIInsight | null {
  * against the current data (e.g. no department has a "behind" task) is
  * omitted rather than shown with placeholder text.
  */
-export function generateProducerInsights(): AIInsight[] {
+export function generateProducerInsights(
+  assets: Asset[],
+  projects: Project[],
+  shots: Shot[],
+  tasks: Task[],
+  departments: Department[],
+  entityProjectMap: Record<string, string>,
+): AIInsight[] {
   return [
-    findBlockingAssetInsight(),
-    findDepartmentPaceInsight(),
-    findProjectRiskInsight(),
-    findDepartmentOnTrackInsight(),
+    findBlockingAssetInsight(assets, tasks, projects, entityProjectMap),
+    findDepartmentPaceInsight(tasks, departments),
+    findProjectRiskInsight(projects, shots),
+    findDepartmentOnTrackInsight(tasks, departments),
   ].filter((insight): insight is AIInsight => insight !== null);
 }

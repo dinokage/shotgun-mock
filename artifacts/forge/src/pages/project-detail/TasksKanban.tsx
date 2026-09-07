@@ -1,6 +1,8 @@
 import { useTasksStore } from "@/store/tasks";
 import { useAuthStore } from "@/store/auth";
-import { Task, TaskStatus } from "@/data/mockData";
+import { TaskStatus } from "@/data/mockData";
+import { useUpdateTask } from "@/hooks/useTasks";
+import { getAssigneeId, getProjectId, useEntityProjectMap } from "@/lib/taskShape";
 import {
   DndContext,
   DragOverlay,
@@ -19,7 +21,7 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card } from "@/components/ui/card";
@@ -49,14 +51,31 @@ const COLUMNS: { id: TaskStatus; title: string }[] = [
   { id: "bottleneck", title: "Bottleneck" },
   { id: "review", title: "Review" },
   { id: "lead-review", title: "Lead Review" },
-  { id: "manager-review", title: "Manager Review" },
+  { id: "pm-review", title: "PM Review" },
   { id: "approved", title: "Approved" },
   { id: "complete", title: "Complete" },
   { id: "cancelled", title: "Cancelled" },
 ];
+const KNOWN_STATUS_IDS = new Set<string>(COLUMNS.map((c) => c.id));
+// Real tracksheet-imported tasks carry a studio's own pipeline-stage
+// vocabulary (e.g. "TK_01_APP", "WFF", "Client_App") that matches none of
+// the stages above -- without this catch-all, every such task was silently
+// invisible on every Kanban board (confirmed live: 1065 real tasks, every
+// column showing 0). This column is purely a visibility safety net.
+const OTHER_COLUMN: { id: TaskStatus; title: string } = {
+  id: "other",
+  title: "Other",
+};
 
-function SortableTaskCard({ task }: { task: any }) {
-  const updateTask = useTasksStore((state) => state.updateTask);
+function SortableTaskCard({
+  task,
+  onUpdateTask,
+  entityProjectMap,
+}: {
+  task: any;
+  onUpdateTask: (id: string, updates: Record<string, unknown>) => void;
+  entityProjectMap: Record<string, string>;
+}) {
   const {
     attributes,
     listeners,
@@ -101,7 +120,7 @@ function SortableTaskCard({ task }: { task: any }) {
             {task.title}
           </div>
           <div className="text-xs text-muted-foreground mt-1 truncate">
-            {task.projectId} • {task.department}
+            {getProjectId(task, entityProjectMap)} • {task.department}
           </div>
         </div>
 
@@ -120,7 +139,7 @@ function SortableTaskCard({ task }: { task: any }) {
 
         <div className="flex items-center justify-between mt-2 pl-2 border-t border-border/50 pt-2">
           <div className="flex items-center gap-2">
-            <UserAvatar userId={task.assigneeId} />
+            <UserAvatar userId={getAssigneeId(task) ?? ""} />
             <div
               className={`flex items-center gap-1 text-[10px] ${isOverdue ? "text-red-500 font-medium" : "text-muted-foreground"}`}
             >
@@ -143,22 +162,22 @@ function SortableTaskCard({ task }: { task: any }) {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-32 z-50">
               <DropdownMenuItem
-                onSelect={() => updateTask(task.id, { priority: "critical" })}
+                onSelect={() => onUpdateTask(task.id, { priority: "critical" })}
               >
                 Critical
               </DropdownMenuItem>
               <DropdownMenuItem
-                onSelect={() => updateTask(task.id, { priority: "high" })}
+                onSelect={() => onUpdateTask(task.id, { priority: "high" })}
               >
                 High
               </DropdownMenuItem>
               <DropdownMenuItem
-                onSelect={() => updateTask(task.id, { priority: "medium" })}
+                onSelect={() => onUpdateTask(task.id, { priority: "medium" })}
               >
                 Medium
               </DropdownMenuItem>
               <DropdownMenuItem
-                onSelect={() => updateTask(task.id, { priority: "low" })}
+                onSelect={() => onUpdateTask(task.id, { priority: "low" })}
               >
                 Low
               </DropdownMenuItem>
@@ -173,9 +192,11 @@ function SortableTaskCard({ task }: { task: any }) {
 function ClaimableTaskCard({
   task,
   onClaim,
+  entityProjectMap,
 }: {
   task: any;
   onClaim: () => void;
+  entityProjectMap: Record<string, string>;
 }) {
   const [claiming, setClaiming] = useState(false);
 
@@ -199,7 +220,7 @@ function ClaimableTaskCard({
             {task.title}
           </div>
           <div className="text-xs text-muted-foreground mt-1 truncate">
-            {task.projectId} • {task.department}
+            {getProjectId(task, entityProjectMap)} • {task.department}
           </div>
         </div>
 
@@ -240,9 +261,13 @@ function ClaimableTaskCard({
 function DroppableColumn({
   col,
   tasks,
+  onUpdateTask,
+  entityProjectMap,
 }: {
   col: { id: TaskStatus; title: string };
   tasks: any[];
+  onUpdateTask: (id: string, updates: Record<string, unknown>) => void;
+  entityProjectMap: Record<string, string>;
 }) {
   const { setNodeRef } = useDroppable({ id: col.id });
   return (
@@ -263,7 +288,12 @@ function DroppableColumn({
           id={col.id}
         >
           {tasks.map((task) => (
-            <SortableTaskCard key={task.id} task={task} />
+            <SortableTaskCard
+              key={task.id}
+              task={task}
+              onUpdateTask={onUpdateTask}
+              entityProjectMap={entityProjectMap}
+            />
           ))}
           {tasks.length === 0 && (
             <div className="h-20 border-2 border-dashed border-border rounded-lg flex items-center justify-center text-xs text-muted-foreground pointer-events-none">
@@ -279,19 +309,61 @@ function DroppableColumn({
 export default function KanbanView({
   projectId,
   tasks,
+  entityProjectMap = {},
 }: {
   projectId?: string;
   tasks?: any[];
+  // Only meaningful (and only ever passed) when `tasks` is real TaskDTO[]
+  // from pages/tasks.tsx — see getProjectId() above. The legacy fallback
+  // path (pages/project-detail/TasksTab.tsx, no `tasks` prop) doesn't need
+  // it since its own task.projectId field already works directly.
+  entityProjectMap?: Record<string, string>;
 }) {
   const storeTasks = useTasksStore((state) => state.tasks);
-  const { updateTaskStatus, updateTask } = useTasksStore();
+  const storeUpdateTaskStatus = useTasksStore((state) => state.updateTaskStatus);
+  const storeUpdateTask = useTasksStore((state) => state.updateTask);
+  const updateTaskMutation = useUpdateTask();
   const { currentUser } = useAuthStore();
   const { toast } = useToast();
   const sourceTasks = tasks || storeTasks;
+  // The legacy fallback path (pages/project-detail/TasksTab.tsx) never passes
+  // `entityProjectMap` — but since store/auth.ts's login hydration overwrites
+  // useTasksStore's tasks with raw, untranslated real TaskDTO[] data (no
+  // `projectId` field), `storeTasks` needs the exact same entityId -> project
+  // lookup real TaskDTO[] callers rely on. Build it here unconditionally
+  // (react-query dedupes against pages/tasks.tsx's identical query) and let
+  // an explicitly-passed prop take priority.
+  const builtEntityProjectMap = useEntityProjectMap();
+  const resolvedEntityProjectMap = useMemo(
+    () => ({ ...builtEntityProjectMap, ...entityProjectMap }),
+    [builtEntityProjectMap, entityProjectMap],
+  );
+  // `tasks` is only ever passed by pages/tasks.tsx (real TaskDTO[] from the
+  // backend). pages/project-detail/TasksTab.tsx passes only `projectId` (or
+  // nothing) and relies on the storeTasks fallback above — mutations must
+  // route to whichever data source is actually backing what's on screen.
+  const isRealData = !!tasks;
+
+  const updateTaskStatus = (id: string, status: TaskStatus) =>
+    isRealData
+      ? updateTaskMutation.mutate({ id, status })
+      : storeUpdateTaskStatus(id, status);
+  const updateTask = (id: string, updates: Record<string, unknown>) =>
+    isRealData
+      ? updateTaskMutation.mutate({ id, ...updates })
+      : storeUpdateTask(id, updates);
+
+  // Real TaskDTO[] has no `projectId` column, so filtering must go through
+  // the entityId -> project lookup (getProjectId), not a direct field read —
+  // a direct `t.projectId === projectId` read silently matched nothing once
+  // real data replaced the mock array, making every project-scoped board
+  // appear to have zero tasks.
   const projectTasks = projectId
-    ? sourceTasks.filter((t) => t.projectId === projectId)
+    ? sourceTasks.filter(
+        (t) => getProjectId(t, resolvedEntityProjectMap) === projectId,
+      )
     : sourceTasks;
-  const availableTasks = projectTasks.filter((t) => !t.assigneeId);
+  const availableTasks = projectTasks.filter((t) => !getAssigneeId(t));
 
   const [activeTask, setActiveTask] = useState<any | null>(null);
 
@@ -349,9 +421,15 @@ export default function KanbanView({
                 <ClaimableTaskCard
                   key={task.id}
                   task={task}
+                  entityProjectMap={resolvedEntityProjectMap}
                   onClaim={() => {
                     if (!currentUser) return;
-                    updateTask(task.id, { assigneeId: currentUser.id });
+                    updateTask(
+                      task.id,
+                      isRealData
+                        ? { assignedTo: currentUser.id }
+                        : { assigneeId: currentUser.id },
+                    );
                     toast({
                       title: "Task Claimed",
                       description: `"${task.title}" is now assigned to you.`,
@@ -370,10 +448,32 @@ export default function KanbanView({
 
         {COLUMNS.map((col) => {
           const columnTasks = projectTasks.filter(
-            (t) => t.status === col.id && t.assigneeId,
+            (t) => t.status === col.id && getAssigneeId(t),
           );
-          return <DroppableColumn key={col.id} col={col} tasks={columnTasks} />;
+          return (
+            <DroppableColumn
+              key={col.id}
+              col={col}
+              tasks={columnTasks}
+              onUpdateTask={updateTask}
+              entityProjectMap={resolvedEntityProjectMap}
+            />
+          );
         })}
+        {(() => {
+          const otherTasks = projectTasks.filter(
+            (t) => getAssigneeId(t) && !KNOWN_STATUS_IDS.has(t.status),
+          );
+          return (
+            <DroppableColumn
+              key={OTHER_COLUMN.id}
+              col={OTHER_COLUMN}
+              tasks={otherTasks}
+              onUpdateTask={updateTask}
+              entityProjectMap={resolvedEntityProjectMap}
+            />
+          );
+        })()}
       </div>
       {createPortal(
         <DragOverlay>
@@ -385,7 +485,7 @@ export default function KanbanView({
                 </div>
                 <div className="flex items-center justify-between mt-3">
                   <PriorityChip priority={activeTask.priority} />
-                  <UserAvatar userId={activeTask.assigneeId} />
+                  <UserAvatar userId={getAssigneeId(activeTask) ?? ""} />
                 </div>
               </Card>
             </div>

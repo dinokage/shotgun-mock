@@ -17,25 +17,23 @@ interface TaskState {
   updateTaskStatus: (id: string, status: TaskStatus) => void;
   completeTask: (id: string) => void;
   reassignTask: (id: string, assigneeId: string) => void;
+  claimTask: (id: string, userId: string) => void;
   revokeAssignment: (id: string) => void;
   addComment: (taskId: string, userId: string, text: string) => void;
   toggleChecklistItem: (taskId: string, index: number) => void;
   /**
-   * Single canonical mutation path for logged time — appends a DailyLog and
-   * reconciles actualHours in one step. TaskDrawer's inline log form, the
-   * TimeClockWidget punch-out flow, and the Timesheets page (via
-   * store/timesheets.ts) all route through this instead of each hand-rolling
-   * the same actualHours arithmetic against Task.dailyLogs independently.
+   * Legacy client-only mutation path for logged time (appends a DailyLog and
+   * reconciles actualHours in one step, purely in this Zustand store). Real
+   * daily logs are now a backend resource (see hooks/useTasks.ts's
+   * DailyLogDTO/useAddDailyLog) — TaskDrawer and pages/timesheets.tsx both
+   * write through that instead, since this store's `tasks` get overwritten
+   * with real, untranslated TaskDTO[] on login (no inline `dailyLogs` field
+   * at all) and never sync back to the backend. Still has one real consumer,
+   * components/shared/TimeClockWidget.tsx's punch-out flow — that path
+   * hasn't been migrated to the real daily-logs backend yet, so this stays
+   * local-only (and un-synced) for now.
    */
   logTime: (taskId: string, log: DailyLog) => void;
-  /** Edits one previously logged entry (by index) and reconciles actualHours. */
-  updateDailyLog: (
-    taskId: string,
-    index: number,
-    updates: Partial<DailyLog>,
-  ) => void;
-  /** Removes one previously logged entry (by index) and reconciles actualHours. */
-  deleteDailyLog: (taskId: string, index: number) => void;
   /**
    * Advances a task's multi-tier approval-chain status AND appends a
    * permanent, persisted audit-trail entry for the action taken (who, what,
@@ -71,7 +69,19 @@ export const useTasksStore = create<TaskState>()(
         import("@/lib/apiClient").then(({ apiFetch }) => {
           apiFetch("/tasks", {
             method: "POST",
-            body: JSON.stringify(task),
+            body: JSON.stringify({
+              entityId: task.assetId || task.shotId,
+              entityType: task.assetId ? "asset" : "shot",
+              status: task.status,
+              title: task.title,
+              description: task.description,
+              priority: task.priority,
+              department: task.department,
+              pipelinePhase: task.pipelinePhase,
+              dueDate: task.dueDate,
+              estimatedHours: task.estimatedHours,
+              assignedTo: task.assigneeId || null,
+            }),
           }).catch(console.error);
         });
       },
@@ -110,20 +120,41 @@ export const useTasksStore = create<TaskState>()(
         syncBackend(id, { status: "complete", lastStatusUpdate });
       },
       reassignTask: (id, assigneeId) => {
+        // Post-login tasks are real, untranslated TaskDTO objects carrying
+        // `assignedTo` (not `assigneeId`) -- every consumer's getAssigneeId
+        // normalizer reads `t.assignedTo ?? t.assigneeId`, so patching only
+        // `assigneeId` here left the optimistic update invisible: the
+        // normalizer kept resolving to the original (truthy) `assignedTo`
+        // value until a full reload re-hydrated the task. Setting both
+        // keeps old-shape and new-shape readers correct simultaneously.
         set((state) => ({
           tasks: state.tasks.map((t) =>
-            t.id === id ? { ...t, assigneeId } : t,
+            t.id === id
+              ? { ...t, assigneeId, assignedTo: assigneeId || null }
+              : t,
           ),
         }));
-        syncBackend(id, { assigneeId });
+        syncBackend(id, { assignedTo: assigneeId || null });
+      },
+      claimTask: (id, userId) => {
+        set((state) => ({
+          tasks: state.tasks.map((t) =>
+            t.id === id
+              ? { ...t, assigneeId: userId, assignedTo: userId }
+              : t,
+          ),
+        }));
+        syncBackend(id, { assignedTo: userId });
       },
       revokeAssignment: (id) => {
         set((state) => ({
           tasks: state.tasks.map((t) =>
-            t.id === id ? { ...t, assigneeId: "" } : t,
+            t.id === id
+              ? { ...t, assigneeId: "", assignedTo: null }
+              : t,
           ),
         }));
-        syncBackend(id, { assigneeId: "" });
+        syncBackend(id, { assignedTo: null });
       },
       addComment: (taskId, userId, text) => {
         set((state) => ({
@@ -146,7 +177,7 @@ export const useTasksStore = create<TaskState>()(
             t.id === taskId
               ? {
                   ...t,
-                  checklist: t.checklist.map((item, i) =>
+                  checklist: (t.checklist ?? []).map((item, i) =>
                     i === index ? { ...item, done: !item.done } : item,
                   ),
                 }
@@ -179,52 +210,26 @@ export const useTasksStore = create<TaskState>()(
             t.id === taskId
               ? {
                   ...t,
-                  dailyLogs: [...t.dailyLogs, log],
+                  dailyLogs: [...(t.dailyLogs ?? []), log],
                   actualHours: t.actualHours + log.hours,
                 }
               : t,
           ),
         }));
       },
-      updateDailyLog: (taskId, index, updates) => {
-        set((state) => ({
-          tasks: state.tasks.map((t) => {
-            if (t.id !== taskId || !t.dailyLogs[index]) return t;
-            const oldHours = t.dailyLogs[index].hours;
-            const nextLogs = t.dailyLogs.map((log, i) =>
-              i === index ? { ...log, ...updates } : log,
-            );
-            const newHours = nextLogs[index].hours;
-            return {
-              ...t,
-              dailyLogs: nextLogs,
-              actualHours: t.actualHours - oldHours + newHours,
-            };
-          }),
-        }));
-      },
-      deleteDailyLog: (taskId, index) => {
-        set((state) => ({
-          tasks: state.tasks.map((t) => {
-            if (t.id !== taskId || !t.dailyLogs[index]) return t;
-            const removedHours = t.dailyLogs[index].hours;
-            return {
-              ...t,
-              dailyLogs: t.dailyLogs.filter((_, i) => i !== index),
-              actualHours: t.actualHours - removedHours,
-            };
-          }),
-        }));
-      },
     }),
     {
       name: "forge-task-storage",
-      version: 2,
+      version: 3,
       // Migrate tasks persisted before approvalHistory / checklist / comments /
       // dailyLogs were added — those fields will be undefined on old records,
-      // causing .length crashes everywhere they're accessed.
+      // causing .length/.map crashes everywhere they're accessed. Bumped to 3
+      // because some browsers had version-2-tagged state that still had gaps
+      // (added via a path that predated the v2 migration's own introduction),
+      // so a version check alone isn't sufficient — every consumption site
+      // was also hardened with `?? []` as defense-in-depth.
       migrate(persistedState: unknown, fromVersion: number) {
-        if (fromVersion < 2) {
+        if (fromVersion < 3) {
           const state = persistedState as { tasks?: Task[] };
           if (Array.isArray(state?.tasks)) {
             state.tasks = state.tasks.map((t) => ({

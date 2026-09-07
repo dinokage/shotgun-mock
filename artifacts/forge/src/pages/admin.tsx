@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { useUsers } from "@/hooks/useUsers";
-import { useDepartments } from "@/hooks/useDepartments";
+import { useUsers, useSendInvite } from "@/hooks/useUsers";
+import { useDepartments, useCreateDepartment } from "@/hooks/useDepartments";
 import { useRoles } from "@/hooks/useRoles";
 import { apiFetch } from "@/lib/apiClient";
 import { useCapability } from "@/hooks/use-capability";
+import { EmployeeImportDialog } from "@/components/admin/EmployeeImportDialog";
 import {
   Card,
   CardContent,
@@ -53,10 +54,15 @@ export default function AdminPanel() {
   }, [canManageUsers, setLocation]);
 
   const { data: users = [], refetch: refetchUsers } = useUsers();
-  const { data: departments = [] } = useDepartments();
+  const { data: departments = [], refetch: refetchDepartments } = useDepartments();
   const { data: roles = [] } = useRoles();
   const { toast } = useToast();
   const [createOpen, setCreateOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [deptOpen, setDeptOpen] = useState(false);
+  const [employeeImportOpen, setEmployeeImportOpen] = useState(false);
+  const sendInvite = useSendInvite();
+  const createDepartment = useCreateDepartment();
 
   if (!canManageUsers) return null;
 
@@ -96,6 +102,45 @@ export default function AdminPanel() {
     }
   }
 
+  async function handleInvite(formData: FormData) {
+    const email = String(formData.get("email") ?? "");
+    const roleId = String(formData.get("roleId") ?? "");
+    const departmentId = String(formData.get("departmentId") ?? "") || undefined;
+    try {
+      await sendInvite.mutateAsync({ email, roleId, departmentId });
+      toast({ title: "Invite sent", description: `Sent to ${email}` });
+      setInviteOpen(false);
+    } catch (err: any) {
+      toast({
+        title: "Failed to send invite",
+        description: err.message,
+        variant: "destructive",
+      });
+    }
+  }
+
+  async function handleCreateDepartment(formData: FormData) {
+    const name = String(formData.get("name") ?? "");
+    const abbr = String(formData.get("abbr") ?? "");
+    const pipeline = String(formData.get("pipeline") ?? "") as
+      | "PROD"
+      | "3D"
+      | "VFX"
+      | "2D";
+    try {
+      await createDepartment.mutateAsync({ name, abbr, pipeline });
+      toast({ title: "Department created" });
+      setDeptOpen(false);
+      refetchDepartments();
+    } catch (err: any) {
+      toast({
+        title: "Failed to create department",
+        description: err.message,
+        variant: "destructive",
+      });
+    }
+  }
+
   async function handleReassignDepartment(
     userId: string,
     departmentId: string,
@@ -119,6 +164,117 @@ export default function AdminPanel() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Admin Panel</h1>
+        <div className="flex gap-2">
+        <Button variant="outline" onClick={() => setEmployeeImportOpen(true)}>
+          Import Employees
+        </Button>
+        <Dialog open={deptOpen} onOpenChange={setDeptOpen}>
+          <DialogTrigger asChild>
+            <Button variant="outline">New Department</Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>New Department</DialogTitle>
+            </DialogHeader>
+            <form
+              className="space-y-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleCreateDepartment(new FormData(e.currentTarget));
+              }}
+            >
+              <div>
+                <Label htmlFor="dept-name">Name</Label>
+                <Input id="dept-name" name="name" placeholder="Animation" required />
+              </div>
+              <div>
+                <Label htmlFor="dept-abbr">Abbreviation</Label>
+                <Input id="dept-abbr" name="abbr" placeholder="ANIM" required />
+              </div>
+              <div>
+                <Label htmlFor="dept-pipeline">Pipeline</Label>
+                <Select name="pipeline" required>
+                  <SelectTrigger id="dept-pipeline">
+                    <SelectValue placeholder="Select a pipeline" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PIPELINES.map((p) => (
+                      <SelectItem key={p} value={p}>
+                        {p}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={createDepartment.isPending}
+              >
+                {createDepartment.isPending ? "Creating..." : "Create"}
+              </Button>
+            </form>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+          <DialogTrigger asChild>
+            <Button variant="outline">Invite Member</Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Invite Member</DialogTitle>
+            </DialogHeader>
+            <form
+              className="space-y-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleInvite(new FormData(e.currentTarget));
+              }}
+            >
+              <div>
+                <Label htmlFor="invite-email">Email</Label>
+                <Input id="invite-email" name="email" type="email" required />
+              </div>
+              <div>
+                <Label htmlFor="invite-roleId">Role</Label>
+                <Select name="roleId" required>
+                  <SelectTrigger id="invite-roleId">
+                    <SelectValue placeholder="Select a role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {roles.map((r) => (
+                      <SelectItem key={r.id} value={r.id}>
+                        {r.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="invite-departmentId">Department</Label>
+                <Select name="departmentId">
+                  <SelectTrigger id="invite-departmentId">
+                    <SelectValue placeholder="None — assign later" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {departments.map((d) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={sendInvite.isPending}
+              >
+                {sendInvite.isPending ? "Sending..." : "Send Invite"}
+              </Button>
+            </form>
+          </DialogContent>
+        </Dialog>
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogTrigger asChild>
             <Button>New User</Button>
@@ -182,6 +338,7 @@ export default function AdminPanel() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       <div className="grid grid-cols-4 gap-4">
@@ -250,6 +407,11 @@ export default function AdminPanel() {
           </Table>
         </CardContent>
       </Card>
+
+      <EmployeeImportDialog
+        open={employeeImportOpen}
+        onOpenChange={setEmployeeImportOpen}
+      />
     </div>
   );
 }

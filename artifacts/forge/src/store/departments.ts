@@ -1,6 +1,21 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { DEPARTMENTS } from "@/data/mockData";
+import { DEPARTMENTS, Department } from "@/data/mockData";
+
+// Mirrors useUserStore (see store/users.ts) -- DEPARTMENTS is mutated in
+// place by fetchMe() but that alone never triggers a re-render, so this
+// reactive store is what real department data actually needs to be read
+// through. Kept separate from useDepartmentPipelineStore below (that one
+// is UI ordering state, this one is the department roster itself).
+interface DepartmentState {
+  departments: Department[];
+  setDepartments: (departments: Department[]) => void;
+}
+
+export const useDepartmentStore = create<DepartmentState>()((set) => ({
+  departments: DEPARTMENTS,
+  setDepartments: (departments) => set({ departments }),
+}));
 
 const DEFAULT_PIPELINE_ORDER = DEPARTMENTS.filter((d) => d.pipelineOrder > 0)
   .sort((a, b) => a.pipelineOrder - b.pipelineOrder)

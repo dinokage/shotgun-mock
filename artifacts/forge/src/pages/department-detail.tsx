@@ -5,14 +5,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
-  DEPARTMENTS,
-  USERS,
-  TASKS,
   ROLE_LABELS,
   isTaskActive,
   isTaskDone,
   TaskStatus,
 } from "@/data/mockData";
+import { useUserStore } from "@/store/users";
+import { useDepartmentStore } from "@/store/departments";
+import { getAssigneeId } from "@/lib/taskShape";
 import {
   Users,
   ListTodo,
@@ -57,10 +57,13 @@ const TASK_STATUS_OPTIONS: { value: TaskStatus; label: string }[] = [
 
 export default function DepartmentDetail() {
   const { id } = useParams<{ id: string }>();
-  const dept = DEPARTMENTS.find((d) => d.id === id);
+  const users = useUserStore((s) => s.users);
+  const departments = useDepartmentStore((s) => s.departments);
+  const dept = departments.find((d) => d.id === id);
   const { currentUser } = useAuthStore();
   const [activeTab, setActiveTab] = useState("overview");
   const { setCreateTaskModalOpen } = useUIStore();
+  const tasks = useTasksStore((s) => s.tasks);
   const { reassignTask, updateTaskStatus } = useTasksStore();
   const { toast } = useToast();
   const canAssignTasks = useCapability("assign_tasks");
@@ -90,7 +93,7 @@ export default function DepartmentDetail() {
     );
   }
 
-  const team = USERS.filter((u) => u.departmentId === dept.id).sort((a, b) => {
+  const team = users.filter((u) => u.departmentId === dept.id).sort((a, b) => {
     // Sort by role hierarchy
     const roleWeight = {
       producer: 3,
@@ -103,7 +106,7 @@ export default function DepartmentDetail() {
   const supervisor = team.find((u) => u.id === dept.supervisorId);
   const lead = team.find((u) => u.id === dept.leadId);
 
-  const deptTasks = TASKS.filter((t) => t.department === dept.name);
+  const deptTasks = tasks.filter((t) => t.department === dept.name);
   // Use the shared isTaskDone/isTaskActive classification (same as the Departments overview
   // and Tracking Grid pages) so a department's active/done counts agree everywhere it's shown.
   const activeTasks = deptTasks.filter((t) => isTaskActive(t.status));
@@ -115,13 +118,9 @@ export default function DepartmentDetail() {
   // lastStatusUpdate), in days. Previously this tile was a hardcoded "1.2d"
   // that never reflected the department's actual data.
   const reviewCycleTasks = deptTasks.filter((t) =>
-    [
-      "review",
-      "lead-review",
-      "manager-review",
-      "approved",
-      "complete",
-    ].includes(t.status),
+    ["review", "lead-review", "pm-review", "approved", "complete"].includes(
+      t.status,
+    ),
   );
   const avgReviewCycleDays =
     reviewCycleTasks.length > 0
@@ -447,8 +446,8 @@ export default function DepartmentDetail() {
               <CardContent className="p-0">
                 <div className="divide-y divide-border">
                   {activeTasks.slice(0, 15).map((task) => {
-                    const assignee = USERS.find(
-                      (u) => u.id === task.assigneeId,
+                    const assignee = users.find(
+                      (u) => u.id === getAssigneeId(task),
                     );
                     return (
                       <div
@@ -493,7 +492,9 @@ export default function DepartmentDetail() {
                                     </DropdownMenuSubTrigger>
                                     <DropdownMenuSubContent>
                                       {team
-                                        .filter((u) => u.id !== task.assigneeId)
+                                        .filter(
+                                          (u) => u.id !== getAssigneeId(task),
+                                        )
                                         .map((u) => (
                                           <DropdownMenuItem
                                             key={u.id}

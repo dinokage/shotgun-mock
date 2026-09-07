@@ -56,41 +56,31 @@ export const useProjectStore = create<ProjectState>()(
           ...input,
         };
 
-        try {
-          const { apiFetch } = await import("@/lib/apiClient");
-          const savedProject = await apiFetch<Project>("/projects", {
-            method: "POST",
-            body: JSON.stringify(projectData),
-          });
-          set((state) => ({ projects: [savedProject, ...state.projects] }));
-          return savedProject;
-        } catch (err) {
-          console.error("Failed to add project to backend:", err);
-          const localProject = projectData as Project;
-          set((state) => ({ projects: [localProject, ...state.projects] }));
-          return localProject;
-        }
+        // No fallback on failure -- a fabricated local-only "success" here
+        // would tell the caller (and the user) the project was created when
+        // it wasn't, then silently vanish next time fetchMe() re-syncs real
+        // data from the backend on login. Let the caller's own error UI
+        // handle the rejection instead.
+        const { apiFetch } = await import("@/lib/apiClient");
+        const savedProject = await apiFetch<Project>("/projects", {
+          method: "POST",
+          body: JSON.stringify(projectData),
+        });
+        set((state) => ({ projects: [savedProject, ...state.projects] }));
+        return savedProject;
       },
       updateProject: async (id, updates) => {
-        try {
-          const { apiFetch } = await import("@/lib/apiClient");
-          const updatedProject = await apiFetch<Project>(`/projects/${id}`, {
-            method: "PUT",
-            body: JSON.stringify(updates),
-          });
-          set((state) => ({
-            projects: state.projects.map((p) =>
-              p.id === id ? { ...p, ...updatedProject } : p,
-            ),
-          }));
-        } catch (err) {
-          console.error("Failed to update project on backend:", err);
-          set((state) => ({
-            projects: state.projects.map((p) =>
-              p.id === id ? { ...p, ...updates } : p,
-            ),
-          }));
-        }
+        // Same reasoning as addProject: no local-only fallback on failure.
+        const { apiFetch } = await import("@/lib/apiClient");
+        const updatedProject = await apiFetch<Project>(`/projects/${id}`, {
+          method: "PUT",
+          body: JSON.stringify(updates),
+        });
+        set((state) => ({
+          projects: state.projects.map((p) =>
+            p.id === id ? { ...p, ...updatedProject } : p,
+          ),
+        }));
       },
       getProjectById: (id) => get().projects.find((p) => p.id === id),
     }),

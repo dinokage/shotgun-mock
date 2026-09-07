@@ -1,15 +1,11 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuthStore } from "@/store/auth";
 import { useUIStore } from "@/store/ui";
 import { useTasksStore } from "@/store/tasks";
-import {
-  useTimesheetLogs,
-  addTimeLog,
-  updateTimeLog,
-  deleteTimeLog,
-  type TimeLog,
-} from "@/store/timesheets";
+import { useAllDailyLogs, useAddDailyLog } from "@/hooks/useTasks";
+import { getAssigneeId, getProjectId, useEntityProjectMap } from "@/lib/taskShape";
 import { useIsLeadership } from "@/hooks/use-capability";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,24 +18,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import {
   Empty,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
   EmptyDescription,
 } from "@/components/ui/empty";
-import { PROJECTS, USERS, DEPARTMENTS } from "@/data/mockData";
+import { useUserStore } from "@/store/users";
+import { useDepartmentStore } from "@/store/departments";
+import { useProjectStore } from "@/store/projects";
 import {
   Clock,
   Plus,
@@ -47,10 +34,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Calendar as CalendarIcon,
-  Save,
-  Pencil,
-  Trash2,
-  X,
 } from "lucide-react";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { useToast } from "@/hooks/use-toast";
@@ -59,12 +42,38 @@ import { cn } from "@/lib/utils";
 
 export default function Timesheets() {
   const { currentUser } = useAuthStore();
+  const users = useUserStore((s) => s.users);
+  const departments = useDepartmentStore((s) => s.departments);
+  const projects = useProjectStore((s) => s.projects);
   const { toast } = useToast();
   const { setActiveTaskDrawer } = useUIStore();
 
-  // Derived from Task.dailyLogs (store/tasks.ts) — the same canonical data
-  // TaskDrawer reads and writes, so this page can never disagree with it.
-  const logs = useTimesheetLogs();
+  const isManager = useIsLeadership();
+  const tasks = useTasksStore((state) => state.tasks);
+  const entityProjectMap = useEntityProjectMap();
+  const isMobile = useIsMobile();
+
+  // Daily logs are a real, per-task/per-user backend resource
+  // (hooks/useTasks.ts's DailyLogDTO), not the inline Task.dailyLogs array
+  // the old mock shape had. GET /daily-logs with no filter returns every log
+  // in the tenant, which this page then scopes down to "my logs" or (for a
+  // manager) "my team's logs" client-side, the same way useTasks() fetches
+  // every task and filters client-side.
+  const { data: rawLogs = [] } = useAllDailyLogs();
+  const addDailyLogMutation = useAddDailyLog();
+  const queryClient = useQueryClient();
+  const logs = useMemo(
+    () =>
+      rawLogs.map((l) => ({
+        id: l.id,
+        taskId: l.taskId,
+        userId: l.userId,
+        date: l.date,
+        hours: l.hours,
+        notes: l.note,
+      })),
+    [rawLogs],
+  );
 
   const [currentWeekOffset, setCurrentWeekOffset] = useState(0);
   const [newTaskSelection, setNewTaskSelection] = useState<string>("");
@@ -73,13 +82,6 @@ export default function Timesheets() {
   const [justAddedId, setJustAddedId] = useState<string | null>(null);
   const [confirmPulse, setConfirmPulse] = useState(false);
   const [taskSearch, setTaskSearch] = useState("");
-  const [editingLogId, setEditingLogId] = useState<string | null>(null);
-  const [editHours, setEditHours] = useState("");
-  const [editNotes, setEditNotes] = useState("");
-
-  const isManager = useIsLeadership();
-  const tasks = useTasksStore((state) => state.tasks);
-  const isMobile = useIsMobile();
 
   if (!currentUser) return null;
 
@@ -99,22 +101,32 @@ export default function Timesheets() {
   // them directly never matched, so a manager's own department's tasks
   // (for anyone who wasn't also their direct report) silently never
   // showed up here. Resolve the manager's department name first.
-  const currentUserDeptName = DEPARTMENTS.find(
+  const currentUserDeptName = departments.find(
     (d) => d.id === currentUser.departmentId,
   )?.name;
+  // KNOWN LIMITATION: the real backend User row (routes/users.ts / usersTable)
+  // has no supervisorId column, so for real tenants this filter always
+  // produces an empty Set and a manager only ever sees their own department's
+  // tasks here, never a direct report's tasks outside that department. Fixing
+  // this for real requires a supervisorId/managerId column on usersTable plus
+  // API + UI support to set it -- out of scope for this page.
   const directReportIds = new Set(
-    USERS.filter((u) => u.supervisorId === currentUser.id).map((u) => u.id),
+    users.filter((u) => u.supervisorId === currentUser.id).map((u) => u.id),
   );
-  const myTasks = tasks.filter(
-    (t) =>
-      t.assigneeId === currentUser.id ||
+  const myTasks = tasks.filter((t) => {
+    const assigneeId = getAssigneeId(t);
+    return (
+      assigneeId === currentUser.id ||
       (isManager &&
         (t.department === currentUserDeptName ||
-          directReportIds.has(t.assigneeId))),
-  );
+          (assigneeId != null && directReportIds.has(assigneeId))))
+    );
+  });
   const filteredTasks = myTasks.filter((t) => {
     if (!taskSearch.trim()) return true;
-    const proj = PROJECTS.find((p) => p.id === t.projectId);
+    const proj = projects.find(
+      (p) => p.id === getProjectId(t, entityProjectMap),
+    );
     return `${proj?.name ?? ""} ${t.title}`
       .toLowerCase()
       .includes(taskSearch.trim().toLowerCase());
@@ -155,69 +167,44 @@ export default function Timesheets() {
       return;
     }
 
-    // The new entry lands at the end of the target task's dailyLogs array —
-    // compute its id (taskId::index) up front so we can highlight it below.
-    const targetTask = tasks.find((t) => t.id === newTaskSelection);
-    const newLogId = `${newTaskSelection}::${targetTask?.dailyLogs.length ?? 0}`;
+    addDailyLogMutation.mutate(
+      {
+        taskId: newTaskSelection,
+        date: new Date(today).toISOString().split("T")[0],
+        hours: parsedHours,
+        note: newNotes,
+      },
+      {
+        onSuccess: (created) => {
+          // useAddDailyLog's own invalidation only covers the per-task and
+          // ["tasks"] query keys (see hooks/useTasks.ts) — this page reads
+          // the unfiltered ["daily-logs", "all"] query instead, so that
+          // needs its own invalidation or the newly logged entry wouldn't
+          // show up here until some other page happened to refetch it.
+          queryClient.invalidateQueries({ queryKey: ["daily-logs"] });
+          setNewTaskSelection("");
+          setNewHours("");
+          setNewNotes("");
+          toast({
+            title: "Time Logged",
+            description: `Successfully logged ${parsedHours} hours.`,
+          });
 
-    addTimeLog({
-      taskId: newTaskSelection,
-      userId: currentUser.id,
-      date: new Date(today).toISOString().split("T")[0],
-      hours: parsedHours,
-      notes: newNotes,
-    });
-    setNewTaskSelection("");
-    setNewHours("");
-    setNewNotes("");
-    toast({
-      title: "Time Logged",
-      description: `Successfully logged ${parsedHours} hours.`,
-    });
-
-    // Confirmation micro-interaction: pulse the submit button and highlight the new entry
-    setJustAddedId(newLogId);
-    setConfirmPulse(true);
-    window.setTimeout(() => setConfirmPulse(false), 900);
-    window.setTimeout(() => setJustAddedId(null), 1600);
-  };
-
-  const startEditLog = (log: TimeLog) => {
-    setEditingLogId(log.id);
-    setEditHours(String(log.hours));
-    setEditNotes(log.notes);
-  };
-
-  const cancelEditLog = () => {
-    setEditingLogId(null);
-    setEditHours("");
-    setEditNotes("");
-  };
-
-  const saveEditLog = (id: string) => {
-    const parsedHours = parseFloat(editHours);
-    if (isNaN(parsedHours) || parsedHours <= 0 || parsedHours > 24) {
-      toast({
-        title: "Invalid Hours",
-        description: "Please enter a valid number of hours (0-24).",
-        variant: "destructive",
-      });
-      return;
-    }
-    updateTimeLog(id, { hours: parsedHours, notes: editNotes });
-    toast({
-      title: "Time Log Updated",
-      description: `Updated to ${parsedHours} hours.`,
-    });
-    cancelEditLog();
-  };
-
-  const handleDeleteLog = (log: TimeLog) => {
-    deleteTimeLog(log.id);
-    toast({
-      title: "Time Log Deleted",
-      description: `Removed ${log.hours}h entry.`,
-    });
+          // Confirmation micro-interaction: pulse the submit button and highlight the new entry
+          setJustAddedId(created.id);
+          setConfirmPulse(true);
+          window.setTimeout(() => setConfirmPulse(false), 900);
+          window.setTimeout(() => setJustAddedId(null), 1600);
+        },
+        onError: () => {
+          toast({
+            title: "Error",
+            description: "Couldn't log time — please try again.",
+            variant: "destructive",
+          });
+        },
+      },
+    );
   };
 
   return (
@@ -312,7 +299,9 @@ export default function Timesheets() {
                       </div>
                     ) : (
                       filteredTasks.map((t) => {
-                        const proj = PROJECTS.find((p) => p.id === t.projectId);
+                        const proj = projects.find(
+                          (p) => p.id === getProjectId(t, entityProjectMap),
+                        );
                         return (
                           <SelectItem key={t.id} value={t.id}>
                             {proj?.name}: {t.title}
@@ -419,13 +408,13 @@ export default function Timesheets() {
                       )
                       .map((log) => {
                         const task = tasks.find((t) => t.id === log.taskId);
-                        const project = PROJECTS.find(
-                          (p) => p.id === task?.projectId,
+                        const project = projects.find(
+                          (p) =>
+                            p.id ===
+                            (task ? getProjectId(task, entityProjectMap) : undefined),
                         );
-                        const user = USERS.find((u) => u.id === log.userId);
+                        const user = users.find((u) => u.id === log.userId);
                         const isNew = log.id === justAddedId;
-                        const isOwn = log.userId === currentUser.id;
-                        const isEditing = editingLogId === log.id;
 
                         const dateBox = (
                           <div
@@ -479,137 +468,23 @@ export default function Timesheets() {
                           </div>
                         );
 
-                        const notesArea = isEditing ? (
+                        const notesArea = log.notes && (
                           <div
-                            className={cn("space-y-1.5", !isMobile && "mt-2")}
+                            className={cn(
+                              "text-sm italic text-foreground/80",
+                              !isMobile && "mt-2",
+                            )}
                           >
-                            <Input
-                              type="text"
-                              value={editNotes}
-                              onChange={(e) => setEditNotes(e.target.value)}
-                              placeholder="What did you work on?"
-                              className="h-8 text-sm"
-                            />
+                            "{log.notes}"
                           </div>
-                        ) : (
-                          log.notes && (
-                            <div
-                              className={cn(
-                                "text-sm italic text-foreground/80",
-                                !isMobile && "mt-2",
-                              )}
-                            >
-                              "{log.notes}"
-                            </div>
-                          )
                         );
 
-                        const hoursDisplay = isEditing ? (
-                          <Input
-                            type="number"
-                            min="0.25"
-                            step="0.25"
-                            max="24"
-                            value={editHours}
-                            onChange={(e) => setEditHours(e.target.value)}
-                            className={cn(
-                              "h-9 timecode",
-                              isMobile ? "w-24" : "w-24 text-right",
-                            )}
-                            autoFocus
-                          />
-                        ) : (
+                        const hoursDisplay = (
                           <div className="text-xl font-bold text-accent-tally bg-accent-tally/10 px-3 py-1 rounded-md border border-accent-tally/20 timecode">
                             {log.hours}{" "}
                             <span className="text-sm font-normal text-muted-foreground">
                               hrs
                             </span>
-                          </div>
-                        );
-
-                        const actions = isOwn && (
-                          <div className="flex items-center gap-1">
-                            {isEditing ? (
-                              <>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className={cn(
-                                    "h-7 w-7",
-                                    isMobile && "touch-target",
-                                  )}
-                                  onClick={() => saveEditLog(log.id)}
-                                  aria-label="Save changes"
-                                >
-                                  <Save className="w-3.5 h-3.5" />
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className={cn(
-                                    "h-7 w-7",
-                                    isMobile && "touch-target",
-                                  )}
-                                  onClick={cancelEditLog}
-                                  aria-label="Cancel editing"
-                                >
-                                  <X className="w-3.5 h-3.5" />
-                                </Button>
-                              </>
-                            ) : (
-                              <>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className={cn(
-                                    "h-7 w-7",
-                                    isMobile && "touch-target",
-                                  )}
-                                  onClick={() => startEditLog(log)}
-                                  aria-label="Edit time log"
-                                >
-                                  <Pencil className="w-3.5 h-3.5" />
-                                </Button>
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      className={cn(
-                                        "h-7 w-7 text-red-500 hover:text-red-500 hover:bg-red-500/10",
-                                        isMobile && "touch-target",
-                                      )}
-                                      aria-label="Delete time log"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </Button>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle>
-                                        Delete this time log?
-                                      </AlertDialogTitle>
-                                      <AlertDialogDescription>
-                                        This will remove the {log.hours}h entry
-                                        on {task?.title || "this task"} and
-                                        reduce its logged hours. This action
-                                        cannot be undone.
-                                      </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                      <AlertDialogCancel>
-                                        Cancel
-                                      </AlertDialogCancel>
-                                      <AlertDialogAction
-                                        onClick={() => handleDeleteLog(log)}
-                                      >
-                                        Delete
-                                      </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
-                              </>
-                            )}
                           </div>
                         );
 
@@ -649,7 +524,6 @@ export default function Timesheets() {
                                       <StatusBadge status={task.status} />
                                     )}
                                   </div>
-                                  {actions}
                                 </div>
                               </>
                             ) : (
@@ -664,9 +538,6 @@ export default function Timesheets() {
                                 <div className="text-right flex flex-col items-end gap-2">
                                   {hoursDisplay}
                                   {task && <StatusBadge status={task.status} />}
-                                  {isOwn && (
-                                    <div className="mt-1">{actions}</div>
-                                  )}
                                 </div>
                               </>
                             )}

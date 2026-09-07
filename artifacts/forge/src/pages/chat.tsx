@@ -7,7 +7,9 @@ import {
   useChatMessagesStore,
   ChatGroup,
 } from "@/store/chatGroups";
-import { DEPARTMENTS, USERS, ChatMessage, Department } from "@/data/mockData";
+import { ChatMessage, Department } from "@/data/mockData";
+import { useUserStore } from "@/store/users";
+import { useDepartmentStore } from "@/store/departments";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -66,6 +68,8 @@ const EVERYONE_DEPT: Department = {
 
 export default function Chat() {
   const { currentUser } = useAuthStore();
+  const users = useUserStore((s) => s.users);
+  const departments = useDepartmentStore((s) => s.departments);
   const { toast } = useToast();
   const { groups, addGroup, getOrCreateDM } = useChatGroupsStore();
   const { messages, addMessage } = useChatMessagesStore();
@@ -87,12 +91,12 @@ export default function Chat() {
   const isLeadership = useIsLeadership();
 
   const visibleDepartments = useMemo(() => {
-    if (isLeadership) return [EVERYONE_DEPT, ...DEPARTMENTS];
+    if (isLeadership) return [EVERYONE_DEPT, ...departments];
     return [
       EVERYONE_DEPT,
-      ...DEPARTMENTS.filter((d) => d.id === currentUser?.departmentId),
+      ...departments.filter((d) => d.id === currentUser?.departmentId),
     ];
-  }, [currentUser, isLeadership]);
+  }, [currentUser, isLeadership, departments]);
 
   const myGroups = useMemo(() => {
     if (!currentUser) return [];
@@ -119,7 +123,7 @@ export default function Chat() {
   const groupDisplayName = (group: ChatGroup) => {
     if (group.isDM && currentUser) {
       const otherId = group.memberIds.find((id) => id !== currentUser.id);
-      const other = otherId ? USERS.find((u) => u.id === otherId) : undefined;
+      const other = otherId ? users.find((u) => u.id === otherId) : undefined;
       return other?.name || group.name;
     }
     return group.name;
@@ -127,7 +131,7 @@ export default function Chat() {
 
   const activeDept = useMemo(() => {
     if (activeDeptId === "everyone") return EVERYONE_DEPT;
-    const dept = DEPARTMENTS.find((d) => d.id === activeDeptId);
+    const dept = departments.find((d) => d.id === activeDeptId);
     if (dept) return dept;
     if (activeGroup)
       return {
@@ -136,7 +140,7 @@ export default function Chat() {
         name: groupDisplayName(activeGroup),
       };
     return undefined;
-  }, [activeDeptId, activeGroup, currentUser]);
+  }, [activeDeptId, activeGroup, currentUser, departments]);
 
   // Open the requested person's DM when arriving via /chat?user=<id> (e.g.
   // the "Message" button on a profile page).
@@ -144,11 +148,11 @@ export default function Chat() {
   useEffect(() => {
     if (!currentUser || !targetUserId || targetUserId === currentUser.id)
       return;
-    const targetUser = USERS.find((u) => u.id === targetUserId);
+    const targetUser = users.find((u) => u.id === targetUserId);
     if (!targetUser) return;
     const id = getOrCreateDM(currentUser.id, targetUser.id);
     setActiveDeptId(id);
-  }, [targetUserId, currentUser?.id, getOrCreateDM]);
+  }, [targetUserId, currentUser?.id, getOrCreateDM, users]);
 
   const openDMWithUser = (userId: string) => {
     if (!currentUser || userId === currentUser.id) return;
@@ -158,11 +162,11 @@ export default function Chat() {
   const deptUsers = useMemo(() => {
     let source;
     if (activeDeptId === "everyone") {
-      source = [...USERS];
+      source = [...users];
     } else if (activeGroup) {
-      source = USERS.filter((u) => activeGroup.memberIds.includes(u.id));
+      source = users.filter((u) => activeGroup.memberIds.includes(u.id));
     } else {
-      source = USERS.filter((u) => u.departmentId === activeDeptId);
+      source = users.filter((u) => u.departmentId === activeDeptId);
     }
     return source.sort((a, b) => {
       // Sort leadership to top
@@ -172,7 +176,7 @@ export default function Chat() {
       if (!aIsLead && bIsLead) return 1;
       return a.name.localeCompare(b.name);
     });
-  }, [activeDeptId, activeGroup]);
+  }, [activeDeptId, activeGroup, users]);
 
   const deptMessages = useMemo(() => {
     return messages
@@ -199,32 +203,39 @@ export default function Chat() {
 
   // Reads the real file the user picked and attaches it to the channel.
   // No AI analysis or "logging" happens here — none exists in this app.
+  // Uses a data: URL rather than URL.createObjectURL: chat messages are
+  // persisted to localStorage, and a blob: URL stops resolving as soon as
+  // the document that created it is gone, breaking every attachment on reload.
   const handleAttachmentSelected = (
     file: File,
     type: "image" | "video" | "file",
   ) => {
     if (!currentUser) return;
-    const url = URL.createObjectURL(file);
-    const newMsg: ChatMessage = {
-      id: `m_${Date.now()}`,
-      departmentId: activeDeptId,
-      userId: currentUser.id,
-      text: "",
-      attachments: [
-        {
-          id: `att_${Date.now()}`,
-          name: file.name,
-          type,
-          url,
-        },
-      ],
-      timestamp: new Date().toISOString(),
+    const reader = new FileReader();
+    reader.onload = () => {
+      const url = reader.result as string;
+      const newMsg: ChatMessage = {
+        id: `m_${Date.now()}`,
+        departmentId: activeDeptId,
+        userId: currentUser.id,
+        text: "",
+        attachments: [
+          {
+            id: `att_${Date.now()}`,
+            name: file.name,
+            type,
+            url,
+          },
+        ],
+        timestamp: new Date().toISOString(),
+      };
+      addMessage(newMsg);
+      toast({
+        title: "Attachment added",
+        description: `${file.name} was shared in #${activeDept?.name ?? "this channel"}.`,
+      });
     };
-    addMessage(newMsg);
-    toast({
-      title: "Attachment added",
-      description: `${file.name} was shared in #${activeDept?.name ?? "this channel"}.`,
-    });
+    reader.readAsDataURL(file);
   };
 
   const handleFileInputChange = (
@@ -386,7 +397,7 @@ export default function Chat() {
               <Label>Members ({newGroupMemberIds.size} selected)</Label>
               <ScrollArea className="h-56 rounded-md border border-border p-2">
                 <div className="space-y-1">
-                  {USERS.filter((u) => u.id !== currentUser.id).map((u) => (
+                  {users.filter((u) => u.id !== currentUser.id).map((u) => (
                     <label
                       key={u.id}
                       className="flex items-center gap-2.5 p-1.5 rounded hover:bg-muted/50 cursor-pointer"
@@ -455,7 +466,7 @@ export default function Chat() {
               </Empty>
             ) : (
               deptMessages.map((msg, i) => {
-                const user = USERS.find((u) => u.id === msg.userId);
+                const user = users.find((u) => u.id === msg.userId);
                 const showHeader =
                   i === 0 ||
                   deptMessages[i - 1].userId !== msg.userId ||
@@ -552,7 +563,14 @@ export default function Chat() {
           </div>
         </ScrollArea>
 
-        {/* Input Area */}
+        {/* Input Area -- the admin monitors the studio, they don't do
+            production work or take part in team conversations, so they get
+            a read-only view of every channel instead of a send box. */}
+        {currentUser?.role === "admin" ? (
+          <div className="p-4 bg-card/50 backdrop-blur-sm shrink-0 text-center text-xs text-muted-foreground border-t border-border">
+            Admin accounts are view-only here — you can read every channel but not send messages.
+          </div>
+        ) : (
         <div className="p-4 bg-card/50 backdrop-blur-sm shrink-0">
           <div className="relative flex items-end gap-2 bg-muted/30 border border-border rounded-xl p-2 focus-within:ring-1 focus-within:ring-primary focus-within:border-primary transition-all shadow-sm">
             <div className="flex gap-1 pb-1">
@@ -632,6 +650,7 @@ export default function Chat() {
             Attach an image, video, or file to share it in this channel.
           </div>
         </div>
+        )}
       </div>
 
       {/* Roster Sidebar (Right) */}

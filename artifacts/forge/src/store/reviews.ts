@@ -61,20 +61,14 @@ export interface ReviewComment {
   annotations?: Annotation[];
 }
 
-const INITIAL_COMMENTS: ReviewComment[] = [
-  {
-    id: "c1",
-    userIndex: 1,
-    frame: 45,
-    text: "The rim light on the left side is blowing out a bit too much.",
-  },
-  {
-    id: "c2",
-    userIndex: 0,
-    frame: 112,
-    text: "Agreed. Also, can we add a bit more falloff to the shadow here?",
-  },
-];
+// No seed comments here on purpose: userIndex is a positional lookup into
+// the real, live USERS array (see the ReviewComment interface above), so
+// two fabricated demo comments would end up displayed under whichever real
+// employees happen to occupy USERS[0]/USERS[1] after login -- fabricated
+// review feedback rendered under real people's names, which is exactly the
+// kind of misleading content this app's data should never show. Starts
+// empty; populated only by real addComment calls below.
+const INITIAL_COMMENTS: ReviewComment[] = [];
 
 /**
  * A note a client leaves in the client-review portal. Notes are NOT visible
@@ -121,6 +115,14 @@ const INITIAL_CLIENT_NOTES: ClientNote[] = seedClientShot
 interface ReviewState {
   reviews: Review[];
   versions: Version[];
+  // Mirrors useUserStore/useTasksStore/etc's setX() pattern -- store/auth.ts's
+  // fetchMe() calls these on every login and every 10s poll so real
+  // versions/reviews created after the app first loaded actually show up
+  // (previously this store only ever read the pre-login mock snapshot,
+  // frozen for the whole session in every consumer: shot-detail.tsx,
+  // analytics.tsx, home.tsx, Sidebar.tsx, and 3 project-detail tabs).
+  setReviews: (reviews: Review[]) => void;
+  setVersions: (versions: Version[]) => void;
   addReview: (review: Omit<Review, "id" | "createdAt" | "updatedAt">) => void;
   addVersion: (version: Omit<Version, "id" | "createdAt">) => void;
 
@@ -168,6 +170,8 @@ export const useReviewStore = create<ReviewState>()(
     (set, get) => ({
       reviews: REVIEWS,
       versions: VERSIONS,
+      setReviews: (reviews) => set({ reviews }),
+      setVersions: (versions) => set({ versions }),
       addReview: (review) =>
         set((state) => ({
           reviews: [
@@ -278,6 +282,12 @@ export const useReviewStore = create<ReviewState>()(
     }),
     {
       name: "forge-review-storage",
+      // Bumped from the implicit default (0): this store used to seed two
+      // fabricated comments whose display name resolved to whichever real
+      // employees ended up at USERS[0]/USERS[1] (see INITIAL_COMMENTS above)
+      // -- any browser that already persisted those needs a fresh, genuinely
+      // empty start, not a value the seed change alone can't reach.
+      version: 1,
     },
   ),
 );

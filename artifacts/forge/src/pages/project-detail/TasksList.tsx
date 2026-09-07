@@ -1,9 +1,11 @@
 import { useMemo, useState } from "react";
 import { useTasksStore } from "@/store/tasks";
+import { getAssigneeId, getProjectId, useEntityProjectMap } from "@/lib/taskShape";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { PriorityChip } from "@/components/shared/PriorityChip";
 import { UserAvatar } from "@/components/shared/UserAvatar";
-import { USERS, TaskStatus } from "@/data/mockData";
+import { TaskStatus } from "@/data/mockData";
+import { useUserStore } from "@/store/users";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import {
@@ -51,7 +53,7 @@ const BULK_STATUS_OPTIONS: TaskStatus[] = [
   "todo",
   "in-progress",
   "lead-review",
-  "manager-review",
+  "pm-review",
   "approved",
 ];
 
@@ -68,25 +70,22 @@ const COLUMNS: { key: SortKey; label: string }[] = [
   { key: "estimatedHours", label: "Est. Hrs" },
 ];
 
-const DEPARTMENT_MAP: Record<string, string> = {
-  u1: "VFX Supervision",
-  u2: "Lighting",
-  u3: "Compositing",
-  u4: "Animation",
-  u5: "Modeling",
-  u6: "FX",
-  u7: "Production",
-  u8: "Rigging",
-};
-
 export default function TasksListView({ projectId }: { projectId: string }) {
   const {
     tasks: allTasks,
     updateTask,
     updateTaskStatus,
+    reassignTask,
     setTasks,
   } = useTasksStore();
-  const tasks = allTasks.filter((t) => t.projectId === projectId);
+  // Real TaskDTO has no `projectId` column — a task's project is only
+  // reachable via entityId -> shot/asset -> projectId (same pattern as
+  // pages/tasks.tsx and TasksKanban.tsx).
+  const entityProjectMap = useEntityProjectMap();
+  const users = useUserStore((s) => s.users);
+  const tasks = allTasks.filter(
+    (t) => getProjectId(t, entityProjectMap) === projectId,
+  );
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -105,7 +104,7 @@ export default function TasksListView({ projectId }: { projectId: string }) {
   const sortedTasks = useMemo(() => {
     if (!sortKey) return tasks;
     const assigneeName = (t: (typeof tasks)[number]) =>
-      USERS.find((u) => u.id === t.assigneeId)?.name ?? "";
+      users.find((u) => u.id === getAssigneeId(t))?.name ?? "";
     const valueFor = (t: (typeof tasks)[number]) => {
       switch (sortKey) {
         case "assignee":
@@ -123,7 +122,7 @@ export default function TasksListView({ projectId }: { projectId: string }) {
       if (av > bv) return sortDir === "asc" ? 1 : -1;
       return 0;
     });
-  }, [tasks, sortKey, sortDir]);
+  }, [tasks, sortKey, sortDir, users]);
 
   const groupedTasks = useMemo(() => {
     if (groupBy === "none")
@@ -135,7 +134,8 @@ export default function TasksListView({ projectId }: { projectId: string }) {
       switch (groupBy) {
         case "assignee":
           groupKey =
-            USERS.find((u) => u.id === t.assigneeId)?.name ?? "Unassigned";
+            users.find((u) => u.id === getAssigneeId(t))?.name ??
+            "Unassigned";
           break;
         case "status":
           groupKey = t.status;
@@ -144,7 +144,7 @@ export default function TasksListView({ projectId }: { projectId: string }) {
           groupKey = t.priority;
           break;
         case "department":
-          groupKey = DEPARTMENT_MAP[t.assigneeId] ?? "General";
+          groupKey = t.department || "General";
           break;
       }
       if (!groups.has(groupKey)) groups.set(groupKey, []);
@@ -156,7 +156,7 @@ export default function TasksListView({ projectId }: { projectId: string }) {
       label: key,
       tasks,
     }));
-  }, [sortedTasks, groupBy]);
+  }, [sortedTasks, groupBy, users]);
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -201,8 +201,12 @@ export default function TasksListView({ projectId }: { projectId: string }) {
 
   const handleBulkReassign = (assigneeId: string) => {
     const count = selectedIds.size;
-    const user = USERS.find((u) => u.id === assigneeId);
-    selectedIds.forEach((id) => updateTask(id, { assigneeId }));
+    const user = users.find((u) => u.id === assigneeId);
+    // reassignTask (not the generic updateTask) is the store action that
+    // actually syncs to the backend with the real `assignedTo` field name —
+    // updateTask forwards whatever keys it's given verbatim, so passing
+    // `assigneeId` through it would silently no-op server-side.
+    selectedIds.forEach((id) => reassignTask(id, assigneeId));
     toast({
       title: "Tasks reassigned",
       description: `${count} task${count === 1 ? "" : "s"} reassigned to ${user?.name ?? "selected user"}.`,
@@ -294,7 +298,7 @@ export default function TasksListView({ projectId }: { projectId: string }) {
                 align="end"
                 className="max-h-64 overflow-y-auto"
               >
-                {USERS.map((u) => (
+                {users.map((u) => (
                   <DropdownMenuItem
                     key={u.id}
                     onSelect={() => handleBulkReassign(u.id)}
@@ -431,8 +435,8 @@ export default function TasksListView({ projectId }: { projectId: string }) {
                     {/* Tasks in this group */}
                     {!isCollapsed &&
                       group.tasks.map((task) => {
-                        const user = USERS.find(
-                          (u) => u.id === task.assigneeId,
+                        const user = users.find(
+                          (u) => u.id === getAssigneeId(task),
                         );
                         const isSelected = selectedIds.has(task.id);
                         return (
@@ -464,7 +468,7 @@ export default function TasksListView({ projectId }: { projectId: string }) {
                                     if (!open) setEditingCell(null);
                                   }}
                                   onValueChange={(val) => {
-                                    updateTask(task.id, { assigneeId: val });
+                                    reassignTask(task.id, val);
                                     setEditingCell(null);
                                     toast({ description: "Assignee updated" });
                                   }}
@@ -473,7 +477,7 @@ export default function TasksListView({ projectId }: { projectId: string }) {
                                     <SelectValue placeholder="Select Assignee" />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {USERS.map((u) => (
+                                    {users.map((u) => (
                                       <SelectItem key={u.id} value={u.id}>
                                         <div className="flex items-center gap-2">
                                           <UserAvatar
@@ -488,7 +492,7 @@ export default function TasksListView({ projectId }: { projectId: string }) {
                                 </Select>
                               ) : (
                                 <div className="flex items-center gap-2 relative">
-                                  <UserAvatar userId={task.assigneeId} />
+                                  <UserAvatar userId={getAssigneeId(task) ?? ""} />
                                   <span>{user?.name}</span>
                                   <div className="absolute right-0 opacity-0 group-hover:opacity-100 bg-muted/80 px-1 rounded text-[10px] text-muted-foreground pointer-events-none">
                                     Click to edit
@@ -531,8 +535,8 @@ export default function TasksListView({ projectId }: { projectId: string }) {
                                     <SelectItem value="lead-review">
                                       <StatusBadge status="lead-review" />
                                     </SelectItem>
-                                    <SelectItem value="manager-review">
-                                      <StatusBadge status="manager-review" />
+                                    <SelectItem value="pm-review">
+                                      <StatusBadge status="pm-review" />
                                     </SelectItem>
                                     <SelectItem value="approved">
                                       <StatusBadge status="approved" />

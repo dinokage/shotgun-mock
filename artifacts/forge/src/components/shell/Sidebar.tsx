@@ -21,7 +21,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Building2,
-  ChevronDown,
   Users,
   MonitorPlay,
   MessageSquare,
@@ -34,7 +33,6 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { useUIStore } from "@/store/ui";
-import { useWorkspaceStore } from "@/store/workspace";
 import { useAuthStore } from "@/store/auth";
 import { useTasksStore } from "@/store/tasks";
 import { useReviewStore } from "@/store/reviews";
@@ -42,15 +40,10 @@ import { useChatGroupsStore } from "@/store/chatGroups";
 import { useCapability, useIsLeadership } from "@/hooks/use-capability";
 import type { CapabilityId } from "@/store/permissions";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { STUDIOS, DEPARTMENTS } from "@/data/mockData";
+import { useDepartmentStore } from "@/store/departments";
 import { DEPARTMENT_LEADERSHIP_ROLES } from "@/store/permissions";
+import { canAccessRoute } from "@/lib/roleRouteAccess";
 import { Badge } from "@/components/ui/badge";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 
 type NavItem = {
   label: string;
@@ -144,7 +137,10 @@ const ALL_NAV: NavItem[] = [
     href: "/workflows",
     capabilities: ["manage_pipeline"],
   },
-  { label: "Marketplace", icon: Store, href: "/marketplace" }, // available to everyone
+  // Admin-only: canAccessRoute (composed into the navItems filter below)
+  // now excludes /marketplace from every role but admin, including
+  // production_head, so no per-item capability check is needed here.
+  { label: "Marketplace", icon: Store, href: "/marketplace" },
   {
     label: "Time Travel",
     icon: History,
@@ -164,13 +160,12 @@ export function Sidebar() {
   const { sidebarCollapsed, toggleSidebar, mobileNavOpen, setMobileNavOpen } =
     useUIStore();
   const isMobile = useIsMobile();
-  const { currentStudioId, setStudio } = useWorkspaceStore();
-  const { currentUser } = useAuthStore();
+  const { currentUser, tenantName } = useAuthStore();
   const isLeadership = useIsLeadership();
   const tasks = useTasksStore((s) => s.tasks);
   const reviews = useReviewStore((s) => s.reviews);
+  const departments = useDepartmentStore((s) => s.departments);
   const chatGroups = useChatGroupsStore((s) => s.groups);
-  const currentStudio = STUDIOS.find((s) => s.id === currentStudioId);
 
   // The drawer's open/closed flag lives in the global UI store, not local
   // state, so it survives a viewport resize. Without this, opening the
@@ -190,17 +185,20 @@ export function Sidebar() {
   const teamChatBadge = chatGroups.filter((g) =>
     g.memberIds.includes(currentUser.id),
   ).length;
-  const reviewsBadge = isLeadership
-    ? // Items awaiting a Lead/Manager sign-off across the studio (same
-      // statuses SupervisorDashboard treats as its department review queue).
-      tasks.filter(
-        (t) => t.status === "lead-review" || t.status === "manager-review",
-      ).length
-    : // Reviews this artist is waiting on (same query ArtistDashboard uses
-      // for its "Reviews Requested" stat).
-      reviews.filter(
-        (r) => r.reviewerId === currentUser.id && r.status === "pending",
-      ).length;
+  const reviewsBadge =
+    currentUser.role === "production_head"
+      ? // Production Manager's own queue: the final sign-off stage, not the
+        // Lead's — see TaskDrawer.tsx's two-stage approval gate.
+        tasks.filter((t) => t.status === "pm-review").length
+      : isLeadership
+        ? // Items awaiting a Lead sign-off across the studio (same status
+          // SupervisorDashboard treats as its department review queue).
+          tasks.filter((t) => t.status === "lead-review").length
+        : // Reviews this artist is waiting on (same query ArtistDashboard uses
+          // for its "Reviews Requested" stat).
+          reviews.filter(
+            (r) => r.reviewerId === currentUser.id && r.status === "pending",
+          ).length;
 
   // "Needs My Review" queue count for department leads/supervisors, scoped
   // the same way tasks.tsx's own needsReviewCount is — so a lead sees the
@@ -209,7 +207,7 @@ export function Sidebar() {
   const isDeptLeadership =
     !!currentUser && DEPARTMENT_LEADERSHIP_ROLES.includes(currentUser.role);
   const myDepartmentName = currentUser
-    ? DEPARTMENTS.find((d) => d.id === currentUser.departmentId)?.name
+    ? departments.find((d) => d.id === currentUser.departmentId)?.name
     : undefined;
   const tasksReviewBadge = isDeptLeadership
     ? tasks.filter(
@@ -236,8 +234,15 @@ export function Sidebar() {
     return caps.some((c) => currentUser.capabilities?.includes(c));
   };
 
-  const navItems = withBadges(ALL_NAV).filter((item) =>
-    hasAnyCapability(item.capabilities),
+  const navItems = withBadges(ALL_NAV).filter(
+    (item) =>
+      hasAnyCapability(item.capabilities) &&
+      // Route-level RBAC: never render a link to a page this role can't
+      // reach (Step 3's guard in App.tsx stops direct navigation to it
+      // regardless, but a visible dead-end link is bad UX). Strip any
+      // query string first (e.g. artist "My Shots" -> /shots?mine=1) since
+      // canAccessRoute matches against real paths.
+      canAccessRoute(currentUser.role, item.href.split("?")[0]),
   );
   const canViewSettings = hasAnyCapability([
     "manage_roles",
@@ -254,48 +259,31 @@ export function Sidebar() {
   function renderBody(collapsed: boolean, onNavigate: () => void) {
     return (
       <>
-        {/* Workspace Switcher */}
+        {/* Tenant identity -- the REAL tenant name from the database
+            (useAuthStore.tenantName, populated from GET /auth/me's
+            `tenant` field), not the earlier version's static mock STUDIOS
+            array (a fake multi-studio picker with hardcoded fictional
+            names/counts, totally disconnected from the real tenants
+            table -- it only looked correct by coincidence when the real
+            tenant happened to share a name with studio1). This app is
+            single-tenant per deployment, so this is a plain,
+            non-interactive display, not a switcher. */}
         <div
           className={cn(
-            "p-3 border-b border-sidebar-border",
-            collapsed && "px-2",
+            "p-3 border-b border-sidebar-border flex items-center gap-2 px-2 py-1.5",
+            collapsed && "justify-center px-0",
           )}
         >
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                className={cn(
-                  "w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-sidebar-accent/50 transition-colors text-left",
-                  collapsed && "justify-center px-0",
-                )}
-              >
-                <div className="w-7 h-7 rounded-md bg-primary/20 flex items-center justify-center shrink-0">
-                  <Building2 className="w-4 h-4 text-primary" />
-                </div>
-                {!collapsed && (
-                  <>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold truncate">
-                        {currentStudio?.name || "Studio"}
-                      </div>
-                      <div className="text-[10px] text-muted-foreground truncate">
-                        {currentStudio?.region || "Global"}
-                      </div>
-                    </div>
-                    <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
-                  </>
-                )}
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-56" align="start">
-              {STUDIOS.map((s) => (
-                <DropdownMenuItem key={s.id} onClick={() => setStudio(s.id)}>
-                  <Building2 className="w-4 h-4 mr-2 text-muted-foreground" />
-                  {s.name}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="w-7 h-7 rounded-md bg-primary/20 flex items-center justify-center shrink-0">
+            <Building2 className="w-4 h-4 text-primary" />
+          </div>
+          {!collapsed && (
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold truncate">
+                {tenantName || "Studio"}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Navigation Links */}

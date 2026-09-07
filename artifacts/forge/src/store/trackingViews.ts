@@ -18,6 +18,11 @@ export type TrackingSortKey =
 export interface TrackingViewFilters {
   search: string;
   projectFilter: string;
+  episodeFilter?: string;
+  sequenceFilter?: string;
+  assigneeFilter?: string;
+  positionFilter?: string;
+  departmentFilter?: string;
   groupBy1: TrackingGroupKey;
   groupBy2: TrackingGroupKey;
   sortBy: TrackingSortKey;

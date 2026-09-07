@@ -1,18 +1,26 @@
 import { useUIStore } from "@/store/ui";
 import { cn } from "@/lib/utils";
+import { getNextDepartment, DEPENDENCY_TYPE_LABELS } from "@/data/mockData";
+import { canApproveAsProductionManager } from "@/lib/taskShape";
+import { useUserStore } from "@/store/users";
+import { useProjectStore } from "@/store/projects";
+import { useDepartmentStore } from "@/store/departments";
 import {
-  USERS,
-  PROJECTS,
-  ASSETS,
-  SHOTS,
-  DEPARTMENTS,
-  PIPELINE_ORDER,
-  getNextDepartment,
-  DEPENDENCY_TYPE_LABELS,
-  type DailyLog,
-  type TaskDependency,
-} from "@/data/mockData";
-import { useTasksStore } from "@/store/tasks";
+  useTasks,
+  useUpdateTask,
+  useTaskChecklist,
+  useToggleChecklistItem,
+  useTaskComments,
+  useAddTaskComment,
+  useTaskDependencies,
+  useTaskAttachments,
+  useAddTaskApprovalEvent,
+  useDailyLogs,
+  useAddDailyLog,
+  type TaskDependencyDTO,
+} from "@/hooks/useTasks";
+import { useShots } from "@/hooks/useShots";
+import { useAssets } from "@/hooks/useAssets";
 import { useShotStore } from "@/store/shots";
 import {
   X,
@@ -22,6 +30,7 @@ import {
   Tag,
   Paperclip,
   MessageSquare,
+  Film,
   GitBranch,
   Sparkles,
   AlertTriangle,
@@ -55,7 +64,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 
-const PRIORITY_COLORS = {
+const PRIORITY_COLORS: Record<string, string> = {
   critical: "bg-red-500/10 text-red-500 border-red-500/20",
   high: "bg-orange-500/10 text-orange-500 border-orange-500/20",
   medium: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
@@ -69,7 +78,7 @@ const STATUS_COLORS: Record<string, string> = {
   bottleneck: "bg-red-500/10 text-red-500",
   review: "bg-purple-500/10 text-purple-500",
   "lead-review": "bg-purple-500/10 text-purple-500",
-  "manager-review": "bg-purple-600/10 text-purple-600",
+  "pm-review": "bg-amber-500/10 text-amber-500",
   approved: "bg-green-500/10 text-green-500",
   complete: "bg-green-500/10 text-green-500",
   cancelled: "bg-muted text-muted-foreground line-through",
@@ -81,26 +90,41 @@ export function TaskDrawer() {
   const { toast } = useToast();
   const isMobile = useIsMobile();
 
-  const tasks = useTasksStore((state) => state.tasks);
-  const updateTask = useTasksStore((state) => state.updateTask);
-  const updateTaskStatus = useTasksStore((state) => state.updateTaskStatus);
-  const reassignTask = useTasksStore((state) => state.reassignTask);
-  const revokeAssignment = useTasksStore((state) => state.revokeAssignment);
-  const addComment = useTasksStore((state) => state.addComment);
-  const toggleChecklistItem = useTasksStore(
-    (state) => state.toggleChecklistItem,
+  const { data: liveTasks = [] } = useTasks();
+  const updateTaskMutation = useUpdateTask();
+  const { data: checklist = [] } = useTaskChecklist(
+    activeTaskDrawer ?? undefined,
   );
-  const logTime = useTasksStore((state) => state.logTime);
-  const recordApprovalEvent = useTasksStore(
-    (state) => state.recordApprovalEvent,
+  const toggleChecklistItemMutation = useToggleChecklistItem(
+    activeTaskDrawer ?? undefined,
   );
+  const { data: comments = [] } = useTaskComments(
+    activeTaskDrawer ?? undefined,
+  );
+  const addCommentMutation = useAddTaskComment(activeTaskDrawer ?? undefined);
+  const { data: dependencies = [] } = useTaskDependencies(
+    activeTaskDrawer ?? undefined,
+  );
+  const { data: attachments = [] } = useTaskAttachments(
+    activeTaskDrawer ?? undefined,
+  );
+  const addApprovalEventMutation = useAddTaskApprovalEvent(
+    activeTaskDrawer ?? undefined,
+  );
+  const { data: dailyLogs = [] } = useDailyLogs(activeTaskDrawer ?? undefined);
+  const addDailyLogMutation = useAddDailyLog();
+  const { data: liveShots = [] } = useShots();
+  const { data: liveAssets = [] } = useAssets();
   const updateShotStatus = useShotStore((state) => state.updateShot);
+  const users = useUserStore((s) => s.users);
+  const projects = useProjectStore((s) => s.projects);
+  const departments = useDepartmentStore((s) => s.departments);
 
   const [commentText, setCommentText] = useState("");
   const [showMentions, setShowMentions] = useState(false);
   const [mentionQuery, setMentionQuery] = useState("");
   const [logFormOpen, setLogFormOpen] = useState(false);
-  const [logHours, setLogHours] = useState("");
+  const [logHours, setLogHours] = useState("8");
   const [logNote, setLogNote] = useState("");
 
   // "Approve & Send to Client" forwards a shot to the external, unauthenticated
@@ -111,10 +135,48 @@ export function TaskDrawer() {
 
   if (!activeTaskDrawer || !currentUser) return null;
 
-  const task = tasks.find((t) => t.id === activeTaskDrawer);
+  const task = liveTasks.find((t) => t.id === activeTaskDrawer);
   if (!task) return null;
 
-  const assignee = USERS.find((u) => u.id === task.assigneeId);
+  const assignee = users.find((u) => u.id === task.assignedTo);
+
+  const handleAddDailyLog = () => {
+    const hoursNum = parseFloat(logHours);
+    if (!hoursNum || hoursNum <= 0) {
+      toast({
+        title: "Missing Info",
+        description: "Enter valid hours.",
+        variant: "destructive",
+      });
+      return;
+    }
+    addDailyLogMutation.mutate(
+      {
+        taskId: task.id,
+        date: new Date().toISOString().slice(0, 10),
+        hours: hoursNum,
+        note: logNote.trim() || "No notes provided.",
+      },
+      {
+        onSuccess: () => {
+          toast({
+            title: "Log Submitted",
+            description: "Your daily update has been recorded successfully.",
+          });
+          setLogFormOpen(false);
+          setLogHours("8");
+          setLogNote("");
+        },
+        onError: () => {
+          toast({
+            title: "Log Failed",
+            description: "Couldn't record your update. Please try again.",
+            variant: "destructive",
+          });
+        },
+      },
+    );
+  };
 
   const handleCommentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
@@ -136,23 +198,39 @@ export function TaskDrawer() {
     setCommentText(newText);
     setShowMentions(false);
   };
-  const project = PROJECTS.find((p) => p.id === task.projectId);
-  const asset = task.assetId ? ASSETS.find((a) => a.id === task.assetId) : null;
-  const shot = task.shotId ? SHOTS.find((s) => s.id === task.shotId) : null;
-  const depTasks = task.dependencies
-    .map((dep) => ({ dep, depTask: tasks.find((t) => t.id === dep.taskId) }))
+  // Task has no projectId column server-side — resolve it indirectly via
+  // its entityId -> shot/asset -> projectId (per the task hooks' field
+  // mapping notes).
+  const asset =
+    task.entityType === "asset"
+      ? liveAssets.find((a) => a.id === task.entityId)
+      : null;
+  const shot =
+    task.entityType === "shot"
+      ? liveShots.find((s) => s.id === task.entityId)
+      : null;
+  const project = projects.find(
+    (p) => p.id === (asset?.projectId ?? shot?.projectId),
+  );
+  const depTasks = dependencies
+    .map((dep) => ({
+      dep,
+      depTask: liveTasks.find((t) => t.id === dep.dependsOnTaskId),
+    }))
     .filter(
       (
         x,
-      ): x is { dep: TaskDependency; depTask: NonNullable<typeof x.depTask> } =>
-        Boolean(x.depTask),
+      ): x is {
+        dep: TaskDependencyDTO;
+        depTask: NonNullable<typeof x.depTask>;
+      } => Boolean(x.depTask),
     );
-  const checklistDone = task.checklist.filter((c) => c.done).length;
-  const checklistTotal = task.checklist.length;
+  const checklistDone = checklist.filter((c) => c.done).length;
+  const checklistTotal = checklist.length;
 
   const isLeadership = LEADERSHIP_ROLES.includes(currentUser.role);
-  const isAssignee = currentUser.id === task.assigneeId;
-  const currentDept = DEPARTMENTS.find((d) => d.name === task.department);
+  const isAssignee = currentUser.id === task.assignedTo;
+  const currentDept = departments.find((d) => d.name === task.department);
   const nextDept = currentDept ? getNextDepartment(currentDept.id) : null;
 
   return (
@@ -195,10 +273,10 @@ export function TaskDrawer() {
                   variant="outline"
                   className="h-6 text-[10px] bg-accent-tally/10 text-accent-tally border-accent-tally/20 hover:bg-accent-tally/20"
                   onClick={() => {
-                    updateTask(task.id, {
+                    updateTaskMutation.mutate({
+                      id: task.id,
                       department: nextDept.name,
                       status: "not-started",
-                      lastStatusUpdate: new Date().toISOString(),
                     });
                     toast({
                       title: "Task Handed Off",
@@ -251,18 +329,22 @@ export function TaskDrawer() {
                         <div className="text-xs font-semibold px-2 py-1.5 text-muted-foreground">
                           Department Roster
                         </div>
-                        {USERS.filter(
-                          (u) =>
-                            u.departmentId === currentDept?.id &&
-                            u.id !== task.assigneeId,
-                        )
+                        {users
+                          .filter(
+                            (u) =>
+                              u.departmentId === currentDept?.id &&
+                              u.id !== task.assignedTo,
+                          )
                           .slice(0, 4)
                           .map((u) => (
                             <DropdownMenuItem
                               key={u.id}
                               className="text-xs gap-2 cursor-pointer"
                               onClick={() => {
-                                reassignTask(task.id, u.id);
+                                updateTaskMutation.mutate({
+                                  id: task.id,
+                                  assignedTo: u.id,
+                                });
                                 toast({
                                   title: "Task Reassigned",
                                   description: `Task assigned to ${u.name}`,
@@ -279,7 +361,10 @@ export function TaskDrawer() {
                         <DropdownMenuItem
                           className="text-xs text-red-500 cursor-pointer"
                           onClick={() => {
-                            revokeAssignment(task.id);
+                            updateTaskMutation.mutate({
+                              id: task.id,
+                              assignedTo: null,
+                            });
                             toast({
                               title: "Task Revoked",
                               description: "Task is now unassigned",
@@ -351,6 +436,45 @@ export function TaskDrawer() {
 
             {/* Action Bar */}
             <div className="flex gap-2">
+              {/* Self-claim: an unassigned task can be picked up directly by
+                  any artist (the artist-only gate here is purely a client-side
+                  UI restriction — the server's self-claim exception itself
+                  isn't role-gated, it just requires assignedTo === the
+                  caller's own id). Routed through updateTaskMutation (the
+                  same useUpdateTask() mutation used by Reassign/Revoke above)
+                  rather than the Zustand claimTask action, so the ["tasks"]
+                  query is only invalidated in onSuccess — after the PUT
+                  actually lands — avoiding a race with an unawaited
+                  fire-and-forget sync. */}
+              {!task.assignedTo && currentUser.role === "artist" && (
+                <Button
+                  className="flex-1 border-accent-tally/40 text-accent-tally hover:bg-accent-tally/10"
+                  variant="outline"
+                  onClick={() => {
+                    updateTaskMutation.mutate(
+                      { id: task.id, assignedTo: currentUser.id },
+                      {
+                        onSuccess: () => {
+                          toast({
+                            title: "Task Claimed",
+                            description: `You've claimed ${task.title}.`,
+                          });
+                        },
+                        onError: () => {
+                          toast({
+                            title: "Failed to claim task",
+                            variant: "destructive",
+                          });
+                        },
+                      },
+                    );
+                  }}
+                >
+                  <UserCircle2 className="w-4 h-4 mr-2" />
+                  Claim Task
+                </Button>
+              )}
+
               {/* Assignee Actions */}
               {isAssignee &&
                 [
@@ -372,18 +496,23 @@ export function TaskDrawer() {
                     }
                     onClick={() => {
                       if (task.status === "in-progress") {
-                        // recordApprovalEvent both sets status and appends the
-                        // audit-trail entry in one step (submitForReview only
-                        // did the former).
-                        recordApprovalEvent(task.id, "review", {
+                        // Recording the approval event and advancing status
+                        // are two separate server calls — the approval-events
+                        // endpoint only appends the audit-trail entry, it
+                        // does not itself change tasksTable.status.
+                        updateTaskMutation.mutate({
+                          id: task.id,
+                          status: "review",
+                        });
+                        addApprovalEventMutation.mutate({
                           action: "submitted-for-lead-review",
-                          byUserId: currentUser.id,
-                          byUserName: currentUser.name,
-                          byRole: currentUser.role,
                         });
                         toast({ title: "Submitted for Lead Review" });
                       } else {
-                        updateTaskStatus(task.id, "in-progress");
+                        updateTaskMutation.mutate({
+                          id: task.id,
+                          status: "in-progress",
+                        });
                         toast({
                           title: "Task Started",
                           description: `${task.title} is now in progress.`,
@@ -398,31 +527,34 @@ export function TaskDrawer() {
                   </Button>
                 )}
 
-              {/* Lead/Supervisor Actions: only once the task has actually been
-                  submitted for review. Assignees reach that queue two ways in
-                  this app - the quick "Submit for Review" actions in this
+              {/* Stage 1 — Lead sign-off. Assignees reach this queue two ways
+                  in this app - the quick "Submit for Review" actions in this
                   drawer (which set status to 'review'), and the formal chain
                   driven from the review player (which sets 'lead-review'
-                  directly) - so both values are treated as "awaiting
-                  lead/supervisor review" here. Supervisor is included
-                  alongside Lead (previously Lead-only, which didn't match
-                  how the studio's approval chain actually runs). */}
+                  directly) - so both values are treated as "awaiting review"
+                  here. Gated to the department's own Lead/Supervisor
+                  (Producer/Lead share the single `lead` role tier). This no
+                  longer goes straight to 'approved' — it hands off to the
+                  department's Production Manager (or the studio's overall
+                  production management if the department has none) for a
+                  second, final sign-off before anything reaches the client. */}
               {DEPARTMENT_LEADERSHIP_ROLES.includes(currentUser.role) &&
                 currentUser.departmentId === currentDept?.id &&
                 ["review", "lead-review"].includes(task.status) && (
                   <div className="flex w-full gap-2">
                     <Button
-                      className="flex-1 bg-purple-600 hover:bg-purple-700 text-white"
+                      className="flex-1 bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
                       onClick={() => {
-                        recordApprovalEvent(task.id, "manager-review", {
-                          action: "approved",
-                          byUserId: currentUser.id,
-                          byUserName: currentUser.name,
-                          byRole: currentUser.role,
+                        updateTaskMutation.mutate({
+                          id: task.id,
+                          status: "pm-review",
+                        });
+                        addApprovalEventMutation.mutate({
+                          action: "submitted-for-manager-review",
                         });
                         toast({
-                          title: "Approved for Manager",
-                          description: `Sent to the department manager for sign-off.`,
+                          title: "Sent to Production Manager",
+                          description: `${task.title} approved by Lead — awaiting final sign-off.`,
                         });
                       }}
                     >
@@ -432,15 +564,16 @@ export function TaskDrawer() {
                       variant="outline"
                       className="flex-1 text-red-500 hover:bg-red-500/10"
                       onClick={() => {
-                        recordApprovalEvent(task.id, "in-progress", {
+                        updateTaskMutation.mutate({
+                          id: task.id,
+                          status: "in-progress",
+                        });
+                        addApprovalEventMutation.mutate({
                           action: "rejected",
-                          byUserId: currentUser.id,
-                          byUserName: currentUser.name,
-                          byRole: currentUser.role,
                         });
                         toast({
                           title: "Review Rejected",
-                          description: `Sent back to artist.`,
+                          description: `Sent back to team.`,
                         });
                       }}
                     >
@@ -449,21 +582,28 @@ export function TaskDrawer() {
                   </div>
                 )}
 
-              {/* Manager Actions: only once a lead/supervisor has approved and
-                  moved the task into manager review. This is the department
-                  manager's sanity check on the lead-approved work; approving
-                  here is the final internal sign-off. If the task is linked
-                  to a shot, approving also forwards that shot into the
+              {/* Stage 2 — Production Manager's final sign-off, the last gate
+                  before anything reaches the client. Gated to the
+                  department's own production_head, falling back to the
+                  studio's overall Production Management production_head(s),
+                  falling back to any production_head — see
+                  getProductionManagerApprovers in lib/taskShape.ts. Approving
+                  here is what actually forwards a linked shot into the
                   client-facing review queue (client-review.tsx filters shots
-                  on exactly this status) - previously this chain dead-ended
-                  at an internal 'approved' status with no path to the client
-                  portal at all. */}
-              {["production_head", "producer"].includes(currentUser.role) &&
-                task.status === "manager-review" &&
+                  on exactly that status), so it keeps the look-before-you-leap
+                  confirm step the old single-gate flow used to have. */}
+              {currentUser.role === "production_head" &&
+                canApproveAsProductionManager(
+                  currentUser.id,
+                  task.department,
+                  users,
+                  departments,
+                ) &&
+                task.status === "pm-review" &&
                 (clientSendConfirmOpen ? (
                   <div className="w-full rounded-md border border-accent-tally/30 bg-accent-tally/5 p-3 space-y-3">
                     <p className="text-sm">
-                      {task.shotId ? (
+                      {task.entityType === "shot" ? (
                         <>
                           This forwards <b>{shot?.name ?? task.title}</b> to the
                           external client portal — the client will be able to
@@ -481,14 +621,15 @@ export function TaskDrawer() {
                       <Button
                         className="flex-1 bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white touch-target"
                         onClick={() => {
-                          recordApprovalEvent(task.id, "approved", {
-                            action: "published",
-                            byUserId: currentUser.id,
-                            byUserName: currentUser.name,
-                            byRole: currentUser.role,
+                          updateTaskMutation.mutate({
+                            id: task.id,
+                            status: "approved",
                           });
-                          if (task.shotId) {
-                            updateShotStatus(task.shotId, {
+                          addApprovalEventMutation.mutate({
+                            action: "published",
+                          });
+                          if (task.entityType === "shot") {
+                            updateShotStatus(task.entityId, {
                               status: "client-review",
                             });
                             toast({
@@ -528,128 +669,112 @@ export function TaskDrawer() {
                       variant="outline"
                       className="flex-1 text-red-500 hover:bg-red-500/10"
                       onClick={() => {
-                        recordApprovalEvent(task.id, "in-progress", {
-                          action: "rejected",
-                          byUserId: currentUser.id,
-                          byUserName: currentUser.name,
-                          byRole: currentUser.role,
+                        updateTaskMutation.mutate({
+                          id: task.id,
+                          status: "review",
+                        });
+                        addApprovalEventMutation.mutate({
+                          action: "changes-requested",
                         });
                         toast({
-                          title: "Review Rejected",
-                          description: `Sent back to team.`,
+                          title: "Sent Back to Lead",
+                          description: `${task.title} needs another look before it can go to the client.`,
                         });
                       }}
                     >
-                      <X className="w-4 h-4 mr-2" /> Reject
+                      <X className="w-4 h-4 mr-2" /> Send Back to Lead
                     </Button>
                   </div>
                 ))}
-              {isAssignee && task.status === "in-progress" && (
-                <Button
-                  variant="outline"
-                  className="flex-1 bg-accent-scope/10 text-accent-scope border-accent-scope/20 hover:bg-accent-scope/20"
-                  onClick={() => setLogFormOpen((v) => !v)}
-                >
-                  <Clock className="w-4 h-4 mr-2" /> Log Daily Time
-                </Button>
-              )}
             </div>
 
-            {/* Inline Daily Time Log Form */}
-            <AnimatePresence initial={false}>
-              {logFormOpen && (
-                <motion.div
-                  key="log-time-form"
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.2, ease: "easeInOut" }}
-                  className="overflow-hidden"
-                >
-                  <div className="p-3 rounded-md border border-border bg-muted/20 space-y-2">
-                    <div className="flex gap-2">
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.5"
-                        placeholder="Hours"
-                        value={logHours}
-                        onChange={(e) => setLogHours(e.target.value)}
-                        className="w-24 bg-background border border-border rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                      />
-                      <input
-                        type="text"
-                        placeholder="What did you work on?"
-                        value={logNote}
-                        onChange={(e) => setLogNote(e.target.value)}
-                        className="flex-1 bg-background border border-border rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                      />
-                    </div>
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          setLogFormOpen(false);
-                          setLogHours("");
-                          setLogNote("");
-                        }}
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={() => {
-                          const hoursNum = parseFloat(logHours);
-                          if (!hoursNum || hoursNum <= 0) return;
-                          const newLog: DailyLog = {
-                            date: new Date().toISOString().slice(0, 10),
-                            hours: hoursNum,
-                            note: logNote.trim() || "No notes provided.",
-                            userId: currentUser.id,
-                          };
-                          logTime(task.id, newLog);
-                          toast({
-                            title: "Time Logged",
-                            description: `Logged ${hoursNum}h on ${task.title}.`,
-                          });
-                          setLogFormOpen(false);
-                          setLogHours("");
-                          setLogNote("");
-                        }}
-                      >
-                        Add Log
-                      </Button>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Daily Logs (if any) */}
-            {task.dailyLogs.length > 0 && (
-              <div>
-                <div className="text-sm font-semibold mb-3">Recent Logs</div>
-                <div className="space-y-2">
-                  {task.dailyLogs.map((log, i) => (
-                    <div
-                      key={i}
-                      className="text-xs bg-muted/30 p-2 rounded-md border border-border"
-                    >
-                      <div className="flex justify-between font-medium mb-1">
-                        <span className="timecode">{log.date}</span>
-                        <span className="text-accent-tally timecode">
-                          {log.hours}h
-                        </span>
-                      </div>
-                      <div className="text-muted-foreground italic">
-                        "{log.note}"
-                      </div>
-                    </div>
-                  ))}
+            {/* Daily Time Logging — /daily-logs, keyed by this task's id
+                (hooks/useTasks.ts's useDailyLogs/useAddDailyLog). Gated the
+                same way the pre-Task-18 mock-store version was: only the
+                assignee can log time, and only while the task is actively
+                in progress. */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-sm font-semibold flex items-center gap-1.5">
+                  <Clock className="w-4 h-4" /> Daily Time Logs
                 </div>
+                {isAssignee && task.status === "in-progress" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setLogFormOpen((prev) => !prev)}
+                  >
+                    {logFormOpen ? "Cancel" : "Log Daily Time"}
+                  </Button>
+                )}
               </div>
-            )}
+              {logFormOpen && (
+                <div className="space-y-2.5 mb-3 p-3 rounded-md border border-border bg-muted/20">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">
+                      Hours Spent
+                    </label>
+                    <input
+                      type="number"
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                      value={logHours}
+                      onChange={(e) => setLogHours(e.target.value)}
+                      min="0"
+                      max="24"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">
+                      Notes
+                    </label>
+                    <textarea
+                      className="w-full h-16 bg-background border border-input rounded-md p-2.5 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-primary"
+                      placeholder="What did you accomplish today?"
+                      value={logNote}
+                      onChange={(e) => setLogNote(e.target.value)}
+                    />
+                  </div>
+                  <Button size="sm" className="w-full" onClick={handleAddDailyLog}>
+                    Submit Log
+                  </Button>
+                </div>
+              )}
+              {dailyLogs.length > 0 ? (
+                <div className="space-y-2">
+                  {dailyLogs
+                    .slice()
+                    .reverse()
+                    .slice(0, 5)
+                    .map((log) => {
+                      const loggedBy = users.find((u) => u.id === log.userId);
+                      return (
+                        <div
+                          key={log.id}
+                          className="p-2.5 rounded-md border border-border bg-muted/20 text-sm"
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-medium">
+                              {loggedBy?.name ?? "Unknown"} — {log.hours}h
+                            </span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {new Date(log.date).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground italic">
+                            "{log.note}"
+                          </p>
+                        </div>
+                      );
+                    })}
+                </div>
+              ) : (
+                !logFormOpen && (
+                  <p className="text-sm text-muted-foreground">
+                    No time logged yet.
+                  </p>
+                )
+              )}
+            </div>
 
             <Separator />
 
@@ -669,11 +794,19 @@ export function TaskDrawer() {
                   className="h-1.5 mb-3"
                 />
                 <div className="space-y-2">
-                  {task.checklist.map((item, i) => (
-                    <div key={i} className="flex items-center gap-2 text-sm">
+                  {checklist.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center gap-2 text-sm"
+                    >
                       <button
                         type="button"
-                        onClick={() => toggleChecklistItem(task.id, i)}
+                        onClick={() =>
+                          toggleChecklistItemMutation.mutate({
+                            itemId: item.id,
+                            done: !item.done,
+                          })
+                        }
                         className="shrink-0 flex items-center justify-center rounded-full p-0.5 -m-0.5 hover:bg-muted transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-primary"
                         aria-label={
                           item.done ? "Mark as not done" : "Mark as done"
@@ -744,7 +877,11 @@ export function TaskDrawer() {
                         <Badge
                           variant="outline"
                           className="text-[9px] font-mono border-primary/30 text-primary bg-primary/5"
-                          title={DEPENDENCY_TYPE_LABELS[dep.type]}
+                          title={
+                            DEPENDENCY_TYPE_LABELS[
+                              dep.type as keyof typeof DEPENDENCY_TYPE_LABELS
+                            ]
+                          }
                         >
                           {dep.type}
                           {dep.lagDays ? ` +${dep.lagDays}d` : ""}
@@ -762,20 +899,23 @@ export function TaskDrawer() {
             )}
 
             {/* Attachments */}
-            {task.attachments.length > 0 && (
+            {attachments.length > 0 && (
               <div>
                 <div className="text-sm font-semibold mb-3 flex items-center gap-1.5">
                   <Paperclip className="w-4 h-4" /> Attachments
                 </div>
                 <div className="space-y-1.5">
-                  {task.attachments.map((file, i) => (
-                    <div
-                      key={i}
+                  {attachments.map((att) => (
+                    <a
+                      key={att.id}
+                      href={att.url}
+                      target="_blank"
+                      rel="noreferrer"
                       className="flex items-center gap-2 p-2 rounded-md border border-border bg-muted/20 text-sm hover:bg-muted/40 cursor-pointer transition-colors"
                     >
                       <Paperclip className="w-3 h-3 text-muted-foreground" />
-                      {file}
-                    </div>
+                      {att.url}
+                    </a>
                   ))}
                 </div>
               </div>
@@ -783,38 +923,47 @@ export function TaskDrawer() {
 
             <Separator />
 
-            {/* Link into the lightweight Feedback view (see
-                components/shared/review/FeedbackList.tsx) for anyone who
-                just wants to read review notes on this submission, without
-                opening the full frame-accurate Player. Only shown once the
-                task has actually entered the review chain — nothing to read
-                before that. */}
-            {["review", "lead-review", "manager-review", "approved"].includes(
+            {/* Full frame-accurate Player (annotate, scrub, approve/reject)
+                and the lightweight Feedback view (just the comment stream,
+                see components/shared/review/FeedbackList.tsx) both open this
+                same task's real review -- versionId is resolved from this
+                exact task server-side, not a fixed demo route. Only shown
+                once the task has actually entered the review chain —
+                nothing to review before that. */}
+            {["review", "lead-review", "pm-review", "approved"].includes(
               task.status,
             ) && (
-              <Link
-                href="/review?mode=feedback"
-                className="touch-target flex items-center justify-center gap-2 w-full px-3 rounded-md border border-border text-sm font-medium hover-elevate active-elevate-2"
-              >
-                <MessageSquare className="w-4 h-4" /> View Review Feedback
-              </Link>
+              <div className="flex gap-2">
+                <Link
+                  href={`/review/${task.id}`}
+                  className="touch-target flex-1 flex items-center justify-center gap-2 px-3 rounded-md border border-border text-sm font-medium hover-elevate active-elevate-2"
+                >
+                  <Film className="w-4 h-4" /> Open in Review Player
+                </Link>
+                <Link
+                  href={`/review/${task.id}?mode=feedback`}
+                  className="touch-target flex-1 flex items-center justify-center gap-2 px-3 rounded-md border border-border text-sm font-medium hover-elevate active-elevate-2"
+                >
+                  <MessageSquare className="w-4 h-4" /> View Feedback
+                </Link>
+              </div>
             )}
 
             {/* Comments */}
             <div>
               <div className="text-sm font-semibold mb-3 flex items-center gap-1.5">
                 <MessageSquare className="w-4 h-4" /> Comments (
-                {task.comments.length})
+                {comments.length})
               </div>
               <div className="space-y-4">
                 <AnimatePresence initial={false}>
-                  {task.comments.map((comment, i) => {
-                    const commenter = USERS.find(
+                  {comments.map((comment) => {
+                    const commenter = users.find(
                       (u) => u.id === comment.userId,
                     );
                     return (
                       <motion.div
-                        key={i}
+                        key={comment.id}
                         layout
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -833,7 +982,7 @@ export function TaskDrawer() {
                               {commenter?.name}
                             </span>
                             <span className="text-[10px] text-muted-foreground">
-                              {new Date(comment.timestamp).toLocaleDateString()}
+                              {new Date(comment.createdAt).toLocaleDateString()}
                             </span>
                           </div>
                           <p className="text-sm text-muted-foreground">
@@ -844,7 +993,7 @@ export function TaskDrawer() {
                     );
                   })}
                 </AnimatePresence>
-                {task.comments.length === 0 && (
+                {comments.length === 0 && (
                   <p className="text-sm text-muted-foreground">
                     No comments yet.
                   </p>
@@ -863,14 +1012,14 @@ export function TaskDrawer() {
                 {/* Mentions Dropdown */}
                 {showMentions && (
                   <div className="absolute left-2 top-[85px] w-64 max-h-48 overflow-y-auto bg-card border border-border rounded-md shadow-lg z-50 p-1 animate-in fade-in slide-in-from-top-2">
-                    {USERS.filter((u) =>
+                    {users.filter((u) =>
                       u.name.toLowerCase().includes(mentionQuery),
                     ).length === 0 ? (
                       <div className="p-2 text-xs text-muted-foreground text-center">
                         No users found.
                       </div>
                     ) : (
-                      USERS.filter((u) =>
+                      users.filter((u) =>
                         u.name.toLowerCase().includes(mentionQuery),
                       ).map((u) => (
                         <div
@@ -897,13 +1046,25 @@ export function TaskDrawer() {
                   className="mt-2"
                   onClick={() => {
                     if (commentText.trim()) {
-                      addComment(task.id, currentUser.id, commentText.trim());
-                      toast({
-                        title: "Comment Posted",
-                        description: "Your comment has been added.",
-                      });
-                      setCommentText("");
-                      setShowMentions(false);
+                      addCommentMutation.mutate(
+                        { text: commentText.trim() },
+                        {
+                          onSuccess: () => {
+                            toast({
+                              title: "Comment Posted",
+                              description: "Your comment has been added.",
+                            });
+                            setCommentText("");
+                            setShowMentions(false);
+                          },
+                          onError: () => {
+                            toast({
+                              title: "Failed to post comment",
+                              variant: "destructive",
+                            });
+                          },
+                        },
+                      );
                     }
                   }}
                 >

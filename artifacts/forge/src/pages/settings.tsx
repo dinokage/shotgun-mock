@@ -1,5 +1,5 @@
 import { Fragment, useMemo, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Card,
@@ -34,7 +34,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { ROLE_LABELS, USERS } from "@/data/mockData";
+import { ROLE_LABELS } from "@/data/mockData";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { copyToClipboard } from "@/lib/utils";
 import {
@@ -50,10 +50,10 @@ import {
   Check,
   X,
   ShieldCheck,
-  AlertTriangle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/store/auth";
+import { useUserStore } from "@/store/users";
 import { useCapability } from "@/hooks/use-capability";
 import {
   CAPABILITIES,
@@ -74,6 +74,7 @@ export default function Settings() {
   const { toast } = useToast();
 
   const currentUser = useAuthStore((s) => s.currentUser);
+  const users = useUserStore((s) => s.users);
   const notificationPreferences = useNotificationStore((s) => s.preferences);
   const setNotificationPreference = useNotificationStore(
     (s) => s.setPreferenceChannel,
@@ -221,7 +222,7 @@ export default function Settings() {
       ")",
       "",
       "# Fetch shots needing review",
-      "shots = session.query('Shot where status is \"manager-review\"')",
+      "shots = session.query('Shot where status is \"review\"')",
       'print(f"Found {len(shots)} shots for review")',
     ].join("\n");
     copyToClipboard(snippet).then((success) => {
@@ -593,9 +594,16 @@ export default function Settings() {
               <CardHeader className="flex flex-row items-center justify-between border-b border-border pb-4">
                 <div>
                   <CardTitle>Team Members</CardTitle>
-                  <CardDescription>Manage access and roles.</CardDescription>
+                  <CardDescription>
+                    Manage access and roles. Inviting members and granting
+                    admin access are managed from the Admin Panel.
+                  </CardDescription>
                 </div>
-                <Button size="sm" onClick={() => setInviteDialogOpen(true)}>
+                <Button
+                  size="sm"
+                  disabled
+                  title="Invite Member is managed from the Admin Panel"
+                >
                   Invite Member
                 </Button>
               </CardHeader>
@@ -637,7 +645,7 @@ export default function Settings() {
                     </tr>
                   </thead>
                   <tbody>
-                    {USERS.map((user) => (
+                    {users.map((user) => (
                       <tr
                         key={user.id}
                         className="border-b border-border last:border-0 hover:bg-muted/10"
@@ -659,8 +667,9 @@ export default function Settings() {
                           >
                             <Switch
                               checked={admins[user.id] ?? false}
-                              onCheckedChange={() => toggleAdmin(user.id)}
-                              aria-label={`Admin access for ${user.name}`}
+                              disabled
+                              title="Admin access is managed from the Admin Panel"
+                              aria-label={`Admin access for ${user.name} (managed in Admin Panel)`}
                             />
                           </motion.div>
                         </td>
@@ -1053,7 +1062,7 @@ export default function Settings() {
                     shots <span className="text-blue-400">=</span>{" "}
                     session.query(
                     <span className="text-orange-300">
-                      'Shot where status is "manager-review"'
+                      'Shot where status is "review"'
                     </span>
                     )<br />
                     <span className="text-blue-400">print</span>(

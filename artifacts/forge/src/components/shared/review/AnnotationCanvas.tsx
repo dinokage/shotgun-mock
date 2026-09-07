@@ -22,6 +22,17 @@ interface AnnotationCanvasProps {
   selectedAnnotationId: string | null;
   onSelectedAnnotationIdChange: SetSelectedAnnotationId;
   onDraggingElementChange: SetDraggingElement;
+  /**
+   * Id of the currently signed-in user, used to gate the select/eraser
+   * delete paths below to annotations that user actually created —
+   * `annotation.createdById === currentUserId`. Undefined for a
+   * client-access-link session (which has no real user id) or while auth
+   * is still loading; in both cases the ownership check fails closed, so
+   * nothing is deletable through this component rather than defaulting to
+   * allow-all. This is a UI-level convenience only — the server enforces
+   * the same rule independently on DELETE /reviews/annotations/:id.
+   */
+  currentUserId?: string;
   /** Static onion-skin edge fade: dims shape annotations within a few frames of
    * either edge of their own visible window at a flat opacity. Internal-review-only. */
   onionSkin?: boolean;
@@ -70,6 +81,7 @@ export function AnnotationCanvas({
   selectedAnnotationId,
   onSelectedAnnotationIdChange,
   onDraggingElementChange,
+  currentUserId,
   onionSkin = false,
   ghosting = false,
   selectionRingClassName = "border-primary ring-2 ring-primary/50",
@@ -85,7 +97,12 @@ export function AnnotationCanvas({
     h: number;
   } | null>(null);
 
-  const drawMode = !readOnly && tool !== "select";
+  // The eraser reuses the select tool's click-to-delete hit-testing below
+  // (it needs the same "no full-canvas pointer-capture surface" treatment
+  // as select so clicks land on the actual annotation elements instead of
+  // being swallowed by the drawing surface), so it's excluded from drawMode
+  // exactly like select is.
+  const drawMode = !readOnly && tool !== "select" && tool !== "eraser";
 
   const resetDrawState = () => {
     setIsDrawing(false);
@@ -120,9 +137,21 @@ export function AnnotationCanvas({
     keySuffix = "",
   ) => {
     const key = `${a.id}${keySuffix}`;
+    // Select already deletes a shape annotation on click (there's no
+    // separate "selected then press delete" step for shapes, only for text
+    // — see the text overlay below). The eraser reuses that exact
+    // hit-testing/delete path rather than adding a new one.
+    //
+    // Restricted to the current user's own marks: an annotation whose
+    // `createdById` doesn't match `currentUserId` (including annotations
+    // with no `createdById` at all, and client sessions with no
+    // `currentUserId`) is not deletable through this path. This is a UI
+    // convenience only — the server independently enforces the same rule.
     const handleDelete = () =>
       !readOnly &&
-      tool === "select" &&
+      (tool === "select" || tool === "eraser") &&
+      a.createdById !== undefined &&
+      a.createdById === currentUserId &&
       onAnnotationsChange((prev) => prev.filter((p) => p.id !== a.id));
     const pointerClassName =
       interactive && !readOnly
@@ -402,6 +431,7 @@ export function AnnotationCanvas({
                     ? selectionRingClassName
                     : "border-transparent",
                   tool === "select" && !readOnly && "cursor-move",
+                  tool === "eraser" && !readOnly && "cursor-pointer",
                 )}
                 style={{
                   left: a.x,
@@ -425,9 +455,31 @@ export function AnnotationCanvas({
                       initialX: a.x,
                       initialY: a.y,
                     });
+                  } else if (tool === "eraser") {
+                    // Same click-to-delete-one-mark behavior as the eraser
+                    // gives shape annotations above, applied to text's own
+                    // hit target (its wrapping div) instead of an SVG node.
+                    // Same ownership gate as the shape path: only the
+                    // annotation's own creator can erase it (fails closed
+                    // when createdById or currentUserId is missing).
+                    e.stopPropagation();
+                    if (
+                      a.createdById !== undefined &&
+                      a.createdById === currentUserId
+                    ) {
+                      onAnnotationsChange((prev) =>
+                        prev.filter((p) => p.id !== a.id),
+                      );
+                      if (selectedAnnotationId === a.id)
+                        onSelectedAnnotationIdChange(null);
+                    }
                   }
                 }}
-                onClick={() => !readOnly && onSelectedAnnotationIdChange(a.id)}
+                onClick={() =>
+                  !readOnly &&
+                  tool !== "eraser" &&
+                  onSelectedAnnotationIdChange(a.id)
+                }
               >
                 <input
                   type="text"

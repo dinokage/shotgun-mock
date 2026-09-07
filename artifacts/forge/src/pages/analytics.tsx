@@ -15,20 +15,15 @@ import {
   EmptyTitle,
   EmptyDescription,
 } from "@/components/ui/empty";
+import { Project, isTaskDone } from "@/data/mockData";
+import { useUserStore } from "@/store/users";
+import { useDepartmentStore } from "@/store/departments";
+import { useProjectStore } from "@/store/projects";
+import { useTasksStore } from "@/store/tasks";
+import { useReviewStore } from "@/store/reviews";
+import { usePublishingStore } from "@/store/publishing";
+import { useShotStore } from "@/store/shots";
 import {
-  PROJECTS,
-  TASKS,
-  REVIEWS,
-  PUBLISH_LOGS,
-  DEPARTMENTS,
-  USERS,
-  TIME_LOGS,
-  SHOTS,
-  Project,
-  isTaskDone,
-} from "@/data/mockData";
-import {
-  BarChart3,
   TrendingUp,
   Clock,
   CheckCircle2,
@@ -43,10 +38,10 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useEffect, useMemo, useState } from "react";
-import { useAuthStore } from "@/store/auth";
+import { useMemo, useState } from "react";
 import { useCapability } from "@/hooks/use-capability";
 import { hashString, seededFraction } from "@/lib/seededMock";
+import { getAssigneeId, getShotId } from "@/lib/taskShape";
 
 // Fictional "today" this studio's books are closed against - matches the
 // anchor financials.tsx uses. The mock dataset (task/review/publish
@@ -94,50 +89,25 @@ function getProjectBidMargin(p: Project): {
   return { bids, actuals, rate };
 }
 
-/**
- * Mirrors the header clock's punched-in state (TimeClockWidget reads/writes a
- * per-user 'forge-punch-in-time-<userId>' localStorage key - see STORAGE_PREFIX
- * in TimeClockWidget.tsx) so the logged-in user's own Timecards row never
- * contradicts the header's live PUNCHED IN indicator.
- */
-function usePunchedInSession(userId: string | undefined): {
-  hours: number;
-  since: string | null;
-} {
-  const [session, setSession] = useState<{
-    hours: number;
-    since: string | null;
-  }>({ hours: 0, since: null });
-
-  useEffect(() => {
-    if (!userId) {
-      setSession({ hours: 0, since: null });
-      return;
-    }
-    const compute = () => {
-      const startTime = localStorage.getItem(`forge-punch-in-time-${userId}`);
-      if (!startTime) {
-        setSession({ hours: 0, since: null });
-        return;
-      }
-      const startMs = parseInt(startTime, 10);
-      setSession({
-        hours: Math.max(0, (Date.now() - startMs) / 3600000),
-        since: new Date(startMs).toISOString(),
-      });
-    };
-    compute();
-    const interval = setInterval(compute, 30000);
-    return () => clearInterval(interval);
-  }, [userId]);
-
-  return session;
+// users.punched_in_at is now real backend state for every user (not just
+// the logged-in one -- see hooks/useUsers.ts's usePunchIn/usePunchOut and
+// GET /users), so a punched-in session's elapsed hours can be computed for
+// anyone directly at render time. No per-user hook/interval needed: the
+// Timecards table already re-renders on the users list's ~10s poll
+// (App.tsx's fetchMe), which is a fine enough cadence for this summary.
+function hoursSincePunchIn(punchedInAt: string): number {
+  return Math.max(0, (Date.now() - new Date(punchedInAt).getTime()) / 3600000);
 }
 
 export default function Analytics() {
   const { toast } = useToast();
-  const { currentUser } = useAuthStore();
-  const punchedInSession = usePunchedInSession(currentUser?.id);
+  const users = useUserStore((s) => s.users);
+  const departments = useDepartmentStore((s) => s.departments);
+  const projects = useProjectStore((s) => s.projects);
+  const tasks = useTasksStore((s) => s.tasks);
+  const reviews = useReviewStore((s) => s.reviews);
+  const publishLogs = usePublishingStore((s) => s.logs);
+  const shots = useShotStore((s) => s.shots);
   const canViewFinancials = useCapability("view_financials");
 
   const [dateRange, setDateRange] = useState<DateRangeKey>("30d");
@@ -165,46 +135,46 @@ export default function Analytics() {
 
   const filteredTasks = useMemo(
     () =>
-      TASKS.filter((t) => withinRange(t.createdAt, currentStart, MOCK_TODAY)),
-    [currentStart],
+      tasks.filter((t) => withinRange(t.createdAt, currentStart, MOCK_TODAY)),
+    [tasks, currentStart],
   );
   const filteredReviews = useMemo(
     () =>
-      REVIEWS.filter((r) => withinRange(r.createdAt, currentStart, MOCK_TODAY)),
-    [currentStart],
+      reviews.filter((r) => withinRange(r.createdAt, currentStart, MOCK_TODAY)),
+    [reviews, currentStart],
   );
   const filteredPublishLogs = useMemo(
     () =>
-      PUBLISH_LOGS.filter((p) =>
+      publishLogs.filter((p) =>
         withinRange(p.publishedAt, currentStart, MOCK_TODAY),
       ),
-    [currentStart],
+    [publishLogs, currentStart],
   );
 
   const previousTasks = useMemo(
     () =>
-      TASKS.filter((t) => withinRange(t.createdAt, previousStart, previousEnd)),
-    [previousStart, previousEnd],
+      tasks.filter((t) => withinRange(t.createdAt, previousStart, previousEnd)),
+    [tasks, previousStart, previousEnd],
   );
   const previousReviews = useMemo(
     () =>
-      REVIEWS.filter((r) =>
+      reviews.filter((r) =>
         withinRange(r.createdAt, previousStart, previousEnd),
       ),
-    [previousStart, previousEnd],
+    [reviews, previousStart, previousEnd],
   );
   const previousPublishLogs = useMemo(
     () =>
-      PUBLISH_LOGS.filter((p) =>
+      publishLogs.filter((p) =>
         withinRange(p.publishedAt, previousStart, previousEnd),
       ),
-    [previousStart, previousEnd],
+    [publishLogs, previousStart, previousEnd],
   );
 
   function periodStats(
-    tasks: typeof TASKS,
-    reviews: typeof REVIEWS,
-    publishLogs: typeof PUBLISH_LOGS,
+    tasks: typeof filteredTasks,
+    reviews: typeof filteredReviews,
+    publishLogs: typeof filteredPublishLogs,
   ) {
     const total = tasks.length;
     const done = tasks.filter((t) => isTaskDone(t.status)).length;
@@ -330,8 +300,9 @@ export default function Analytics() {
   const contributorCounts = useMemo(() => {
     const counts = new Map<string, number>();
     filteredTasks.forEach((t) => {
-      if (isTaskDone(t.status))
-        counts.set(t.assigneeId, (counts.get(t.assigneeId) || 0) + 1);
+      const assigneeId = getAssigneeId(t);
+      if (assigneeId && isTaskDone(t.status))
+        counts.set(assigneeId, (counts.get(assigneeId) || 0) + 1);
     });
     filteredReviews.forEach((r) => {
       if (r.status === "approved")
@@ -342,10 +313,11 @@ export default function Analytics() {
 
   const topContributors = useMemo(
     () =>
-      USERS.map((u) => ({ user: u, count: contributorCounts.get(u.id) || 0 }))
+      users
+        .map((u) => ({ user: u, count: contributorCounts.get(u.id) || 0 }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 5),
-    [contributorCounts],
+    [users, contributorCounts],
   );
 
   // Generate mock chart data
@@ -524,8 +496,8 @@ export default function Analytics() {
                       const burnRate = Math.round((actuals / bids) * 100);
                       const isOverBudget = actuals > bids;
 
-                      const shot = SHOTS.find((s) => s.id === task.shotId);
-                      const project = PROJECTS.find(
+                      const shot = shots.find((s) => s.id === getShotId(task));
+                      const project = projects.find(
                         (p) => p.id === shot?.projectId,
                       );
 
@@ -689,7 +661,7 @@ export default function Analytics() {
                         </tr>
                       </thead>
                       <tbody>
-                        {DEPARTMENTS.slice(0, 6).map((dept, i) => {
+                        {departments.slice(0, 6).map((dept, i) => {
                           // Deterministic capacity curve per week (0-150%), seeded per dept+week
                           const baseLoad = [80, 95, 60, 110, 40, 85][i];
                           const weekLoads = Array.from({ length: 8 }).map(
@@ -799,7 +771,7 @@ export default function Analytics() {
                   <CardTitle className="text-lg">Project Forecast</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-5">
-                  {PROJECTS.slice(0, 5).map((proj) => {
+                  {projects.slice(0, 5).map((proj) => {
                     const risk = proj.riskScore;
                     return (
                       <div key={proj.id} className="space-y-2">
@@ -876,7 +848,27 @@ export default function Analytics() {
                       },
                       {
                         label: "Avg Duration",
-                        value: "3m 45s",
+                        value: (() => {
+                          if (filteredPublishLogs.length === 0) return "—";
+                          const totalSeconds = filteredPublishLogs.reduce(
+                            (sum, p) => {
+                              const match = p.duration.match(
+                                /(\d+)m\s*(\d+)s/,
+                              );
+                              if (!match) return sum;
+                              return (
+                                sum +
+                                Number(match[1]) * 60 +
+                                Number(match[2])
+                              );
+                            },
+                            0,
+                          );
+                          const avgSeconds = Math.round(
+                            totalSeconds / filteredPublishLogs.length,
+                          );
+                          return `${Math.floor(avgSeconds / 60)}m ${avgSeconds % 60}s`;
+                        })(),
                         color: "text-blue-500",
                       },
                       {
@@ -1017,7 +1009,7 @@ export default function Analytics() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border/50">
-                        {PROJECTS.map((proj) => {
+                        {projects.map((proj) => {
                           const { bids, actuals, rate } =
                             getProjectBidMargin(proj);
                           const bidValue = bids * rate;
@@ -1091,7 +1083,7 @@ export default function Analytics() {
                         Today (hrs)
                       </th>
                       <th className="pb-3 font-medium text-right">
-                        This Week (hrs)
+                        Session (hrs)
                       </th>
                       <th className="pb-3 font-medium text-right">
                         Utilization
@@ -1099,58 +1091,37 @@ export default function Analytics() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/50">
-                    {USERS.map((user, i) => {
-                      // Filter all logs for the user to compute actual hours, or mock it if missing
-                      const userLogs = TIME_LOGS.filter(
-                        (l) => l.userId === user.id,
-                      );
-                      const actualHours = userLogs.reduce(
-                        (acc, l) => acc + l.hours,
-                        0,
-                      );
-                      const dept = DEPARTMENTS.find(
+                    {users.map((user) => {
+                      const dept = departments.find(
                         (d) => d.id === user.departmentId,
                       );
-                      const isCurrentUser = currentUser?.id === user.id;
 
-                      // Mock additional status since our TimeLog interface is very simple.
-                      // The logged-in user's own row instead mirrors the header clock's
-                      // punched-in state (usePunchedInSession above) so the two live
-                      // status indicators never contradict each other - which means this
-                      // row must actually check punchedInSession.since, not just identity,
-                      // or a currentUser who is punched OUT would still show PUNCHED IN here.
-                      const mockStatus = isCurrentUser
-                        ? punchedInSession.since
-                          ? "punched-in"
-                          : "offline"
-                        : i % 3 === 0
-                          ? "punched-in"
-                          : "offline";
-                      const punchedInAt =
-                        mockStatus === "punched-in"
-                          ? isCurrentUser
-                            ? punchedInSession.since!
-                            : new Date().toISOString()
-                          : undefined;
-                      const baseHoursToday =
-                        actualHours > 0 ? actualHours : i % 2 === 0 ? 6.5 : 0;
-                      const baseHoursWeek =
-                        actualHours > 0
-                          ? actualHours * 5
-                          : i % 2 === 0
-                            ? 32.5
-                            : 0;
-                      const totalHoursToday = isCurrentUser
-                        ? baseHoursToday + punchedInSession.hours
-                        : baseHoursToday;
-                      const totalHoursWeek = isCurrentUser
-                        ? baseHoursWeek + punchedInSession.hours
-                        : baseHoursWeek;
+                      // users.punched_in_at is real backend state for every
+                      // user now (GET /users), not just whoever's logged in
+                      // -- see hooks/useUsers.ts's usePunchIn/usePunchOut.
+                      const mockStatus = user.punchedInAt
+                        ? "punched-in"
+                        : "offline";
+                      const punchedInAt = user.punchedInAt ?? undefined;
 
-                      const todayHrs = totalHoursToday.toFixed(1);
-                      const weekHrs = totalHoursWeek.toFixed(1);
-                      const util = Math.round((Number(weekHrs) / 40) * 100);
-                      const isOver = util > 100;
+                      // Elapsed time since punch-in is real for every row.
+                      // There's still no full per-user daily-log aggregate
+                      // backend (only per-task GET /daily-logs?taskId=),
+                      // so "Today"/"Session" both show this same
+                      // punched-in-session figure rather than a real
+                      // studio-wide hours total -- the column is labeled
+                      // "Session (hrs)", not "This Week", so it isn't
+                      // presented as something it isn't.
+                      const sessionHours = user.punchedInAt
+                        ? hoursSincePunchIn(user.punchedInAt)
+                        : null;
+                      const todayHrs = sessionHours?.toFixed(1) ?? null;
+                      const weekHrs = sessionHours?.toFixed(1) ?? null;
+                      const util =
+                        weekHrs !== null
+                          ? Math.round((Number(weekHrs) / 40) * 100)
+                          : null;
+                      const isOver = util !== null && util > 100;
 
                       return (
                         <tr
@@ -1192,22 +1163,26 @@ export default function Analytics() {
                             </Badge>
                           </td>
                           <td className="py-4 text-right tabular-nums font-medium">
-                            {todayHrs}h
+                            {todayHrs !== null ? `${todayHrs}h` : "—"}
                           </td>
                           <td className="py-4 text-right tabular-nums">
-                            {weekHrs}h
+                            {weekHrs !== null ? `${weekHrs}h` : "—"}
                           </td>
                           <td className="py-4 text-right">
-                            <Badge
-                              variant="outline"
-                              className={
-                                isOver
-                                  ? "bg-orange-500/10 text-orange-500 border-orange-500/20"
-                                  : "bg-blue-500/10 text-blue-500 border-blue-500/20"
-                              }
-                            >
-                              {util}%
-                            </Badge>
+                            {util !== null ? (
+                              <Badge
+                                variant="outline"
+                                className={
+                                  isOver
+                                    ? "bg-orange-500/10 text-orange-500 border-orange-500/20"
+                                    : "bg-blue-500/10 text-blue-500 border-blue-500/20"
+                                }
+                              >
+                                {util}%
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
                           </td>
                         </tr>
                       );

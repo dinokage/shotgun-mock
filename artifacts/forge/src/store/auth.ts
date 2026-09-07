@@ -9,10 +9,14 @@ import {
   ASSETS,
   SHOTS,
   DEPARTMENTS,
+  VERSIONS,
+  REVIEWS,
 } from "@/data/mockData";
+import { hashString } from "@/lib/seededMock";
 
 interface AuthState {
   currentUser: UserDTO | null;
+  tenantName: string | null;
   isAuthenticated: boolean;
   loginError: string | null;
   isInitializing: boolean;
@@ -20,10 +24,12 @@ interface AuthState {
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
   clearError: () => void;
+  updateCurrentUser: (updates: Partial<UserDTO>) => void;
 }
 
-export const useAuthStore = create<AuthState>()((set) => ({
+export const useAuthStore = create<AuthState>()((set, get) => ({
   currentUser: null,
+  tenantName: null,
   isAuthenticated: false,
   loginError: null,
   isInitializing: true,
@@ -34,36 +40,34 @@ export const useAuthStore = create<AuthState>()((set) => ({
       const user = response.user;
 
       // HYDRATE ALL MOCK ARRAYS FROM BACKEND SO THE APP JUST WORKS
-      const [projects, users, tasks, assets, shots, deps] = await Promise.all([
-        apiFetch("/projects").catch(() => []),
-        apiFetch("/users").catch(() => []),
-        apiFetch("/tasks").catch(() => []),
-        apiFetch("/assets").catch(() => []),
-        apiFetch("/shots").catch(() => []),
-        apiFetch("/departments").catch(() => []),
-      ]);
+      const [projects, users, tasks, assets, shots, deps, versions, reviews] =
+        await Promise.all([
+          apiFetch("/projects").catch(() => []),
+          apiFetch("/users").catch(() => []),
+          apiFetch("/tasks").catch(() => []),
+          apiFetch("/assets").catch(() => []),
+          apiFetch("/shots").catch(() => []),
+          apiFetch("/departments").catch(() => []),
+          apiFetch("/versions").catch(() => []),
+          apiFetch("/reviews").catch(() => []),
+        ]);
 
-      if (projects.length > 0) {
-        PROJECTS.length = 0;
-        PROJECTS.push(...projects);
-      }
-      if (users.length > 0) {
-        USERS.length = 0;
-        USERS.push(...(users as any));
-      }
-      if (tasks.length > 0) {
-        TASKS.length = 0;
-        TASKS.push(...tasks);
-      }
-      if (assets.length > 0) {
-        ASSETS.length = 0;
-        ASSETS.push(...assets);
-      }
-      if (shots.length > 0) {
-        SHOTS.length = 0;
-        SHOTS.push(...shots);
-      }
-      if (deps.length > 0) {
+      // Always sync these mock arrays to match the real API response,
+      // including when it's empty (e.g. right after an admin data reset) --
+      // an `if (arr.length > 0)` guard here would mean the API's true empty
+      // state could never overwrite whatever this array held from an
+      // earlier session, leaving stale data on screen indefinitely.
+      PROJECTS.length = 0;
+      PROJECTS.push(...projects);
+      USERS.length = 0;
+      USERS.push(...(users as any));
+      TASKS.length = 0;
+      TASKS.push(...tasks);
+      ASSETS.length = 0;
+      ASSETS.push(...assets);
+      SHOTS.length = 0;
+      SHOTS.push(...shots);
+      {
         // The API's department rows (id/tenantId/name/abbr/pipeline/
         // pipelineOrder/color/icon/createdAt) don't match the mock
         // Department shape's field names (abbreviation/description/
@@ -98,6 +102,28 @@ export const useAuthStore = create<AuthState>()((set) => ({
         DEPARTMENTS.push(...normalizedDeps);
       }
 
+      // REVIEWS's real/mock field shapes already line up exactly
+      // (lib/db/src/schema/reviews.ts mirrors mockData.ts's Review
+      // interface field-for-field) -- no translation needed, unlike
+      // departments above.
+      REVIEWS.length = 0;
+      REVIEWS.push(...(reviews as any));
+
+      // VERSIONS needs light normalization: the real API has `thumbnail`
+      // (a URL or null) where the mock shape has `thumbnailSeed` (a number
+      // used to generate a placeholder image) -- derive a stable numeric
+      // seed from the real id so placeholder rendering still works. The
+      // real schema's `status` column defaults to "pending_review", which
+      // isn't one of the mock enum's four values ("pending" is) -- map it
+      // so status-based UI (badges/filters) doesn't silently fail to match.
+      const normalizedVersions = (versions as any[]).map((v) => ({
+        ...v,
+        thumbnailSeed: hashString(v.id),
+        status: v.status === "pending_review" ? "pending" : v.status,
+      }));
+      VERSIONS.length = 0;
+      VERSIONS.push(...normalizedVersions);
+
       // Hydrate stores (ignoring those that don't have direct setters if any,
       // but tasks/assets/shots do have them, we can import them dynamically to avoid circular deps)
       import("./projects").then((m) =>
@@ -112,10 +138,30 @@ export const useAuthStore = create<AuthState>()((set) => ({
       import("./shots").then((m) =>
         m.useShotStore.getState().setShots?.(shots),
       );
+      import("./users").then((m) =>
+        m.useUserStore.getState().setUsers(users as any),
+      );
+      import("./departments").then((m) =>
+        m.useDepartmentStore.getState().setDepartments(DEPARTMENTS.slice()),
+      );
+      import("./reviews").then((m) => {
+        m.useReviewStore.getState().setReviews(REVIEWS.slice());
+        m.useReviewStore.getState().setVersions(normalizedVersions);
+      });
 
-      set({ currentUser: user, isAuthenticated: true, isInitializing: false });
+      set({
+        currentUser: user,
+        tenantName: response.tenant?.name ?? null,
+        isAuthenticated: true,
+        isInitializing: false,
+      });
     } catch {
-      set({ currentUser: null, isAuthenticated: false, isInitializing: false });
+      set({
+        currentUser: null,
+        tenantName: null,
+        isAuthenticated: false,
+        isInitializing: false,
+      });
     }
   },
 
@@ -126,12 +172,14 @@ export const useAuthStore = create<AuthState>()((set) => ({
         method: "POST",
         body: JSON.stringify({ email, password }),
       });
-      const response = await apiFetch<any>("/auth/me");
-      set({
-        currentUser: response.user,
-        isAuthenticated: true,
-        loginError: null,
-      });
+      // Route through fetchMe() rather than duplicating its GET /auth/me +
+      // set({...}) so login also runs the mock-array/store hydration block --
+      // otherwise every page renders stale/seeded data until a hard refresh.
+      await get().fetchMe();
+      if (!get().isAuthenticated) {
+        set({ loginError: "Invalid email or password." });
+        return false;
+      }
       return true;
     } catch (error: any) {
       set({ loginError: error.message || "Invalid email or password." });
@@ -143,11 +191,33 @@ export const useAuthStore = create<AuthState>()((set) => ({
     try {
       await apiFetch("/auth/logout", { method: "POST" });
     } finally {
-      set({ currentUser: null, isAuthenticated: false, loginError: null });
+      set({
+        currentUser: null,
+        tenantName: null,
+        isAuthenticated: false,
+        loginError: null,
+      });
       // In a real app we'd clear query caches too, but a page reload is often cleaner.
       window.location.href = "/login";
     }
   },
 
   clearError: () => set({ loginError: null }),
+
+  // After a self-service profile edit (PATCH /users/me), merge the returned
+  // fields straight into currentUser AND the mutable mock USERS array --
+  // most pages (TopBar, profile.tsx) read name/title/avatar from one of
+  // those two places rather than from a react-query cache, so a plain
+  // ["users"] invalidation alone wouldn't be reflected until the next
+  // full fetchMe().
+  updateCurrentUser: (updates) =>
+    set((state) => {
+      if (!state.currentUser) return state;
+      const updatedUser = { ...state.currentUser, ...updates };
+      const idx = USERS.findIndex((u) => u.id === updatedUser.id);
+      if (idx !== -1) {
+        USERS[idx] = { ...USERS[idx], ...updates };
+      }
+      return { currentUser: updatedUser };
+    }),
 }));

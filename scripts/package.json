@@ -6,6 +6,8 @@
   "scripts": {
     "hello": "tsx ./src/hello.ts",
     "seed": "tsx ./src/seed.ts",
+    "reset-and-bootstrap-admin": "tsx ./src/reset-and-bootstrap-admin.ts",
+    "import-roster": "tsx ./src/import-roster.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
@@ -14,6 +16,7 @@
   },
   "dependencies": {
     "@workspace/db": "workspace:*",
-    "drizzle-orm": "catalog:"
+    "argon2": "^0.45.1",
+    "xlsx": "^0.18.5"
   }
 }

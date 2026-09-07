@@ -3,7 +3,6 @@ import { motion, useReducedMotion } from "framer-motion";
 import { stagger } from "@/lib/motion";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import {
@@ -21,21 +20,27 @@ import {
   EmptyDescription,
   EmptyContent,
 } from "@/components/ui/empty";
-import { PROJECTS, USERS, SEQUENCES } from "@/data/mockData";
+import { useProjectStore } from "@/store/projects";
+import { useUserStore } from "@/store/users";
 import { Search, Film, Grid3X3, List, X, ChevronDown } from "lucide-react";
 import { Link, useSearchParams } from "wouter";
 import { useAuthStore } from "@/store/auth";
 import { useShots, ShotDTO } from "@/hooks/useShots";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 
-const STATUS_COLORS: Record<string, string> = {
-  complete: "bg-green-500/10 text-green-500",
-  in_progress: "bg-blue-500/10 text-blue-500",
-  review: "bg-purple-500/10 text-purple-500",
-  approved: "bg-green-500/10 text-green-500",
-  omitted: "bg-red-500/10 text-red-500",
-  todo: "bg-muted text-muted-foreground",
-};
+// Full Shot.status vocabulary — matches the values the shots API stores and
+// the STATUS_STYLES map in StatusBadge.tsx (hyphenated, not underscored).
+const SHOT_STATUS_OPTIONS = [
+  "not-started",
+  "in-progress",
+  "bottleneck",
+  "review",
+  "client-review",
+  "at-risk",
+  "approved",
+  "complete",
+  "published",
+];
 
 const SEQUENCE_PAGE_SIZE = 8;
 const SHOTS_PER_GROUP_PAGE_SIZE = 12;
@@ -48,13 +53,15 @@ export default function Shots() {
   const [projectFilter, setProjectFilter] = useState("all");
   const [view, setView] = useState<"grid" | "list">("grid");
   const { currentUser } = useAuthStore();
+  const projects = useProjectStore((s) => s.projects);
+  const users = useUserStore((s) => s.users);
   const { data: shots = [], isLoading } = useShots();
   const [searchParams] = useSearchParams();
   const mineOnly = searchParams.get("mine") === "1";
 
   const filtered = useMemo(() => {
     return shots.filter((s) => {
-      if (mineOnly && s.assignedToId !== currentUser?.id) return false;
+      if (mineOnly && s.assigneeId !== currentUser?.id) return false;
       if (search && !s.name.toLowerCase().includes(search.toLowerCase()))
         return false;
       if (statusFilter !== "all" && s.status !== statusFilter) return false;
@@ -125,13 +132,11 @@ export default function Shots() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Status</SelectItem>
-            {["todo", "in_progress", "review", "approved", "omitted"].map(
-              (s) => (
-                <SelectItem key={s} value={s}>
-                  {s.replace("_", " ")}
-                </SelectItem>
-              ),
-            )}
+            {SHOT_STATUS_OPTIONS.map((s) => (
+              <SelectItem key={s} value={s}>
+                {s.replace(/-/g, " ")}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <Select value={projectFilter} onValueChange={setProjectFilter}>
@@ -140,7 +145,7 @@ export default function Shots() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Projects</SelectItem>
-            {PROJECTS.map((p) => (
+            {projects.map((p) => (
               <SelectItem key={p.id} value={p.id}>
                 {p.name}
               </SelectItem>
@@ -189,8 +194,8 @@ export default function Shots() {
                   </h2>
                   <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-3">
                     {shots.slice(0, shownInGroup).map((shot, i) => {
-                      const assignee = USERS.find(
-                        (u) => u.id === shot.assignedToId,
+                      const assignee = users.find(
+                        (u) => u.id === shot.assigneeId,
                       );
                       return (
                         <motion.div
@@ -200,19 +205,18 @@ export default function Shots() {
                           <Link href={`/shots/${shot.id}`}>
                             <Card className="overflow-hidden hover:shadow-md transition-all cursor-pointer group border-border hover:border-primary/40">
                               <div className="aspect-video relative overflow-hidden bg-muted flex items-center justify-center">
-                                {shot.thumbnailUrl ? (
+                                {shot.thumbnail ? (
                                   <img
-                                    src={shot.thumbnailUrl}
+                                    src={shot.thumbnail}
                                     className="w-full h-full object-cover"
                                   />
                                 ) : (
                                   <Film className="w-8 h-8 text-muted-foreground/50" />
                                 )}
-                                <Badge
-                                  className={`absolute top-1.5 right-1.5 ${STATUS_COLORS[shot.status]} text-[8px] border-0`}
-                                >
-                                  {shot.status.replace("_", " ")}
-                                </Badge>
+                                <StatusBadge
+                                  status={shot.status}
+                                  className="absolute top-1.5 right-1.5 text-[8px] border-0"
+                                />
                                 <div className="absolute bottom-0 inset-x-0 h-6 bg-gradient-to-t from-black/60 to-transparent flex items-end px-2 pb-1">
                                   <span className="text-[9px] text-white/70 font-mono">
                                     {shot.duration || 0}f
@@ -305,8 +309,8 @@ export default function Shots() {
               </thead>
               <tbody>
                 {filtered.slice(0, listVisible).map((shot) => {
-                  const assignee = USERS.find(
-                    (u) => u.id === shot.assignedToId,
+                  const assignee = users.find(
+                    (u) => u.id === shot.assigneeId,
                   );
                   return (
                     <tr
@@ -325,11 +329,7 @@ export default function Shots() {
                         {shot.sequenceId || "Other"}
                       </td>
                       <td className="p-4">
-                        <Badge
-                          className={`${STATUS_COLORS[shot.status]} text-[10px]`}
-                        >
-                          {shot.status.replace("_", " ")}
-                        </Badge>
+                        <StatusBadge status={shot.status} className="text-[10px]" />
                       </td>
                       <td className="p-4 text-muted-foreground">
                         {assignee?.name}

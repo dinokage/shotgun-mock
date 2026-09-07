@@ -7,7 +7,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { USERS, DEPARTMENTS, ROLE_LABELS } from "@/data/mockData";
+import { ROLE_LABELS } from "@/data/mockData";
+import { useUserStore } from "@/store/users";
+import { useDepartmentStore } from "@/store/departments";
 import {
   Search,
   Filter,
@@ -39,6 +41,8 @@ import {
 export default function People() {
   const prefersReducedMotion = useReducedMotion();
   const { currentUser } = useAuthStore();
+  const users = useUserStore((s) => s.users);
+  const departments = useDepartmentStore((s) => s.departments);
 
   const [search, setSearch] = useState("");
   const [deptFilter, setDeptFilter] = useState("all");
@@ -53,7 +57,7 @@ export default function People() {
     const isArtist = currentUser.role === "artist";
     const isClient = currentUser.role === "client";
 
-    return USERS.filter((u) => {
+    return users.filter((u) => {
       // 1. Enforce RBAC visibility
       if (isArtist && u.departmentId !== currentUser.departmentId) {
         return false; // Artists only see their own department
@@ -78,7 +82,7 @@ export default function People() {
       if (deptFilter !== "all" && u.departmentId !== deptFilter) return false;
       return true;
     });
-  }, [search, deptFilter, currentUser]);
+  }, [search, deptFilter, currentUser, users]);
 
   return (
     <div className="p-6 max-w-[1400px] mx-auto space-y-6 h-full flex flex-col">
@@ -109,7 +113,7 @@ export default function People() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Departments</SelectItem>
-              {DEPARTMENTS.map((d) => (
+              {departments.map((d) => (
                 <SelectItem key={d.id} value={d.id}>
                   {d.name}
                 </SelectItem>
@@ -137,7 +141,7 @@ export default function People() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 overflow-y-auto pb-6">
         {filteredUsers.map((user, i) => {
-          const dept = DEPARTMENTS.find((d) => d.id === user.departmentId);
+          const dept = departments.find((d) => d.id === user.departmentId);
           return (
             <motion.div
               key={user.id}

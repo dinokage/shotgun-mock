@@ -1,21 +1,15 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-  USERS,
-  SHOTS,
-  REVIEWED_TASK_ID,
-  type ApprovalEvent,
-} from "@/data/mockData";
+import { type ApprovalEvent } from "@/data/mockData";
 import {
   Play,
   Pause,
   SkipBack,
   SkipForward,
   Volume2,
-  MousePointer2,
   CheckCircle2,
   MessageSquare,
   XCircle,
@@ -44,7 +38,7 @@ import {
   LEADERSHIP_ROLES,
   DEPARTMENT_LEADERSHIP_ROLES,
 } from "@/store/permissions";
-import { Link, useSearch } from "wouter";
+import { Link, useSearch, useRoute } from "wouter";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
@@ -67,21 +61,39 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { cn, copyToClipboard } from "@/lib/utils";
 import { cut } from "@/lib/motion";
 import { hashString } from "@/lib/seededMock";
-import { getPlaceholderThumbnail } from "@/lib/placeholderArt";
+import { getPlaceholderThumbnail, getPlaceholderVideoSrc } from "@/lib/placeholderArt";
 import { useAuthStore } from "@/store/auth";
 import { useTasksStore } from "@/store/tasks";
+import { useUserStore } from "@/store/users";
+import { useDepartmentStore } from "@/store/departments";
+import { useShotStore } from "@/store/shots";
+import { useAssetStore } from "@/store/assets";
+import {
+  getShotId,
+  getAssetId,
+  canApproveAsProductionManager,
+} from "@/lib/taskShape";
+import {
+  useUpdateTask,
+  useAddTaskApprovalEvent,
+  useTaskApprovalEvents,
+} from "@/hooks/useTasks";
 import {
   useReviewStore,
-  PRESENTED_VERSION_ID,
   type ReviewComment,
 } from "@/store/reviews";
-import {
-  useNotificationStore,
-  type NotificationCategory,
-} from "@/store/notifications";
 import {
   AnnotationToolbar,
   AnnotationCanvas,
@@ -94,7 +106,17 @@ import {
   type AnnotationTool,
   type Annotation,
   type DraggingElement,
+  type SetAnnotations,
 } from "@/components/shared/review";
+import {
+  useAnnotations,
+  useCreateAnnotation,
+  useUpdateAnnotation,
+  useDeleteAnnotation,
+} from "@/hooks/useReviews";
+import { useVersions, useCreateVersion, useUpdateVersion } from "@/hooks/useVersions";
+import { useUploadVideo } from "@/hooks/useUploads";
+import { useCreateClientAccessLink } from "@/hooks/useClientAccess";
 
 interface MediaClip {
   id: string;
@@ -121,7 +143,7 @@ const COLORS = [
 
 const APPROVAL_ACTION_LABEL: Record<ApprovalEvent["action"], string> = {
   "submitted-for-lead-review": "submitted for Lead review",
-  "submitted-for-manager-review": "submitted for Manager review",
+  "submitted-for-manager-review": "submitted for Production Manager review",
   approved: "approved",
   "changes-requested": "requested changes",
   rejected: "rejected",
@@ -244,6 +266,77 @@ function VoiceNotePlayer({ comment }: { comment: ReviewComment }) {
 
 export default function Review() {
   const { currentUser } = useAuthStore();
+
+  // Multi-tier approval chain (Artist -> Lead/Supervisor -> Producer) is real,
+  // persisted state on the task backing this version — not local UI state —
+  // so it survives reload/navigation and stays in sync with every other view
+  // of the same task (Kanban, task drawer, dashboards). ftrack only tracks a
+  // single status field per version; this is a genuine multi-step chain with
+  // a full audit trail.
+  const [, routeParams] = useRoute("/review/:taskId");
+  const taskId = routeParams?.taskId;
+  const tasks = useTasksStore((s) => s.tasks);
+  const users = useUserStore((s) => s.users);
+  const departments = useDepartmentStore((s) => s.departments);
+  const liveShotsForApproval = useShotStore((s) => s.shots);
+  const updateShotStatus = useShotStore((s) => s.updateShot);
+  const updateTaskMutation = useUpdateTask();
+  const reviewedTask = taskId ? tasks.find((t) => t.id === taskId) : undefined;
+  const addApprovalEventMutation = useAddTaskApprovalEvent(reviewedTask?.id);
+  const { data: approvalEvents = [] } = useTaskApprovalEvents(reviewedTask?.id);
+  const reviewedTaskShotId = reviewedTask ? getShotId(reviewedTask) : undefined;
+  const reviewedTaskAssetId = reviewedTask ? getAssetId(reviewedTask) : undefined;
+  const reviewedShot = reviewedTaskShotId
+    ? liveShotsForApproval.find((s) => s.id === reviewedTaskShotId)
+    : undefined;
+  const liveAssetsForApproval = useAssetStore((s) => s.assets);
+  const reviewedAsset = reviewedTaskAssetId
+    ? liveAssetsForApproval.find((a) => a.id === reviewedTaskAssetId)
+    : undefined;
+
+  // The version this page's annotations/approval chain attach to. One real
+  // Version row per task, created on first visit if the task doesn't have
+  // one yet (no real render pipeline exists, so there's nothing meaningful
+  // to fill mediaUrl with until someone inserts real footage -- see the
+  // "insert video" flow below, which patches this same version's src in
+  // place rather than creating a second one).
+  const versionEntityId = reviewedTaskShotId ?? reviewedTaskAssetId;
+  const versionEntityType: "shot" | "asset" | undefined = reviewedTaskShotId
+    ? "shot"
+    : reviewedTaskAssetId
+      ? "asset"
+      : undefined;
+  const { data: taskVersions = [], isLoading: versionsLoading } = useVersions(
+    versionEntityId,
+    versionEntityType,
+  );
+  const existingVersion = taskId
+    ? taskVersions.find((v) => v.taskId === taskId)
+    : undefined;
+  const createVersion = useCreateVersion();
+  const versionCreateAttempted = useRef<string | null>(null);
+  useEffect(() => {
+    if (!taskId || !versionEntityId || !versionEntityType) return;
+    if (versionsLoading) return;
+    if (existingVersion) return;
+    if (versionCreateAttempted.current === taskId) return;
+    versionCreateAttempted.current = taskId;
+    createVersion.mutate({
+      entityId: versionEntityId,
+      entityType: versionEntityType,
+      versionNumber: reviewedShot?.currentVersion || reviewedAsset?.version || "v001",
+      taskId,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per taskId (guarded by versionCreateAttempted), not on every dependency change
+  }, [taskId, versionEntityId, versionEntityType, versionsLoading, existingVersion]);
+  const versionId = existingVersion?.id;
+  const createClientAccessLink = useCreateClientAccessLink();
+  const uploadVideo = useUploadVideo();
+  const updateVersion = useUpdateVersion();
+  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [shareEmail, setShareEmail] = useState("");
+
   const isManager = currentUser && LEADERSHIP_ROLES.includes(currentUser.role);
 
   const isLead =
@@ -258,12 +351,36 @@ export default function Review() {
   // (presenting, sharing the client link).
   const canSubmitReview = useCapability("submit_reviews");
   const canApproveReview = useCapability("approve_reviews");
-  // Index into USERS for the logged-in user, used to attribute anything this
-  // page writes into the shared comment stream (comments, stamps) to whoever
-  // is actually signed in — not a hardcoded seed user. -1 (renders as
-  // "Unknown") if somehow nobody is logged in.
+  // The Lead-stage approval gate is department-scoped, mirroring
+  // TaskDrawer.tsx: approve_reviews alone would let a Lead/Producer approve
+  // another department's work. The Production Manager stage below is its
+  // own separate gate (see getProductionManagerApprovers in taskShape.ts) —
+  // production_head/admin deliberately don't get this first gate.
+  const reviewedDept = departments.find(
+    (d) => d.name === reviewedTask?.department,
+  );
+  const canApproveAsLead = Boolean(
+    currentUser &&
+      canApproveReview &&
+      DEPARTMENT_LEADERSHIP_ROLES.includes(currentUser.role) &&
+      currentUser.departmentId === reviewedDept?.id,
+  );
+  const canApproveAsPM = Boolean(
+    currentUser &&
+      currentUser.role === "production_head" &&
+      canApproveAsProductionManager(
+        currentUser.id,
+        reviewedTask?.department,
+        users,
+        departments,
+      ),
+  );
+  // Index into the live user roster for the logged-in user, used to
+  // attribute anything this page writes into the shared comment stream
+  // (comments, stamps) to whoever is actually signed in — not a hardcoded
+  // seed user. -1 (renders as "Unknown") if somehow nobody is logged in.
   const currentUserIndex = currentUser
-    ? USERS.findIndex((u) => u.id === currentUser.id)
+    ? users.findIndex((u) => u.id === currentUser.id)
     : -1;
 
   // Presentation Mode: a Lead/Producer can broadcast their playhead to every
@@ -280,7 +397,7 @@ export default function Review() {
     presentation.isActive && presentation.presenterId === currentUser?.id;
   const isLockedViewer =
     presentation.isActive &&
-    presentation.versionId === PRESENTED_VERSION_ID &&
+    presentation.versionId === versionId &&
     presentation.presenterId !== currentUser?.id;
 
   const [isPlaying, setIsPlaying] = useState(false);
@@ -291,7 +408,11 @@ export default function Review() {
   const [videoClips, setVideoClips] = useState<MediaClip[]>([
     {
       id: "base-v1",
-      src: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
+      // Resolved asynchronously below (this office network has no internet
+      // access, so a hardcoded CDN URL here would just be a broken player
+      // for every real user) -- empty until the self-hosted placeholder
+      // clip finishes generating.
+      src: "",
       trackIndex: 0,
       startFrame: 1,
       endFrame: 240,
@@ -340,7 +461,43 @@ export default function Review() {
   const waveformSamplesRef = useRef<number[]>([]);
   const waveformIntervalRef = useRef<number | null>(null);
   const [color, setColor] = useState("#ef4444");
-  const [annotations, setAnnotations] = useState<Annotation[]>([]);
+  // Annotations are persisted server-side, keyed to the version currently
+  // being reviewed (versionId, resolved above from this task's real Version
+  // row — the same id already used above for Presentation Mode syncing).
+  const { data: annotations = [] } = useAnnotations(versionId);
+  const createAnnotation = useCreateAnnotation(versionId);
+  const updateAnnotation = useUpdateAnnotation(versionId);
+  const deleteAnnotation = useDeleteAnnotation(versionId);
+  // Bridges the shared AnnotationCanvas's raw dispatch-style API (and this
+  // page's own resize/drag handlers, which were all written against a local
+  // useState<Annotation[]>) onto the server-backed list above. Ids added by
+  // the updater become createAnnotation.mutate calls; ids dropped become
+  // deleteAnnotation.mutate calls; ids present in both but with changed
+  // fields (resize handles, dragging, the Properties panel's text/color/
+  // frame-range fields) become updateAnnotation.mutate calls against
+  // PUT /reviews/annotations/:id.
+  const applyAnnotationsUpdate: SetAnnotations = (update) => {
+    const prevList = annotations;
+    const nextList =
+      typeof update === "function"
+        ? (update as (prev: Annotation[]) => Annotation[])(prevList)
+        : update;
+    const prevById = new Map(prevList.map((a) => [a.id, a]));
+    const nextIds = new Set(nextList.map((a) => a.id));
+    nextList.forEach((a) => {
+      const prev = prevById.get(a.id);
+      if (!prev) {
+        const { id, ...rest } = a;
+        createAnnotation.mutate(rest);
+      } else if (JSON.stringify(prev) !== JSON.stringify(a)) {
+        const { id, ...rest } = a;
+        updateAnnotation.mutate({ id, ...rest });
+      }
+    });
+    prevList
+      .filter((a) => !nextIds.has(a.id))
+      .forEach((a) => deleteAnnotation.mutate(a.id));
+  };
   const [resizing, setResizing] = useState<{
     id: string;
     type: "video" | "annotation";
@@ -348,6 +505,28 @@ export default function Review() {
   } | null>(null);
   const [draggingElement, setDraggingElement] =
     useState<DraggingElement | null>(null);
+  // Local-only preview of an in-progress annotation drag/resize. The old
+  // code called applyAnnotationsUpdate -- a real server mutation -- on
+  // every single mousemove tick, so a drag of even a few dozen pixels fired
+  // dozens of concurrent PUT requests; whichever response happened to land
+  // last "won", which was often NOT the final drop position (out-of-order
+  // network responses), making edits appear to snap back instead of
+  // staying where the user actually released them. Now the drag only
+  // updates this local preview (merged into what's rendered below) and the
+  // real update is sent exactly once, in the corresponding mouseup.
+  const [annotationPreview, setAnnotationPreview] = useState<{
+    id: string;
+    patch: Partial<Annotation>;
+  } | null>(null);
+  const displayAnnotations = useMemo(
+    () =>
+      annotationPreview
+        ? annotations.map((a) =>
+            a.id === annotationPreview.id ? { ...a, ...annotationPreview.patch } : a,
+          )
+        : annotations,
+    [annotations, annotationPreview],
+  );
 
   const [abWipe, setAbWipe] = useState(false);
   const [abWipePosition, setAbWipePosition] = useState(50);
@@ -365,81 +544,99 @@ export default function Review() {
   const compareVideoRefA = useRef<HTMLVideoElement>(null);
   const compareVideoRefB = useRef<HTMLVideoElement>(null);
 
-  // Mock version list for the compare dropdown
-  const VERSIONS = [
-    {
-      id: "v001",
-      label: "v001 — Initial Layout",
-      src: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-    },
-    {
-      id: "v002",
-      label: "v002 — Lighting Pass",
-      src: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-    },
-    {
-      id: "v003",
-      label: "v003 — Final Comp",
-      src: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
-    },
-  ];
+  // Mock version list for the compare dropdown. `src` starts empty and is
+  // resolved below (self-hosted, generated client-side) rather than
+  // hardcoded to a CDN URL -- this office network has no internet access.
+  const [VERSIONS, setVERSIONS] = useState([
+    { id: "v001", label: "v001 — Initial Layout", src: "" },
+    { id: "v002", label: "v002 — Lighting Pass", src: "" },
+    { id: "v003", label: "v003 — Final Comp", src: "" },
+  ]);
 
-  // Multi-tier approval chain (Artist -> Lead/Supervisor -> Producer) is real,
-  // persisted state on the task backing this version — not local UI state —
-  // so it survives reload/navigation and stays in sync with every other view
-  // of the same task (Kanban, task drawer, dashboards). ftrack only tracks a
-  // single status field per version; this is a genuine multi-step chain with
-  // a full audit trail.
-  const tasks = useTasksStore((s) => s.tasks);
-  const recordApprovalEvent = useTasksStore((s) => s.recordApprovalEvent);
-  const reviewedTask = tasks.find((t) => t.id === REVIEWED_TASK_ID);
-  const reviewedShot = reviewedTask?.shotId
-    ? SHOTS.find((s) => s.id === reviewedTask.shotId)
-    : undefined;
-  const reviewWorkflowStatus:
-    "wip" | "lead-review" | "manager-review" | "approved" =
-    reviewedTask?.status === "lead-review" ||
-    reviewedTask?.status === "manager-review" ||
-    reviewedTask?.status === "approved"
-      ? reviewedTask.status
-      : "wip";
-  const addNotification = useNotificationStore((s) => s.addNotification);
-  const APPROVAL_NOTIFICATION_CATEGORY: Record<
-    ApprovalEvent["action"],
-    NotificationCategory
-  > = {
-    "submitted-for-lead-review": "review",
-    "submitted-for-manager-review": "review",
-    approved: "approval",
-    "changes-requested": "workflow",
-    rejected: "workflow",
-    published: "publishing",
-  };
+  useEffect(() => {
+    let cancelled = false;
+    getPlaceholderVideoSrc(hashString("base-v1")).then((src) => {
+      if (cancelled || !src) return;
+      setVideoClips((prev) =>
+        prev.map((c) => (c.id === "base-v1" && !c.src ? { ...c, src } : c)),
+      );
+    });
+    Promise.all(
+      ["v001", "v002", "v003"].map((id) => getPlaceholderVideoSrc(hashString(id))),
+    ).then(([srcA, srcB, srcC]) => {
+      if (cancelled) return;
+      setVERSIONS((prev) =>
+        prev.map((v, i) => {
+          const src = [srcA, srcB, srcC][i];
+          return src ? { ...v, src } : v;
+        }),
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount, this is one-time placeholder generation, not a reaction to changing props/state
+  }, []);
+
+  // Loads the version's real, persisted footage (uploaded via /uploads/video
+  // and saved to the version's mediaUrl) into the player -- without this,
+  // "Insert Video" only ever updated this component's own local state, so
+  // the artist who uploaded it was the only person who could ever see it:
+  // reloading the page, or a Lead/Production Manager opening the exact same
+  // review, saw "No footage uploaded yet" regardless of what was actually
+  // uploaded. Only overwrites the clip when it doesn't already show this
+  // exact media, so it doesn't fight an upload still in flight in this tab.
+  useEffect(() => {
+    if (!existingVersion?.mediaUrl) return;
+    setVideoClips((prev) =>
+      prev.map((c) => {
+        if (c.id !== "base-v1" || c.src === existingVersion.mediaUrl) return c;
+        // Replacing a locally-previewed blob: with the now-persisted real
+        // URL -- release it so the upload flow above doesn't leak one blob
+        // per insert.
+        if (c.src.startsWith("blob:")) URL.revokeObjectURL(c.src);
+        return { ...c, src: existingVersion.mediaUrl, name: "Main Sequence" };
+      }),
+    );
+    // Re-run whenever the persisted mediaUrl changes -- on initial load
+    // (versions query resolves after mount), after this tab's own upload
+    // completes, and when the 10s fetchMe poll (App.tsx) picks up another
+    // user's upload.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [existingVersion?.mediaUrl]);
+
+  const reviewWorkflowStatus: "wip" | "lead-review" | "pm-review" | "approved" =
+    reviewedTask?.status === "review" || reviewedTask?.status === "lead-review"
+      ? "lead-review"
+      : reviewedTask?.status === "pm-review" || reviewedTask?.status === "approved"
+        ? reviewedTask.status
+        : "wip";
   const submitApproval = (
-    status: "in-progress" | "lead-review" | "manager-review" | "approved",
+    status: "in-progress" | "lead-review" | "pm-review" | "approved",
     action: ApprovalEvent["action"],
   ) => {
-    if (!currentUser) return;
-    recordApprovalEvent(REVIEWED_TASK_ID, status, {
-      action,
-      byUserId: currentUser.id,
-      byUserName: currentUser.name,
-      byRole: currentUser.role,
-    });
-    // A real event in the approval chain — surface it in the shared
-    // Notifications feed, not just as a toast that vanishes with this tab.
-    const shotLabel = reviewedShot
-      ? `${reviewedShot.name} ${reviewedShot.currentVersion}`
-      : "this version";
-    addNotification({
-      title: `${shotLabel} ${APPROVAL_ACTION_LABEL[action]}`,
-      description: `${currentUser.name} ${APPROVAL_ACTION_LABEL[action]} on ${shotLabel}.`,
-      category: APPROVAL_NOTIFICATION_CATEGORY[action],
-      priority: action === "rejected" ? "high" : "medium",
-      entityType: "review",
-      entityId: REVIEWED_TASK_ID,
-      actionUrl: "/review",
-    });
+    if (!currentUser || !taskId) return;
+    // Real, persisted mutations (not the legacy local-store approval path,
+    // which only synced status via a fire-and-forget PUT and kept its
+    // approval-event history in local-only state) — this is the same pair
+    // of calls TaskDrawer.tsx's approve/reject actions use, so a task's
+    // status and audit trail agree no matter which surface it was actioned
+    // from, and other open views (Kanban, task drawer, dashboards) refetch
+    // via the shared "tasks" query cache instead of going stale.
+    updateTaskMutation.mutate({ id: taskId, status });
+    addApprovalEventMutation.mutate({ action });
+    // The final Production Manager sign-off is what actually forwards a
+    // linked shot into the client-facing review queue — client-review.tsx
+    // filters shots on exactly this status, same as TaskDrawer.tsx's
+    // equivalent action.
+    if (action === "published" && reviewedShot) {
+      updateShotStatus(reviewedShot.id, { status: "client-review" });
+    }
+    // The real, cross-user notification for this event is already sent
+    // server-side (routes/tasks.ts's POST /:id/approval-events handler,
+    // via createNotification) to whoever needs to act next -- a local
+    // addNotification() call here used to write into store/notifications.ts,
+    // a per-browser-only store nothing else reads from anymore.
   };
 
   // Client feedback moderation: notes a client leaves in the client portal
@@ -456,71 +653,6 @@ export default function Review() {
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
   const timelineRef = useRef<HTMLDivElement>(null);
   const videoCanvasContainerRef = useRef<HTMLDivElement>(null);
-
-  // Mock Remote Cursors
-  const [remoteCursors, setRemoteCursors] = useState<
-    {
-      id: string;
-      name: string;
-      color: string;
-      x: number;
-      y: number;
-      active: boolean;
-    }[]
-  >([
-    {
-      id: "rc1",
-      name: "Akira S.",
-      color: "#10b981",
-      x: 0,
-      y: 0,
-      active: false,
-    },
-    { id: "rc2", name: "Jada W.", color: "#8b5cf6", x: 0, y: 0, active: false },
-  ]);
-
-  useEffect(() => {
-    // Simulate real-time remote cursor movement and collaborative annotation
-    const interval = setInterval(() => {
-      setRemoteCursors((prev) =>
-        prev.map((c) => {
-          if (Math.random() > 0.9) {
-            return { ...c, active: Math.random() > 0.3 };
-          }
-          if (!c.active) return c;
-
-          const targetX = c.x + (Math.random() - 0.5) * 150;
-          const targetY = c.y + (Math.random() - 0.5) * 150;
-          const newX = Math.max(10, Math.min(800, targetX));
-          const newY = Math.max(10, Math.min(500, targetY));
-
-          // Occasionally simulate them drawing a box
-          if (Math.random() > 0.95 && !isPlaying) {
-            setAnnotations((prevAnns) => [
-              ...prevAnns,
-              {
-                id: `remote-${Date.now()}`,
-                frame,
-                type: "rectangle",
-                color: c.color,
-                x: newX,
-                y: newY,
-                w: 50 + Math.random() * 100,
-                h: 50 + Math.random() * 100,
-                text: "Needs adjustment",
-                startFrame: frame,
-                endFrame: Math.min(maxFrames, frame + 30),
-              },
-            ]);
-            toast({ description: `${c.name} added an annotation.` });
-          }
-
-          return { ...c, x: newX, y: newY };
-        }),
-      );
-    }, 1200);
-    return () => clearInterval(interval);
-  }, [frame, isPlaying, maxFrames]);
 
   // Keyboard shortcuts. This is the single global key handler for the page —
   // playback/scrub also used to be bound a second time by a raw
@@ -572,9 +704,7 @@ export default function Review() {
       Delete: () => {
         if (viewerMode || isLockedViewer) return;
         if (selectedAnnotationId) {
-          setAnnotations((prev) =>
-            prev.filter((a) => a.id !== selectedAnnotationId),
-          );
+          deleteAnnotation.mutate(selectedAnnotationId);
           setVideoClips((prev) =>
             prev.filter(
               (v) => v.id !== selectedAnnotationId || v.id === "base-v1",
@@ -586,9 +716,7 @@ export default function Review() {
       Backspace: () => {
         if (viewerMode || isLockedViewer) return;
         if (selectedAnnotationId) {
-          setAnnotations((prev) =>
-            prev.filter((a) => a.id !== selectedAnnotationId),
-          );
+          deleteAnnotation.mutate(selectedAnnotationId);
           setVideoClips((prev) =>
             prev.filter(
               (v) => v.id !== selectedAnnotationId || v.id === "base-v1",
@@ -771,30 +899,40 @@ export default function Review() {
           }),
         );
       } else {
-        setAnnotations((prev) =>
-          prev.map((a) => {
-            if (a.id !== resizing.id) return a;
-            const currentStart = a.startFrame ?? a.frame;
-            const currentEnd = a.endFrame ?? Math.min(maxFrames, a.frame + 60);
-            if (resizing.edge === "start")
-              return {
-                ...a,
-                startFrame: Math.min(hoveredFrame, currentEnd - 1),
-              };
-            return { ...a, endFrame: Math.max(hoveredFrame, currentStart + 1) };
-          }),
-        );
+        const a = displayAnnotations.find((x) => x.id === resizing.id);
+        if (!a) return;
+        const currentStart = a.startFrame ?? a.frame;
+        const currentEnd = a.endFrame ?? Math.min(maxFrames, a.frame + 60);
+        const patch =
+          resizing.edge === "start"
+            ? { startFrame: Math.min(hoveredFrame, currentEnd - 1) }
+            : { endFrame: Math.max(hoveredFrame, currentStart + 1) };
+        setAnnotationPreview({ id: resizing.id, patch });
       }
     };
 
-    const handleMouseUp = () => setResizing(null);
+    const handleMouseUp = () => {
+      setResizing((current) => {
+        if (current && current.type !== "video") {
+          setAnnotationPreview((preview) => {
+            if (preview && preview.id === current.id) {
+              applyAnnotationsUpdate((prev) =>
+                prev.map((a) => (a.id === preview.id ? { ...a, ...preview.patch } : a)),
+              );
+            }
+            return null;
+          });
+        }
+        return null;
+      });
+    };
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
     return () => {
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [resizing, maxFrames]);
+  }, [resizing, maxFrames, displayAnnotations]);
 
   // Handle global mouse move for canvas dragging
   useEffect(() => {
@@ -816,20 +954,31 @@ export default function Review() {
           }),
         );
       } else {
-        setAnnotations((prev) =>
-          prev.map((a) => {
-            if (a.id !== draggingElement.id) return a;
-            return {
-              ...a,
-              x: draggingElement.initialX + dx,
-              y: draggingElement.initialY + dy,
-            };
-          }),
-        );
+        setAnnotationPreview({
+          id: draggingElement.id,
+          patch: {
+            x: draggingElement.initialX + dx,
+            y: draggingElement.initialY + dy,
+          },
+        });
       }
     };
 
-    const handleMouseUp = () => setDraggingElement(null);
+    const handleMouseUp = () => {
+      setDraggingElement((current) => {
+        if (current && current.type !== "video") {
+          setAnnotationPreview((preview) => {
+            if (preview && preview.id === current.id) {
+              applyAnnotationsUpdate((prev) =>
+                prev.map((a) => (a.id === preview.id ? { ...a, ...preview.patch } : a)),
+              );
+            }
+            return null;
+          });
+        }
+        return null;
+      });
+    };
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
     return () => {
@@ -1082,7 +1231,40 @@ export default function Review() {
   // without touching the header's existing JSX.
   const versionLabel = reviewedShot
     ? `${reviewedShot.name} ${reviewedShot.currentVersion}`
-    : "SEQ_020_SH_040 v003";
+    : "Untitled Review";
+
+  // Every hook above is called unconditionally regardless of which of these
+  // branches fires -- only the render output is gated here, at the very end
+  // of the component body.
+  if (!taskId) {
+    return (
+      <div className="h-screen flex items-center justify-center text-muted-foreground text-sm">
+        Select a task to open its review.
+      </div>
+    );
+  }
+  if (!reviewedTask) {
+    return (
+      <div className="h-screen flex items-center justify-center text-muted-foreground text-sm">
+        Task not found.
+      </div>
+    );
+  }
+  if (reviewedTaskAssetId && !reviewedShot) {
+    return (
+      <div className="h-screen flex flex-col items-center justify-center gap-1 text-muted-foreground text-sm">
+        <div>Asset review isn't supported in this player yet.</div>
+        <div className="text-xs">Only shot-based tasks can be opened here.</div>
+      </div>
+    );
+  }
+  if (!reviewedShot) {
+    return (
+      <div className="h-screen flex items-center justify-center text-muted-foreground text-sm">
+        This task's shot could not be found.
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen bg-background relative overflow-hidden">
@@ -1094,18 +1276,12 @@ export default function Review() {
             asChild
             className="h-8 w-8 text-muted-foreground shrink-0"
           >
-            <Link href="/projects/p1">
+            <Link href={`/shots/${reviewedShot.id}`}>
               <ChevronLeft className="w-5 h-5" />
             </Link>
           </Button>
-          <div
-            className="font-medium truncate"
-            title={`FORGE REVIEW — ${reviewedShot ? `${reviewedShot.name} ${reviewedShot.currentVersion}` : "SEQ_020_SH_040 v003"}`}
-          >
-            FORGE REVIEW —{" "}
-            {reviewedShot
-              ? `${reviewedShot.name} ${reviewedShot.currentVersion}`
-              : "SEQ_020_SH_040 v003"}
+          <div className="font-medium truncate" title={`FORGE REVIEW — ${versionLabel}`}>
+            FORGE REVIEW — {versionLabel}
           </div>
         </div>
         <div className="flex items-center gap-4 shrink-0">
@@ -1121,12 +1297,12 @@ export default function Review() {
           >
             {viewerMode ? "Exit Viewer Mode" : "Read-only Reviewer"}
           </Button>
-          {!isLockedViewer && canPresent && (
+          {!isLockedViewer && canPresent && versionId && (
             <PresentationToggle
               isPresenting={isPresenting}
               onStart={() => {
                 startPresentation({
-                  versionId: PRESENTED_VERSION_ID,
+                  versionId: versionId!,
                   presenterId: currentUser!.id,
                   presenterName: currentUser!.name,
                   frame,
@@ -1146,33 +1322,97 @@ export default function Review() {
               }}
             />
           )}
-          {!viewerMode && isProd && (
+          {!viewerMode && isProd && versionId && (
             <Button
               size="sm"
               variant="outline"
               className="border-blue-500/50 text-blue-500 hover:bg-blue-500/10"
-              onClick={async () => {
-                const success = await copyToClipboard(
-                  window.location.origin + "/client-review",
-                );
-                if (success) {
-                  toast({
-                    title: "Link Copied",
-                    description:
-                      "Secure client review link copied to clipboard.",
-                  });
-                } else {
-                  toast({
-                    title: "Copy Failed",
-                    description: "Could not copy link.",
-                    variant: "destructive",
-                  });
-                }
+              onClick={() => {
+                setShareEmail("");
+                setShareDialogOpen(true);
               }}
             >
-              <Link2 className="w-4 h-4 mr-2" /> Copy Client Link
+              <Link2 className="w-4 h-4 mr-2" /> Share with Client
             </Button>
           )}
+          <Dialog open={shareDialogOpen} onOpenChange={setShareDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Share with Client</DialogTitle>
+                <DialogDescription>
+                  Enter the client's email to send them the access code
+                  automatically, or leave it blank to just copy the link and
+                  code to share yourself.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-2 py-2">
+                <Label htmlFor="client-share-email">Client email (optional)</Label>
+                <Input
+                  id="client-share-email"
+                  type="email"
+                  placeholder="client@studio.com"
+                  value={shareEmail}
+                  onChange={(e) => setShareEmail(e.target.value)}
+                />
+              </div>
+              <DialogFooter>
+                <Button
+                  disabled={createClientAccessLink.isPending || !versionId}
+                  onClick={async () => {
+                    if (!versionId) return;
+                    try {
+                      // Creates a new code, or returns the existing
+                      // still-valid one for this version -- clicking this
+                      // again to re-share doesn't mint (and confuse the
+                      // client with) a second code.
+                      const trimmedEmail = shareEmail.trim();
+                      const link = await createClientAccessLink.mutateAsync({
+                        versionId,
+                        ...(trimmedEmail ? { clientEmail: trimmedEmail } : {}),
+                      });
+                      setShareDialogOpen(false);
+
+                      if (trimmedEmail && link.emailSent) {
+                        toast({
+                          title: "Sent to Client",
+                          description: `Access code ${link.code} emailed to ${trimmedEmail}.`,
+                        });
+                        return;
+                      }
+
+                      const shareText = `Forge client review link: ${window.location.origin}/client-review\nAccess code: ${link.code}`;
+                      const copied = await copyToClipboard(shareText);
+                      if (trimmedEmail && !link.emailSent) {
+                        toast({
+                          title: "Email Failed — Code Copied Instead",
+                          description: copied
+                            ? `Couldn't send the email, but the link and code ${link.code} are on your clipboard — share them manually.`
+                            : `Couldn't send the email or copy to clipboard. Access code: ${link.code}`,
+                          variant: "destructive",
+                        });
+                        return;
+                      }
+                      toast({
+                        title: copied ? "Link & Code Copied" : "Code Generated",
+                        description: copied
+                          ? `Link and access code ${link.code} copied to clipboard — send both to the client.`
+                          : `Access code: ${link.code} — copy failed, share this code manually along with the client review link.`,
+                        variant: copied ? undefined : "destructive",
+                      });
+                    } catch {
+                      toast({
+                        title: "Couldn't Generate Link",
+                        description: "Something went wrong creating the client access code.",
+                        variant: "destructive",
+                      });
+                    }
+                  }}
+                >
+                  {shareEmail.trim() ? "Send Email" : "Copy Link"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           {!viewerMode &&
             reviewWorkflowStatus !== "approved" &&
@@ -1187,37 +1427,39 @@ export default function Review() {
               // "approved" — skipping the Lead/Manager tiers entirely and
               // bypassing the submit/approve capability checks below.
               <div className="flex items-center gap-2">
-                {canSubmitReview && reviewWorkflowStatus === "wip" && (
-                  <Button
-                    size="sm"
-                    className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
-                    onClick={() => {
-                      submitApproval(
-                        "lead-review",
-                        "submitted-for-lead-review",
-                      );
-                      toast({
-                        title: "Submitted",
-                        description: "Submitted for Lead Review",
-                      });
-                    }}
-                  >
-                    <Upload className="w-4 h-4 mr-2" /> Submit
-                  </Button>
-                )}
-                {canApproveReview && reviewWorkflowStatus === "lead-review" && (
+                {canSubmitReview &&
+                  reviewWorkflowStatus === "wip" &&
+                  existingVersion?.mediaUrl && (
+                    <Button
+                      size="sm"
+                      className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
+                      onClick={() => {
+                        submitApproval(
+                          "lead-review",
+                          "submitted-for-lead-review",
+                        );
+                        toast({
+                          title: "Submitted",
+                          description: "Submitted for Lead Review",
+                        });
+                      }}
+                    >
+                      <Upload className="w-4 h-4 mr-2" /> Submit
+                    </Button>
+                  )}
+                {canApproveAsLead && reviewWorkflowStatus === "lead-review" && (
                   <>
                     <Button
                       size="sm"
                       className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
                       onClick={() => {
                         submitApproval(
-                          "manager-review",
+                          "pm-review",
                           "submitted-for-manager-review",
                         );
                         toast({
-                          title: "Submitted",
-                          description: "Submitted to Manager",
+                          title: "Sent to Production Manager",
+                          description: "Awaiting final sign-off",
                         });
                       }}
                     >
@@ -1235,80 +1477,89 @@ export default function Review() {
                     </Button>
                   </>
                 )}
-                {canApproveReview &&
-                  reviewWorkflowStatus === "manager-review" && (
-                    <>
-                      <Button
-                        size="sm"
-                        className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
-                        onClick={() => {
-                          submitApproval("approved", "published");
-                          toast({
-                            title: "Published",
-                            description: "Approved & Published to Production",
-                          });
-                        }}
-                      >
-                        <CheckCircle2 className="w-4 h-4 mr-2" /> Approve
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white"
-                        onClick={() => {
-                          submitApproval("in-progress", "changes-requested");
-                          toast({ title: "Changes Requested" });
-                        }}
-                      >
-                        <MessageSquare className="w-4 h-4 mr-2" /> Request
-                        Changes
-                      </Button>
-                    </>
-                  )}
+                {canApproveAsPM && reviewWorkflowStatus === "pm-review" && (
+                  <>
+                    <Button
+                      size="sm"
+                      className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
+                      onClick={() => {
+                        submitApproval("approved", "published");
+                        toast({
+                          title: "Published",
+                          description: "Approved & Published to Production",
+                        });
+                      }}
+                    >
+                      <CheckCircle2 className="w-4 h-4 mr-2" /> Approve
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white"
+                      onClick={() => {
+                        submitApproval("lead-review", "changes-requested");
+                        toast({ title: "Sent Back to Lead" });
+                      }}
+                    >
+                      <MessageSquare className="w-4 h-4 mr-2" /> Send Back
+                    </Button>
+                  </>
+                )}
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                {canSubmitReview && reviewWorkflowStatus === "wip" && (
-                  <Button
-                    size="sm"
-                    className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
-                    onClick={() => {
-                      submitApproval(
-                        "lead-review",
-                        "submitted-for-lead-review",
-                      );
-                      toast({
-                        title: "Submitted",
-                        description: "Submitted for Lead Review",
-                      });
-                    }}
-                  >
-                    <Upload className="w-4 h-4 mr-2" /> Submit to
-                    Lead/Supervisor for Review
-                  </Button>
-                )}
+                {canSubmitReview &&
+                  reviewWorkflowStatus === "wip" &&
+                  (existingVersion?.mediaUrl ? (
+                    <Button
+                      size="sm"
+                      className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
+                      onClick={() => {
+                        submitApproval(
+                          "lead-review",
+                          "submitted-for-lead-review",
+                        );
+                        toast({
+                          title: "Submitted",
+                          description: "Submitted for Lead Review",
+                        });
+                      }}
+                    >
+                      <Upload className="w-4 h-4 mr-2" /> Submit to
+                      Lead/Supervisor for Review
+                    </Button>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">
+                      Insert your footage above to submit for review
+                    </span>
+                  ))}
 
                 {/* Lead/Supervisor can only act once the Artist has actually
                     submitted for Lead review — mirrors the Artist button's
                     own 'wip' gate above so the UI can't fabricate an
-                    approval step that never happened. */}
-                {canApproveReview && reviewWorkflowStatus === "lead-review" && (
+                    approval step that never happened. Gated to the reviewed
+                    task's own department (canApproveAsLead), matching
+                    TaskDrawer.tsx. Approving here hands off to the
+                    department's Production Manager for final sign-off — see
+                    the pm-review block below — it no longer publishes
+                    straight to production. */}
+                {canApproveAsLead && reviewWorkflowStatus === "lead-review" && (
                   <>
                     <Button
                       size="sm"
                       className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
                       onClick={() => {
                         submitApproval(
-                          "manager-review",
+                          "pm-review",
                           "submitted-for-manager-review",
                         );
                         toast({
-                          title: "Submitted",
-                          description: "Submitted to Manager",
+                          title: "Sent to Production Manager",
+                          description:
+                            "Approved by Lead — awaiting final sign-off",
                         });
                       }}
                     >
-                      <CheckCircle2 className="w-4 h-4 mr-2" /> Submit to
-                      Manager
+                      <CheckCircle2 className="w-4 h-4 mr-2" /> Approve
                     </Button>
                     <Button
                       size="sm"
@@ -1318,7 +1569,8 @@ export default function Review() {
                         toast({ title: "Changes Requested" });
                       }}
                     >
-                      <MessageSquare className="w-4 h-4 mr-2" /> Request Changes
+                      <MessageSquare className="w-4 h-4 mr-2" /> Request
+                      Changes
                     </Button>
                     <Button
                       size="sm"
@@ -1333,48 +1585,46 @@ export default function Review() {
                   </>
                 )}
 
-                {/* Producer/Manager can only act once the Lead has submitted
-                    for Manager review — same discipline as above. */}
-                {canApproveReview &&
-                  reviewWorkflowStatus === "manager-review" && (
-                    <>
-                      <Button
-                        size="sm"
-                        className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
-                        onClick={() => {
-                          submitApproval("approved", "published");
-                          toast({
-                            title: "Published",
-                            description: "Approved & Published to Production",
-                          });
-                        }}
-                      >
-                        <CheckCircle2 className="w-4 h-4 mr-2" /> Approve &
-                        Publish
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white"
-                        onClick={() => {
-                          submitApproval("in-progress", "changes-requested");
-                          toast({ title: "Changes Requested" });
-                        }}
-                      >
-                        <MessageSquare className="w-4 h-4 mr-2" /> Request
-                        Changes
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="bg-[#A03030] hover:bg-[#A03030]/90 text-white"
-                        onClick={() => {
-                          submitApproval("in-progress", "rejected");
-                          toast({ title: "Rejected" });
-                        }}
-                      >
-                        <XCircle className="w-4 h-4 mr-2" /> Reject
-                      </Button>
-                    </>
-                  )}
+                {/* Production Manager's final sign-off — the last gate before
+                    a linked shot is forwarded into the client-facing review
+                    queue. Gated to the department's own production_head,
+                    falling back to the studio's overall Production
+                    Management production_head(s), falling back to any
+                    production_head — see canApproveAsPM above /
+                    getProductionManagerApprovers in lib/taskShape.ts. */}
+                {canApproveAsPM && reviewWorkflowStatus === "pm-review" && (
+                  <>
+                    <Button
+                      size="sm"
+                      className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
+                      onClick={() => {
+                        submitApproval("approved", "published");
+                        toast({
+                          title: "Published",
+                          description: "Approved & Published to Production",
+                        });
+                      }}
+                    >
+                      <CheckCircle2 className="w-4 h-4 mr-2" /> Approve &
+                      Send to Client
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white"
+                      onClick={() => {
+                        submitApproval("lead-review", "changes-requested");
+                        toast({
+                          title: "Sent Back to Lead",
+                          description:
+                            "Needs another look before it can go to the client",
+                        });
+                      }}
+                    >
+                      <MessageSquare className="w-4 h-4 mr-2" /> Send Back
+                      to Lead
+                    </Button>
+                  </>
+                )}
               </div>
             ))}
         </div>
@@ -1441,30 +1691,67 @@ export default function Review() {
                     accept="video/*"
                     className="hidden"
                     ref={fileInputRef}
-                    onChange={(e) => {
+                    onChange={async (e) => {
                       const file = e.target.files?.[0];
-                      if (file) {
-                        const newId = `v${videoClips.length + 1}`;
-                        setVideoClips((prev) => [
-                          ...prev,
-                          {
-                            id: newId,
-                            src: URL.createObjectURL(file),
-                            trackIndex: prev.length,
-                            startFrame: frame,
-                            endFrame: Math.min(frame + 60, maxFrames),
-                            opacity: 100,
-                            blendMode: "normal",
-                            name: file.name,
-                            x: 0,
-                            y: 0,
-                            scale: 1,
-                          },
-                        ]);
+                      // Reset so choosing the same file again still fires
+                      // onChange (the input's value doesn't change otherwise).
+                      e.target.value = "";
+                      if (!file) return;
+                      if (!versionId) {
                         toast({
-                          title: "Video Added",
-                          description: `Track ${videoClips.length + 1} added.`,
+                          title: "Not Ready Yet",
+                          description:
+                            "Still setting up this review — try again in a moment.",
+                          variant: "destructive",
                         });
+                        return;
+                      }
+
+                      // Show the file immediately via a local blob URL so
+                      // scrubbing/playback feels instant, then swap to the
+                      // real served URL once the upload finishes -- that
+                      // real URL is what makes the footage visible to
+                      // everyone else (lead, PM, client), not just this tab.
+                      videoClips.forEach((c) => {
+                        if (c.src.startsWith("blob:")) URL.revokeObjectURL(c.src);
+                      });
+                      setVideoClips([
+                        {
+                          id: "base-v1",
+                          src: URL.createObjectURL(file),
+                          trackIndex: 0,
+                          startFrame: 1,
+                          endFrame: maxFrames,
+                          opacity: 100,
+                          blendMode: "normal",
+                          name: file.name,
+                          x: 0,
+                          y: 0,
+                          scale: 1,
+                        },
+                      ]);
+                      setFrame(1);
+
+                      setIsUploadingVideo(true);
+                      try {
+                        const uploaded = await uploadVideo.mutateAsync(file);
+                        await updateVersion.mutateAsync({
+                          id: versionId,
+                          mediaUrl: uploaded.url,
+                        });
+                        toast({
+                          title: "Video Inserted",
+                          description: `Now reviewing "${file.name}". Visible to the whole team.`,
+                        });
+                      } catch {
+                        toast({
+                          title: "Upload Failed",
+                          description:
+                            "The video is only visible in this tab until upload succeeds — try inserting it again.",
+                          variant: "destructive",
+                        });
+                      } finally {
+                        setIsUploadingVideo(false);
                       }
                     }}
                   />
@@ -1472,7 +1759,7 @@ export default function Review() {
                     size="icon"
                     variant="ghost"
                     className="h-8 w-8 text-muted-foreground hover:text-primary"
-                    title="Upload Demo Video"
+                    title="Insert Video"
                     onClick={() => fileInputRef.current?.click()}
                   >
                     <Upload className="w-4 h-4" />
@@ -1567,42 +1854,6 @@ export default function Review() {
                   </Tooltip>
                 </TooltipProvider>
               </motion.div>
-            )}
-
-            {/* Contextual Cut Management Overlay */}
-            {!viewerMode && (
-              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-6 z-30 pointer-events-none opacity-50 hover:opacity-100 transition-opacity">
-                <div className="bg-card/90 backdrop-blur border border-border rounded-lg p-2 flex flex-col items-center gap-1 shadow-lg pointer-events-auto cursor-pointer hover:border-primary/50 transition-colors">
-                  <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
-                    Previous Shot
-                  </span>
-                  <div className="w-32 h-18 bg-muted rounded overflow-hidden relative">
-                    <img
-                      src="https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=400&q=80"
-                      className="w-full h-full object-cover"
-                      alt="prev-shot"
-                    />
-                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center font-mono text-xs font-bold text-white">
-                      S01_030
-                    </div>
-                  </div>
-                </div>
-                <div className="bg-card/90 backdrop-blur border border-border rounded-lg p-2 flex flex-col items-center gap-1 shadow-lg pointer-events-auto cursor-pointer hover:border-primary/50 transition-colors">
-                  <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
-                    Next Shot
-                  </span>
-                  <div className="w-32 h-18 bg-muted rounded overflow-hidden relative">
-                    <img
-                      src="https://images.unsplash.com/photo-1542204165-65bf26472b9b?w=400&q=80"
-                      className="w-full h-full object-cover"
-                      alt="next-shot"
-                    />
-                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center font-mono text-xs font-bold text-white">
-                      S01_050
-                    </div>
-                  </div>
-                </div>
-              </div>
             )}
 
             {/* VERSION COMPARISON MODE */}
@@ -1826,18 +2077,60 @@ export default function Review() {
                     <ContextMenu key={clip.id}>
                       <ContextMenuTrigger asChild>
                         {(() => {
-                          const ext = clip.src.split(".").pop()?.toLowerCase();
-                          const isVideo = ["mp4", "webm", "mov"].includes(
-                            ext || "",
-                          );
-                          const isImage = [
-                            "png",
-                            "jpg",
-                            "jpeg",
-                            "gif",
-                            "webp",
-                          ].includes(ext || "");
-                          const isDCC = !isVideo && !isImage;
+                          // blob: URLs (both real uploads via
+                          // URL.createObjectURL and generated placeholder
+                          // clips) carry no file extension -- `isDCC` must
+                          // not fall through to "no preview" for those, or
+                          // every real video ever inserted here would
+                          // render as an unplayable DCC-asset card instead
+                          // of a video.
+                          const isBlob = clip.src.startsWith("blob:");
+                          const isLoading = !clip.src;
+                          const ext = isBlob
+                            ? ""
+                            : clip.src.split(".").pop()?.toLowerCase();
+                          const isVideo =
+                            isBlob || ["mp4", "webm", "mov"].includes(ext || "");
+                          const isImage =
+                            !isBlob &&
+                            ["png", "jpg", "jpeg", "gif", "webp"].includes(
+                              ext || "",
+                            );
+                          const isDCC = !isLoading && !isVideo && !isImage;
+
+                          if (isLoading) {
+                            // No real render/transcode pipeline exists yet
+                            // for this shot -- an honest "nothing to show"
+                            // state instead of a placeholder clip that
+                            // might not even play (see placeholderArt.ts).
+                            return (
+                              <div
+                                className={`absolute inset-0 w-full h-full flex flex-col items-center justify-center gap-2 bg-cover bg-center text-white/80 ${isActive ? "opacity-100" : "opacity-0 hidden"}`}
+                                style={{
+                                  backgroundImage: `url(${getPlaceholderThumbnail(hashString(clip.id), 1280, 720)})`,
+                                  opacity: clip.opacity / 100,
+                                }}
+                              >
+                                <div className="bg-black/50 rounded-lg px-4 py-2 text-sm font-medium backdrop-blur-sm">
+                                  No footage uploaded yet
+                                  {canSubmitReview && !viewerMode
+                                    ? " — insert your video to begin reviewing."
+                                    : "."}
+                                </div>
+                                {canSubmitReview && !viewerMode && (
+                                  <Button
+                                    size="sm"
+                                    disabled={isUploadingVideo}
+                                    className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white pointer-events-auto"
+                                    onClick={() => fileInputRef.current?.click()}
+                                  >
+                                    <Upload className="w-4 h-4 mr-2" />
+                                    {isUploadingVideo ? "Uploading..." : "Insert Video"}
+                                  </Button>
+                                )}
+                              </div>
+                            );
+                          }
 
                           if (isDCC) {
                             return (
@@ -2015,8 +2308,8 @@ export default function Review() {
                 )}
 
                 <AnnotationCanvas
-                  annotations={annotations}
-                  onAnnotationsChange={setAnnotations}
+                  annotations={displayAnnotations}
+                  onAnnotationsChange={applyAnnotationsUpdate}
                   frame={frame}
                   maxFrames={maxFrames}
                   tool={isLockedViewer || viewerMode ? "select" : tool}
@@ -2025,36 +2318,12 @@ export default function Review() {
                   selectedAnnotationId={selectedAnnotationId}
                   onSelectedAnnotationIdChange={setSelectedAnnotationId}
                   onDraggingElementChange={setDraggingElement}
+                  currentUserId={currentUser?.id}
                   onionSkin={onionSkin}
                   ghosting={ghosting}
                   readOnly={viewerMode || isLockedViewer}
                 />
 
-                {/* Mock Remote Cursors Overlay */}
-                {remoteCursors
-                  .filter((c) => c.active)
-                  .map((cursor) => (
-                    <div
-                      key={cursor.id}
-                      className="absolute pointer-events-none z-[60] transition-all duration-300 ease-out"
-                      style={{ left: cursor.x, top: cursor.y }}
-                    >
-                      <MousePointer2
-                        className="w-5 h-5 drop-shadow-md"
-                        style={{
-                          fill: cursor.color,
-                          stroke: "white",
-                          strokeWidth: 1.5,
-                        }}
-                      />
-                      <div
-                        className="absolute top-5 left-3 px-1.5 py-0.5 rounded text-[10px] text-white font-semibold whitespace-nowrap shadow-sm"
-                        style={{ backgroundColor: cursor.color }}
-                      >
-                        {cursor.name}
-                      </div>
-                    </div>
-                  ))}
               </div>
 
               {/* Presentation Mode lock indicator */}
@@ -2066,6 +2335,48 @@ export default function Review() {
                   maxFrames={maxFrames}
                 />
               </div>
+
+              {/* Contextual Cut Management Overlay. Scoped to this
+                  video-canvas-only container (not the outer player column,
+                  which also contains the h-48 timeline/scrubber below) so
+                  `bottom-*` positions it against the bottom of the video
+                  frame instead of the bottom of the whole pane — previously
+                  it was a sibling of the timeline section and `bottom-6`
+                  placed it on top of the frame scrubber. */}
+              {!viewerMode && (
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-6 z-30 pointer-events-none opacity-50 hover:opacity-100 transition-opacity">
+                  <div className="bg-card/90 backdrop-blur border border-border rounded-lg p-2 flex flex-col items-center gap-1 shadow-lg pointer-events-auto cursor-pointer hover:border-primary/50 transition-colors">
+                    <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
+                      Previous Shot
+                    </span>
+                    <div className="w-32 h-18 bg-muted rounded overflow-hidden relative">
+                      <img
+                        src={getPlaceholderThumbnail(hashString("prev-shot"), 400, 225)}
+                        className="w-full h-full object-cover"
+                        alt="prev-shot"
+                      />
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center font-mono text-xs font-bold text-white">
+                        S01_030
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-card/90 backdrop-blur border border-border rounded-lg p-2 flex flex-col items-center gap-1 shadow-lg pointer-events-auto cursor-pointer hover:border-primary/50 transition-colors">
+                    <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
+                      Next Shot
+                    </span>
+                    <div className="w-32 h-18 bg-muted rounded overflow-hidden relative">
+                      <img
+                        src={getPlaceholderThumbnail(hashString("next-shot"), 400, 225)}
+                        className="w-full h-full object-cover"
+                        alt="next-shot"
+                      />
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center font-mono text-xs font-bold text-white">
+                        S01_050
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="h-48 bg-card border-t border-border flex flex-col shrink-0">
@@ -2109,85 +2420,9 @@ export default function Review() {
                   setFrame(newFrame);
                 }}
               >
-                {/* Video Tracks */}
-                {videoClips.map((clip, index) => (
-                  <div
-                    key={clip.id}
-                    className="flex h-8 w-full bg-muted/20 rounded relative"
-                  >
-                    <ContextMenu>
-                      <ContextMenuTrigger asChild>
-                        <div
-                          className={`absolute h-full transition-colors ${selectedAnnotationId === clip.id ? "border-2 border-primary ring-2 ring-primary/50 hover:bg-blue-500/30" : "border border-blue-500/50 hover:bg-blue-500/30"} bg-blue-500/20 rounded flex items-center px-2 text-[10px] text-blue-500 font-medium overflow-hidden group cursor-pointer`}
-                          style={{
-                            left: `${(clip.startFrame / maxFrames) * 100}%`,
-                            width: `${((clip.endFrame - clip.startFrame) / maxFrames) * 100}%`,
-                          }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedAnnotationId(clip.id);
-                          }}
-                        >
-                          {clip.name} (V{index + 1})
-                          <div
-                            className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize opacity-0 group-hover:opacity-100 bg-blue-500/50 hover:w-3 z-20"
-                            onMouseDown={(e) => {
-                              if (!canEdit) return;
-                              e.stopPropagation();
-                              setResizing({
-                                id: clip.id,
-                                type: "video",
-                                edge: "start",
-                              });
-                            }}
-                          />
-                          <div
-                            className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize opacity-0 group-hover:opacity-100 bg-blue-500/50 hover:w-3 z-20"
-                            onMouseDown={(e) => {
-                              if (!canEdit) return;
-                              e.stopPropagation();
-                              setResizing({
-                                id: clip.id,
-                                type: "video",
-                                edge: "end",
-                              });
-                            }}
-                          />
-                        </div>
-                      </ContextMenuTrigger>
-                      <ContextMenuContent className="w-48 z-50">
-                        <ContextMenuItem
-                          disabled={clip.id === "base-v1" || !canEdit}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setVideoClips((prev) =>
-                              prev.filter((v) => v.id !== clip.id),
-                            );
-                            if (selectedAnnotationId === clip.id)
-                              setSelectedAnnotationId(null);
-                            toast({
-                              title: "Video Deleted",
-                              description: "Clip removed.",
-                            });
-                          }}
-                          className="text-red-500 focus:bg-red-500/10 focus:text-red-500"
-                        >
-                          Delete Video
-                        </ContextMenuItem>
-                        <ContextMenuSeparator />
-                        <ContextMenuItem
-                          disabled
-                          title={EXPORT_UNAVAILABLE_MESSAGE}
-                        >
-                          Merge & Render Composite (Unavailable)
-                        </ContextMenuItem>
-                      </ContextMenuContent>
-                    </ContextMenu>
-                  </div>
-                ))}
                 {/* Annotations Track */}
                 <div className="flex h-16 w-full bg-muted/20 rounded relative">
-                  {annotations.map((a) => {
+                  {displayAnnotations.map((a) => {
                     const start = a.startFrame ?? a.frame;
                     const end = a.endFrame ?? Math.min(maxFrames, a.frame + 60);
                     const left = (start / maxFrames) * 100;
@@ -2245,9 +2480,7 @@ export default function Review() {
                             disabled={!canEdit}
                             onClick={(e) => {
                               e.stopPropagation();
-                              setAnnotations((prev) =>
-                                prev.filter((p) => p.id !== a.id),
-                              );
+                              deleteAnnotation.mutate(a.id);
                               if (selectedAnnotationId === a.id)
                                 setSelectedAnnotationId(null);
                               toast({ title: "Annotation Deleted" });
@@ -2348,68 +2581,69 @@ export default function Review() {
                               : "Approved"}
                           </span>
                         </div>
-                        {(reviewWorkflowStatus === "manager-review" ||
-                          reviewWorkflowStatus === "approved") && (
-                          <div className="flex items-center gap-2 text-sm">
-                            {reviewWorkflowStatus === "manager-review" ? (
-                              <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/50 border-t-primary animate-spin" />
-                            ) : (
-                              <CheckCircle2 className="w-4 h-4 text-[#1E7A34]" />
-                            )}
-                            Manager{" "}
-                            <span className="text-xs text-muted-foreground ml-auto">
-                              {reviewWorkflowStatus === "manager-review"
+                        <div className="flex items-center gap-2 text-sm">
+                          {reviewWorkflowStatus === "pm-review" ? (
+                            <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/50 border-t-primary animate-spin" />
+                          ) : reviewWorkflowStatus === "approved" ? (
+                            <CheckCircle2 className="w-4 h-4 text-[#1E7A34]" />
+                          ) : (
+                            <Circle className="w-4 h-4 text-muted-foreground/40" />
+                          )}
+                          Production Manager{" "}
+                          <span className="text-xs text-muted-foreground ml-auto">
+                            {reviewWorkflowStatus === "approved"
+                              ? "Approved"
+                              : reviewWorkflowStatus === "pm-review"
                                 ? "Pending"
-                                : "Published"}
-                            </span>
-                          </div>
-                        )}
+                                : "Waiting"}
+                          </span>
+                        </div>
                       </>
                     )}
                   </div>
 
-                  {reviewedTask &&
-                    (reviewedTask.approvalHistory?.length ?? 0) > 0 && (
-                      <div className="mt-3 pt-3 border-t border-border/60 space-y-1.5">
-                        <div className="text-[10px] font-semibold text-muted-foreground/70 tracking-wide mb-1.5">
-                          HISTORY
-                        </div>
-                        <AnimatePresence initial={false}>
-                          {[...reviewedTask.approvalHistory]
-                            .reverse()
-                            .map((ev) => (
-                              <motion.div
-                                key={ev.id}
-                                layout
-                                initial={{ opacity: 0, x: -8 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                transition={{ duration: 0.2 }}
-                                className="flex items-start gap-2 text-xs"
-                              >
-                                <ApprovalActionIcon action={ev.action} />
-                                <div className="flex-1 min-w-0">
-                                  <span className="text-foreground font-medium">
-                                    {ev.byUserName}
-                                  </span>{" "}
-                                  <span className="text-muted-foreground">
-                                    {APPROVAL_ACTION_LABEL[ev.action]}
-                                  </span>
-                                  <div className="text-[10px] text-muted-foreground/70">
-                                    {new Date(ev.timestamp).toLocaleString()}
-                                  </div>
-                                </div>
-                              </motion.div>
-                            ))}
-                        </AnimatePresence>
+                  {approvalEvents.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-border/60 space-y-1.5">
+                      <div className="text-[10px] font-semibold text-muted-foreground/70 tracking-wide mb-1.5">
+                        HISTORY
                       </div>
-                    )}
+                      <AnimatePresence initial={false}>
+                        {[...approvalEvents]
+                          .reverse()
+                          .map((ev) => (
+                            <motion.div
+                              key={ev.id}
+                              layout
+                              initial={{ opacity: 0, x: -8 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="flex items-start gap-2 text-xs"
+                            >
+                              <ApprovalActionIcon action={ev.action} />
+                              <div className="flex-1 min-w-0">
+                                <span className="text-foreground font-medium">
+                                  {users.find((u) => u.id === ev.byUserId)
+                                    ?.name ?? "Unknown"}
+                                </span>{" "}
+                                <span className="text-muted-foreground">
+                                  {APPROVAL_ACTION_LABEL[ev.action]}
+                                </span>
+                                <div className="text-[10px] text-muted-foreground/70">
+                                  {new Date(ev.createdAt).toLocaleString()}
+                                </div>
+                              </div>
+                            </motion.div>
+                          ))}
+                      </AnimatePresence>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
                   {comments.map((comment) => {
                     const user = comment.fromClient
                       ? null
-                      : USERS[comment.userIndex];
+                      : users[comment.userIndex];
                     const displayName = comment.fromClient
                       ? comment.fromClient.authorName
                       : (user?.name ?? "Unknown");
@@ -2623,7 +2857,7 @@ export default function Review() {
                   </div>
                 ) : (
                   (() => {
-                    const ann = annotations.find(
+                    const ann = displayAnnotations.find(
                       (a) => a.id === selectedAnnotationId,
                     );
                     const clip = videoClips.find(
@@ -2783,7 +3017,7 @@ export default function Review() {
                               className="w-full bg-muted/50 border border-border rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                               value={ann.text || ""}
                               onChange={(e) =>
-                                setAnnotations((prev) =>
+                                applyAnnotationsUpdate((prev) =>
                                   prev.map((p) =>
                                     p.id === ann.id
                                       ? { ...p, text: e.target.value }
@@ -2807,7 +3041,7 @@ export default function Review() {
                               className="w-full bg-muted/50 border border-border rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                               value={ann.startFrame ?? ann.frame}
                               onChange={(e) =>
-                                setAnnotations((prev) =>
+                                applyAnnotationsUpdate((prev) =>
                                   prev.map((p) =>
                                     p.id === ann.id
                                       ? {
@@ -2835,7 +3069,7 @@ export default function Review() {
                                 Math.min(maxFrames, ann.frame + 60)
                               }
                               onChange={(e) =>
-                                setAnnotations((prev) =>
+                                applyAnnotationsUpdate((prev) =>
                                   prev.map((p) =>
                                     p.id === ann.id
                                       ? {
@@ -2860,7 +3094,7 @@ export default function Review() {
                                 disabled={!canEdit}
                                 value={ann.fontFamily || "font-sans"}
                                 onValueChange={(v) =>
-                                  setAnnotations((prev) =>
+                                  applyAnnotationsUpdate((prev) =>
                                     prev.map((p) =>
                                       p.id === ann.id
                                         ? { ...p, fontFamily: v }
@@ -2895,7 +3129,7 @@ export default function Review() {
                                 className="w-full bg-muted/50 border border-border rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                                 value={ann.fontSize || 14}
                                 onChange={(e) =>
-                                  setAnnotations((prev) =>
+                                  applyAnnotationsUpdate((prev) =>
                                     prev.map((p) =>
                                       p.id === ann.id
                                         ? {
@@ -2923,7 +3157,7 @@ export default function Review() {
                                 className={`w-6 h-6 rounded-full border-2 transition-transform hover:scale-110 disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed ${ann.color === c ? "border-primary" : "border-transparent"}`}
                                 style={{ backgroundColor: c }}
                                 onClick={() =>
-                                  setAnnotations((prev) =>
+                                  applyAnnotationsUpdate((prev) =>
                                     prev.map((p) =>
                                       p.id === ann.id ? { ...p, color: c } : p,
                                     ),
@@ -2951,7 +3185,7 @@ export default function Review() {
                                     "0 0, 0 5px, 5px -5px, -5px 0",
                                 }}
                                 onClick={() =>
-                                  setAnnotations((prev) =>
+                                  applyAnnotationsUpdate((prev) =>
                                     prev.map((p) =>
                                       p.id === ann.id
                                         ? {
@@ -2976,7 +3210,7 @@ export default function Review() {
                                   className={`w-6 h-6 rounded border-2 transition-transform hover:scale-110 disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed ${ann.backgroundColor === c ? "border-primary" : "border-transparent"}`}
                                   style={{ backgroundColor: c }}
                                   onClick={() =>
-                                    setAnnotations((prev) =>
+                                    applyAnnotationsUpdate((prev) =>
                                       prev.map((p) =>
                                         p.id === ann.id
                                           ? { ...p, backgroundColor: c }
@@ -2997,9 +3231,7 @@ export default function Review() {
                             className="w-full"
                             disabled={!canEdit}
                             onClick={() => {
-                              setAnnotations((prev) =>
-                                prev.filter((p) => p.id !== ann.id),
-                              );
+                              deleteAnnotation.mutate(ann.id);
                               setSelectedAnnotationId(null);
                             }}
                           >

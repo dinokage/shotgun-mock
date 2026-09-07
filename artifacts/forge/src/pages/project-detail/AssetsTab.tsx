@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { USERS } from "@/data/mockData";
 import { useShotStore } from "@/store/shots";
 import { useAssetStore } from "@/store/assets";
 import { useReviewStore } from "@/store/reviews";
+import { useUserStore } from "@/store/users";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -39,6 +39,9 @@ export default function AssetsTab({ project }: { project: any }) {
   const updateShot = useShotStore((state) => state.updateShot);
   const updateAsset = useAssetStore((state) => state.updateAsset);
   const versions = useReviewStore((state) => state.versions);
+  const users = useUserStore((state) => state.users);
+  const [noteDraft, setNoteDraft] = useState<string | null>(null);
+  const noteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const allItems =
     view === "shots"
@@ -76,6 +79,19 @@ export default function AssetsTab({ project }: { project: any }) {
         )
         .slice(0, 3)
     : [];
+
+  useEffect(() => {
+    setNoteDraft(null);
+    if (noteTimeoutRef.current) clearTimeout(noteTimeoutRef.current);
+  }, [selectedId]);
+
+  const commitNotes = (notes: string) => {
+    if (!selectedItem) return;
+    if (noteTimeoutRef.current) clearTimeout(noteTimeoutRef.current);
+    noteTimeoutRef.current = null;
+    if (view === "shots") updateShot(selectedItem.id, { notes });
+    else updateAsset(selectedItem.id, { notes });
+  };
 
   const toggleFilter = (
     list: string[],
@@ -341,7 +357,7 @@ export default function AssetsTab({ project }: { project: any }) {
                   </div>
                   <div className="flex items-center gap-2 text-sm">
                     <UserAvatar userId={selectedItem.assigneeId} />
-                    {USERS.find((u) => u.id === selectedItem.assigneeId)?.name}
+                    {users.find((u) => u.id === selectedItem.assigneeId)?.name}
                   </div>
                 </div>
                 <div>
@@ -361,7 +377,7 @@ export default function AssetsTab({ project }: { project: any }) {
                 ) : (
                   <div className="space-y-2">
                     {recentVersions.map((v) => {
-                      const author = USERS.find((u) => u.id === v.createdById);
+                      const author = users.find((u) => u.id === v.createdById);
                       return (
                         <div
                           key={v.id}
@@ -390,13 +406,18 @@ export default function AssetsTab({ project }: { project: any }) {
                 <textarea
                   className="w-full h-24 bg-muted/50 border border-border rounded p-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-primary"
                   placeholder="Add notes..."
-                  value={selectedItem.notes ?? ""}
+                  value={noteDraft ?? (selectedItem.notes ?? "")}
                   onChange={(e) => {
                     const notes = e.target.value;
-                    if (view === "shots")
-                      updateShot(selectedItem.id, { notes });
-                    else updateAsset(selectedItem.id, { notes });
+                    setNoteDraft(notes);
+                    if (noteTimeoutRef.current)
+                      clearTimeout(noteTimeoutRef.current);
+                    noteTimeoutRef.current = setTimeout(
+                      () => commitNotes(notes),
+                      500,
+                    );
                   }}
+                  onBlur={(e) => commitNotes(e.target.value)}
                 />
               </div>
             </div>

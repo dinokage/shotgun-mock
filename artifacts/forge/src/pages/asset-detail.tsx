@@ -15,14 +15,7 @@ import {
   EmptyTitle,
   EmptyDescription,
 } from "@/components/ui/empty";
-import {
-  PROJECTS,
-  USERS,
-  TASKS,
-  SHOTS,
-  AUDIT_EVENTS,
-  type Version,
-} from "@/data/mockData";
+import { type Version } from "@/data/mockData";
 import {
   ChevronLeft,
   Package,
@@ -31,11 +24,8 @@ import {
   GitBranch,
   Clock,
   Upload,
-  Sparkles,
-  ArrowRight,
   CheckCircle2,
   XCircle,
-  AlertTriangle,
   RotateCcw,
   Download,
 } from "lucide-react";
@@ -43,9 +33,15 @@ import { PipelineVisualizer } from "@/components/shared/PipelineVisualizer";
 import { useToast } from "@/hooks/use-toast";
 import { useReviewStore } from "@/store/reviews";
 import { useAssetActivityStore } from "@/store/assetActivity";
-import { useAssetStore } from "@/store/assets";
+import { useAssets, useUpdateAsset } from "@/hooks/useAssets";
+import { useAuditLogs } from "@/hooks/useAuditLogs";
+import { getAssigneeId, getAssetId, getShotId } from "@/lib/taskShape";
 import { useAuthStore } from "@/store/auth";
 import { useUIStore } from "@/store/ui";
+import { useProjectStore } from "@/store/projects";
+import { useUserStore } from "@/store/users";
+import { useTasksStore } from "@/store/tasks";
+import { useShotStore } from "@/store/shots";
 import { fadeInUp, confirmPulse } from "@/lib/motion";
 
 /** USD (Universal Scene Description) is a scene/geometry interchange format —
@@ -126,16 +122,21 @@ export default function AssetDetail() {
     (s) => s.currentVersionOverrides,
   );
   const rollbackToVersion = useReviewStore((s) => s.rollbackToVersion);
-  const assets = useAssetStore((s) => s.assets);
-  const updateAsset = useAssetStore((s) => s.updateAsset);
+  const { data: assets = [], isLoading } = useAssets();
+  const updateAssetMutation = useUpdateAsset();
   const lastOpenedInDCC = useAssetActivityStore((s) => s.lastOpenedInDCC);
   const recordDccOpen = useAssetActivityStore((s) => s.recordDccOpen);
   const publishOverrides = useAssetActivityStore((s) => s.publishOverrides);
   const publishAsset = useAssetActivityStore((s) => s.publishAsset);
   const currentUser = useAuthStore((s) => s.currentUser);
   const setActiveTaskDrawer = useUIStore((s) => s.setActiveTaskDrawer);
+  const projects = useProjectStore((s) => s.projects);
+  const users = useUserStore((s) => s.users);
+  const tasks = useTasksStore((s) => s.tasks);
+  const shots = useShotStore((s) => s.shots);
 
   const asset = assets.find((a) => a.id === params?.id);
+  const { data: auditLogs = [] } = useAuditLogs(asset?.id);
 
   // In-page links (e.g. a Dependency card below) can route from one asset's
   // detail page straight to another's without unmounting this component, so
@@ -148,6 +149,12 @@ export default function AssetDetail() {
     setV2(null);
   }, [params?.id]);
 
+  if (isLoading)
+    return (
+      <div className="p-6 text-center text-muted-foreground">
+        Loading asset...
+      </div>
+    );
   if (!asset)
     return (
       <div className="p-6 text-center text-muted-foreground">
@@ -155,19 +162,19 @@ export default function AssetDetail() {
       </div>
     );
 
-  const project = PROJECTS.find((p) => p.id === asset.projectId);
-  const assignee = USERS.find((u) => u.id === asset.assigneeId);
-  const relatedTasks = TASKS.filter((t) => t.assetId === asset.id).slice(0, 5);
-  const relatedShots = SHOTS.filter((s) =>
-    TASKS.some((t) => t.shotId === s.id && t.assetId === asset.id),
+  const project = projects.find((p) => p.id === asset.projectId);
+  const assignee = users.find((u) => u.id === asset.assigneeId);
+  const relatedTasks = tasks.filter((t) => getAssetId(t) === asset.id).slice(
+    0,
+    5,
+  );
+  const relatedShots = shots.filter((s) =>
+    tasks.some((t) => getShotId(t) === s.id && getAssetId(t) === asset.id),
   ).slice(0, 5);
   const versions = allVersions
     .filter((v) => v.entityId === asset.id)
     .slice(0, 8);
-  const events = AUDIT_EVENTS.filter((e) => e.entityId === asset.id).slice(
-    0,
-    10,
-  );
+  const events = auditLogs.slice(0, 10);
 
   const deps = asset.dependencies
     .map((d) => assets.find((a) => a.id === d))
@@ -214,7 +221,7 @@ export default function AssetDetail() {
   };
 
   const handlePublish = () => {
-    updateAsset(asset.id, { publishStatus: "published" });
+    updateAssetMutation.mutate({ id: asset.id, publishStatus: "published" });
     publishAsset(asset.id, {
       userName: currentUser?.name ?? "You",
       timestamp: new Date().toISOString(),
@@ -545,7 +552,7 @@ export default function AssetDetail() {
                             )}
                           </div>
                           <div className="text-xs text-muted-foreground">
-                            by {USERS.find((u) => u.id === v.createdById)?.name}{" "}
+                            by {users.find((u) => u.id === v.createdById)?.name}{" "}
                             · {new Date(v.createdAt).toLocaleDateString()} ·{" "}
                             {v.fileSize}
                           </div>
@@ -682,7 +689,7 @@ export default function AssetDetail() {
                   <div className="flex-1">
                     <div className="font-medium text-sm">{t.title}</div>
                     <div className="text-xs text-muted-foreground">
-                      {USERS.find((u) => u.id === t.assigneeId)?.name} · Due{" "}
+                      {users.find((u) => u.id === getAssigneeId(t))?.name} · Due{" "}
                       {t.dueDate}
                     </div>
                   </div>
@@ -714,7 +721,12 @@ export default function AssetDetail() {
         <TabsContent value="activity" className="mt-4">
           <div className="space-y-3">
             {events.map((ev) => {
-              const user = USERS.find((u) => u.id === ev.userId);
+              const user = users.find((u) => u.id === ev.actorUserId);
+              const changedFields = Object.keys(ev.metadata?.before ?? {});
+              const description =
+                changedFields.length > 0
+                  ? `Updated ${changedFields.join(", ")}`
+                  : `${ev.action} ${ev.targetEntityType}`;
               return (
                 <div
                   key={ev.id}
@@ -728,11 +740,11 @@ export default function AssetDetail() {
                     <div className="text-sm">
                       <span className="font-medium">{user?.name}</span>{" "}
                       <span className="text-muted-foreground">
-                        {ev.description}
+                        {description}
                       </span>
                     </div>
                     <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
-                      {ev.timestamp}
+                      {ev.createdAt}
                     </div>
                   </div>
                 </div>

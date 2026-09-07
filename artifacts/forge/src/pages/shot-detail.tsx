@@ -11,29 +11,47 @@ import {
   EmptyTitle,
   EmptyDescription,
 } from "@/components/ui/empty";
-import { PROJECTS, USERS, TASKS, ASSETS, AUDIT_EVENTS } from "@/data/mockData";
-import { useShotStore } from "@/store/shots";
+import { useShots } from "@/hooks/useShots";
+import { useAuditLogs } from "@/hooks/useAuditLogs";
+import {
+  useSequenceTeam,
+  useJoinSequenceTeam,
+  useLeaveSequenceTeam,
+} from "@/hooks/useSequences";
+import { getAssigneeId, getAssetId, getShotId } from "@/lib/taskShape";
+import { useProjectStore } from "@/store/projects";
+import { useUserStore } from "@/store/users";
+import { useTasksStore } from "@/store/tasks";
+import { useAssetStore } from "@/store/assets";
 import { useReviewStore } from "@/store/reviews";
 import { useUIStore } from "@/store/ui";
-import {
-  ChevronLeft,
-  Film,
-  Package,
-  ListTodo,
-  GitBranch,
-  Clock,
-  CheckCircle2,
-  XCircle,
-  MessageSquare,
-} from "lucide-react";
+import { useAuthStore } from "@/store/auth";
+import { useToast } from "@/hooks/use-toast";
+import { ChevronLeft, Film, Package, ListTodo, Users, LogOut } from "lucide-react";
 
 export default function ShotDetail() {
   const [, params] = useRoute("/shots/:id");
-  const liveShots = useShotStore((state) => state.shots);
+  const { data: liveShots = [], isLoading } = useShots();
   const liveVersions = useReviewStore((state) => state.versions);
   const setActiveTaskDrawer = useUIStore((state) => state.setActiveTaskDrawer);
+  const projects = useProjectStore((s) => s.projects);
+  const users = useUserStore((s) => s.users);
+  const tasks = useTasksStore((s) => s.tasks);
+  const assets = useAssetStore((s) => s.assets);
 
   const shot = liveShots.find((s) => s.id === params?.id);
+  const { data: auditLogs = [] } = useAuditLogs(shot?.id);
+  const { data: teamMembers = [] } = useSequenceTeam(shot?.sequenceId ?? undefined);
+  const joinTeam = useJoinSequenceTeam();
+  const leaveTeam = useLeaveSequenceTeam();
+  const currentUser = useAuthStore((s) => s.currentUser);
+  const { toast } = useToast();
+  if (isLoading)
+    return (
+      <div className="p-6 text-center text-muted-foreground">
+        Loading shot...
+      </div>
+    );
   if (!shot)
     return (
       <div className="p-6 text-center text-muted-foreground">
@@ -41,18 +59,49 @@ export default function ShotDetail() {
       </div>
     );
 
-  const project = PROJECTS.find((p) => p.id === shot.projectId);
-  const assignee = USERS.find((u) => u.id === shot.assigneeId);
-  const relatedTasks = TASKS.filter((t) => t.shotId === shot.id).slice(0, 5);
+  const project = projects.find((p) => p.id === shot.projectId);
+  const assignee = users.find((u) => u.id === shot.assigneeId);
+  const isOnSequenceTeam = teamMembers.some(
+    (m) => m.userId === currentUser?.id,
+  );
+
+  const handleJoinTeam = async () => {
+    if (!shot.sequenceId) return;
+    try {
+      await joinTeam.mutateAsync(shot.sequenceId);
+      toast({ title: "Joined the sequence team" });
+    } catch {
+      toast({
+        title: "Couldn't join",
+        description: "Something went wrong — try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleLeaveTeam = async () => {
+    if (!shot.sequenceId) return;
+    try {
+      await leaveTeam.mutateAsync(shot.sequenceId);
+      toast({ title: "Left the sequence team" });
+    } catch {
+      toast({
+        title: "Couldn't leave",
+        description: "Something went wrong — try again.",
+        variant: "destructive",
+      });
+    }
+  };
+  const relatedTasks = tasks.filter((t) => getShotId(t) === shot.id).slice(
+    0,
+    5,
+  );
   const versions = liveVersions
     .filter((v) => v.entityId === shot.id)
     .sort((a, b) => b.versionNumber.localeCompare(a.versionNumber));
-  const events = AUDIT_EVENTS.filter((e) => e.entityId === shot.id).slice(
-    0,
-    10,
-  );
-  const usedAssets = ASSETS.filter((a) =>
-    TASKS.some((t) => t.shotId === shot.id && t.assetId === a.id),
+  const events = auditLogs.slice(0, 10);
+  const usedAssets = assets.filter((a) =>
+    tasks.some((t) => getShotId(t) === shot.id && getAssetId(t) === a.id),
   ).slice(0, 5);
 
   return (
@@ -100,12 +149,16 @@ export default function ShotDetail() {
             <span>{shot.duration} frames</span>
             <span>
               Project:{" "}
-              <Link
-                href={`/projects/${project?.id}`}
-                className="text-primary hover:underline"
-              >
-                {project?.name}
-              </Link>
+              {project ? (
+                <Link
+                  href={`/projects/${project.id}`}
+                  className="text-primary hover:underline"
+                >
+                  {project.name}
+                </Link>
+              ) : (
+                <span>{shot.projectId ?? "Unknown"}</span>
+              )}
             </span>
           </div>
           <div className="flex items-center gap-3">
@@ -172,6 +225,68 @@ export default function ShotDetail() {
                 )}
               </CardContent>
             </Card>
+
+            {shot.sequenceId && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Users className="w-4 h-4" /> Sequence Team
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">
+                      Artists currently working this sequence together.
+                    </p>
+                    {currentUser?.role === "artist" &&
+                      (isOnSequenceTeam ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs gap-1.5"
+                          disabled={leaveTeam.isPending}
+                          onClick={handleLeaveTeam}
+                        >
+                          <LogOut className="w-3 h-3" /> Leave Team
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          className="h-7 text-xs gap-1.5"
+                          disabled={joinTeam.isPending}
+                          onClick={handleJoinTeam}
+                        >
+                          <Users className="w-3 h-3" /> Join Team
+                        </Button>
+                      ))}
+                  </div>
+                  {teamMembers.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {teamMembers.map((m) => (
+                        <div
+                          key={m.id}
+                          className="flex items-center gap-1.5 bg-muted/40 rounded-full pl-1 pr-2.5 py-1"
+                        >
+                          <Avatar className="w-5 h-5">
+                            <AvatarImage src={m.avatar ?? undefined} />
+                            <AvatarFallback>
+                              {m.name.charAt(0)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="text-xs font-medium">
+                            {m.name}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      No one has joined this sequence's team yet.
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            )}
           </div>
         </TabsContent>
 
@@ -223,17 +338,17 @@ export default function ShotDetail() {
                       <Avatar className="w-4 h-4">
                         <AvatarImage
                           src={
-                            USERS.find((u) => u.id === v.createdById)?.avatar
+                            users.find((u) => u.id === v.createdById)?.avatar
                           }
                         />
                         <AvatarFallback>
-                          {USERS.find(
+                          {users.find(
                             (u) => u.id === v.createdById,
                           )?.name.charAt(0)}
                         </AvatarFallback>
                       </Avatar>
                       {
-                        USERS.find((u) => u.id === v.createdById)?.name.split(
+                        users.find((u) => u.id === v.createdById)?.name.split(
                           " ",
                         )[0]
                       }
@@ -271,7 +386,7 @@ export default function ShotDetail() {
                 <div className="flex-1">
                   <div className="font-medium text-sm">{t.title}</div>
                   <div className="text-xs text-muted-foreground">
-                    {USERS.find((u) => u.id === t.assigneeId)?.name} · Due{" "}
+                    {users.find((u) => u.id === getAssigneeId(t))?.name} · Due{" "}
                     {t.dueDate}
                   </div>
                 </div>
@@ -298,7 +413,12 @@ export default function ShotDetail() {
 
         <TabsContent value="activity" className="mt-4 space-y-3">
           {events.map((ev) => {
-            const user = USERS.find((u) => u.id === ev.userId);
+            const user = users.find((u) => u.id === ev.actorUserId);
+            const changedFields = Object.keys(ev.metadata?.before ?? {});
+            const description =
+              changedFields.length > 0
+                ? `Updated ${changedFields.join(", ")}`
+                : `${ev.action} ${ev.targetEntityType}`;
             return (
               <div
                 key={ev.id}
@@ -312,11 +432,11 @@ export default function ShotDetail() {
                   <div className="text-sm">
                     <span className="font-medium">{user?.name}</span>{" "}
                     <span className="text-muted-foreground">
-                      {ev.description}
+                      {description}
                     </span>
                   </div>
                   <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
-                    {ev.timestamp}
+                    {ev.createdAt}
                   </div>
                 </div>
               </div>

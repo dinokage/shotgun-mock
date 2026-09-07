@@ -8,17 +8,21 @@ import { useUIStore } from "@/store/ui";
 import { useProjectStore } from "@/store/projects";
 import { useTasksStore } from "@/store/tasks";
 import { useShotStore } from "@/store/shots";
+import { useAssetStore } from "@/store/assets";
 import { useReviewStore } from "@/store/reviews";
+import { useDepartmentStore } from "@/store/departments";
+import { useUserStore } from "@/store/users";
 import {
-  USERS,
-  DEPARTMENTS,
   Project,
   User,
   isTaskDone,
   TaskStatus,
   DailyLog,
 } from "@/data/mockData";
+import { getAssigneeId, getShotId, useEntityProjectMap } from "@/lib/taskShape";
 import { generateProducerInsights, type AIInsight } from "@/lib/aiInsights";
+import { useDailyLogsByUser, useAddDailyLog } from "@/hooks/useTasks";
+import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useMemo, useState } from "react";
 import { motion, AnimatePresence, MotionConfig } from "framer-motion";
@@ -189,6 +193,23 @@ interface ScheduleVariance {
   history: number[]; // drift trend leading up to varianceDays, for the ScopeTrace
 }
 
+// `dueDate` is a legacy mock-only field the real backend never populates
+// (see the Project interface comment); `endDate` is the real one. A project
+// can legitimately have neither set, which callers must handle explicitly
+// rather than feeding a missing value straight into `new Date()`.
+function getEffectiveDueDate(project: Project): Date | null {
+  const raw = project.endDate || project.dueDate;
+  if (!raw) return null;
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function formatDueDate(date: Date | null): string {
+  return date
+    ? date.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+    : "TBD";
+}
+
 function getScheduleVariance(project: Project): ScheduleVariance {
   const seed = hashString(project.id);
   const jitter = seededFraction(seed, 11);
@@ -228,10 +249,27 @@ function ProducerDashboard() {
   // for every user, with no reload. Same pattern as projects.tsx.
   const projects = useProjectStore((state) => state.projects);
   const shots = useShotStore((state) => state.shots);
+  const assets = useAssetStore((state) => state.assets);
+  const departments = useDepartmentStore((state) => state.departments);
+  const users = useUserStore((state) => state.users);
+  const tasks = useTasksStore((state) => state.tasks);
   const activeProjects = projects.filter((p) => p.status !== "COMPLETE");
-  // Recomputed from the current mock data on every mount — not hand-written copy.
-  // See src/lib/aiInsights.ts for the rule-based logic behind each card.
-  const insights = useMemo(() => generateProducerInsights(), []);
+  const entityProjectMap = useEntityProjectMap();
+  // Recomputed from real reactive store data -- not hand-written copy, and
+  // not the raw mock arrays read directly (see aiInsights.ts's top comment
+  // for why that went stale after login).
+  const insights = useMemo(
+    () =>
+      generateProducerInsights(
+        assets,
+        projects,
+        shots,
+        tasks,
+        departments,
+        entityProjectMap,
+      ),
+    [assets, projects, shots, tasks, departments, entityProjectMap],
+  );
 
   // Review queue — real shots currently sitting in internal or client review.
   // Single source of truth for both the "Pending Client Reviews" stat and the
@@ -252,14 +290,28 @@ function ProducerDashboard() {
     [shots],
   );
 
+  // The task backing the first shot in the review queue, so "View All
+  // Pending Reviews" opens a real review instead of a dead-end route.
+  const firstPendingReviewTaskId = useMemo(() => {
+    for (const shot of reviewQueueShots) {
+      const task = tasks.find(
+        (t) =>
+          getShotId(t) === shot.id &&
+          (t.status === "review" || t.status === "lead-review"),
+      );
+      if (task) return task.id;
+    }
+    return null;
+  }, [reviewQueueShots, tasks]);
+
   // Quick Review Queue — real shots currently sitting in internal or client
   // review, not hand-written placeholder rows, so the row both reads
   // correctly and actually goes somewhere when clicked.
   const quickReviewShots = useMemo(() => {
     return reviewQueueShots.slice(0, 3).map((s) => {
       const project = projects.find((p) => p.id === s.projectId);
-      const assignee = USERS.find((u) => u.id === s.assigneeId);
-      const dept = DEPARTMENTS.find((d) => d.id === assignee?.departmentId);
+      const assignee = users.find((u) => u.id === s.assigneeId);
+      const dept = departments.find((d) => d.id === assignee?.departmentId);
       return {
         id: s.id,
         shot: s.name,
@@ -270,11 +322,9 @@ function ProducerDashboard() {
         submitter: assignee?.name || "Unassigned",
       };
     });
-  }, [reviewQueueShots, projects]);
+  }, [reviewQueueShots, projects, users, departments]);
 
-  // Active Shots / Sequences — shots not yet in a terminal (complete/approved/
-  // published) state, and the count of distinct sequences (via the shot's own
-  // `sequenceId` field) those active shots belong to.
+  // Active Shots — shots not yet in a terminal (complete/approved/published) state.
   const activeShots = useMemo(
     () =>
       shots.filter(
@@ -282,24 +332,30 @@ function ProducerDashboard() {
       ),
     [shots],
   );
-  const activeSequenceCount = useMemo(
-    () => new Set(activeShots.map((s) => s.sequenceId)).size,
-    [activeShots],
-  );
 
   // Planner vs Actual — real active projects, nearest-due first, each with a
   // deterministic schedule-variance trend (see getScheduleVariance above).
+  // `dueDate` is a legacy mock-only field the real backend never populates
+  // (see the Project interface comment) -- `endDate` is the real one, and a
+  // project can legitimately have neither set yet, which getEffectiveDueDate
+  // callers below must render as "TBD" rather than "Invalid Date".
   const plannerRows = useMemo(() => {
     return [...activeProjects]
-      .sort(
-        (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime(),
-      )
+      .sort((a, b) => {
+        const aDate = getEffectiveDueDate(a);
+        const bDate = getEffectiveDueDate(b);
+        if (!aDate && !bDate) return 0;
+        if (!aDate) return 1;
+        if (!bDate) return -1;
+        return aDate.getTime() - bDate.getTime();
+      })
       .slice(0, 4)
       .map((project) => {
         const variance = getScheduleVariance(project);
-        const actualDate = new Date(project.dueDate);
-        actualDate.setDate(actualDate.getDate() + variance.varianceDays);
-        return { project, variance, actualDate };
+        const dueDate = getEffectiveDueDate(project);
+        const actualDate = dueDate ? new Date(dueDate) : null;
+        actualDate?.setDate(actualDate.getDate() + variance.varianceDays);
+        return { project, variance, dueDate, actualDate };
       });
   }, [activeProjects]);
 
@@ -343,8 +399,8 @@ function ProducerDashboard() {
               icon: FolderOpen,
             },
             {
-              label: "Active Shots / Sequences",
-              value: `${activeShots.length} / ${activeSequenceCount}`,
+              label: "Active Shots",
+              value: activeShots.length,
               icon: ListTodo,
             },
             {
@@ -352,7 +408,7 @@ function ProducerDashboard() {
               value: pendingClientReviews,
               icon: Activity,
             },
-            { label: "Total Artists", value: USERS.length, icon: Users },
+            { label: "Total Artists", value: users.length, icon: Users },
           ].map((s, i) => (
             <motion.div key={i} {...stagger(i)}>
               <Card className={STAT_TILE_CARD_CLASS}>
@@ -520,7 +576,7 @@ function ProducerDashboard() {
                 <CardTitle className="text-lg">Planner vs Actual</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {plannerRows.map(({ project, variance, actualDate }) => (
+                {plannerRows.map(({ project, variance, dueDate, actualDate }) => (
                   <div
                     key={project.id}
                     className="flex justify-between items-center gap-3 border-b border-border/50 pb-3 last:border-0 last:pb-0"
@@ -530,11 +586,7 @@ function ProducerDashboard() {
                         {project.name}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        Deadline:{" "}
-                        {new Date(project.dueDate).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                        })}
+                        Deadline: {formatDueDate(dueDate)}
                       </div>
                       <div className="h-5 w-24 mt-1.5">
                         <ScopeTrace data={variance.history} strokeWidth={2.5} />
@@ -544,14 +596,10 @@ function ProducerDashboard() {
                       <div
                         className={`font-semibold text-sm ${variance.color}`}
                       >
-                        {variance.status}
+                        {dueDate ? variance.status : "—"}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        Est:{" "}
-                        {actualDate.toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                        })}
+                        Est: {formatDueDate(actualDate)}
                       </div>
                     </div>
                   </div>
@@ -622,7 +670,11 @@ function ProducerDashboard() {
                 <Button
                   variant="outline"
                   className="w-full text-xs h-8 mt-2"
-                  onClick={() => setLocation("/review")}
+                  disabled={!firstPendingReviewTaskId}
+                  onClick={() =>
+                    firstPendingReviewTaskId &&
+                    setLocation(`/review/${firstPendingReviewTaskId}`)
+                  }
                 >
                   View All Pending Reviews
                 </Button>
@@ -646,28 +698,47 @@ function formatRoleLabel(role: string): string {
 // --- Supervisor Dashboard (Department Focus) ---
 function SupervisorDashboard({ currentUser }: { currentUser: User }) {
   const tasks = useTasksStore((state) => state.tasks);
-  const dept = DEPARTMENTS.find((d) => d.id === currentUser.departmentId);
-  const deptTeam = USERS.filter((u) => u.departmentId === dept?.id);
-  const deptTasks = tasks.filter((t) => t.department === dept?.name);
+  const users = useUserStore((state) => state.users);
+  const departments = useDepartmentStore((state) => state.departments);
+  // Studio-wide leadership (a producer/lead with no single departmentId,
+  // e.g. an overall producer) sees an aggregate view across every
+  // department instead of blanking out -- previously `if (!dept) return
+  // null` silently rendered nothing for these real users.
+  const dept = departments.find((d) => d.id === currentUser.departmentId);
+  const isStudioWide = !currentUser.departmentId;
+  const deptTeam = isStudioWide
+    ? users
+    : users.filter((u) => u.departmentId === dept?.id);
+  const deptTasks = isStudioWide
+    ? tasks
+    : tasks.filter((t) => t.department === dept?.name);
   const activeTasks = deptTasks.filter((t) => t.status === "in-progress");
-  const reviewTasks = deptTasks.filter(
-    (t) => t.status === "lead-review" || t.status === "manager-review",
-  );
+  const reviewTasks = deptTasks.filter((t) => t.status === "lead-review");
   const { setActiveTaskDrawer, setCreateTaskModalOpen } = useUIStore();
 
   // Avg Velocity — real throughput: completed dept tasks divided by the
-  // number of distinct calendar days the department actually logged work on
-  // (via each task's dailyLogs), not a hand-written "4.2".
+  // number of distinct calendar days the department actually logged work on.
+  // Daily logs are a separate nested resource server-side (GET
+  // /daily-logs?taskId=...) — there's no per-department bulk endpoint, and
+  // fetching every dept member's logs individually just to feed one stat
+  // tile is the same "too expensive for a list view" cost Task 5/6 avoided
+  // elsewhere, so this tile now honestly reports "no data" instead of
+  // reading the (always-empty, since real TaskDTO has no inline `dailyLogs`
+  // array) `t.dailyLogs` field and showing a misleading "0.0".
   const completedDeptTasks = deptTasks.filter(
     (t) => t.status === "complete" || t.status === "approved",
   ).length;
   const deptWorkDays = new Set(
-    deptTasks.flatMap((t) => t.dailyLogs.map((log) => log.date.split("T")[0])),
+    deptTasks.flatMap((t: any) =>
+      (t.dailyLogs ?? []).map((log: DailyLog) => log.date.split("T")[0]),
+    ),
   ).size;
   const avgVelocity =
-    deptWorkDays > 0 ? (completedDeptTasks / deptWorkDays).toFixed(1) : "0.0";
+    deptWorkDays > 0
+      ? (completedDeptTasks / deptWorkDays).toFixed(1)
+      : null;
 
-  if (!dept) return null;
+  if (!dept && !isStudioWide) return null;
 
   return (
     <MotionConfig reducedMotion="user">
@@ -675,11 +746,11 @@ function SupervisorDashboard({ currentUser }: { currentUser: User }) {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">
-              Department Dashboard
+              {isStudioWide ? "Studio Dashboard" : "Department Dashboard"}
             </h1>
             <p className="text-muted-foreground mt-1">
-              {dept.name} • {formatRoleLabel(currentUser.role)}:{" "}
-              {currentUser.name}
+              {isStudioWide ? "All Departments" : dept!.name} •{" "}
+              {formatRoleLabel(currentUser.role)}: {currentUser.name}
             </p>
           </div>
           <div className="flex gap-2">
@@ -714,8 +785,8 @@ function SupervisorDashboard({ currentUser }: { currentUser: User }) {
             },
             {
               label: "Avg Velocity",
-              value: avgVelocity,
-              sub: "tasks/day",
+              value: avgVelocity ?? "—",
+              sub: avgVelocity !== null ? "tasks/day" : "no data",
               icon: TrendingUp,
             },
           ].map((s, i) => (
@@ -752,7 +823,9 @@ function SupervisorDashboard({ currentUser }: { currentUser: User }) {
             <CardContent>
               <div className="divide-y divide-border">
                 {reviewTasks.slice(0, 5).map((task, i) => {
-                  const assignee = USERS.find((u) => u.id === task.assigneeId);
+                  const assignee = users.find(
+                    (u) => u.id === getAssigneeId(task),
+                  );
                   return (
                     <motion.div
                       key={task.id}
@@ -870,10 +943,10 @@ const NEAR_TERM_DEADLINE_DAYS = 7;
 
 function ArtistDashboard({ currentUser }: { currentUser: User }) {
   const tasks = useTasksStore((state) => state.tasks);
-  const logTime = useTasksStore((state) => state.logTime);
   const reviews = useReviewStore((state) => state.reviews);
   const versions = useReviewStore((state) => state.versions);
-  const myTasks = tasks.filter((t) => t.assigneeId === currentUser.id);
+  const users = useUserStore((state) => state.users);
+  const myTasks = tasks.filter((t) => getAssigneeId(t) === currentUser.id);
 
   // Active tasks — anything blocked (bottleneck) is surfaced ahead of the
   // normal due-date ordering used for the rest, so it can't get buried.
@@ -922,8 +995,8 @@ function ArtistDashboard({ currentUser }: { currentUser: User }) {
     );
   }, [myTasks]);
 
-  // Submissions currently moving through the Lead -> Manager approval chain,
-  // longest-waiting first — an artist checking "where's my work" cares most
+  // Submissions currently moving through the review -> lead-review approval
+  // chain, longest-waiting first — an artist checking "where's my work" cares most
   // about the submission that's been sitting the longest, not insertion order.
   const mySubmissions = useMemo(
     () =>
@@ -932,7 +1005,7 @@ function ArtistDashboard({ currentUser }: { currentUser: User }) {
           (t) =>
             t.status === "review" ||
             t.status === "lead-review" ||
-            t.status === "manager-review",
+            t.status === "pm-review",
         )
         .sort(
           (a, b) =>
@@ -961,42 +1034,65 @@ function ArtistDashboard({ currentUser }: { currentUser: User }) {
   }, [reviews, versions, currentUser.id]);
   const { setActiveTaskDrawer } = useUIStore();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const addDailyLogMutation = useAddDailyLog();
 
   // Inline quick-log-time form state — mirrors TaskDrawer's own "Log Daily
-  // Time" affordance (same fields, same logTime call) so logging hours reads
-  // the same whether it's done here or from inside the task drawer.
+  // Time" affordance (same fields, same useAddDailyLog mutation) so logging
+  // hours reads the same whether it's done here or from inside the task
+  // drawer.
   const [logFormOpen, setLogFormOpen] = useState(false);
   const [logHours, setLogHours] = useState("");
   const [logNote, setLogNote] = useState("");
 
+  // Daily logs are a separate nested resource (/tasks/:id/daily-logs) —
+  // real TaskDTO has no inline `dailyLogs` array, so this used to route
+  // through useTasksStore's `logTime`, a local-only mutation with no backend
+  // sync at all (unlike the store's other actions). Switched to the real
+  // useAddDailyLog() mutation (same one TaskDrawer already uses) so logged
+  // time actually persists.
   const handleQuickLogTime = () => {
     if (!mostRecentInProgressTask) return;
     const hoursNum = parseFloat(logHours);
     if (!hoursNum || hoursNum <= 0) return;
-    const newLog: DailyLog = {
-      date: new Date().toISOString().slice(0, 10),
-      hours: hoursNum,
-      note: logNote.trim() || "No notes provided.",
-      userId: currentUser.id,
-    };
-    logTime(mostRecentInProgressTask.id, newLog);
-    toast({
-      title: "Time Logged",
-      description: `Logged ${hoursNum}h on ${mostRecentInProgressTask.title}.`,
-    });
-    setLogFormOpen(false);
-    setLogHours("");
-    setLogNote("");
+    addDailyLogMutation.mutate(
+      {
+        taskId: mostRecentInProgressTask.id,
+        date: new Date().toISOString().slice(0, 10),
+        hours: hoursNum,
+        note: logNote.trim() || "No notes provided.",
+      },
+      {
+        onSuccess: () => {
+          // useAddDailyLog only invalidates the per-task daily-logs query and
+          // ["tasks"] — this dashboard reads the per-user aggregate below, a
+          // different query key, so it needs its own invalidation.
+          queryClient.invalidateQueries({
+            queryKey: ["daily-logs", "user", currentUser.id],
+          });
+          toast({
+            title: "Time Logged",
+            description: `Logged ${hoursNum}h on ${mostRecentInProgressTask.title}.`,
+          });
+          setLogFormOpen(false);
+          setLogHours("");
+          setLogNote("");
+        },
+        onError: () => {
+          toast({ title: "Failed to log time", variant: "destructive" });
+        },
+      },
+    );
   };
 
-  // Total Hours Logged — real sum of this artist's own dailyLogs entries
-  // across their tasks, not a hand-written "32h".
-  const totalHoursLogged = myTasks.reduce(
-    (sum, t) =>
-      sum +
-      t.dailyLogs
-        .filter((log) => log.userId === currentUser.id)
-        .reduce((s, log) => s + log.hours, 0),
+  // Total Hours Logged — real sum of this artist's own daily logs, fetched
+  // via the dedicated per-user endpoint (hooks/useTasks.ts's
+  // useDailyLogsByUser, built for exactly this "one member's hours across
+  // all tasks" case) rather than a per-task `dailyLogs` array that no longer
+  // exists on real TaskDTO.
+  const { data: myDailyLogs = [] } = useDailyLogsByUser(currentUser.id);
+  const totalHoursLogged = myDailyLogs.reduce(
+    (sum, log) => sum + log.hours,
     0,
   );
 
@@ -1119,7 +1215,7 @@ function ArtistDashboard({ currentUser }: { currentUser: User }) {
               </CardHeader>
               <CardContent>
                 {/* Inline Quick Log Time form — same fields (hours, note) and
-                  same logTime(task.id, newLog) call as TaskDrawer's "Log
+                  same useAddDailyLog() mutation as TaskDrawer's "Log
                   Daily Time" form, just surfaced on the dashboard itself. */}
                 <AnimatePresence initial={false}>
                   {logFormOpen && mostRecentInProgressTask && (
@@ -1227,10 +1323,10 @@ function ArtistDashboard({ currentUser }: { currentUser: User }) {
               </CardContent>
             </Card>
 
-            {/* My Submissions — tasks currently moving through the Lead ->
-              Manager approval chain, each against the same StepTracker used
-              in the task drawer so the artist can see where it sits without
-              opening it. */}
+            {/* My Submissions — tasks currently moving through the
+              review -> lead-review approval chain, each against the same
+              StepTracker used in the task drawer so the artist can see
+              where it sits without opening it. */}
             <Card className="border-border/50">
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg flex items-center gap-2">
@@ -1282,7 +1378,7 @@ function ArtistDashboard({ currentUser }: { currentUser: User }) {
               <div className="space-y-3">
                 {myReceivedFeedback.slice(0, 3).map((r) => {
                   const version = versions.find((v) => v.id === r.versionId);
-                  const reviewer = USERS.find((u) => u.id === r.reviewerId);
+                  const reviewer = users.find((u) => u.id === r.reviewerId);
                   return (
                     <div
                       key={r.id}

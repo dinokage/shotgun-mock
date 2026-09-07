@@ -40,10 +40,8 @@ import {
 } from "@/store/deliveries";
 import { useProjectStore } from "@/store/projects";
 import { useShotStore } from "@/store/shots";
-import {
-  getPlaceholderThumbnail,
-  getPlaceholderVideoSrc,
-} from "@/lib/placeholderArt";
+import { getPlaceholderThumbnail } from "@/lib/placeholderArt";
+import { usePlaceholderVideoSrc } from "@/hooks/usePlaceholderVideo";
 import { cn } from "@/lib/utils";
 
 /**
@@ -128,6 +126,13 @@ export default function DeliveryDetail() {
   // Forge login at all, not to re-authenticate people already signed in.
   const [unlocked, setUnlocked] = useState(!!currentUser);
   const [activeShotId, setActiveShotId] = useState<string | null>(null);
+  const activeShot = activeShotId
+    ? shots.find((s) => s.id === activeShotId)
+    : null;
+  // Called unconditionally, ahead of this component's early returns below,
+  // per rules of hooks -- seed 0 is an inert placeholder while nothing is
+  // active, the video element that would use it is never rendered then.
+  const activeShotVideoSrc = usePlaceholderVideoSrc(activeShot?.thumbnailSeed ?? 0);
 
   if (!delivery) {
     return (
@@ -297,9 +302,6 @@ export default function DeliveryDetail() {
     );
   }
 
-  const activeShot = activeShotId
-    ? shots.find((s) => s.id === activeShotId)
-    : null;
   const activeItem = activeShotId
     ? delivery.items.find((i) => i.shotId === activeShotId)
     : null;
@@ -432,7 +434,7 @@ export default function DeliveryDetail() {
             <div className="aspect-video bg-black rounded-lg overflow-hidden border border-white/10 relative">
               <video
                 key={activeShot.id}
-                src={getPlaceholderVideoSrc(activeShot.thumbnailSeed)}
+                src={activeShotVideoSrc}
                 poster={getPlaceholderThumbnail(
                   activeShot.thumbnailSeed,
                   1280,

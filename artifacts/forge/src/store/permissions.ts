@@ -166,7 +166,20 @@ function caps(
 }
 
 export const DEFAULT_PERMISSION_SCHEME: PermissionScheme = {
-  admin: caps(Object.fromEntries(CAPABILITY_IDS.map((id) => [id, true]))),
+  // The admin doesn't do production work -- no tasks, no reviews, no
+  // broadcasts, no pipeline/financials edits. Their job is standing the
+  // studio up and watching it run: add people, assign roles, manage
+  // licenses/integrations (the Marketplace is admin-only elsewhere in the
+  // app for the same reason), and view financials read-only. They still
+  // see every page (LEADERSHIP_ROLES/STUDIO_LEADERSHIP_ROLES above keep
+  // "admin" for that) -- this only removes write actions.
+  admin: caps({
+    manage_members: true,
+    manage_roles: true,
+    view_financials: true,
+    manage_licenses: true,
+    manage_integrations: true,
+  }),
   production_head: caps({
     create_tasks: true,
     edit_tasks: true,

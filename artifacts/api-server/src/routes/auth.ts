@@ -1,13 +1,8 @@
 import { Router } from "express";
-import { db } from "@workspace/db";
-import {
-  usersTable,
-  tenantsTable,
-  tenantRolesTable,
-  tenantRoleCapabilitiesTable,
-} from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { prisma } from "@workspace/db";
 import { verifyPassword, signSession, verifySession } from "../lib/auth";
+import { createNotification, findProductionManagers } from "./notifications";
+import { cacheGet, cacheSet, cacheKeys } from "../lib/cache";
 
 export const authRouter = Router();
 
@@ -18,10 +13,7 @@ authRouter.post("/login", async (req, res) => {
       return res.status(400).json({ error: "Missing email or password" });
     }
 
-    const [user] = await db
-      .select()
-      .from(usersTable)
-      .where(eq(usersTable.email, email));
+    const user = await prisma.user.findFirst({ where: { email } });
     if (!user) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
@@ -32,18 +24,11 @@ authRouter.post("/login", async (req, res) => {
     }
 
     // Resolve tenant and role details
-    const [tenant] = await db
-      .select()
-      .from(tenantsTable)
-      .where(eq(tenantsTable.id, user.tenantId));
-    const [role] = await db
-      .select()
-      .from(tenantRolesTable)
-      .where(eq(tenantRolesTable.id, user.roleId));
-    const roleCaps = await db
-      .select()
-      .from(tenantRoleCapabilitiesTable)
-      .where(eq(tenantRoleCapabilitiesTable.roleId, user.roleId));
+    const tenant = await prisma.tenant.findFirst({ where: { id: user.tenantId } });
+    const role = await prisma.tenantRole.findFirst({ where: { id: user.roleId } });
+    const roleCaps = await prisma.tenantRoleCapability.findMany({
+      where: { roleId: user.roleId },
+    });
     const capabilities = roleCaps.map((c) => c.capabilityId);
 
     const sessionPayload = {
@@ -56,10 +41,40 @@ authRouter.post("/login", async (req, res) => {
     const token = signSession(sessionPayload);
     res.cookie("session", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: process.env.COOKIE_SECURE === "true",
       sameSite: "lax",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
+
+    // Fire-and-forget: never let a notification failure block login itself.
+    // Skip notifying a production_head that they logged in themselves --
+    // that's not a signal anyone (including them) needs to see.
+    if (role?.name !== "production_head") {
+      (async () => {
+        try {
+          const dept = user.departmentId
+            ? await prisma.department.findFirst({ where: { id: user.departmentId } })
+            : null;
+          const recipients = await findProductionManagers(
+            user.tenantId,
+            dept?.name,
+          );
+          for (const recipient of recipients) {
+            await createNotification({
+              tenantId: user.tenantId,
+              recipientUserId: recipient.id,
+              category: "system",
+              title: `${user.name} logged in`,
+              description: `${user.name} (${role?.name || "member"}${dept ? `, ${dept.name}` : ""}) just signed in.`,
+              entityType: "user",
+              entityId: user.id,
+            });
+          }
+        } catch (err) {
+          req.log.error(err, "Failed to send login notification");
+        }
+      })();
+    }
 
     return res.status(200).json({
       user: {
@@ -68,10 +83,11 @@ authRouter.post("/login", async (req, res) => {
         role: role?.name || "admin",
         departmentId: user.departmentId,
         capabilities,
+        punchedInAt: user.punchedInAt,
       },
       tenant: {
-        id: tenant.id,
-        name: tenant.name,
+        id: tenant!.id,
+        name: tenant!.name,
       },
     });
   } catch (err) {
@@ -91,38 +107,46 @@ authRouter.get("/me", async (req, res) => {
 
   const session = verifySession(token);
   if (!session) return res.status(401).json({ error: "Invalid session" });
+  // /me is for real-user sessions only; client-access-link sessions carry a
+  // null userId and have no users row to look up.
+  if (!session.userId) return res.status(401).json({ error: "Invalid session" });
 
-  const [user] = await db
-    .select()
-    .from(usersTable)
-    .where(eq(usersTable.id, session.userId));
+  // App.tsx polls this endpoint every 10s for every logged-in session,
+  // regardless of role -- artist, lead, production_head, producer, admin
+  // all hit it identically, and the 4 DB queries below return the same
+  // result on almost every one of those polls. A short TTL cache turns most
+  // of that polling traffic into a single Redis read; the write paths that
+  // actually change this payload (profile edit, avatar upload, an admin
+  // changing someone's role/department) call cacheDel on this same key so
+  // real changes still show up immediately rather than waiting out the TTL.
+  const cacheKey = cacheKeys.userMe(session.tenantId, session.userId);
+  const cached = await cacheGet<Record<string, unknown>>(cacheKey);
+  if (cached) return res.status(200).json(cached);
+
+  const user = await prisma.user.findFirst({ where: { id: session.userId } });
   if (!user) return res.status(401).json({ error: "User deleted" });
 
-  const [tenant] = await db
-    .select()
-    .from(tenantsTable)
-    .where(eq(tenantsTable.id, session.tenantId));
-  const [role] = await db
-    .select()
-    .from(tenantRolesTable)
-    .where(eq(tenantRolesTable.id, session.roleId));
-  const roleCaps = await db
-    .select()
-    .from(tenantRoleCapabilitiesTable)
-    .where(eq(tenantRoleCapabilitiesTable.roleId, session.roleId));
+  const tenant = await prisma.tenant.findFirst({ where: { id: session.tenantId } });
+  const role = await prisma.tenantRole.findFirst({ where: { id: session.roleId } });
+  const roleCaps = await prisma.tenantRoleCapability.findMany({
+    where: { roleId: session.roleId },
+  });
   const capabilities = roleCaps.map((c) => c.capabilityId);
 
-  return res.status(200).json({
+  const payload = {
     user: {
       id: user.id,
       name: user.name,
       role: role?.name || "admin",
       departmentId: user.departmentId,
       capabilities,
+      punchedInAt: user.punchedInAt,
     },
     tenant: {
-      id: tenant.id,
+      id: tenant?.id ?? "",
       name: tenant?.name || "",
     },
-  });
+  };
+  await cacheSet(cacheKey, payload, 15);
+  return res.status(200).json(payload);
 });

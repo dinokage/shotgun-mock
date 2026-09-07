@@ -12,7 +12,7 @@ import { useIsLeadership } from "@/hooks/use-capability";
 import { AppShell } from "@/components/shell/AppShell";
 
 // Pages
-import Login from "@/pages/login";
+import Login, { ROLE_LANDING_ROUTE } from "@/pages/login";
 import Home from "@/pages/home";
 import Projects from "@/pages/projects";
 import Tasks from "@/pages/tasks";
@@ -35,6 +35,7 @@ import Profile from "@/pages/profile";
 import ProductionDashboard from "@/pages/production";
 import Timesheets from "@/pages/timesheets";
 import ClientReview from "@/pages/client-review";
+import AcceptInvite from "@/pages/accept-invite";
 
 import Audit from "@/pages/audit";
 import NotFound from "@/pages/not-found";
@@ -53,6 +54,7 @@ import SchemaBuilder from "@/pages/schema-builder";
 import AdminPanel from "@/pages/admin";
 
 import { queryClient } from "@/lib/queryClient";
+import { canAccessRoute } from "@/lib/roleRouteAccess";
 
 // Auth Guard component
 function AuthGuard({ children }: { children: React.ReactNode }) {
@@ -66,6 +68,32 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   }, [isAuthenticated, isInitializing, setLocation]);
 
   if (isInitializing || !isAuthenticated) return null;
+  return <>{children}</>;
+}
+
+// Route-level RBAC guard — stops direct URL navigation to a page a role
+// isn't allowed to reach (the Sidebar separately hides the link entirely,
+// see Sidebar.tsx). Checked against the shared ROLE_ALLOWED_ROUTES
+// allow-list so this guard and the sidebar can never drift out of sync.
+function RoleRouteGuard({ children }: { children: React.ReactNode }) {
+  const { currentUser } = useAuthStore();
+  const [location, setLocation] = useLocation();
+  // client has no route allow-list (see ROLE_ALLOWED_ROUTES) and no main-app
+  // landing route — it should never actually reach this guard (client
+  // sessions don't populate currentUser, see AuthGuard), but short-circuit
+  // it explicitly so a future change can't turn an empty allow-list into a
+  // redirect loop or blank page.
+  const isClient = currentUser?.role === "client";
+  const allowed =
+    !currentUser || (!isClient && canAccessRoute(currentUser.role, location));
+
+  useEffect(() => {
+    if (currentUser && !allowed) {
+      setLocation(isClient ? "/login" : ROLE_LANDING_ROUTE[currentUser.role] ?? "/");
+    }
+  }, [currentUser, allowed, isClient, setLocation]);
+
+  if (currentUser && !allowed) return null;
   return <>{children}</>;
 }
 
@@ -96,8 +124,9 @@ function LeadershipGuard({ children }: { children: React.ReactNode }) {
 function Router() {
   return (
     <Switch>
-      <Route path="/login/:role?" component={Login} />
+      <Route path="/login" component={Login} />
       <Route path="/client-review" component={ClientReview} />
+      <Route path="/accept-invite" component={AcceptInvite} />
       {/* Public, outside AuthGuard — external recipients reach a specific
           delivery via its access code, with no Forge login at all. */}
       <Route path="/delivery/:id" component={DeliveryDetail} />
@@ -105,128 +134,138 @@ function Router() {
       {/* Protected Routes wrapped in AppShell */}
       <Route path="/.*">
         <AuthGuard>
-          <AppShell>
-            <Switch>
-              <Route path="/" component={Home} />
-              <Route path="/projects">
-                <LeadershipGuard>
-                  <Projects />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/projects/:id">
-                <LeadershipGuard>
-                  <ProjectDetail />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/assets" component={Assets} />
-              <Route path="/assets/:id" component={AssetDetail} />
-              <Route path="/shots" component={Shots} />
-              <Route path="/shots/:id" component={ShotDetail} />
-              <Route path="/tasks" component={Tasks} />
-              <Route path="/departments">
-                <LeadershipGuard>
-                  <Departments />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/departments/:id">
-                <LeadershipGuard>
-                  <DepartmentDetail />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/people" component={People} />
-              <Route path="/people/:id" component={Profile} />
-              <Route path="/daily-standup" component={DailyStandup} />
-              <Route path="/review" component={Review} />
-              <Route path="/scheduling">
-                <LeadershipGuard>
-                  <Scheduling />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/marketplace">
-                <LeadershipGuard>
-                  <Marketplace />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/marketplace/:id">
-                <LeadershipGuard>
-                  <PluginDetail />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/integrations">
-                <LeadershipGuard>
-                  <IntegrationsHub />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/workflows">
-                <LeadershipGuard>
-                  <Workflows />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/workflows/new">
-                <LeadershipGuard>
-                  <WorkflowEditor />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/workflows/run/:id">
-                <LeadershipGuard>
-                  <WorkflowRun />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/workflows/:id">
-                <LeadershipGuard>
-                  <WorkflowEditor />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/schema-builder">
-                <LeadershipGuard>
-                  <SchemaBuilder />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/publishing" component={Publishing} />
-              <Route path="/analytics">
-                <LeadershipGuard>
-                  <Analytics />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/profile" component={Profile} />
+          <RoleRouteGuard>
+            <AppShell>
+              <Switch>
+                <Route path="/" component={Home} />
+                <Route path="/projects">
+                  <LeadershipGuard>
+                    <Projects />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/projects/:id">
+                  <LeadershipGuard>
+                    <ProjectDetail />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/assets" component={Assets} />
+                <Route path="/assets/:id" component={AssetDetail} />
+                <Route path="/shots" component={Shots} />
+                <Route path="/shots/:id" component={ShotDetail} />
+                <Route path="/tasks" component={Tasks} />
+                <Route path="/departments">
+                  <LeadershipGuard>
+                    <Departments />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/departments/:id">
+                  <LeadershipGuard>
+                    <DepartmentDetail />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/people" component={People} />
+                <Route path="/people/:id" component={Profile} />
+                <Route path="/daily-standup" component={DailyStandup} />
+                <Route path="/review" component={Review} />
+                {/* key={params.taskId} forces a full remount when navigating
+                    between two different tasks' reviews -- Review carries a
+                    lot of local editor state (video clips, frame, tool
+                    selection, drag/resize) that must not leak from one
+                    task's session into another's. */}
+                <Route path="/review/:taskId">
+                  {(params) => <Review key={params.taskId} />}
+                </Route>
+                <Route path="/scheduling">
+                  <LeadershipGuard>
+                    <Scheduling />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/marketplace">
+                  <LeadershipGuard>
+                    <Marketplace />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/marketplace/:id">
+                  <LeadershipGuard>
+                    <PluginDetail />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/integrations">
+                  <LeadershipGuard>
+                    <IntegrationsHub />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/workflows">
+                  <LeadershipGuard>
+                    <Workflows />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/workflows/new">
+                  <LeadershipGuard>
+                    <WorkflowEditor />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/workflows/run/:id">
+                  <LeadershipGuard>
+                    <WorkflowRun />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/workflows/:id">
+                  <LeadershipGuard>
+                    <WorkflowEditor />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/schema-builder">
+                  <LeadershipGuard>
+                    <SchemaBuilder />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/publishing" component={Publishing} />
+                <Route path="/analytics">
+                  <LeadershipGuard>
+                    <Analytics />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/profile" component={Profile} />
 
-              <Route path="/production">
-                <LeadershipGuard>
-                  <ProductionDashboard />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/financials">
-                <LeadershipGuard>
-                  <FinancialDashboard />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/audit">
-                <LeadershipGuard>
-                  <Audit />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/settings">
-                <LeadershipGuard>
-                  <Settings />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/delivery">
-                <LeadershipGuard>
-                  <Deliveries />
-                </LeadershipGuard>
-              </Route>
-              <Route path="/chat" component={Chat} />
-              <Route path="/tracking" component={TrackingGrid} />
-              <Route path="/timesheets" component={Timesheets} />
-              <Route path="/notifications" component={Notifications} />
-              <Route path="/admin">
-                <LeadershipGuard>
-                  <AdminPanel />
-                </LeadershipGuard>
-              </Route>
-              <Route component={NotFound} />
-            </Switch>
-          </AppShell>
+                <Route path="/production">
+                  <LeadershipGuard>
+                    <ProductionDashboard />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/financials">
+                  <LeadershipGuard>
+                    <FinancialDashboard />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/audit">
+                  <LeadershipGuard>
+                    <Audit />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/settings">
+                  <LeadershipGuard>
+                    <Settings />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/delivery">
+                  <LeadershipGuard>
+                    <Deliveries />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/chat" component={Chat} />
+                <Route path="/tracking" component={TrackingGrid} />
+                <Route path="/timesheets" component={Timesheets} />
+                <Route path="/notifications" component={Notifications} />
+                <Route path="/admin">
+                  <LeadershipGuard>
+                    <AdminPanel />
+                  </LeadershipGuard>
+                </Route>
+                <Route component={NotFound} />
+              </Switch>
+            </AppShell>
+          </RoleRouteGuard>
         </AuthGuard>
       </Route>
     </Switch>
@@ -238,6 +277,20 @@ function App() {
 
   useEffect(() => {
     fetchMe();
+    // fetchMe() re-hydrates every shared store (tasks, users, shots, assets,
+    // projects, departments) from the real backend -- previously it only
+    // ran once at login, so a task reassigned/self-claimed by one person
+    // (or a new employee the admin just added) never appeared for anyone
+    // else already logged in until they reloaded or logged back in. Polling
+    // it keeps the whole app's shared state converging within seconds
+    // without needing every consumer migrated onto react-query individually.
+    // Skips while logged out so it doesn't hammer the login screen.
+    const interval = setInterval(() => {
+      if (useAuthStore.getState().isAuthenticated) {
+        fetchMe();
+      }
+    }, 10000);
+    return () => clearInterval(interval);
   }, [fetchMe]);
 
   return (

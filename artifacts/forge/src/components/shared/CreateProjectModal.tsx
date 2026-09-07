@@ -2,6 +2,9 @@ import { useState } from "react";
 import { useAuthStore } from "@/store/auth";
 import { useUIStore } from "@/store/ui";
 import { useCreateProject } from "@/hooks/useProjects";
+import { useCreateEpisode } from "@/hooks/useEpisodes";
+import { useCreateSequence } from "@/hooks/useSequences";
+import { useCreateShot } from "@/hooks/useShots";
 import {
   Dialog,
   DialogContent,
@@ -22,6 +25,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { Plus, X } from "lucide-react";
+
+interface DraftShot {
+  episode: string;
+  sequence: string;
+  shot: string;
+}
 
 // Mirrors the distinct `type` values seeded across mockData.ts's PROJECTS,
 // so a project created here reads consistently with the rest of the grid.
@@ -39,6 +49,9 @@ const PROJECT_TYPES = [
 export function CreateProjectModal() {
   const { createProjectModalOpen, setCreateProjectModalOpen } = useUIStore();
   const { mutateAsync: createProject, isPending } = useCreateProject();
+  const createEpisode = useCreateEpisode();
+  const createSequence = useCreateSequence();
+  const createShot = useCreateShot();
   const { currentUser } = useAuthStore();
   const { toast } = useToast();
 
@@ -48,6 +61,8 @@ export function CreateProjectModal() {
   const [dueDate, setDueDate] = useState("");
   const [budget, setBudget] = useState("");
   const [description, setDescription] = useState("");
+  const [draftShots, setDraftShots] = useState<DraftShot[]>([]);
+  const [creatingShots, setCreatingShots] = useState(false);
 
   if (!currentUser) return null;
 
@@ -58,7 +73,15 @@ export function CreateProjectModal() {
     setDueDate("");
     setBudget("");
     setDescription("");
+    setDraftShots([]);
   };
+
+  const addDraftShotRow = () =>
+    setDraftShots((prev) => [...prev, { episode: "", sequence: "", shot: "" }]);
+  const updateDraftShotRow = (i: number, patch: Partial<DraftShot>) =>
+    setDraftShots((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  const removeDraftShotRow = (i: number) =>
+    setDraftShots((prev) => prev.filter((_, idx) => idx !== i));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -84,9 +107,62 @@ export function CreateProjectModal() {
         status: "active",
       });
 
+      const validShotRows = draftShots.filter((r) => r.shot.trim());
+      if (validShotRows.length > 0) {
+        setCreatingShots(true);
+        const episodeCache = new Map<string, string>();
+        const sequenceCache = new Map<string, string>();
+        for (const row of validShotRows) {
+          try {
+            let episodeId: string | undefined;
+            if (row.episode.trim()) {
+              const key = row.episode.trim().toLowerCase();
+              episodeId = episodeCache.get(key);
+              if (!episodeId) {
+                const created = await createEpisode.mutateAsync({
+                  projectId: project.id,
+                  name: row.episode.trim(),
+                });
+                episodeId = created.id;
+                episodeCache.set(key, episodeId);
+              }
+            }
+
+            let sequenceId: string | undefined;
+            if (row.sequence.trim()) {
+              const key = `${episodeId ?? ""}::${row.sequence.trim().toLowerCase()}`;
+              sequenceId = sequenceCache.get(key);
+              if (!sequenceId) {
+                const created = await createSequence.mutateAsync({
+                  projectId: project.id,
+                  episodeId,
+                  name: row.sequence.trim(),
+                });
+                sequenceId = created.id;
+                sequenceCache.set(key, sequenceId);
+              }
+            }
+
+            await createShot.mutateAsync({
+              projectId: project.id,
+              episodeId,
+              sequenceId,
+              name: row.shot.trim(),
+            });
+          } catch (err: any) {
+            toast({
+              title: `Couldn't add shot "${row.shot}"`,
+              description: err?.message,
+              variant: "destructive",
+            });
+          }
+        }
+        setCreatingShots(false);
+      }
+
       toast({
         title: "Project Created",
-        description: `"${project.name}" has been added to the roster.`,
+        description: `"${project.name}" has been added to the roster${validShotRows.length ? ` with ${validShotRows.length} shot${validShotRows.length === 1 ? "" : "s"}` : ""}.`,
       });
 
       resetForm();
@@ -188,17 +264,68 @@ export function CreateProjectModal() {
             />
           </div>
 
+          <div className="space-y-2 pt-2 border-t border-border">
+            <div className="flex items-center justify-between">
+              <Label>Initial Shots (Optional)</Label>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={addDraftShotRow}
+              >
+                <Plus className="w-3.5 h-3.5 mr-1" /> Add Shot
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Set up the same Episode / Sequence / Shot structure used when
+              assigning tasks — a new project starts with none, so add a
+              few here, or skip this and use "Import Tracksheet" on the
+              Tracking Grid later for bulk import.
+            </p>
+            {draftShots.map((row, i) => (
+              <div key={i} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2">
+                <Input
+                  placeholder="Episode (optional)"
+                  value={row.episode}
+                  onChange={(e) => updateDraftShotRow(i, { episode: e.target.value })}
+                />
+                <Input
+                  placeholder="Sequence (optional)"
+                  value={row.sequence}
+                  onChange={(e) => updateDraftShotRow(i, { sequence: e.target.value })}
+                />
+                <Input
+                  placeholder="Shot name *"
+                  value={row.shot}
+                  onChange={(e) => updateDraftShotRow(i, { shot: e.target.value })}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => removeDraftShotRow(i)}
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+
           <DialogFooter className="mt-6">
             <Button
               type="button"
               variant="outline"
               onClick={() => setCreateProjectModalOpen(false)}
-              disabled={isPending}
+              disabled={isPending || creatingShots}
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={isPending}>
-              {isPending ? "Creating..." : "Create Project"}
+            <Button type="submit" disabled={isPending || creatingShots}>
+              {isPending
+                ? "Creating..."
+                : creatingShots
+                  ? "Adding shots..."
+                  : "Create Project"}
             </Button>
           </DialogFooter>
         </form>

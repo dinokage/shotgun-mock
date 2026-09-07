@@ -1,17 +1,17 @@
+import { useState, useRef } from "react";
 import { useParams, Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  USERS,
-  TASKS,
-  PROJECTS,
-  DEPARTMENTS,
-  ROLE_LABELS,
-  isTaskActive,
-} from "@/data/mockData";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ROLE_LABELS, isTaskActive } from "@/data/mockData";
+import { useUserStore } from "@/store/users";
+import { useTasksStore } from "@/store/tasks";
+import { useProjectStore } from "@/store/projects";
+import { useDepartmentStore } from "@/store/departments";
 import {
   ListTodo,
   FolderOpen,
@@ -21,12 +21,22 @@ import {
   Building2,
   ArrowLeft,
   ArrowUpRight,
+  Pencil,
+  KeyRound,
 } from "lucide-react";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { PriorityChip } from "@/components/shared/PriorityChip";
 import { useUIStore } from "@/store/ui";
 import { useAuthStore } from "@/store/auth";
 import { useCapability } from "@/hooks/use-capability";
+import {
+  useUpdateProfile,
+  useChangePassword,
+  useUploadAvatar,
+} from "@/hooks/useUsers";
+import { ApiError } from "@/lib/apiClient";
+import { useToast } from "@/hooks/use-toast";
+import { getAssigneeId, getProjectId, useEntityProjectMap } from "@/lib/taskShape";
 import {
   STUDIO_LEADERSHIP_ROLES,
   LEADERSHIP_ROLES,
@@ -42,9 +52,30 @@ export default function Profile() {
     setCreateTaskDefaultAssigneeId,
   } = useUIStore();
   const canAssignTasks = useCapability("assign_tasks");
+  const { toast } = useToast();
+  const updateProfile = useUpdateProfile();
+  const changePassword = useChangePassword();
+  const uploadAvatar = useUploadAvatar();
+  const avatarFileInputRef = useRef<HTMLInputElement>(null);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const users = useUserStore((s) => s.users);
+  const tasks = useTasksStore((s) => s.tasks);
+  const projects = useProjectStore((s) => s.projects);
+  const departments = useDepartmentStore((s) => s.departments);
+  // Called unconditionally (before the not-found/no-access early returns
+  // below) since it's a hook — see myTasks/myProjects further down, which
+  // need it to resolve a real TaskDTO's project via entityId -> shot/asset.
+  const entityProjectMap = useEntityProjectMap();
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editTitle, setEditTitle] = useState("");
+  const [editAvatar, setEditAvatar] = useState("");
 
   const userId = id || currentUser?.id;
-  const user = USERS.find((u) => u.id === userId);
+  const user = users.find((u) => u.id === userId);
 
   if (!user) {
     return (
@@ -100,19 +131,98 @@ export default function Profile() {
     );
   }
 
-  const dept = DEPARTMENTS.find((d) => d.id === user.departmentId);
+  const dept = departments.find((d) => d.id === user.departmentId);
   const supervisor = user.supervisorId
-    ? USERS.find((u) => u.id === user.supervisorId)
+    ? users.find((u) => u.id === user.supervisorId)
     : null;
 
-  const myTasks = TASKS.filter((t) => t.assigneeId === user.id);
-  const myProjects = [...new Set(myTasks.map((t) => t.projectId))]
-    .map((pid) => PROJECTS.find((p) => p.id === pid))
+  const myTasks = tasks.filter((t) => getAssigneeId(t) === user.id);
+  const myProjects = [
+    ...new Set(
+      myTasks
+        .map((t) => getProjectId(t, entityProjectMap))
+        .filter((pid): pid is string => Boolean(pid)),
+    ),
+  ]
+    .map((pid) => projects.find((p) => p.id === pid))
     .filter(Boolean);
   // Shared isTaskActive classification (see data/mockData.ts) so this stat and the
   // "Active Tasks" list below always agree with each other and with every other
   // page's active/done rollups for the same underlying task data.
   const activeTasks = myTasks.filter((t) => isTaskActive(t.status));
+
+  const handleStartEdit = () => {
+    setEditName(user.name);
+    setEditTitle(user.title ?? "");
+    setEditAvatar(user.avatar ?? "");
+    setIsEditing(true);
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await updateProfile.mutateAsync({
+        name: editName,
+        title: editTitle || null,
+        avatar: editAvatar || null,
+      });
+      toast({ title: "Profile updated" });
+      setIsEditing(false);
+    } catch (err: any) {
+      toast({
+        title: "Failed to update profile",
+        description: err.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleAvatarFileChange = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      const updated = await uploadAvatar.mutateAsync(file);
+      setEditAvatar(updated.avatar ?? "");
+      toast({ title: "Profile picture updated" });
+    } catch (err: any) {
+      toast({
+        title: "Failed to upload profile picture",
+        description:
+          err instanceof ApiError ? err.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      toast({
+        title: "Passwords don't match",
+        description: "New password and confirmation must match.",
+        variant: "destructive",
+      });
+      return;
+    }
+    try {
+      await changePassword.mutateAsync({ currentPassword, newPassword });
+      toast({ title: "Password changed" });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setIsChangingPassword(false);
+    } catch (err: any) {
+      toast({
+        title: "Failed to change password",
+        description:
+          err instanceof ApiError ? err.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
@@ -128,80 +238,167 @@ export default function Profile() {
       )}
 
       {/* Profile Header */}
-      <div className="flex flex-col md:flex-row md:items-center gap-6">
-        <Avatar
-          className="w-24 h-24 border-4 shadow-sm"
-          style={{ borderColor: dept?.color || "var(--border)" }}
-        >
-          <AvatarImage src={user.avatar} alt={user.name} />
-          <AvatarFallback className="text-3xl">
-            {user.name.charAt(0)}
-          </AvatarFallback>
-        </Avatar>
-        <div className="flex-1">
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold">{user.name}</h1>
-            <Badge
-              variant={user.status === "active" ? "default" : "secondary"}
-              className={
-                user.status === "active"
-                  ? "bg-green-500/10 text-green-500 hover:bg-green-500/20 shadow-none"
-                  : ""
-              }
-            >
-              {user.status}
-            </Badge>
-          </div>
-          <p className="text-muted-foreground text-lg">
-            {ROLE_LABELS[user.role] || user.title}
-          </p>
-
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mt-3 text-sm text-muted-foreground">
-            <span className="flex items-center gap-1.5">
-              <Mail className="w-4 h-4" /> {user.email}
-            </span>
-            {dept && (
-              <Link
-                href={`/departments/${dept.id}`}
-                className="flex items-center gap-1.5 hover:text-primary transition-colors"
+      {isEditing ? (
+        <Card className="border-border/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm text-muted-foreground uppercase tracking-wider">
+              Edit Profile
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSaveEdit} className="space-y-4">
+              <div className="flex flex-col md:flex-row md:items-center gap-6">
+                <div className="flex flex-col items-center gap-2 shrink-0">
+                  <Avatar className="w-20 h-20 border-4 shadow-sm">
+                    <AvatarImage src={editAvatar || undefined} alt={editName} />
+                    <AvatarFallback className="text-2xl">
+                      {(editName || user.name).charAt(0)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <input
+                    ref={avatarFileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    className="hidden"
+                    onChange={handleAvatarFileChange}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={uploadAvatar.isPending}
+                    onClick={() => avatarFileInputRef.current?.click()}
+                  >
+                    {uploadAvatar.isPending ? "Uploading..." : "Upload Photo"}
+                  </Button>
+                </div>
+                <div className="flex-1 space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-name">Name</Label>
+                    <Input
+                      id="edit-name"
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-title">Title</Label>
+                    <Input
+                      id="edit-title"
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      placeholder="e.g. Senior Artist"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-avatar">Avatar URL</Label>
+                    <Input
+                      id="edit-avatar"
+                      value={editAvatar}
+                      onChange={(e) => setEditAvatar(e.target.value)}
+                      placeholder="https://... (or use Upload Photo above)"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsEditing(false)}
+                  disabled={updateProfile.isPending}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={updateProfile.isPending}>
+                  {updateProfile.isPending ? "Saving..." : "Save Changes"}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="flex flex-col md:flex-row md:items-center gap-6">
+          <Avatar
+            className="w-24 h-24 border-4 shadow-sm"
+            style={{ borderColor: dept?.color || "var(--border)" }}
+          >
+            <AvatarImage src={user.avatar} alt={user.name} />
+            <AvatarFallback className="text-3xl">
+              {user.name.charAt(0)}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex-1">
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-bold">{user.name}</h1>
+              <Badge
+                variant={user.status === "active" ? "default" : "secondary"}
+                className={
+                  user.status === "active"
+                    ? "bg-green-500/10 text-green-500 hover:bg-green-500/20 shadow-none"
+                    : ""
+                }
               >
-                <Building2 className="w-4 h-4" /> {dept.name}
+                {user.status}
+              </Badge>
+            </div>
+            <p className="text-muted-foreground text-lg">
+              {ROLE_LABELS[user.role] || user.title}
+            </p>
+
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mt-3 text-sm text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <Mail className="w-4 h-4" /> {user.email}
+              </span>
+              {dept && (
+                <Link
+                  href={`/departments/${dept.id}`}
+                  className="flex items-center gap-1.5 hover:text-primary transition-colors"
+                >
+                  <Building2 className="w-4 h-4" /> {dept.name}
+                </Link>
+              )}
+              <span className="flex items-center gap-1.5">
+                <MapPin className="w-4 h-4" />{" "}
+                {user.studioId === "studio1"
+                  ? "Portland"
+                  : user.studioId === "studio2"
+                    ? "London"
+                    : "Tokyo"}
+              </span>
+            </div>
+          </div>
+
+          <div className="ml-auto flex items-center gap-2">
+            {isMe && (
+              <Button variant="outline" onClick={handleStartEdit}>
+                <Pencil className="w-4 h-4 mr-2" /> Edit Profile
+              </Button>
+            )}
+            {currentUser && !isMe && (
+              <Link href={`/chat?user=${user.id}`}>
+                <Button
+                  variant="outline"
+                  className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
+                >
+                  <Mail className="w-4 h-4 mr-2" /> Message
+                </Button>
               </Link>
             )}
-            <span className="flex items-center gap-1.5">
-              <MapPin className="w-4 h-4" />{" "}
-              {user.studioId === "studio1"
-                ? "Portland"
-                : user.studioId === "studio2"
-                  ? "London"
-                  : "Tokyo"}
-            </span>
+            {currentUser && !isMe && canAssignTasks && user.role !== "client" && (
+              <Button
+                onClick={() => {
+                  setCreateTaskDefaultAssigneeId(user.id);
+                  setCreateTaskModalOpen(true);
+                }}
+              >
+                Assign Task
+              </Button>
+            )}
           </div>
         </div>
-
-        <div className="ml-auto flex items-center gap-2">
-          {currentUser && !isMe && (
-            <Link href={`/chat?user=${user.id}`}>
-              <Button
-                variant="outline"
-                className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
-              >
-                <Mail className="w-4 h-4 mr-2" /> Message
-              </Button>
-            </Link>
-          )}
-          {currentUser && !isMe && canAssignTasks && user.role !== "client" && (
-            <Button
-              onClick={() => {
-                setCreateTaskDefaultAssigneeId(user.id);
-                setCreateTaskModalOpen(true);
-              }}
-            >
-              Assign Task
-            </Button>
-          )}
-        </div>
-      </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="space-y-6">
@@ -262,6 +459,103 @@ export default function Profile() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Change Password -- self-only. Every imported-roster/invited
+              account starts on a shared studio default password with no
+              prior way off it; this is that missing self-service change. */}
+          {isMe && (
+            <Card className="border-border/50">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm text-muted-foreground uppercase tracking-wider flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <KeyRound className="w-4 h-4" /> Password
+                  </span>
+                  {!isChangingPassword && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => setIsChangingPassword(true)}
+                    >
+                      Change
+                    </Button>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              {isChangingPassword && (
+                <CardContent>
+                  <form
+                    onSubmit={handleChangePassword}
+                    className="space-y-3"
+                  >
+                    <div className="space-y-1.5">
+                      <Label htmlFor="current-password" className="text-xs">
+                        Current Password
+                      </Label>
+                      <Input
+                        id="current-password"
+                        type="password"
+                        value={currentPassword}
+                        onChange={(e) => setCurrentPassword(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="new-password" className="text-xs">
+                        New Password
+                      </Label>
+                      <Input
+                        id="new-password"
+                        type="password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        minLength={8}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="confirm-password" className="text-xs">
+                        Confirm New Password
+                      </Label>
+                      <Input
+                        id="confirm-password"
+                        type="password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        minLength={8}
+                        required
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 justify-end pt-1">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={changePassword.isPending}
+                        onClick={() => {
+                          setIsChangingPassword(false);
+                          setCurrentPassword("");
+                          setNewPassword("");
+                          setConfirmPassword("");
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="submit"
+                        size="sm"
+                        disabled={changePassword.isPending}
+                      >
+                        {changePassword.isPending
+                          ? "Saving..."
+                          : "Save Password"}
+                      </Button>
+                    </div>
+                  </form>
+                </CardContent>
+              )}
+            </Card>
+          )}
 
           {/* Skills */}
           <Card className="border-border/50">

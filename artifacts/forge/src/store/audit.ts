@@ -1,32 +1,33 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { AUDIT_EVENTS } from "@/data/mockData";
+import type { AuditLogDTO } from "@/hooks/useAuditLogs";
 import { useAssetStore } from "./assets";
 import { useShotStore } from "./shots";
 
-type AuditEntityType = "asset" | "shot";
+export type AuditEntityType = "asset" | "shot";
 
 /**
- * Walks every audit event for this entity newer than `timestamp` and builds
- * a field patch that restores the entity to its state right before the
- * earliest of those events happened. Each event's changedFields values are
- * "before → after" strings; iterating newest-first and letting each field
+ * Walks every real audit-log row for this entity newer than `timestamp` and
+ * builds a field patch that restores the entity to its state right before
+ * the earliest of those rows happened. Each row's metadata.before holds the
+ * plain pre-change field values (Task 3's real backend, not the old mock's
+ * "before → after" strings); iterating newest-first and letting each field
  * keep getting overwritten means the last write — from the oldest
- * qualifying event — is the correct pre-rollback value.
+ * qualifying row — is the correct pre-rollback value.
  */
 function computeRollbackPatch(
   entityId: string,
   timestamp: string,
-): Record<string, string> {
-  const laterEvents = AUDIT_EVENTS.filter(
-    (e) => e.entityId === entityId && e.timestamp > timestamp,
-  ).sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1));
+  logs: AuditLogDTO[],
+): Record<string, unknown> {
+  const laterEvents = logs
+    .filter((e) => e.targetEntityId === entityId && e.createdAt > timestamp)
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 
-  const patch: Record<string, string> = {};
+  const patch: Record<string, unknown> = {};
   for (const event of laterEvents) {
-    for (const [field, change] of Object.entries(event.changedFields)) {
-      const [before] = change.split("→").map((s) => s.trim());
-      patch[field] = before;
+    for (const [field, value] of Object.entries(event.metadata.before)) {
+      patch[field] = value;
     }
   }
   return patch;
@@ -35,7 +36,7 @@ function computeRollbackPatch(
 function applyPatch(
   entityType: AuditEntityType,
   entityId: string,
-  patch: Record<string, string>,
+  patch: Record<string, unknown>,
 ) {
   if (Object.keys(patch).length === 0) return;
   if (entityType === "asset") {
@@ -49,15 +50,15 @@ function currentFieldValues(
   entityType: AuditEntityType,
   entityId: string,
   fields: string[],
-): Record<string, string> {
+): Record<string, unknown> {
   const entity =
     entityType === "asset"
       ? useAssetStore.getState().assets.find((a) => a.id === entityId)
       : useShotStore.getState().shots.find((s) => s.id === entityId);
   if (!entity) return {};
-  const values: Record<string, string> = {};
+  const values: Record<string, unknown> = {};
   for (const field of fields) {
-    values[field] = String((entity as any)[field] ?? "");
+    values[field] = (entity as any)[field];
   }
   return values;
 }
@@ -73,11 +74,12 @@ function currentFieldValues(
  */
 interface AuditState {
   rollbackPoints: Record<string, string>;
-  entitySnapshots: Record<string, Record<string, string>>;
+  entitySnapshots: Record<string, Record<string, unknown>>;
   rollbackEntity: (
     entityId: string,
     entityType: AuditEntityType,
     timestamp: string,
+    logs: AuditLogDTO[],
   ) => void;
   clearRollback: (entityId: string, entityType: AuditEntityType) => void;
 }
@@ -88,7 +90,7 @@ export const useAuditStore = create<AuditState>()(
       rollbackPoints: {},
       entitySnapshots: {},
 
-      rollbackEntity: (entityId, entityType, timestamp) => {
+      rollbackEntity: (entityId, entityType, timestamp, logs) => {
         // If this entity is already mid-rollback, its live fields hold an
         // *intermediate* rolled-back state, not the true latest one — take
         // fresh currentFieldValues() here without restoring first and
@@ -102,7 +104,7 @@ export const useAuditStore = create<AuditState>()(
           applyPatch(entityType, entityId, existingSnapshot);
         }
 
-        const patch = computeRollbackPatch(entityId, timestamp);
+        const patch = computeRollbackPatch(entityId, timestamp, logs);
         const freshValues = currentFieldValues(
           entityType,
           entityId,
