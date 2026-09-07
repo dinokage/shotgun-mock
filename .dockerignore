@@ -8,8 +8,12 @@
 # Prisma Client output is platform-specific (query engine binaries) and is
 # regenerated inside the container for its actual target platform; a
 # locally-generated copy (e.g. Windows engine binaries from host dev) must
-# never be copied in as-is.
-**/generated
+# never be copied in as-is. Scoped to lib/db specifically -- a blanket
+# **/generated previously also excluded the committed, cross-platform
+# lib/api-client-react/src/generated/ API client the web build needs,
+# breaking every fresh `docker compose build web` with a Rollup
+# "Could not resolve ./generated/api" error.
+lib/db/generated
 
 # Real tenant data -- never belongs in a build context.
 backups/
