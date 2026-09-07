@@ -102,6 +102,12 @@ model ClientAccessLink {
   episodeId       String?   @map("episode_id")
   versionId       String?   @map("version_id")
   createdByUserId String    @map("created_by_user_id")
+  // Who this link was actually shared with -- set when the producer/lead
+  // supplies an email on creation, so the code can be sent automatically
+  // instead of relying on them to copy/paste it into their own email
+  // client. Nullable: a link can still be created without one (falls back
+  // to the existing copy-to-clipboard flow).
+  clientEmail     String?   @map("client_email")
   expiresAt       DateTime? @map("expires_at") @db.Timestamp(6)
   revokedAt       DateTime? @map("revoked_at") @db.Timestamp(6)
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamp(6)

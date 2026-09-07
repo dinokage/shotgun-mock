@@ -61,6 +61,15 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { cn, copyToClipboard } from "@/lib/utils";
 import { cut } from "@/lib/motion";
 import { hashString } from "@/lib/seededMock";
@@ -325,6 +334,8 @@ export default function Review() {
   const uploadVideo = useUploadVideo();
   const updateVersion = useUpdateVersion();
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [shareEmail, setShareEmail] = useState("");
 
   const isManager = currentUser && LEADERSHIP_ROLES.includes(currentUser.role);
 
@@ -1316,36 +1327,92 @@ export default function Review() {
               size="sm"
               variant="outline"
               className="border-blue-500/50 text-blue-500 hover:bg-blue-500/10"
-              disabled={createClientAccessLink.isPending}
-              onClick={async () => {
-                try {
-                  // Creates a new code, or returns the existing still-valid
-                  // one for this version -- clicking this again to re-share
-                  // doesn't mint (and confuse the client with) a second code.
-                  const link = await createClientAccessLink.mutateAsync({
-                    versionId,
-                  });
-                  const shareText = `Forge client review link: ${window.location.origin}/client-review\nAccess code: ${link.code}`;
-                  const success = await copyToClipboard(shareText);
-                  toast({
-                    title: success ? "Link & Code Copied" : "Code Generated",
-                    description: success
-                      ? `Link and access code ${link.code} copied to clipboard — send both to the client.`
-                      : `Access code: ${link.code} — copy failed, share this code manually along with the client review link.`,
-                    variant: success ? undefined : "destructive",
-                  });
-                } catch {
-                  toast({
-                    title: "Couldn't Generate Link",
-                    description: "Something went wrong creating the client access code.",
-                    variant: "destructive",
-                  });
-                }
+              onClick={() => {
+                setShareEmail("");
+                setShareDialogOpen(true);
               }}
             >
               <Link2 className="w-4 h-4 mr-2" /> Share with Client
             </Button>
           )}
+          <Dialog open={shareDialogOpen} onOpenChange={setShareDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Share with Client</DialogTitle>
+                <DialogDescription>
+                  Enter the client's email to send them the access code
+                  automatically, or leave it blank to just copy the link and
+                  code to share yourself.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-2 py-2">
+                <Label htmlFor="client-share-email">Client email (optional)</Label>
+                <Input
+                  id="client-share-email"
+                  type="email"
+                  placeholder="client@studio.com"
+                  value={shareEmail}
+                  onChange={(e) => setShareEmail(e.target.value)}
+                />
+              </div>
+              <DialogFooter>
+                <Button
+                  disabled={createClientAccessLink.isPending || !versionId}
+                  onClick={async () => {
+                    if (!versionId) return;
+                    try {
+                      // Creates a new code, or returns the existing
+                      // still-valid one for this version -- clicking this
+                      // again to re-share doesn't mint (and confuse the
+                      // client with) a second code.
+                      const trimmedEmail = shareEmail.trim();
+                      const link = await createClientAccessLink.mutateAsync({
+                        versionId,
+                        ...(trimmedEmail ? { clientEmail: trimmedEmail } : {}),
+                      });
+                      setShareDialogOpen(false);
+
+                      if (trimmedEmail && link.emailSent) {
+                        toast({
+                          title: "Sent to Client",
+                          description: `Access code ${link.code} emailed to ${trimmedEmail}.`,
+                        });
+                        return;
+                      }
+
+                      const shareText = `Forge client review link: ${window.location.origin}/client-review\nAccess code: ${link.code}`;
+                      const copied = await copyToClipboard(shareText);
+                      if (trimmedEmail && !link.emailSent) {
+                        toast({
+                          title: "Email Failed — Code Copied Instead",
+                          description: copied
+                            ? `Couldn't send the email, but the link and code ${link.code} are on your clipboard — share them manually.`
+                            : `Couldn't send the email or copy to clipboard. Access code: ${link.code}`,
+                          variant: "destructive",
+                        });
+                        return;
+                      }
+                      toast({
+                        title: copied ? "Link & Code Copied" : "Code Generated",
+                        description: copied
+                          ? `Link and access code ${link.code} copied to clipboard — send both to the client.`
+                          : `Access code: ${link.code} — copy failed, share this code manually along with the client review link.`,
+                        variant: copied ? undefined : "destructive",
+                      });
+                    } catch {
+                      toast({
+                        title: "Couldn't Generate Link",
+                        description: "Something went wrong creating the client access code.",
+                        variant: "destructive",
+                      });
+                    }
+                  }}
+                >
+                  {shareEmail.trim() ? "Send Email" : "Copy Link"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           {!viewerMode &&
             reviewWorkflowStatus !== "approved" &&

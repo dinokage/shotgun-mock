@@ -3,6 +3,7 @@ import { prisma } from "@workspace/db";
 import { signSession } from "../lib/auth";
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability, denyClientAccess } from "../middleware/rbac";
+import { sendClientAccessEmail } from "../lib/mailer";
 import * as crypto from "crypto";
 
 export const clientAccessRouter = Router();
@@ -119,6 +120,50 @@ async function scopeInTenant(
   return false;
 }
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Builds a human-readable description of what a link grants, for the
+// share-by-email subject/body -- "the PES Animation project", "Episode 2 of
+// PES Animation", "version v003 of shot pes1_ep002_sc001_sh002". Falls back
+// to a generic phrase if a name lookup somehow comes back empty rather than
+// failing the whole share.
+async function describeScope(scope: {
+  projectId?: string;
+  episodeId?: string;
+  versionId?: string;
+}): Promise<string> {
+  if (scope.versionId) {
+    const version = await prisma.version.findUnique({
+      where: { id: scope.versionId },
+      select: { versionNumber: true, entityId: true, entityType: true },
+    });
+    if (version?.entityType === "shot") {
+      const shot = await prisma.shot.findUnique({
+        where: { id: version.entityId },
+        select: { name: true },
+      });
+      if (shot) return `version ${version.versionNumber} of shot ${shot.name}`;
+    }
+    return "a version for review";
+  }
+  if (scope.episodeId) {
+    const episode = await prisma.episode.findUnique({
+      where: { id: scope.episodeId },
+      select: { name: true, project: { select: { name: true } } },
+    });
+    if (episode) return `${episode.name} of ${episode.project.name}`;
+    return "an episode for review";
+  }
+  if (scope.projectId) {
+    const project = await prisma.project.findUnique({
+      where: { id: scope.projectId },
+      select: { name: true },
+    });
+    if (project) return `the ${project.name} project`;
+  }
+  return "content for review";
+}
+
 // Creates (or reuses) a client access link/code for one project/episode/
 // version. Gated on approve_reviews -- the same capability that lets
 // someone sign off on a submission in the review chain, since sharing
@@ -132,7 +177,7 @@ clientAccessRouter.post(
     try {
       const tenantId = req.tenantId!;
       const userId = req.userId!;
-      const { projectId, episodeId, versionId, expiresAt } = req.body;
+      const { projectId, episodeId, versionId, expiresAt, clientEmail } = req.body;
       const scope = { projectId, episodeId, versionId };
       const scopeCount = [projectId, episodeId, versionId].filter(Boolean).length;
       if (scopeCount !== 1) {
@@ -142,6 +187,11 @@ clientAccessRouter.post(
       }
       if (!(await scopeInTenant(tenantId, scope))) {
         return res.status(400).json({ error: "Invalid project, episode, or version" });
+      }
+      if (clientEmail !== undefined && clientEmail !== null) {
+        if (typeof clientEmail !== "string" || !EMAIL_PATTERN.test(clientEmail)) {
+          return res.status(400).json({ error: "clientEmail must be a valid email address" });
+        }
       }
 
       // Reuse an existing, still-valid link for this exact scope instead of
@@ -162,21 +212,62 @@ clientAccessRouter.post(
           OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
         },
       });
-      if (existing) return res.status(200).json(existing);
 
-      const created = await prisma.clientAccessLink.create({
-        data: {
-          id: crypto.randomUUID(),
-          tenantId,
-          code: generateAccessCode(),
-          projectId: projectId || null,
-          episodeId: episodeId || null,
-          versionId: versionId || null,
-          createdByUserId: userId,
-          expiresAt: expiresAt ? new Date(expiresAt) : null,
-        },
-      });
-      return res.status(201).json(created);
+      let link = existing;
+      let statusCode = 200;
+      if (!link) {
+        link = await prisma.clientAccessLink.create({
+          data: {
+            id: crypto.randomUUID(),
+            tenantId,
+            code: generateAccessCode(),
+            projectId: projectId || null,
+            episodeId: episodeId || null,
+            versionId: versionId || null,
+            createdByUserId: userId,
+            clientEmail: clientEmail || null,
+            expiresAt: expiresAt ? new Date(expiresAt) : null,
+          },
+        });
+        statusCode = 201;
+      } else if (clientEmail && clientEmail !== link.clientEmail) {
+        // Re-sharing an existing link with a (possibly new) email address --
+        // keep the link record current so future shares/audits reflect who
+        // it was actually sent to.
+        link = await prisma.clientAccessLink.update({
+          where: { id: link.id },
+          data: { clientEmail },
+        });
+      }
+
+      // Email is best-effort: SMTP being briefly down shouldn't stop the
+      // producer from getting their link/code back to share manually (the
+      // frontend's copy-to-clipboard fallback already exists for exactly
+      // this). emailSent tells the frontend whether it can skip that
+      // fallback prompt.
+      let emailSent = false;
+      if (clientEmail) {
+        try {
+          const tenant = await prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { name: true },
+          });
+          const scopeLabel = await describeScope(scope);
+          const frontendUrl = process.env.FRONTEND_URL || "http://localhost";
+          await sendClientAccessEmail({
+            to: clientEmail,
+            reviewUrl: `${frontendUrl}/client-review`,
+            code: link.code,
+            tenantName: tenant?.name ?? "Forge",
+            scopeLabel,
+          });
+          emailSent = true;
+        } catch (err) {
+          req.log.error(err, "Failed to send client access email");
+        }
+      }
+
+      return res.status(statusCode).json({ ...link, emailSent });
     } catch (err) {
       console.error(err);
       return res.status(500).json({ error: "Internal server error" });

@@ -43,3 +43,28 @@ export async function sendInviteEmail(params: {
     `,
   });
 }
+
+export async function sendClientAccessEmail(params: {
+  to: string;
+  reviewUrl: string;
+  code: string;
+  tenantName: string;
+  scopeLabel: string;
+}) {
+  const { to, reviewUrl, code, tenantName, scopeLabel } = params;
+  const fromName = process.env.SMTP_FROM_NAME || "Forge";
+  const fromAddress = process.env.SMTP_USER;
+  const transport = getTransport();
+  await transport.sendMail({
+    from: `"${fromName}" <${fromAddress}>`,
+    to,
+    subject: `${tenantName} shared ${scopeLabel} with you for review`,
+    text: `${tenantName} has shared ${scopeLabel} with you for review on Forge.\n\nReview it here: ${reviewUrl}\n\nYour access code: ${code}\n\nKeep this code private -- anyone with it can view the shared content.`,
+    html: `
+      <p><strong>${tenantName}</strong> has shared <strong>${scopeLabel}</strong> with you for review on Forge.</p>
+      <p><a href="${reviewUrl}">Review it here</a></p>
+      <p>Your access code: <strong style="font-size:18px;letter-spacing:2px">${code}</strong></p>
+      <p style="color:#666;font-size:12px">Keep this code private -- anyone with it can view the shared content. If the button doesn't work, copy this link: ${reviewUrl}</p>
+    `,
+  });
+}
