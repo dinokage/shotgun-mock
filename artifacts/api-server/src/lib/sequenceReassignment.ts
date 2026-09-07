@@ -1,12 +1,4 @@
-import { db } from "@workspace/db";
-import {
-  shotsTable,
-  tasksTable,
-  sequenceTeamMembersTable,
-  usersTable,
-  departmentsTable,
-} from "@workspace/db/schema";
-import { eq, and, inArray, ne, or, isNull, lt } from "drizzle-orm";
+import { prisma } from "@workspace/db";
 import { createNotification } from "../routes/notifications";
 import { cacheDel, cacheKeys } from "./cache";
 
@@ -24,43 +16,28 @@ export async function maybeReassignOnSequenceCompletion(
   tenantId: string,
 ) {
   try {
-    const [task] = await db
-      .select()
-      .from(tasksTable)
-      .where(and(eq(tasksTable.id, taskId), eq(tasksTable.tenantId, tenantId)));
+    const task = await prisma.task.findFirst({
+      where: { id: taskId, tenantId },
+    });
     if (!task || task.entityType !== "shot") return;
 
-    const [shot] = await db
-      .select({ sequenceId: shotsTable.sequenceId })
-      .from(shotsTable)
-      .where(
-        and(eq(shotsTable.id, task.entityId), eq(shotsTable.tenantId, tenantId)),
-      );
+    const shot = await prisma.shot.findFirst({
+      where: { id: task.entityId, tenantId },
+      select: { sequenceId: true },
+    });
     if (!shot?.sequenceId) return;
     const sequenceId = shot.sequenceId;
 
-    const sequenceShots = await db
-      .select({ id: shotsTable.id })
-      .from(shotsTable)
-      .where(
-        and(
-          eq(shotsTable.tenantId, tenantId),
-          eq(shotsTable.sequenceId, sequenceId),
-        ),
-      );
+    const sequenceShots = await prisma.shot.findMany({
+      where: { tenantId, sequenceId },
+      select: { id: true },
+    });
     const shotIds = sequenceShots.map((s) => s.id);
     if (shotIds.length === 0) return;
 
-    const sequenceTasks = await db
-      .select()
-      .from(tasksTable)
-      .where(
-        and(
-          eq(tasksTable.tenantId, tenantId),
-          eq(tasksTable.entityType, "shot"),
-          inArray(tasksTable.entityId, shotIds),
-        ),
-      );
+    const sequenceTasks = await prisma.task.findMany({
+      where: { tenantId, entityType: "shot", entityId: { in: shotIds } },
+    });
     if (sequenceTasks.length === 0) return;
 
     const allApproved = sequenceTasks.every((t) => t.status === "approved");
@@ -76,59 +53,42 @@ export async function maybeReassignOnSequenceCompletion(
     const latestDue = new Date(Math.max(...dueDates.map((d) => d.getTime())));
     if (latestDue.getTime() <= Date.now()) return;
 
-    const teamMembers = await db
-      .select({
-        userId: sequenceTeamMembersTable.userId,
-        departmentId: usersTable.departmentId,
-      })
-      .from(sequenceTeamMembersTable)
-      .innerJoin(usersTable, eq(sequenceTeamMembersTable.userId, usersTable.id))
-      .where(
-        and(
-          eq(sequenceTeamMembersTable.tenantId, tenantId),
-          eq(sequenceTeamMembersTable.sequenceId, sequenceId),
-        ),
-      );
+    const teamMembers = await prisma.sequenceTeamMember.findMany({
+      where: { tenantId, sequenceId },
+      select: { userId: true, user: { select: { departmentId: true } } },
+    });
     if (teamMembers.length === 0) return;
 
     let reassignedAny = false;
     for (const member of teamMembers) {
-      if (!member.departmentId) continue;
-      const [dept] = await db
-        .select({ name: departmentsTable.name })
-        .from(departmentsTable)
-        .where(
-          and(
-            eq(departmentsTable.id, member.departmentId),
-            eq(departmentsTable.tenantId, tenantId),
-          ),
-        );
+      const departmentId = member.user.departmentId;
+      if (!departmentId) continue;
+      const dept = await prisma.department.findFirst({
+        where: { id: departmentId, tenantId },
+        select: { name: true },
+      });
       if (!dept) continue;
 
       // Bottlenecked = not yet approved, and either nobody's on it or it's
       // already overdue -- deliberately scoped to the member's own
-      // department (tasksTable.department is a plain text name, matching
-      // how it's set everywhere else in this codebase, not a departmentId
-      // FK) so a freed artist never picks up another department's queue.
-      const [bottleneck] = await db
-        .select()
-        .from(tasksTable)
-        .where(
-          and(
-            eq(tasksTable.tenantId, tenantId),
-            eq(tasksTable.department, dept.name),
-            ne(tasksTable.status, "approved"),
-            or(isNull(tasksTable.assignedTo), lt(tasksTable.dueDate, new Date())),
-          ),
-        )
-        .orderBy(tasksTable.dueDate)
-        .limit(1);
+      // department (Task.department is a plain text name, matching how
+      // it's set everywhere else in this codebase, not a departmentId FK)
+      // so a freed artist never picks up another department's queue.
+      const bottleneck = await prisma.task.findFirst({
+        where: {
+          tenantId,
+          department: dept.name,
+          status: { not: "approved" },
+          OR: [{ assignedTo: null }, { dueDate: { lt: new Date() } }],
+        },
+        orderBy: { dueDate: "asc" },
+      });
       if (!bottleneck) continue; // nothing bottlenecked in their dept -- stays that way
 
-      await db
-        .update(tasksTable)
-        .set({ assignedTo: member.userId, lastStatusUpdate: new Date() })
-        .where(eq(tasksTable.id, bottleneck.id));
+      await prisma.task.updateMany({
+        where: { id: bottleneck.id },
+        data: { assignedTo: member.userId, lastStatusUpdate: new Date() },
+      });
       reassignedAny = true;
 
       await createNotification({

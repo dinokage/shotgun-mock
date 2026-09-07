@@ -1,16 +1,9 @@
 import { Router } from "express";
-import { db } from "@workspace/db";
-import {
-  clientAccessLinksTable,
-  tenantRolesTable,
-  versionsTable,
-  projectsTable,
-  episodesTable,
-} from "@workspace/db/schema";
-import { eq, and, isNull, or, gt } from "drizzle-orm";
+import { prisma } from "@workspace/db";
 import { signSession } from "../lib/auth";
 import { tenantAuthMiddleware } from "../middleware/tenant";
-import { requireCapability } from "../middleware/rbac";
+import { requireCapability, denyClientAccess } from "../middleware/rbac";
+import { sendClientAccessEmail } from "../lib/mailer";
 import * as crypto from "crypto";
 
 export const clientAccessRouter = Router();
@@ -36,19 +29,13 @@ clientAccessRouter.post("/redeem", async (req, res) => {
     if (!code || typeof code !== "string")
       return res.status(400).json({ error: "Missing code" });
 
-    const [link] = await db
-      .select()
-      .from(clientAccessLinksTable)
-      .where(
-        and(
-          eq(clientAccessLinksTable.code, code),
-          isNull(clientAccessLinksTable.revokedAt),
-          or(
-            isNull(clientAccessLinksTable.expiresAt),
-            gt(clientAccessLinksTable.expiresAt, new Date()),
-          ),
-        ),
-      );
+    const link = await prisma.clientAccessLink.findFirst({
+      where: {
+        code,
+        revokedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+      },
+    });
     if (!link) return res.status(401).json({ error: "Invalid or expired code" });
 
     // Every tenant is seeded with a system-default "client" role (Task 6's
@@ -56,15 +43,10 @@ clientAccessRouter.post("/redeem", async (req, res) => {
     // fall back to a 401 if a tenant somehow has none, rather than
     // fabricating a roleId that doesn't exist and would break every
     // downstream tenantRoleCapabilities lookup).
-    const [clientRole] = await db
-      .select({ id: tenantRolesTable.id })
-      .from(tenantRolesTable)
-      .where(
-        and(
-          eq(tenantRolesTable.tenantId, link.tenantId),
-          eq(tenantRolesTable.name, "client"),
-        ),
-      );
+    const clientRole = await prisma.tenantRole.findFirst({
+      where: { tenantId: link.tenantId, name: "client" },
+      select: { id: true },
+    });
     if (!clientRole)
       return res.status(500).json({ error: "Tenant has no client role configured" });
 
@@ -98,8 +80,15 @@ clientAccessRouter.post("/redeem", async (req, res) => {
 });
 
 // Every route below this point is a producer/lead-facing management route,
-// not the client's own redemption -- requires a real logged-in session.
+// not the client's own redemption -- requires a real logged-in employee
+// session. tenantAuthMiddleware alone doesn't enforce that (it accepts any
+// valid session, client-access sessions included) -- denyClientAccess closes
+// that gap. Without it, a client session (which holds approve_reviews for an
+// unrelated reason -- see the comment below) could pass requireCapability on
+// POST / below and mint itself a fresh access link scoped to anything in the
+// tenant, not just what it was originally given.
 clientAccessRouter.use(tenantAuthMiddleware);
+clientAccessRouter.use(denyClientAccess);
 
 // Exactly one of projectId/episodeId/versionId identifies what this link
 // grants -- the narrowest one given wins, matching the schema comment.
@@ -108,27 +97,71 @@ async function scopeInTenant(
   scope: { projectId?: string; episodeId?: string; versionId?: string },
 ): Promise<boolean> {
   if (scope.versionId) {
-    const [row] = await db
-      .select({ id: versionsTable.id })
-      .from(versionsTable)
-      .where(and(eq(versionsTable.id, scope.versionId), eq(versionsTable.tenantId, tenantId)));
+    const row = await prisma.version.findFirst({
+      where: { id: scope.versionId, tenantId },
+      select: { id: true },
+    });
     return !!row;
   }
   if (scope.episodeId) {
-    const [row] = await db
-      .select({ id: episodesTable.id })
-      .from(episodesTable)
-      .where(and(eq(episodesTable.id, scope.episodeId), eq(episodesTable.tenantId, tenantId)));
+    const row = await prisma.episode.findFirst({
+      where: { id: scope.episodeId, tenantId },
+      select: { id: true },
+    });
     return !!row;
   }
   if (scope.projectId) {
-    const [row] = await db
-      .select({ id: projectsTable.id })
-      .from(projectsTable)
-      .where(and(eq(projectsTable.id, scope.projectId), eq(projectsTable.tenantId, tenantId)));
+    const row = await prisma.project.findFirst({
+      where: { id: scope.projectId, tenantId },
+      select: { id: true },
+    });
     return !!row;
   }
   return false;
+}
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Builds a human-readable description of what a link grants, for the
+// share-by-email subject/body -- "the PES Animation project", "Episode 2 of
+// PES Animation", "version v003 of shot pes1_ep002_sc001_sh002". Falls back
+// to a generic phrase if a name lookup somehow comes back empty rather than
+// failing the whole share.
+async function describeScope(scope: {
+  projectId?: string;
+  episodeId?: string;
+  versionId?: string;
+}): Promise<string> {
+  if (scope.versionId) {
+    const version = await prisma.version.findUnique({
+      where: { id: scope.versionId },
+      select: { versionNumber: true, entityId: true, entityType: true },
+    });
+    if (version?.entityType === "shot") {
+      const shot = await prisma.shot.findUnique({
+        where: { id: version.entityId },
+        select: { name: true },
+      });
+      if (shot) return `version ${version.versionNumber} of shot ${shot.name}`;
+    }
+    return "a version for review";
+  }
+  if (scope.episodeId) {
+    const episode = await prisma.episode.findUnique({
+      where: { id: scope.episodeId },
+      select: { name: true, project: { select: { name: true } } },
+    });
+    if (episode) return `${episode.name} of ${episode.project.name}`;
+    return "an episode for review";
+  }
+  if (scope.projectId) {
+    const project = await prisma.project.findUnique({
+      where: { id: scope.projectId },
+      select: { name: true },
+    });
+    if (project) return `the ${project.name} project`;
+  }
+  return "content for review";
 }
 
 // Creates (or reuses) a client access link/code for one project/episode/
@@ -144,7 +177,7 @@ clientAccessRouter.post(
     try {
       const tenantId = req.tenantId!;
       const userId = req.userId!;
-      const { projectId, episodeId, versionId, expiresAt } = req.body;
+      const { projectId, episodeId, versionId, expiresAt, clientEmail } = req.body;
       const scope = { projectId, episodeId, versionId };
       const scopeCount = [projectId, episodeId, versionId].filter(Boolean).length;
       if (scopeCount !== 1) {
@@ -155,51 +188,86 @@ clientAccessRouter.post(
       if (!(await scopeInTenant(tenantId, scope))) {
         return res.status(400).json({ error: "Invalid project, episode, or version" });
       }
+      if (clientEmail !== undefined && clientEmail !== null) {
+        if (typeof clientEmail !== "string" || !EMAIL_PATTERN.test(clientEmail)) {
+          return res.status(400).json({ error: "clientEmail must be a valid email address" });
+        }
+      }
 
       // Reuse an existing, still-valid link for this exact scope instead of
       // minting a new code every time someone clicks "Share with Client" --
       // otherwise re-sharing the same version invalidates nothing but does
       // leave a trail of dead codes, and confuses a client who reuses an
       // old email with an old code that still needs to work.
-      const scopeColumn = versionId
-        ? eq(clientAccessLinksTable.versionId, versionId)
+      const scopeWhere = versionId
+        ? { versionId }
         : episodeId
-          ? eq(clientAccessLinksTable.episodeId, episodeId)
-          : eq(clientAccessLinksTable.projectId, projectId);
-      const [existing] = await db
-        .select()
-        .from(clientAccessLinksTable)
-        .where(
-          and(
-            eq(clientAccessLinksTable.tenantId, tenantId),
-            scopeColumn,
-            isNull(clientAccessLinksTable.revokedAt),
-            or(
-              isNull(clientAccessLinksTable.expiresAt),
-              gt(clientAccessLinksTable.expiresAt, new Date()),
-            ),
-          ),
-        );
-      if (existing) return res.status(200).json(existing);
-
-      const newId = crypto.randomUUID();
-      const code = generateAccessCode();
-      await db.insert(clientAccessLinksTable).values({
-        id: newId,
-        tenantId,
-        code,
-        projectId: projectId || null,
-        episodeId: episodeId || null,
-        versionId: versionId || null,
-        createdByUserId: userId,
-        expiresAt: expiresAt ? new Date(expiresAt) : null,
+          ? { episodeId }
+          : { projectId };
+      const existing = await prisma.clientAccessLink.findFirst({
+        where: {
+          tenantId,
+          ...scopeWhere,
+          revokedAt: null,
+          OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+        },
       });
 
-      const [created] = await db
-        .select()
-        .from(clientAccessLinksTable)
-        .where(and(eq(clientAccessLinksTable.tenantId, tenantId), eq(clientAccessLinksTable.id, newId)));
-      return res.status(201).json(created);
+      let link = existing;
+      let statusCode = 200;
+      if (!link) {
+        link = await prisma.clientAccessLink.create({
+          data: {
+            id: crypto.randomUUID(),
+            tenantId,
+            code: generateAccessCode(),
+            projectId: projectId || null,
+            episodeId: episodeId || null,
+            versionId: versionId || null,
+            createdByUserId: userId,
+            clientEmail: clientEmail || null,
+            expiresAt: expiresAt ? new Date(expiresAt) : null,
+          },
+        });
+        statusCode = 201;
+      } else if (clientEmail && clientEmail !== link.clientEmail) {
+        // Re-sharing an existing link with a (possibly new) email address --
+        // keep the link record current so future shares/audits reflect who
+        // it was actually sent to.
+        link = await prisma.clientAccessLink.update({
+          where: { id: link.id },
+          data: { clientEmail },
+        });
+      }
+
+      // Email is best-effort: SMTP being briefly down shouldn't stop the
+      // producer from getting their link/code back to share manually (the
+      // frontend's copy-to-clipboard fallback already exists for exactly
+      // this). emailSent tells the frontend whether it can skip that
+      // fallback prompt.
+      let emailSent = false;
+      if (clientEmail) {
+        try {
+          const tenant = await prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { name: true },
+          });
+          const scopeLabel = await describeScope(scope);
+          const frontendUrl = process.env.FRONTEND_URL || "http://localhost";
+          await sendClientAccessEmail({
+            to: clientEmail,
+            reviewUrl: `${frontendUrl}/client-review`,
+            code: link.code,
+            tenantName: tenant?.name ?? "Forge",
+            scopeLabel,
+          });
+          emailSent = true;
+        } catch (err) {
+          req.log.error(err, "Failed to send client access email");
+        }
+      }
+
+      return res.status(statusCode).json({ ...link, emailSent });
     } catch (err) {
       console.error(err);
       return res.status(500).json({ error: "Internal server error" });
@@ -218,17 +286,14 @@ clientAccessRouter.get(
     try {
       const tenantId = req.tenantId!;
       const { projectId, episodeId, versionId } = req.query;
-      const conditions = [eq(clientAccessLinksTable.tenantId, tenantId)];
-      if (typeof projectId === "string")
-        conditions.push(eq(clientAccessLinksTable.projectId, projectId));
-      if (typeof episodeId === "string")
-        conditions.push(eq(clientAccessLinksTable.episodeId, episodeId));
-      if (typeof versionId === "string")
-        conditions.push(eq(clientAccessLinksTable.versionId, versionId));
-      const rows = await db
-        .select()
-        .from(clientAccessLinksTable)
-        .where(and(...conditions));
+      const rows = await prisma.clientAccessLink.findMany({
+        where: {
+          tenantId,
+          ...(typeof projectId === "string" ? { projectId } : {}),
+          ...(typeof episodeId === "string" ? { episodeId } : {}),
+          ...(typeof versionId === "string" ? { versionId } : {}),
+        },
+      });
       return res.json(rows);
     } catch (err) {
       return res.status(500).json({ error: "Internal server error" });
@@ -254,25 +319,14 @@ clientAccessRouter.delete(
       // segment is always a single string at runtime (same issue already
       // documented in routes/users.ts's PATCH /:id).
       const linkId = req.params.id as string;
-      const [existing] = await db
-        .select()
-        .from(clientAccessLinksTable)
-        .where(
-          and(
-            eq(clientAccessLinksTable.tenantId, tenantId),
-            eq(clientAccessLinksTable.id, linkId),
-          ),
-        );
+      const existing = await prisma.clientAccessLink.findFirst({
+        where: { tenantId, id: linkId },
+      });
       if (!existing) return res.status(404).json({ error: "Not found" });
-      await db
-        .update(clientAccessLinksTable)
-        .set({ revokedAt: new Date() })
-        .where(
-          and(
-            eq(clientAccessLinksTable.tenantId, tenantId),
-            eq(clientAccessLinksTable.id, linkId),
-          ),
-        );
+      await prisma.clientAccessLink.updateMany({
+        where: { tenantId, id: linkId },
+        data: { revokedAt: new Date() },
+      });
       return res.status(204).send();
     } catch (err) {
       return res.status(500).json({ error: "Internal server error" });

@@ -1,13 +1,5 @@
 import { Router } from "express";
-import { db } from "@workspace/db";
-import {
-  usersTable,
-  tenantsTable,
-  tenantRolesTable,
-  tenantRoleCapabilitiesTable,
-  departmentsTable,
-} from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { prisma } from "@workspace/db";
 import { verifyPassword, signSession, verifySession } from "../lib/auth";
 import { createNotification, findProductionManagers } from "./notifications";
 import { cacheGet, cacheSet, cacheKeys } from "../lib/cache";
@@ -21,10 +13,7 @@ authRouter.post("/login", async (req, res) => {
       return res.status(400).json({ error: "Missing email or password" });
     }
 
-    const [user] = await db
-      .select()
-      .from(usersTable)
-      .where(eq(usersTable.email, email));
+    const user = await prisma.user.findFirst({ where: { email } });
     if (!user) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
@@ -35,18 +24,11 @@ authRouter.post("/login", async (req, res) => {
     }
 
     // Resolve tenant and role details
-    const [tenant] = await db
-      .select()
-      .from(tenantsTable)
-      .where(eq(tenantsTable.id, user.tenantId));
-    const [role] = await db
-      .select()
-      .from(tenantRolesTable)
-      .where(eq(tenantRolesTable.id, user.roleId));
-    const roleCaps = await db
-      .select()
-      .from(tenantRoleCapabilitiesTable)
-      .where(eq(tenantRoleCapabilitiesTable.roleId, user.roleId));
+    const tenant = await prisma.tenant.findFirst({ where: { id: user.tenantId } });
+    const role = await prisma.tenantRole.findFirst({ where: { id: user.roleId } });
+    const roleCaps = await prisma.tenantRoleCapability.findMany({
+      where: { roleId: user.roleId },
+    });
     const capabilities = roleCaps.map((c) => c.capabilityId);
 
     const sessionPayload = {
@@ -70,12 +52,9 @@ authRouter.post("/login", async (req, res) => {
     if (role?.name !== "production_head") {
       (async () => {
         try {
-          const [dept] = user.departmentId
-            ? await db
-                .select()
-                .from(departmentsTable)
-                .where(eq(departmentsTable.id, user.departmentId!))
-            : [];
+          const dept = user.departmentId
+            ? await prisma.department.findFirst({ where: { id: user.departmentId } })
+            : null;
           const recipients = await findProductionManagers(
             user.tenantId,
             dept?.name,
@@ -107,8 +86,8 @@ authRouter.post("/login", async (req, res) => {
         punchedInAt: user.punchedInAt,
       },
       tenant: {
-        id: tenant.id,
-        name: tenant.name,
+        id: tenant!.id,
+        name: tenant!.name,
       },
     });
   } catch (err) {
@@ -144,24 +123,14 @@ authRouter.get("/me", async (req, res) => {
   const cached = await cacheGet<Record<string, unknown>>(cacheKey);
   if (cached) return res.status(200).json(cached);
 
-  const [user] = await db
-    .select()
-    .from(usersTable)
-    .where(eq(usersTable.id, session.userId));
+  const user = await prisma.user.findFirst({ where: { id: session.userId } });
   if (!user) return res.status(401).json({ error: "User deleted" });
 
-  const [tenant] = await db
-    .select()
-    .from(tenantsTable)
-    .where(eq(tenantsTable.id, session.tenantId));
-  const [role] = await db
-    .select()
-    .from(tenantRolesTable)
-    .where(eq(tenantRolesTable.id, session.roleId));
-  const roleCaps = await db
-    .select()
-    .from(tenantRoleCapabilitiesTable)
-    .where(eq(tenantRoleCapabilitiesTable.roleId, session.roleId));
+  const tenant = await prisma.tenant.findFirst({ where: { id: session.tenantId } });
+  const role = await prisma.tenantRole.findFirst({ where: { id: session.roleId } });
+  const roleCaps = await prisma.tenantRoleCapability.findMany({
+    where: { roleId: session.roleId },
+  });
   const capabilities = roleCaps.map((c) => c.capabilityId);
 
   const payload = {
@@ -174,7 +143,7 @@ authRouter.get("/me", async (req, res) => {
       punchedInAt: user.punchedInAt,
     },
     tenant: {
-      id: tenant.id,
+      id: tenant?.id ?? "",
       name: tenant?.name || "",
     },
   };

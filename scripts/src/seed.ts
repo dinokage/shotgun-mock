@@ -1,23 +1,4 @@
-import { db } from "@workspace/db";
-import {
-  tenantsTable,
-  departmentsTable,
-  projectsTable,
-  usersTable,
-  tenantRolesTable,
-  tenantRoleCapabilitiesTable,
-  episodesTable,
-  sequencesTable,
-  shotsTable,
-  assetsTable,
-  tasksTable,
-  taskChecklistItemsTable,
-  taskCommentsTable,
-  versionsTable,
-  annotationsTable,
-  dailyLogsTable,
-} from "@workspace/db/schema";
-import { and, eq } from "drizzle-orm";
+import { prisma } from "@workspace/db";
 import * as crypto from "crypto";
 
 async function main() {
@@ -33,22 +14,15 @@ async function main() {
   const mockHashedPassword =
     "$argon2id$v=19$m=65536,p=4,t=3$S47zo5bxYnFgICAP+3cAQw$YvpNw85sWi6M9sj+QHapnopiNw+B2iFV8nSG0vNEZSA";
 
-  await db
-    .insert(tenantsTable)
-    .values({ id: crypto.randomUUID(), name: "Acme VFX", slug: "acme" })
-    .onConflictDoNothing();
-
-  // Mirror the role-insertion pattern below: onConflictDoNothing() alone
-  // doesn't tell us the id of a tenant that already existed, so re-query by
-  // the unique slug to get the real row's id whether it was just inserted or
-  // already there. Without this, a locally-generated tenantId that never
-  // actually got persisted (because the slug already existed) would orphan
-  // every downstream insert with a foreign-key violation.
-  const [insertedTenant] = await db
-    .select()
-    .from(tenantsTable)
-    .where(eq(tenantsTable.slug, "acme"));
-  const tenantId = insertedTenant.id;
+  // Prisma's upsert does the insert-or-noop AND returns the real row
+  // (whichever id it ends up with) in one call, replacing the Drizzle
+  // insert-then-reselect-by-slug pair above with a single query.
+  const tenant = await prisma.tenant.upsert({
+    where: { slug: "acme" },
+    update: {},
+    create: { id: crypto.randomUUID(), name: "Acme VFX", slug: "acme" },
+  });
+  const tenantId = tenant.id;
 
   // Two demo projects. Unlike tenants (unique slug) or users (unique email),
   // projectsTable has no unique constraint besides its primary key, so a
@@ -61,10 +35,13 @@ async function main() {
     { id: "project-starfall", name: "Starfall", status: "active" },
     { id: "project-nightfall", name: "Nightfall Chronicles", status: "active" },
   ];
-  await db
-    .insert(projectsTable)
-    .values(projectDefs.map((p) => ({ id: p.id, tenantId, name: p.name, status: p.status })))
-    .onConflictDoNothing();
+  for (const p of projectDefs) {
+    await prisma.project.upsert({
+      where: { id: p.id },
+      update: {},
+      create: { id: p.id, tenantId, name: p.name, status: p.status },
+    });
+  }
 
   const deptDefs = [
     { name: "Production Management", abbr: "PROD", pipeline: "PROD", pipelineOrder: 0, color: "#636e72", icon: "Briefcase" },
@@ -96,10 +73,11 @@ async function main() {
     // applied to every table this plan's Task 20 added.
     const id = `dept-${d.abbr.toLowerCase()}`;
     deptIds[d.name] = id;
-    await db
-      .insert(departmentsTable)
-      .values({ id, tenantId, ...d })
-      .onConflictDoNothing();
+    await prisma.department.upsert({
+      where: { id },
+      update: {},
+      create: { id, tenantId, ...d },
+    });
   }
 
   // capability sets reuse the app's existing 14-id catalogue
@@ -195,7 +173,11 @@ async function main() {
       email: "client@acme.com",
       user: "Acme Client",
       department: null,
-      capabilities: ["approve_reviews"],
+      // submit_reviews is what actually lets a client-access session create
+      // a review/annotation (reviews.ts) -- approve_reviews alone gated
+      // nothing reachable by the client role once client-access.ts's own
+      // link-management routes were correctly locked to internal sessions.
+      capabilities: ["approve_reviews", "submit_reviews"],
     },
   ];
 
@@ -213,37 +195,26 @@ async function main() {
       // tenants table's real unique slug constraint above), so this
       // composite id is stable too.
       const roleId = `role-${tenantId}-${roleDef.name}`;
-      await db
-        .insert(tenantRolesTable)
-        .values({ id: roleId, tenantId, name: roleDef.name, isSystemDefault: true })
-        .onConflictDoNothing();
-
-      // Scope by tenantId too, not just name: tenant_roles has no unique
-      // constraint on (tenant_id, name), and an unscoped query here could
-      // resolve to another tenant's "admin" row, silently binding this
-      // tenant's users to a foreign tenant's capability set.
-      const [insertedRole] = await db
-        .select()
-        .from(tenantRolesTable)
-        .where(
-          and(
-            eq(tenantRolesTable.name, roleDef.name),
-            eq(tenantRolesTable.tenantId, tenantId),
-          ),
-        );
+      const insertedRole = await prisma.tenantRole.upsert({
+        where: { id: roleId },
+        update: {},
+        create: { id: roleId, tenantId, name: roleDef.name, isSystemDefault: true },
+      });
       roleIdByName[roleDef.name] = insertedRole.id;
 
       for (const cap of roleDef.capabilities) {
-        await db
-          .insert(tenantRoleCapabilitiesTable)
-          .values({ roleId: insertedRole.id, capabilityId: cap })
-          .onConflictDoNothing();
+        await prisma.tenantRoleCapability.upsert({
+          where: { roleId_capabilityId: { roleId: insertedRole.id, capabilityId: cap } },
+          update: {},
+          create: { roleId: insertedRole.id, capabilityId: cap },
+        });
       }
     }
 
-    await db
-      .insert(usersTable)
-      .values({
+    await prisma.user.upsert({
+      where: { email: roleDef.email },
+      update: {},
+      create: {
         id: crypto.randomUUID(),
         tenantId,
         roleId: roleIdByName[roleDef.name],
@@ -251,8 +222,8 @@ async function main() {
         email: roleDef.email,
         name: roleDef.user,
         hashedPassword: mockHashedPassword,
-      })
-      .onConflictDoNothing();
+      },
+    });
   }
 
   // ---------------------------------------------------------------------
@@ -280,10 +251,7 @@ async function main() {
   // locally-generated `id` in that loop is not necessarily the id that
   // ended up persisted. Query back by tenantId to get the real ids before
   // using them as foreign keys below.
-  const tenantUsers = await db
-    .select()
-    .from(usersTable)
-    .where(eq(usersTable.tenantId, tenantId));
+  const tenantUsers = await prisma.user.findMany({ where: { tenantId } });
   const userIdByEmail: Record<string, string> = {};
   for (const u of tenantUsers) userIdByEmail[u.email] = u.id;
 
@@ -307,10 +275,13 @@ async function main() {
     { id: "episode-nightfall-e01", projectId: "project-nightfall", name: "Episode 1: Eclipse" },
     { id: "episode-nightfall-e02", projectId: "project-nightfall", name: "Episode 2: Aftermath" },
   ];
-  await db
-    .insert(episodesTable)
-    .values(episodeDefs.map((e) => ({ id: e.id, tenantId, projectId: e.projectId, name: e.name })))
-    .onConflictDoNothing();
+  for (const e of episodeDefs) {
+    await prisma.episode.upsert({
+      where: { id: e.id },
+      update: {},
+      create: { id: e.id, tenantId, projectId: e.projectId, name: e.name },
+    });
+  }
 
   // --- Sequences: 2-3 per episode (10 total) -----------------------------
   const sequenceDefs = [
@@ -325,18 +296,13 @@ async function main() {
     { id: "sequence-nightfall-e02-sq010", projectId: "project-nightfall", episodeId: "episode-nightfall-e02", name: "SQ010" },
     { id: "sequence-nightfall-e02-sq020", projectId: "project-nightfall", episodeId: "episode-nightfall-e02", name: "SQ020" },
   ];
-  await db
-    .insert(sequencesTable)
-    .values(
-      sequenceDefs.map((s) => ({
-        id: s.id,
-        tenantId,
-        projectId: s.projectId,
-        episodeId: s.episodeId,
-        name: s.name,
-      })),
-    )
-    .onConflictDoNothing();
+  for (const s of sequenceDefs) {
+    await prisma.sequence.upsert({
+      where: { id: s.id },
+      update: {},
+      create: { id: s.id, tenantId, projectId: s.projectId, episodeId: s.episodeId, name: s.name },
+    });
+  }
 
   // --- Shots: 18 total, 1-2 per sequence, varied status/review/assignee --
   // Status vocabulary matches Shot['status'] in
@@ -386,10 +352,11 @@ async function main() {
     }
   });
 
-  await db
-    .insert(shotsTable)
-    .values(
-      shotDefs.map((s) => ({
+  for (const s of shotDefs) {
+    await prisma.shot.upsert({
+      where: { id: s.id },
+      update: {},
+      create: {
         id: s.id,
         tenantId,
         projectId: s.projectId,
@@ -405,9 +372,9 @@ async function main() {
         internalReviewStatus: s.internalReviewStatus,
         clientReviewStatus: s.clientReviewStatus,
         notes: s.notes,
-      })),
-    )
-    .onConflictDoNothing();
+      },
+    });
+  }
 
   // --- Assets: 12 total, varied type/status/publishStatus/assignee -------
   // Vocabulary matches Asset['type']/['status']/['publishStatus'] in mockData.ts.
@@ -457,10 +424,11 @@ async function main() {
     });
   }
 
-  await db
-    .insert(assetsTable)
-    .values(
-      assetDefs.map((a) => ({
+  for (const a of assetDefs) {
+    await prisma.asset.upsert({
+      where: { id: a.id },
+      update: {},
+      create: {
         id: a.id,
         tenantId,
         projectId: a.projectId,
@@ -474,13 +442,13 @@ async function main() {
         tags: a.tags,
         fileSize: a.fileSize,
         polyCount: a.polyCount,
-        dependencies: [] as string[],
+        dependencies: [],
         publishStatus: a.publishStatus,
         description: a.description,
         notes: a.notes,
-      })),
-    )
-    .onConflictDoNothing();
+      },
+    });
+  }
 
   // --- Tasks: 24 total across shots + assets, each with a few checklist --
   // items and comments. Status vocabulary matches TaskStatus in mockData.ts.
@@ -534,10 +502,11 @@ async function main() {
     });
   }
 
-  await db
-    .insert(tasksTable)
-    .values(
-      taskDefs.map((t) => ({
+  for (const t of taskDefs) {
+    await prisma.task.upsert({
+      where: { id: t.id },
+      update: {},
+      create: {
         id: t.id,
         tenantId,
         entityId: t.entityId,
@@ -553,9 +522,9 @@ async function main() {
         estimatedHours: t.estimatedHours,
         startDate: t.startDate,
         dueDate: t.dueDate,
-      })),
-    )
-    .onConflictDoNothing();
+      },
+    });
+  }
 
   // --- Checklist items: 2-3 per task --------------------------------------
   const CHECKLIST_TEMPLATES = [
@@ -577,19 +546,13 @@ async function main() {
       });
     }
   });
-  await db
-    .insert(taskChecklistItemsTable)
-    .values(
-      checklistDefs.map((c) => ({
-        id: c.id,
-        tenantId,
-        taskId: c.taskId,
-        text: c.text,
-        done: c.done,
-        position: c.position,
-      })),
-    )
-    .onConflictDoNothing();
+  for (const c of checklistDefs) {
+    await prisma.taskChecklistItem.upsert({
+      where: { id: c.id },
+      update: {},
+      create: { id: c.id, tenantId, taskId: c.taskId, text: c.text, done: c.done, position: c.position },
+    });
+  }
 
   // --- Comments: 1-2 per task ---------------------------------------------
   const COMMENT_TEMPLATES = [
@@ -611,10 +574,13 @@ async function main() {
       });
     }
   });
-  await db
-    .insert(taskCommentsTable)
-    .values(commentDefs.map((c) => ({ id: c.id, tenantId, taskId: c.taskId, userId: c.userId, text: c.text })))
-    .onConflictDoNothing();
+  for (const c of commentDefs) {
+    await prisma.taskComment.upsert({
+      where: { id: c.id },
+      update: {},
+      create: { id: c.id, tenantId, taskId: c.taskId, userId: c.userId, text: c.text },
+    });
+  }
 
   // --- Versions: 1-2 per shot/asset, status vocabulary matches ------------
   // Version['status'] in mockData.ts.
@@ -659,10 +625,11 @@ async function main() {
     }
   }
 
-  await db
-    .insert(versionsTable)
-    .values(
-      versionDefs.map((v) => ({
+  for (const v of versionDefs) {
+    await prisma.version.upsert({
+      where: { id: v.id },
+      update: {},
+      create: {
         id: v.id,
         tenantId,
         entityId: v.entityId,
@@ -675,9 +642,9 @@ async function main() {
         derivedFromId: v.derivedFromId,
         fileSize: v.fileSize,
         createdById: v.createdById,
-      })),
-    )
-    .onConflictDoNothing();
+      },
+    });
+  }
 
   // --- Annotations: 2-3 rows on the first shot's v001, so the Review page --
   // has something to display immediately. Field names/types mirror the
@@ -754,10 +721,11 @@ async function main() {
       createdById: leadUserId,
     },
   ];
-  await db
-    .insert(annotationsTable)
-    .values(
-      annotationDefs.map((a) => ({
+  for (const a of annotationDefs) {
+    await prisma.annotation.upsert({
+      where: { id: a.id },
+      update: {},
+      create: {
         id: a.id,
         tenantId,
         versionId: a.versionId,
@@ -768,7 +736,13 @@ async function main() {
         y: a.y,
         w: a.w,
         h: a.h,
-        points: a.points,
+        // Json? column -- a plain object array assigns fine, but Prisma's
+        // InputJsonValue doesn't structurally accept an interface with a
+        // `| null` union at the top level, so round-trip through
+        // JSON.parse(JSON.stringify(...)) to normalize to a plain JsonValue
+        // (exact behavioral parity with Drizzle's own jsonb serialization;
+        // proven safe in this same migration's Task 8).
+        points: a.points === null ? null : JSON.parse(JSON.stringify(a.points)),
         text: a.text,
         startFrame: a.startFrame,
         endFrame: a.endFrame,
@@ -776,9 +750,9 @@ async function main() {
         fontSize: a.fontSize,
         backgroundColor: a.backgroundColor,
         createdById: a.createdById,
-      })),
-    )
-    .onConflictDoNothing();
+      },
+    });
+  }
 
   // --- Daily logs: a week of entries across a handful of tasks ------------
   const dailyLogTaskIndices = [0, 3, 6, 9, 12];
@@ -801,29 +775,22 @@ async function main() {
       actualHoursByTaskId[task.id] = (actualHoursByTaskId[task.id] ?? 0) + hours;
     });
   }
-  await db
-    .insert(dailyLogsTable)
-    .values(
-      dailyLogDefs.map((d) => ({
-        id: d.id,
-        tenantId,
-        taskId: d.taskId,
-        userId: d.userId,
-        date: d.date,
-        hours: d.hours,
-        note: d.note,
-      })),
-    )
-    .onConflictDoNothing();
+  for (const d of dailyLogDefs) {
+    await prisma.dailyLog.upsert({
+      where: { id: d.id },
+      update: {},
+      create: { id: d.id, tenantId, taskId: d.taskId, userId: d.userId, date: d.date, hours: d.hours, note: d.note },
+    });
+  }
 
   // Roll the logged hours into each task's actualHours, mirroring what
   // routes/daily-logs.ts's POST handler does for a single log entry (SET
   // rather than increment, so this stays correct across reseeds too).
   for (const [taskId, hours] of Object.entries(actualHoursByTaskId)) {
-    await db
-      .update(tasksTable)
-      .set({ actualHours: hours })
-      .where(and(eq(tasksTable.tenantId, tenantId), eq(tasksTable.id, taskId)));
+    await prisma.task.updateMany({
+      where: { tenantId, id: taskId },
+      data: { actualHours: hours },
+    });
   }
 
   console.log("DB seed completed.");

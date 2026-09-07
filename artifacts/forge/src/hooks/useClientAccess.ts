@@ -9,9 +9,14 @@ export interface ClientAccessLinkDTO {
   episodeId: string | null;
   versionId: string | null;
   createdByUserId: string;
+  clientEmail: string | null;
   expiresAt: string | null;
   revokedAt: string | null;
   createdAt: string;
+  // Only present on the create response (POST /client-access) -- whether an
+  // email was actually sent for the clientEmail supplied on this call, so
+  // the caller knows if it still needs to fall back to copy-to-clipboard.
+  emailSent?: boolean;
 }
 
 /** Exactly one of these three should be set -- the narrowest scope wins. */
@@ -41,7 +46,7 @@ export function useClientAccessLinks(scope: ClientAccessScope) {
 export function useCreateClientAccessLink() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (scope: ClientAccessScope & { expiresAt?: string }) =>
+    mutationFn: (scope: ClientAccessScope & { expiresAt?: string; clientEmail?: string }) =>
       apiClient.post<ClientAccessLinkDTO>("/client-access", scope),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ["client-access-links"] }),

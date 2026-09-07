@@ -1,12 +1,13 @@
 import { Router } from "express";
-import { db } from "@workspace/db";
-import { auditLogsTable, tenantRolesTable } from "@workspace/db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { prisma } from "@workspace/db";
 import { tenantAuthMiddleware } from "../middleware/tenant";
+import { denyClientAccess } from "../middleware/rbac";
 
 export const auditLogsRouter = Router();
 
 auditLogsRouter.use(tenantAuthMiddleware);
+// The audit trail is strictly internal.
+auditLogsRouter.use(denyClientAccess);
 
 // The Time Travel / audit-history UI is leadership-gated client-side only
 // (App.tsx's LeadershipGuard, which checks store/permissions.ts's
@@ -24,15 +25,10 @@ const LEADERSHIP_ROLE_NAMES = new Set([
 ]);
 
 async function callerIsLeadership(roleId: string, tenantId: string) {
-  const [row] = await db
-    .select({ name: tenantRolesTable.name })
-    .from(tenantRolesTable)
-    .where(
-      and(
-        eq(tenantRolesTable.id, roleId),
-        eq(tenantRolesTable.tenantId, tenantId),
-      ),
-    );
+  const row = await prisma.tenantRole.findFirst({
+    where: { id: roleId, tenantId },
+    select: { name: true },
+  });
   return !!row?.name && LEADERSHIP_ROLE_NAMES.has(row.name);
 }
 
@@ -48,17 +44,16 @@ auditLogsRouter.get("/", async (req, res) => {
         .json({ error: "Forbidden: Leadership access required" });
     }
     const { entityId } = req.query;
-    const conditions = [eq(auditLogsTable.tenantId, tenantId)];
-    if (typeof entityId === "string")
-      conditions.push(eq(auditLogsTable.targetEntityId, entityId));
-    const rows = await db
-      .select()
-      .from(auditLogsTable)
-      .where(and(...conditions))
-      .orderBy(desc(auditLogsTable.createdAt))
+    const rows = await prisma.auditLog.findMany({
+      where: {
+        tenantId,
+        ...(typeof entityId === "string" ? { targetEntityId: entityId } : {}),
+      },
+      orderBy: { createdAt: "desc" },
       // This table has no pagination and grows unbounded -- cap the result
       // set instead of ever returning the entire tenant history in one shot.
-      .limit(200);
+      take: 200,
+    });
     return res.json(rows);
   } catch (err) {
     req.log.error(err, "Failed to fetch audit logs");

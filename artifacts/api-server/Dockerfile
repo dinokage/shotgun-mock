@@ -15,6 +15,26 @@ COPY tsconfig.base.json tsconfig.json ./
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 RUN corepack enable && corepack install
 
+# Forces pnpm to materialize node_modules by copying instead of hardlinking
+# from its content-addressable store. Discovered via an actual `docker build`
+# hang (Task 3 verification): on this host, every `pnpm install`/`pnpm deploy`
+# invocation deterministically wedges forever partway through linking ~188
+# packages -- confirmed via `docker exec` into a live intermediate container
+# that the stuck process sits in `do_epoll_wait` indefinitely (root
+# filesystem is overlay2: `overlay / overlay rw,...`), and confirmed the fix
+# with repeated clean, from-scratch `docker run` reproductions: pnpm's
+# default hardlink-based "auto" import method hangs 3/3 times, while
+# `--package-import-method=copy` succeeds in ~10s every time. A plain
+# `ENV npm_config_package_import_method=copy` does NOT work here -- pnpm
+# does not read that npm-style env var for this key -- so this sets it via
+# pnpm's own global config instead, which every pnpm invocation in every
+# later RUN step (install, deploy, etc.) picks up regardless of cwd. This is
+# an environment/filesystem bug, not anything introduced by this task's
+# route changes (none of them touch build tooling or dependencies); harmless
+# for the final image either way, since "copy" is already pnpm's automatic
+# fallback whenever store and target aren't on the same filesystem.
+RUN pnpm config set package-import-method copy
+
 # Copy packages that api-server depends on.
 # lib/api-client-react is not an api-server runtime dependency, but the
 # api-spec codegen step below regenerates BOTH orval outputs (api-zod and
@@ -29,27 +49,21 @@ COPY artifacts/api-server ./artifacts/api-server
 # Install dependencies (ignoring scripts temporarily if there are issues, but we'll try normal first)
 RUN pnpm install --frozen-lockfile
 
+# Generate the Prisma Client for this container's actual platform
+# (linux-musl-openssl-3.0.x on node:22-alpine) before anything that imports
+# it (lib/db/src/index.ts) can compile. schema.prisma's generator block lists
+# both "native" and "linux-musl-openssl-3.0.x" as binaryTargets so the same
+# generated output also carries whatever engine matches a local/non-container
+# dev machine. This must run before the api-spec codegen step below, since
+# that step's `pnpm -w run typecheck:libs` (`tsc --build` across the whole
+# workspace) fails to resolve lib/db/src/index.ts's
+# `../generated/prisma-client` import otherwise (confirmed by an actual
+# `docker build` failure -- TS2307 -- when this was placed later, immediately
+# before the `run build` step, as originally instructed).
+RUN pnpm --filter "@workspace/db" run prisma:generate
+
 # Generate schemas before building.
 RUN pnpm --filter "@workspace/api-spec" run codegen
-
-# Only generate DB migrations if none are committed yet (lib/db/drizzle).
-# Regenerating on every build gives each migration a fresh hash, which makes
-# `drizzle-orm/migrator` try to re-apply it on every redeploy and fail with
-# "relation already exists" against a database that's already migrated.
-# Once migrations are committed to git, this step is skipped and the
-# committed, stable migration files are used instead.
-# drizzle-kit generate only diffs the TS schema against ./drizzle — it never
-# connects to a database — but drizzle.config.ts requires DATABASE_URL to be
-# set just to load, so we pass a placeholder here when generating.
-# While migrations remain uncommitted, lib/db/src/migrate.ts's "object already
-# exists" guard is what stops the regenerate-and-replay cycle from crash-looping
-# this container. That guard is a safety net, NOT a fix: it cannot distinguish
-# "already applied" from "a real new migration is needed", so it will silently
-# skip genuine schema changes. See forge-final.md §5 step 3.
-RUN if [ ! -d "lib/db/drizzle" ]; then \
-      DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder" \
-      pnpm --filter "@workspace/db" run generate; \
-    fi
 
 # Build the api server
 RUN pnpm --filter "@workspace/api-server" run build
@@ -72,8 +86,26 @@ WORKDIR /app
 
 COPY --from=builder /prod /app/prod
 COPY --from=builder /app/artifacts/api-server/dist /app/prod/api-server/dist
-COPY --from=builder /app/lib/db/drizzle /app/prod/db/drizzle
+COPY --from=builder /app/lib/db/schema.prisma /app/prod/db/schema.prisma
+COPY --from=builder /app/lib/db/migrations /app/prod/db/migrations
+COPY --from=builder /app/lib/db/generated /app/prod/db/generated
 COPY --from=builder /app/lib/db/src/migrate.ts /app/prod/db/src/migrate.ts
+
+# Prisma's generated client bakes the ABSOLUTE path it was generated at
+# (config.output, from `prisma generate`'s cwd of /app/lib/db in the builder
+# stage) into its compiled output, and esbuild inlines that literal string
+# into artifacts/api-server's dist/index.mjs. At runtime the engine binary is
+# located relative to that baked path, not relative to wherever @workspace/db
+# was actually deployed (/app/prod/db from `pnpm deploy` above) -- so without
+# this, the server starts and logs "Server listening" but the first real
+# Prisma query throws PrismaClientInitializationError ("could not locate the
+# Query Engine"), since /app/lib/db/generated never otherwise exists in this
+# runner stage. Recreating the exact same absolute path here is what makes
+# the engine resolve. (Found via an actual `docker run` + `curl` against a
+# converted route -- Task 1's verification never exercised a real Prisma
+# query through the compiled bundle, only confirmed the engine file's
+# presence under /app/prod/db/generated, which is a different path.)
+COPY --from=builder /app/lib/db/generated /app/lib/db/generated
 
 # We need pnpm available in the final image to run migrations easily, or we can just use node.
 # The runner's /app/prod tree is a pruned `pnpm deploy` output with no

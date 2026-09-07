@@ -1,25 +1,26 @@
 import { Router } from "express";
-import { db } from "@workspace/db";
-import { dailyLogsTable, tasksTable } from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { prisma } from "@workspace/db";
 import { tenantAuthMiddleware } from "../middleware/tenant";
+import { denyClientAccess } from "../middleware/rbac";
 import * as crypto from "crypto";
 
 export const dailyLogsRouter = Router();
 
 dailyLogsRouter.use(tenantAuthMiddleware);
+// Internal employee time-tracking has no client-facing equivalent.
+dailyLogsRouter.use(denyClientAccess);
 
 dailyLogsRouter.get("/", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const { taskId, userId } = req.query;
-    const conditions = [eq(dailyLogsTable.tenantId, tenantId)];
-    if (typeof taskId === "string") conditions.push(eq(dailyLogsTable.taskId, taskId));
-    if (typeof userId === "string") conditions.push(eq(dailyLogsTable.userId, userId));
-    const rows = await db
-      .select()
-      .from(dailyLogsTable)
-      .where(and(...conditions));
+    const rows = await prisma.dailyLog.findMany({
+      where: {
+        tenantId,
+        ...(typeof taskId === "string" ? { taskId } : {}),
+        ...(typeof userId === "string" ? { userId } : {}),
+      },
+    });
     return res.json(rows);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -34,33 +35,27 @@ dailyLogsRouter.post("/", async (req, res) => {
     if (!taskId || !date || typeof hours !== "number")
       return res.status(400).json({ error: "Missing taskId, date, or hours" });
 
-    const [task] = await db
-      .select()
-      .from(tasksTable)
-      .where(and(eq(tasksTable.tenantId, tenantId), eq(tasksTable.id, taskId)));
+    const task = await prisma.task.findFirst({ where: { tenantId, id: taskId } });
     if (!task) return res.status(400).json({ error: "Invalid taskId" });
 
-    const newId = crypto.randomUUID();
-    await db.insert(dailyLogsTable).values({
-      id: newId,
-      tenantId,
-      taskId,
-      userId,
-      date,
-      hours,
-      note: note || "",
+    const created = await prisma.dailyLog.create({
+      data: {
+        id: crypto.randomUUID(),
+        tenantId,
+        taskId,
+        userId,
+        date,
+        hours,
+        note: note || "",
+      },
     });
 
     // Roll the logged hours into the task's actualHours total.
-    await db
-      .update(tasksTable)
-      .set({ actualHours: task.actualHours + hours })
-      .where(and(eq(tasksTable.tenantId, tenantId), eq(tasksTable.id, taskId)));
+    await prisma.task.updateMany({
+      where: { tenantId, id: taskId },
+      data: { actualHours: task.actualHours + hours },
+    });
 
-    const [created] = await db
-      .select()
-      .from(dailyLogsTable)
-      .where(and(eq(dailyLogsTable.tenantId, tenantId), eq(dailyLogsTable.id, newId)));
     return res.status(201).json(created);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -84,10 +79,7 @@ dailyLogsRouter.put("/:id", async (req, res) => {
     // routes/users.ts's PATCH /:id).
     const logId = req.params.id as string;
 
-    const [existing] = await db
-      .select()
-      .from(dailyLogsTable)
-      .where(and(eq(dailyLogsTable.tenantId, tenantId), eq(dailyLogsTable.id, logId)));
+    const existing = await prisma.dailyLog.findFirst({ where: { tenantId, id: logId } });
     if (!existing) return res.status(404).json({ error: "Not found" });
     if (existing.userId !== req.userId)
       return res.status(403).json({ error: "Forbidden: not your log entry" });
@@ -102,27 +94,17 @@ dailyLogsRouter.put("/:id", async (req, res) => {
     // contribute to that same total.
     if (typeof updates.hours === "number" && updates.hours !== existing.hours) {
       const delta = updates.hours - existing.hours;
-      const [task] = await db
-        .select()
-        .from(tasksTable)
-        .where(and(eq(tasksTable.tenantId, tenantId), eq(tasksTable.id, existing.taskId)));
+      const task = await prisma.task.findFirst({ where: { tenantId, id: existing.taskId } });
       if (task) {
-        await db
-          .update(tasksTable)
-          .set({ actualHours: task.actualHours + delta })
-          .where(and(eq(tasksTable.tenantId, tenantId), eq(tasksTable.id, existing.taskId)));
+        await prisma.task.updateMany({
+          where: { tenantId, id: existing.taskId },
+          data: { actualHours: task.actualHours + delta },
+        });
       }
     }
 
-    await db
-      .update(dailyLogsTable)
-      .set(updates)
-      .where(and(eq(dailyLogsTable.tenantId, tenantId), eq(dailyLogsTable.id, logId)));
-
-    const [updated] = await db
-      .select()
-      .from(dailyLogsTable)
-      .where(and(eq(dailyLogsTable.tenantId, tenantId), eq(dailyLogsTable.id, logId)));
+    await prisma.dailyLog.updateMany({ where: { tenantId, id: logId }, data: updates });
+    const updated = await prisma.dailyLog.findFirstOrThrow({ where: { tenantId, id: logId } });
     return res.json(updated);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -134,10 +116,7 @@ dailyLogsRouter.delete("/:id", async (req, res) => {
     const tenantId = req.tenantId!;
     const logId = req.params.id as string;
 
-    const [existing] = await db
-      .select()
-      .from(dailyLogsTable)
-      .where(and(eq(dailyLogsTable.tenantId, tenantId), eq(dailyLogsTable.id, logId)));
+    const existing = await prisma.dailyLog.findFirst({ where: { tenantId, id: logId } });
     if (!existing) return res.status(404).json({ error: "Not found" });
     if (existing.userId !== req.userId)
       return res.status(403).json({ error: "Forbidden: not your log entry" });
@@ -145,20 +124,15 @@ dailyLogsRouter.delete("/:id", async (req, res) => {
     // Reverse this entry's contribution to the task's actualHours total
     // before removing it, so deleting a mislogged entry doesn't leave the
     // task's reported hours permanently inflated.
-    const [task] = await db
-      .select()
-      .from(tasksTable)
-      .where(and(eq(tasksTable.tenantId, tenantId), eq(tasksTable.id, existing.taskId)));
+    const task = await prisma.task.findFirst({ where: { tenantId, id: existing.taskId } });
     if (task) {
-      await db
-        .update(tasksTable)
-        .set({ actualHours: Math.max(0, task.actualHours - existing.hours) })
-        .where(and(eq(tasksTable.tenantId, tenantId), eq(tasksTable.id, existing.taskId)));
+      await prisma.task.updateMany({
+        where: { tenantId, id: existing.taskId },
+        data: { actualHours: Math.max(0, task.actualHours - existing.hours) },
+      });
     }
 
-    await db
-      .delete(dailyLogsTable)
-      .where(and(eq(dailyLogsTable.tenantId, tenantId), eq(dailyLogsTable.id, logId)));
+    await prisma.dailyLog.deleteMany({ where: { tenantId, id: logId } });
     return res.status(204).send();
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });

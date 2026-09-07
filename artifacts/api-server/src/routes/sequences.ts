@@ -1,15 +1,7 @@
 import { Router } from "express";
-import { db } from "@workspace/db";
-import {
-  sequencesTable,
-  projectsTable,
-  episodesTable,
-  sequenceTeamMembersTable,
-  usersTable,
-} from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { prisma } from "@workspace/db";
 import { tenantAuthMiddleware } from "../middleware/tenant";
-import { requireCapability } from "../middleware/rbac";
+import { requireCapability, denyClientAccess } from "../middleware/rbac";
 import * as crypto from "crypto";
 
 // See the identical comment in routes/episodes.ts — the FK constraint alone
@@ -17,39 +9,35 @@ import * as crypto from "crypto";
 // from the request body needs an explicit tenant-ownership check before a
 // sequence is allowed to link to it.
 async function projectInTenant(id: string, tenantId: string) {
-  const [row] = await db
-    .select({ id: projectsTable.id })
-    .from(projectsTable)
-    .where(and(eq(projectsTable.id, id), eq(projectsTable.tenantId, tenantId)));
+  const row = await prisma.project.findFirst({ where: { id, tenantId }, select: { id: true } });
   return !!row;
 }
 async function episodeInTenant(id: string, tenantId: string) {
-  const [row] = await db
-    .select({ id: episodesTable.id })
-    .from(episodesTable)
-    .where(and(eq(episodesTable.id, id), eq(episodesTable.tenantId, tenantId)));
+  const row = await prisma.episode.findFirst({ where: { id, tenantId }, select: { id: true } });
+  return !!row;
+}
+async function sequenceInTenant(id: string, tenantId: string) {
+  const row = await prisma.sequence.findFirst({ where: { id, tenantId }, select: { id: true } });
   return !!row;
 }
 
 export const sequencesRouter = Router();
 
 sequencesRouter.use(tenantAuthMiddleware);
+// Internal pipeline sequence management has no client-facing equivalent.
+sequencesRouter.use(denyClientAccess);
 
 sequencesRouter.get("/", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const { projectId, episodeId } = req.query;
-    const conditions = [eq(sequencesTable.tenantId, tenantId)];
-    if (typeof projectId === "string") {
-      conditions.push(eq(sequencesTable.projectId, projectId));
-    }
-    if (typeof episodeId === "string") {
-      conditions.push(eq(sequencesTable.episodeId, episodeId));
-    }
-    const rows = await db
-      .select()
-      .from(sequencesTable)
-      .where(and(...conditions));
+    const rows = await prisma.sequence.findMany({
+      where: {
+        tenantId,
+        ...(typeof projectId === "string" ? { projectId } : {}),
+        ...(typeof episodeId === "string" ? { episodeId } : {}),
+      },
+    });
     return res.json(rows);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -66,34 +54,19 @@ sequencesRouter.post("/", requireCapability("create_tasks"), async (req, res) =>
     const { projectId, episodeId, name } = req.body;
     if (!projectId || !name)
       return res.status(400).json({ error: "Missing projectId or name" });
-
     if (!(await projectInTenant(projectId, tenantId)))
       return res.status(400).json({ error: "Invalid projectId" });
     if (episodeId && !(await episodeInTenant(episodeId, tenantId)))
       return res.status(400).json({ error: "Invalid episodeId" });
 
-    const newId = crypto.randomUUID();
-    await db
-      .insert(sequencesTable)
-      .values({ id: newId, tenantId, projectId, episodeId: episodeId || null, name });
-
-    const [created] = await db
-      .select()
-      .from(sequencesTable)
-      .where(and(eq(sequencesTable.tenantId, tenantId), eq(sequencesTable.id, newId)));
+    const created = await prisma.sequence.create({
+      data: { id: crypto.randomUUID(), tenantId, projectId, episodeId: episodeId || null, name },
+    });
     return res.status(201).json(created);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
   }
 });
-
-async function sequenceInTenant(id: string, tenantId: string) {
-  const [row] = await db
-    .select({ id: sequencesTable.id })
-    .from(sequencesTable)
-    .where(and(eq(sequencesTable.id, id), eq(sequencesTable.tenantId, tenantId)));
-  return !!row;
-}
 
 // Self-service "who's working this sequence" roster -- an artist joins or
 // leaves on their own, no lead/PM assignment step. Membership is what the
@@ -107,30 +80,30 @@ sequencesRouter.get("/:id/team", async (req, res) => {
     if (!(await sequenceInTenant(sequenceId, tenantId)))
       return res.status(404).json({ error: "Not found" });
 
-    const members = await db
-      .select({
-        id: sequenceTeamMembersTable.id,
-        userId: sequenceTeamMembersTable.userId,
-        joinedAt: sequenceTeamMembersTable.joinedAt,
-        name: usersTable.name,
-        avatar: usersTable.avatar,
-        departmentId: usersTable.departmentId,
-      })
-      .from(sequenceTeamMembersTable)
-      .innerJoin(usersTable, eq(sequenceTeamMembersTable.userId, usersTable.id))
-      .where(
-        and(
-          eq(sequenceTeamMembersTable.tenantId, tenantId),
-          eq(sequenceTeamMembersTable.sequenceId, sequenceId),
-        ),
-      );
+    const rows = await prisma.sequenceTeamMember.findMany({
+      where: { tenantId, sequenceId },
+      select: {
+        id: true,
+        userId: true,
+        joinedAt: true,
+        user: { select: { name: true, avatar: true, departmentId: true } },
+      },
+    });
+    const members = rows.map((r) => ({
+      id: r.id,
+      userId: r.userId,
+      joinedAt: r.joinedAt,
+      name: r.user.name,
+      avatar: r.user.avatar,
+      departmentId: r.user.departmentId,
+    }));
     return res.json(members);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
   }
 });
 
-// Join is idempotent (ON CONFLICT DO NOTHING against the sequence+user
+// Join is idempotent (upsert with a no-op update against the sequence+user
 // unique constraint) -- clicking "Join Team" twice, or a double-submit,
 // should never 500 or produce a duplicate row.
 sequencesRouter.post("/:id/team", async (req, res) => {
@@ -142,21 +115,11 @@ sequencesRouter.post("/:id/team", async (req, res) => {
     if (!(await sequenceInTenant(sequenceId, tenantId)))
       return res.status(404).json({ error: "Not found" });
 
-    await db
-      .insert(sequenceTeamMembersTable)
-      .values({ id: crypto.randomUUID(), tenantId, sequenceId, userId })
-      .onConflictDoNothing();
-
-    const [member] = await db
-      .select()
-      .from(sequenceTeamMembersTable)
-      .where(
-        and(
-          eq(sequenceTeamMembersTable.tenantId, tenantId),
-          eq(sequenceTeamMembersTable.sequenceId, sequenceId),
-          eq(sequenceTeamMembersTable.userId, userId),
-        ),
-      );
+    const member = await prisma.sequenceTeamMember.upsert({
+      where: { sequenceId_userId: { sequenceId, userId } },
+      update: {},
+      create: { id: crypto.randomUUID(), tenantId, sequenceId, userId },
+    });
     return res.status(201).json(member);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -173,15 +136,9 @@ sequencesRouter.delete("/:id/team/me", async (req, res) => {
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
     const sequenceId = req.params.id;
 
-    await db
-      .delete(sequenceTeamMembersTable)
-      .where(
-        and(
-          eq(sequenceTeamMembersTable.tenantId, tenantId),
-          eq(sequenceTeamMembersTable.sequenceId, sequenceId),
-          eq(sequenceTeamMembersTable.userId, userId),
-        ),
-      );
+    await prisma.sequenceTeamMember.deleteMany({
+      where: { tenantId, sequenceId, userId },
+    });
     return res.status(204).end();
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });

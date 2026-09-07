@@ -1,23 +1,23 @@
 import { Router } from "express";
-import { db, departmentsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { prisma } from "@workspace/db";
 import { tenantAuthMiddleware } from "../middleware/tenant";
-import { requireCapability } from "../middleware/rbac";
+import { requireCapability, denyClientAccess } from "../middleware/rbac";
 import * as crypto from "crypto";
 
 const router = Router();
 
 router.use(tenantAuthMiddleware);
+// Internal org structure has no client-facing equivalent.
+router.use(denyClientAccess);
 
 const VALID_PIPELINES = ["PROD", "3D", "VFX", "2D"];
 
 router.get("/", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
-    const departments = await db
-      .select()
-      .from(departmentsTable)
-      .where(eq(departmentsTable.tenantId, tenantId));
+    const departments = await prisma.department.findMany({
+      where: { tenantId },
+    });
     return res.json(departments);
   } catch (err) {
     req.log.error(err, "Failed to fetch departments");
@@ -39,16 +39,15 @@ router.post("/", requireCapability("manage_members"), async (req, res) => {
         error: `pipeline must be one of: ${VALID_PIPELINES.join(", ")}`,
       });
 
-    const [existing] = await db
-      .select({ id: departmentsTable.id })
-      .from(departmentsTable)
-      .where(and(eq(departmentsTable.tenantId, tenantId), eq(departmentsTable.abbr, abbr)));
+    const existing = await prisma.department.findFirst({
+      where: { tenantId, abbr },
+      select: { id: true },
+    });
     if (existing)
       return res.status(409).json({ error: "A department with this abbreviation already exists" });
 
-    const [created] = await db
-      .insert(departmentsTable)
-      .values({
+    const created = await prisma.department.create({
+      data: {
         id: crypto.randomUUID(),
         tenantId,
         name,
@@ -57,8 +56,8 @@ router.post("/", requireCapability("manage_members"), async (req, res) => {
         pipelineOrder: pipelineOrder ?? 0,
         color: color || null,
         icon: icon || null,
-      })
-      .returning();
+      },
+    });
     return res.status(201).json(created);
   } catch (err) {
     req.log.error(err, "Failed to create department");

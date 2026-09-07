@@ -1,13 +1,5 @@
 import { Router } from "express";
-import { db } from "@workspace/db";
-import {
-  pendingInvitesTable,
-  usersTable,
-  tenantRolesTable,
-  tenantsTable,
-  departmentsTable,
-} from "@workspace/db/schema";
-import { eq, and, gt } from "drizzle-orm";
+import { prisma } from "@workspace/db";
 import * as crypto from "crypto";
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability } from "../middleware/rbac";
@@ -33,51 +25,43 @@ invitesRouter.post(
       if (!email || typeof email !== "string" || !roleId)
         return res.status(400).json({ error: "email and roleId are required" });
 
-      const [role] = await db
-        .select({ id: tenantRolesTable.id, name: tenantRolesTable.name })
-        .from(tenantRolesTable)
-        .where(
-          and(
-            eq(tenantRolesTable.id, roleId),
-            eq(tenantRolesTable.tenantId, tenantId),
-          ),
-        );
+      const role = await prisma.tenantRole.findFirst({
+        where: { id: roleId, tenantId },
+        select: { id: true, name: true },
+      });
       if (!role) return res.status(400).json({ error: "Invalid roleId" });
 
       if (departmentId) {
-        const [dept] = await db
-          .select({ id: departmentsTable.id })
-          .from(departmentsTable)
-          .where(
-            and(
-              eq(departmentsTable.id, departmentId),
-              eq(departmentsTable.tenantId, tenantId),
-            ),
-          );
+        const dept = await prisma.department.findFirst({
+          where: { id: departmentId, tenantId },
+          select: { id: true },
+        });
         if (!dept) return res.status(400).json({ error: "Invalid departmentId" });
       }
 
-      const [existingUser] = await db
-        .select({ id: usersTable.id })
-        .from(usersTable)
-        .where(eq(usersTable.email, email));
+      const existingUser = await prisma.user.findFirst({
+        where: { email },
+        select: { id: true },
+      });
       if (existingUser)
         return res.status(409).json({ error: "A user with this email already exists" });
 
-      const [tenant] = await db
-        .select({ name: tenantsTable.name })
-        .from(tenantsTable)
-        .where(eq(tenantsTable.id, tenantId));
+      const tenant = await prisma.tenant.findFirst({
+        where: { id: tenantId },
+        select: { name: true },
+      });
 
       const token = crypto.randomBytes(32).toString("hex");
-      await db.insert(pendingInvitesTable).values({
-        id: crypto.randomUUID(),
-        tenantId,
-        email,
-        roleId,
-        departmentId: departmentId ?? null,
-        token,
-        expiresAt: new Date(Date.now() + INVITE_TTL_MS),
+      await prisma.pendingInvite.create({
+        data: {
+          id: crypto.randomUUID(),
+          tenantId,
+          email,
+          roleId,
+          departmentId: departmentId ?? null,
+          token,
+          expiresAt: new Date(Date.now() + INVITE_TTL_MS),
+        },
       });
 
       const frontendUrl = process.env.FRONTEND_URL || "http://localhost";
@@ -101,30 +85,20 @@ invitesRouter.post(
 invitesRouter.get("/:token", async (req, res) => {
   try {
     const { token } = req.params;
-    const [invite] = await db
-      .select({
-        email: pendingInvitesTable.email,
-        tenantId: pendingInvitesTable.tenantId,
-        roleId: pendingInvitesTable.roleId,
-        expiresAt: pendingInvitesTable.expiresAt,
-      })
-      .from(pendingInvitesTable)
-      .where(
-        and(
-          eq(pendingInvitesTable.token, token),
-          gt(pendingInvitesTable.expiresAt, new Date()),
-        ),
-      );
+    const invite = await prisma.pendingInvite.findFirst({
+      where: { token, expiresAt: { gt: new Date() } },
+      select: { email: true, tenantId: true, roleId: true, expiresAt: true },
+    });
     if (!invite) return res.status(404).json({ error: "Invalid or expired invite" });
 
-    const [role] = await db
-      .select({ name: tenantRolesTable.name })
-      .from(tenantRolesTable)
-      .where(eq(tenantRolesTable.id, invite.roleId));
-    const [tenant] = await db
-      .select({ name: tenantsTable.name })
-      .from(tenantsTable)
-      .where(eq(tenantsTable.id, invite.tenantId));
+    const role = await prisma.tenantRole.findFirst({
+      where: { id: invite.roleId },
+      select: { name: true },
+    });
+    const tenant = await prisma.tenant.findFirst({
+      where: { id: invite.tenantId },
+      select: { name: true },
+    });
 
     return res.json({
       email: invite.email,
@@ -148,33 +122,27 @@ invitesRouter.post("/:token/accept", async (req, res) => {
     if (!name || !password || typeof password !== "string" || password.length < 8)
       return res.status(400).json({ error: "name and a password (min 8 chars) are required" });
 
-    const [invite] = await db
-      .select()
-      .from(pendingInvitesTable)
-      .where(
-        and(
-          eq(pendingInvitesTable.token, token),
-          gt(pendingInvitesTable.expiresAt, new Date()),
-        ),
-      );
+    const invite = await prisma.pendingInvite.findFirst({
+      where: { token, expiresAt: { gt: new Date() } },
+    });
     if (!invite) return res.status(404).json({ error: "Invalid or expired invite" });
 
     const hashedPassword = await hashPassword(password);
     const userId = crypto.randomUUID();
-    await db.insert(usersTable).values({
-      id: userId,
-      tenantId: invite.tenantId,
-      roleId: invite.roleId,
-      departmentId: invite.departmentId,
-      email: invite.email,
-      hashedPassword,
-      name,
-      status: "active",
+    await prisma.user.create({
+      data: {
+        id: userId,
+        tenantId: invite.tenantId,
+        roleId: invite.roleId,
+        departmentId: invite.departmentId,
+        email: invite.email,
+        hashedPassword,
+        name,
+        status: "active",
+      },
     });
 
-    await db
-      .delete(pendingInvitesTable)
-      .where(eq(pendingInvitesTable.id, invite.id));
+    await prisma.pendingInvite.deleteMany({ where: { id: invite.id } });
 
     const sessionToken = signSession({
       userId,

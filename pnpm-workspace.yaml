@@ -52,7 +52,6 @@ catalog:
   "@vitejs/plugin-react": ^5.0.4
   class-variance-authority: ^0.7.1
   clsx: ^2.1.1
-  drizzle-orm: ^0.45.2
   framer-motion: ^12.42.2
   lucide-react: ^0.545.0
   # Must be this exact version because expo requires it
@@ -69,9 +68,12 @@ catalog:
 autoInstallPeers: false
 
 onlyBuiltDependencies:
+  - "@prisma/client"
+  - "@prisma/engines"
   - "@swc/core"
   - esbuild
   - msw
+  - prisma
   - unrs-resolver
 
 overrides:
@@ -166,6 +168,11 @@ overrides:
   esbuild: "0.28.1"
 
 allowBuilds:
+  '@prisma/client': true
+  '@prisma/engines': true
   "@sentry/node-cpu-profiler": true
   argon2: true
   esbuild: true
+  msgpackr-extract: set this to true or false
+  prisma: true
+  workerd: set this to true or false

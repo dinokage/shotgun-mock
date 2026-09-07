@@ -8,6 +8,12 @@ out-tsc
 .expo
 .expo-shared
 
+# Turborepo local cache/metadata -- untracked, and including it in a
+# package's own hashed inputs would make every run invalidate the next
+# run's cache (each run rewrites .turbo/, changing the hash it's hashed
+# into), defeating caching entirely.
+.turbo
+
 # dependencies
 node_modules
 
@@ -61,3 +67,7 @@ cookie.txt
 
 # Database backups (real tenant data -- never committed)
 /backups/
+
+# Generated Prisma Client (regenerated via `prisma generate`, not committed --
+# same convention as dist/, node_modules)
+lib/db/generated/

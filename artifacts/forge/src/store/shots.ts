@@ -22,6 +22,25 @@ const syncBackend = async (id: string, updates: any) => {
   }
 };
 
+// A client-access session has no capability that lets it through the
+// generic PUT /shots/:id (see that route's own comment -- edit_tasks
+// deliberately excludes client sessions), so a client's review decision
+// used to silently fail here: the toast said "sent to the studio team"
+// while the request 403'd and only this browser's local Zustand state
+// ever changed. PUT /shots/:id/client-review is the narrow, client-scoped
+// endpoint built for exactly this write.
+const syncClientReviewDecision = async (id: string, status: string) => {
+  try {
+    const { apiFetch } = await import("@/lib/apiClient");
+    await apiFetch(`/shots/${id}/client-review`, {
+      method: "PUT",
+      body: JSON.stringify({ status }),
+    });
+  } catch (err) {
+    console.error("Failed to sync client review decision to backend", err);
+  }
+};
+
 export const useShotStore = create<ShotState>()(
   persist(
     (set) => ({
@@ -46,10 +65,11 @@ export const useShotStore = create<ShotState>()(
             return s;
           }),
         }));
-        const updatePayload = isInternal
-          ? { internalReviewStatus: status }
-          : { clientReviewStatus: status };
-        syncBackend(id, updatePayload);
+        if (isInternal) {
+          syncBackend(id, { internalReviewStatus: status });
+        } else {
+          syncClientReviewDecision(id, status);
+        }
       },
     }),
     {

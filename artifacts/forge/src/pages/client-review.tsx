@@ -181,7 +181,6 @@ export default function ClientReview() {
   // reflected here immediately, and stays reflected across reloads.
   const shots = useShotStore((s) => s.shots);
   const updateReviewStatus = useShotStore((s) => s.updateReviewStatus);
-  const updateShot = useShotStore((s) => s.updateShot);
   // Scoped to the redeemed access link's grant (see clientScope above), most
   // specific field first — a versionId grant limits to that single shot's
   // delivered version, an episodeId grant to that episode's shots, a
@@ -377,15 +376,16 @@ export default function ClientReview() {
       // Persist the real decision: the shot's clientReviewStatus (the
       // review-pipeline record) and its overall status (what takes it out of
       // "Awaiting Review" on this dashboard and on the producer home page,
-      // both of which filter on status === 'client-review').
+      // both of which filter on status === 'client-review'). Both fields are
+      // set together by PUT /shots/:id/client-review (the only write a
+      // client-access session is capable of) -- a separate updateShot() call
+      // here would hit the generic PUT /shots/:id, which requires edit_tasks
+      // and always 403s for a client session.
       updateReviewStatus(
         activeShot.id,
         false,
         action === "approved" ? "approved" : "changes-requested",
       );
-      updateShot(activeShot.id, {
-        status: action === "approved" ? "approved" : "in-progress",
-      });
     }
     toast({
       title: action === "approved" ? "Approved" : "Changes Requested",
