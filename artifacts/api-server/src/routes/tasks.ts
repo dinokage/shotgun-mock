@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { prisma } from "@workspace/db";
 import { tenantAuthMiddleware } from "../middleware/tenant";
-import { requireCapability } from "../middleware/rbac";
+import { requireCapability, denyClientAccess } from "../middleware/rbac";
 import * as crypto from "crypto";
 import { createNotification, findProductionManagers } from "./notifications";
 import { cacheGet, cacheSet, cacheDel, cacheKeys } from "../lib/cache";
@@ -129,6 +129,9 @@ const APPROVAL_EVENT_ACTIONS = [
 export const tasksRouter = Router();
 
 tasksRouter.use(tenantAuthMiddleware);
+// Internal task management has no client-facing equivalent -- a client's
+// only sanctioned view of shot/version progress is the review flow.
+tasksRouter.use(denyClientAccess);
 
 tasksRouter.get("/", async (req, res) => {
   try {

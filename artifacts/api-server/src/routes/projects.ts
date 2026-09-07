@@ -3,6 +3,7 @@ import { prisma } from "@workspace/db";
 import * as crypto from "crypto";
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability } from "../middleware/rbac";
+import { getClientScope } from "../lib/clientScope";
 
 export const projectsRouter = Router();
 
@@ -11,7 +12,14 @@ projectsRouter.use(tenantAuthMiddleware);
 projectsRouter.get("/", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
-    const projects = await prisma.project.findMany({ where: { tenantId } });
+    // A client-access session sees only the project it was granted, not the
+    // full tenant-wide list -- getClientScope returns null for every other
+    // role, so this is a no-op for them.
+    const clientScope = await getClientScope(req);
+    if (req.clientAccessLinkId && !clientScope) return res.json([]);
+    const projects = await prisma.project.findMany({
+      where: { tenantId, ...(clientScope ? { id: clientScope.projectId } : {}) },
+    });
     return res.json(projects);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -24,6 +32,10 @@ projectsRouter.get("/", async (req, res) => {
 projectsRouter.get("/:id", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
+    const clientScope = await getClientScope(req);
+    if (req.clientAccessLinkId && (!clientScope || clientScope.projectId !== req.params.id)) {
+      return res.status(404).json({ error: "Not found" });
+    }
     const project = await prisma.project.findFirst({
       where: { tenantId, id: req.params.id },
     });

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { prisma } from "@workspace/db";
 import { tenantAuthMiddleware } from "../middleware/tenant";
-import { requireCapability } from "../middleware/rbac";
+import { requireCapability, denyClientAccess } from "../middleware/rbac";
 import { recordAuditLog } from "../lib/auditLog";
 import * as crypto from "crypto";
 
@@ -31,6 +31,9 @@ async function userInTenant(id: string, tenantId: string) {
 export const assetsRouter = Router();
 
 assetsRouter.use(tenantAuthMiddleware);
+// Internal pipeline WIP assets have no client-facing equivalent -- a
+// client's only sanctioned view is the version/review flow.
+assetsRouter.use(denyClientAccess);
 
 assetsRouter.get("/", async (req, res) => {
   try {

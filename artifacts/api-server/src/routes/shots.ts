@@ -3,6 +3,7 @@ import { prisma } from "@workspace/db";
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability } from "../middleware/rbac";
 import { recordAuditLog } from "../lib/auditLog";
+import { getClientScope } from "../lib/clientScope";
 import * as crypto from "crypto";
 
 // Each check confirms a foreign-key id actually belongs to the caller's
@@ -36,8 +37,23 @@ shotsRouter.get("/", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const { projectId } = req.query;
+    // A client-access session sees only shots under its granted project
+    // (narrowed to one episode, or the one shot behind its granted
+    // version, when the link is scoped that tight).
+    const clientScope = await getClientScope(req);
+    if (req.clientAccessLinkId && !clientScope) return res.json([]);
     const rows = await prisma.shot.findMany({
-      where: { tenantId, ...(typeof projectId === "string" ? { projectId } : {}) },
+      where: {
+        tenantId,
+        ...(typeof projectId === "string" ? { projectId } : {}),
+        ...(clientScope
+          ? {
+              projectId: clientScope.projectId,
+              ...(clientScope.episodeId ? { episodeId: clientScope.episodeId } : {}),
+              ...(clientScope.shotId ? { id: clientScope.shotId } : {}),
+            }
+          : {}),
+      },
     });
     return res.json(rows);
   } catch (err) {

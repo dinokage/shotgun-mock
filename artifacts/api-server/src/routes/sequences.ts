@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { prisma } from "@workspace/db";
 import { tenantAuthMiddleware } from "../middleware/tenant";
-import { requireCapability } from "../middleware/rbac";
+import { requireCapability, denyClientAccess } from "../middleware/rbac";
 import * as crypto from "crypto";
 
 // See the identical comment in routes/episodes.ts — the FK constraint alone
@@ -24,6 +24,8 @@ async function sequenceInTenant(id: string, tenantId: string) {
 export const sequencesRouter = Router();
 
 sequencesRouter.use(tenantAuthMiddleware);
+// Internal pipeline sequence management has no client-facing equivalent.
+sequencesRouter.use(denyClientAccess);
 
 sequencesRouter.get("/", async (req, res) => {
   try {

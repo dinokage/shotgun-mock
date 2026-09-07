@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "@workspace/db";
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability } from "../middleware/rbac";
+import { getClientScope } from "../lib/clientScope";
 import * as crypto from "crypto";
 
 // Confirms projectId actually belongs to the caller's tenant before it's
@@ -25,10 +26,20 @@ episodesRouter.get("/", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const { projectId } = req.query;
+    // A client-access session sees only its granted project's episodes --
+    // narrowed further to a single episode if that's the exact grant.
+    const clientScope = await getClientScope(req);
+    if (req.clientAccessLinkId && !clientScope) return res.json([]);
     const rows = await prisma.episode.findMany({
       where: {
         tenantId,
         ...(typeof projectId === "string" ? { projectId } : {}),
+        ...(clientScope
+          ? {
+              projectId: clientScope.projectId,
+              ...(clientScope.episodeId ? { id: clientScope.episodeId } : {}),
+            }
+          : {}),
       },
     });
     return res.json(rows);

@@ -2,7 +2,7 @@ import { Router } from "express";
 import { prisma } from "@workspace/db";
 import { signSession } from "../lib/auth";
 import { tenantAuthMiddleware } from "../middleware/tenant";
-import { requireCapability } from "../middleware/rbac";
+import { requireCapability, denyClientAccess } from "../middleware/rbac";
 import * as crypto from "crypto";
 
 export const clientAccessRouter = Router();
@@ -79,8 +79,15 @@ clientAccessRouter.post("/redeem", async (req, res) => {
 });
 
 // Every route below this point is a producer/lead-facing management route,
-// not the client's own redemption -- requires a real logged-in session.
+// not the client's own redemption -- requires a real logged-in employee
+// session. tenantAuthMiddleware alone doesn't enforce that (it accepts any
+// valid session, client-access sessions included) -- denyClientAccess closes
+// that gap. Without it, a client session (which holds approve_reviews for an
+// unrelated reason -- see the comment below) could pass requireCapability on
+// POST / below and mint itself a fresh access link scoped to anything in the
+// tenant, not just what it was originally given.
 clientAccessRouter.use(tenantAuthMiddleware);
+clientAccessRouter.use(denyClientAccess);
 
 // Exactly one of projectId/episodeId/versionId identifies what this link
 // grants -- the narrowest one given wins, matching the schema comment.

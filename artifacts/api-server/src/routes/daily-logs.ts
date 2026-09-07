@@ -1,11 +1,14 @@
 import { Router } from "express";
 import { prisma } from "@workspace/db";
 import { tenantAuthMiddleware } from "../middleware/tenant";
+import { denyClientAccess } from "../middleware/rbac";
 import * as crypto from "crypto";
 
 export const dailyLogsRouter = Router();
 
 dailyLogsRouter.use(tenantAuthMiddleware);
+// Internal employee time-tracking has no client-facing equivalent.
+dailyLogsRouter.use(denyClientAccess);
 
 dailyLogsRouter.get("/", async (req, res) => {
   try {

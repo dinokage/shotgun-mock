@@ -1,12 +1,14 @@
 import { Router } from "express";
 import { prisma } from "@workspace/db";
 import { tenantAuthMiddleware } from "../middleware/tenant";
-import { requireCapability } from "../middleware/rbac";
+import { requireCapability, denyClientAccess } from "../middleware/rbac";
 import * as crypto from "crypto";
 
 const router = Router();
 
 router.use(tenantAuthMiddleware);
+// Internal org structure has no client-facing equivalent.
+router.use(denyClientAccess);
 
 const VALID_PIPELINES = ["PROD", "3D", "VFX", "2D"];
 

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "@workspace/db";
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability } from "../middleware/rbac";
+import { getClientScope } from "../lib/clientScope";
 import * as crypto from "crypto";
 
 // Confirms versionId actually belongs to the caller's tenant before it's
@@ -21,12 +22,34 @@ reviewsRouter.get("/", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const { entityId, entityType, versionId } = req.query;
+
+    // Same client-access scoping as versions.ts's GET / -- a review has no
+    // direct project link, only entityId/entityType, so scoping to
+    // project/episode goes through the shot ids that fall inside the grant.
+    const clientScope = await getClientScope(req);
+    if (req.clientAccessLinkId && !clientScope) return res.json([]);
+
+    let clientEntityIdFilter: { in: string[] } | undefined;
+    if (clientScope && !clientScope.versionId) {
+      const shots = await prisma.shot.findMany({
+        where: {
+          tenantId,
+          projectId: clientScope.projectId,
+          ...(clientScope.episodeId ? { episodeId: clientScope.episodeId } : {}),
+        },
+        select: { id: true },
+      });
+      clientEntityIdFilter = { in: shots.map((s) => s.id) };
+    }
+
     const rows = await prisma.review.findMany({
       where: {
         tenantId,
         ...(typeof entityId === "string" ? { entityId } : {}),
         ...(typeof entityType === "string" ? { entityType } : {}),
         ...(typeof versionId === "string" ? { versionId } : {}),
+        ...(clientScope?.versionId ? { versionId: clientScope.versionId } : {}),
+        ...(clientEntityIdFilter ? { entityId: clientEntityIdFilter } : {}),
       },
     });
     return res.json(rows);
@@ -60,8 +83,36 @@ reviewsRouter.post("/", requireCapability("submit_reviews"), async (req, res) =>
 reviewsRouter.get("/:versionId/annotations", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
+    const requestedVersionId = req.params.versionId as string;
+
+    // A client-access session may only read annotations on a version that
+    // falls inside its granted project/episode/version scope.
+    const clientScope = await getClientScope(req);
+    if (req.clientAccessLinkId) {
+      if (!clientScope) return res.json([]);
+      if (clientScope.versionId) {
+        if (clientScope.versionId !== requestedVersionId) return res.json([]);
+      } else {
+        const version = await prisma.version.findFirst({
+          where: { id: requestedVersionId, tenantId },
+          select: { entityId: true, entityType: true },
+        });
+        if (!version || version.entityType !== "shot") return res.json([]);
+        const shot = await prisma.shot.findFirst({
+          where: {
+            id: version.entityId,
+            tenantId,
+            projectId: clientScope.projectId,
+            ...(clientScope.episodeId ? { episodeId: clientScope.episodeId } : {}),
+          },
+          select: { id: true },
+        });
+        if (!shot) return res.json([]);
+      }
+    }
+
     const rows = await prisma.annotation.findMany({
-      where: { tenantId, versionId: req.params.versionId },
+      where: { tenantId, versionId: requestedVersionId },
     });
     return res.json(rows);
   } catch (err) {

@@ -2,10 +2,13 @@ import { Router } from "express";
 import { prisma } from "@workspace/db";
 import * as crypto from "crypto";
 import { tenantAuthMiddleware } from "../middleware/tenant";
+import { denyClientAccess } from "../middleware/rbac";
 
 export const notificationsRouter = Router();
 
 notificationsRouter.use(tenantAuthMiddleware);
+// Internal employee notification feed has no client-facing equivalent.
+notificationsRouter.use(denyClientAccess);
 
 // Polled every ~10s by the frontend (see hooks/useNotifications.ts) rather
 // than pushed -- simplest real cross-user delivery mechanism available

@@ -1,10 +1,13 @@
 import { Router } from "express";
 import { prisma } from "@workspace/db";
 import { tenantAuthMiddleware } from "../middleware/tenant";
+import { denyClientAccess } from "../middleware/rbac";
 
 export const auditLogsRouter = Router();
 
 auditLogsRouter.use(tenantAuthMiddleware);
+// The audit trail is strictly internal.
+auditLogsRouter.use(denyClientAccess);
 
 // The Time Travel / audit-history UI is leadership-gated client-side only
 // (App.tsx's LeadershipGuard, which checks store/permissions.ts's

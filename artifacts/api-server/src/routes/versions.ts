@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "@workspace/db";
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability } from "../middleware/rbac";
+import { getClientScope } from "../lib/clientScope";
 import * as crypto from "crypto";
 
 // Confirms taskId actually belongs to the caller's tenant before it's
@@ -22,11 +23,39 @@ versionsRouter.get("/", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const { entityId, entityType } = req.query;
+
+    // A client-access session sees only versions belonging to a shot inside
+    // its granted project/episode -- or, when the link is scoped to one
+    // exact version, only that version. Versions have no direct project
+    // link (only entityId/entityType), so scoping to project/episode goes
+    // through the shot ids that fall inside the grant.
+    const clientScope = await getClientScope(req);
+    if (req.clientAccessLinkId && !clientScope) return res.json([]);
+
+    let clientEntityIdFilter: { in: string[] } | undefined;
+    if (clientScope) {
+      if (clientScope.versionId) {
+        // Scoped to one exact version -- filter by id, not entityId.
+      } else {
+        const shots = await prisma.shot.findMany({
+          where: {
+            tenantId,
+            projectId: clientScope.projectId,
+            ...(clientScope.episodeId ? { episodeId: clientScope.episodeId } : {}),
+          },
+          select: { id: true },
+        });
+        clientEntityIdFilter = { in: shots.map((s) => s.id) };
+      }
+    }
+
     const rows = await prisma.version.findMany({
       where: {
         tenantId,
         ...(typeof entityId === "string" ? { entityId } : {}),
         ...(typeof entityType === "string" ? { entityType } : {}),
+        ...(clientScope?.versionId ? { id: clientScope.versionId } : {}),
+        ...(clientEntityIdFilter ? { entityId: clientEntityIdFilter } : {}),
       },
     });
     return res.json(rows);
