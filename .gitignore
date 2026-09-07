@@ -8,6 +8,12 @@ out-tsc
 .expo
 .expo-shared
 
+# Turborepo local cache/metadata -- untracked, and including it in a
+# package's own hashed inputs would make every run invalidate the next
+# run's cache (each run rewrites .turbo/, changing the hash it's hashed
+# into), defeating caching entirely.
+.turbo
+
 # dependencies
 node_modules
 
