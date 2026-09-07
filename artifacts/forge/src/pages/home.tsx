@@ -700,9 +700,18 @@ function SupervisorDashboard({ currentUser }: { currentUser: User }) {
   const tasks = useTasksStore((state) => state.tasks);
   const users = useUserStore((state) => state.users);
   const departments = useDepartmentStore((state) => state.departments);
+  // Studio-wide leadership (a producer/lead with no single departmentId,
+  // e.g. an overall producer) sees an aggregate view across every
+  // department instead of blanking out -- previously `if (!dept) return
+  // null` silently rendered nothing for these real users.
   const dept = departments.find((d) => d.id === currentUser.departmentId);
-  const deptTeam = users.filter((u) => u.departmentId === dept?.id);
-  const deptTasks = tasks.filter((t) => t.department === dept?.name);
+  const isStudioWide = !currentUser.departmentId;
+  const deptTeam = isStudioWide
+    ? users
+    : users.filter((u) => u.departmentId === dept?.id);
+  const deptTasks = isStudioWide
+    ? tasks
+    : tasks.filter((t) => t.department === dept?.name);
   const activeTasks = deptTasks.filter((t) => t.status === "in-progress");
   const reviewTasks = deptTasks.filter((t) => t.status === "lead-review");
   const { setActiveTaskDrawer, setCreateTaskModalOpen } = useUIStore();
@@ -729,7 +738,7 @@ function SupervisorDashboard({ currentUser }: { currentUser: User }) {
       ? (completedDeptTasks / deptWorkDays).toFixed(1)
       : null;
 
-  if (!dept) return null;
+  if (!dept && !isStudioWide) return null;
 
   return (
     <MotionConfig reducedMotion="user">
@@ -737,11 +746,11 @@ function SupervisorDashboard({ currentUser }: { currentUser: User }) {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">
-              Department Dashboard
+              {isStudioWide ? "Studio Dashboard" : "Department Dashboard"}
             </h1>
             <p className="text-muted-foreground mt-1">
-              {dept.name} • {formatRoleLabel(currentUser.role)}:{" "}
-              {currentUser.name}
+              {isStudioWide ? "All Departments" : dept!.name} •{" "}
+              {formatRoleLabel(currentUser.role)}: {currentUser.name}
             </p>
           </div>
           <div className="flex gap-2">
