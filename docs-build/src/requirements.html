@@ -1,0 +1,1268 @@
+<meta charset="utf-8">
+<title>Forge — Requirements Document</title>
+<style>
+  /* Shared house style with SYM-FRG-MKT-001 so the document set reads as one
+     program. System fonts only: the studio network restricts outbound access
+     and a substituted font would reflow every page number. */
+  :root {
+    --ink: #0F161B; --ink-2: #33424E; --muted: #5F6E7B;
+    --hair: #C6CFD6; --hair-soft: #E1E7EB;
+    --accent: #0E7C6B; --accent-soft: #EAF4F1;
+    --warn: #9A5B08; --warn-soft: #FBF2E4;
+    --surface: #F5F8F9;
+    --blue: #3B4C9B; --blue-soft: #ECEEF8;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: Georgia, Cambria, "Times New Roman", serif;
+    font-size: 10.6pt; line-height: 1.58; color: var(--ink);
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .page { padding: 0 14mm; }
+  h1, h2, h3, h4, .sans { font-family: "Segoe UI", Arial, Helvetica, sans-serif; }
+  h1 { font-size: 25pt; line-height: 1.12; letter-spacing: -.4pt; margin: 0 0 10pt; }
+  h2 { font-size: 15pt; line-height: 1.22; margin: 0 0 4pt; padding-bottom: 5pt; border-bottom: 1.6pt solid var(--ink); }
+  h2 .num { color: var(--accent); }
+  h3 { font-size: 11.6pt; margin: 16pt 0 5pt; line-height: 1.3; }
+  h4 { font-size: 8.2pt; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 13pt 0 4pt; }
+  p { margin: 0 0 8pt; }
+  .lede { font-size: 11.4pt; color: var(--ink-2); margin-bottom: 12pt; }
+  ul, ol { margin: 0 0 9pt; padding-left: 16pt; }
+  li { margin-bottom: 4pt; }
+  section { page-break-before: always; padding-top: 2pt; }
+
+  /* cover */
+  .cover { height: 235mm; display: flex; flex-direction: column; justify-content: space-between; }
+  .cover-top { padding-top: 26mm; }
+  .cover .rule { height: 4pt; background: var(--accent); width: 58mm; margin-bottom: 14mm; }
+  .cover .product { font-family: "Segoe UI", Arial, sans-serif; font-size: 9pt; letter-spacing: .22em; text-transform: uppercase; color: var(--muted); margin-bottom: 6mm; }
+  .cover h1 { font-size: 36pt; letter-spacing: -1pt; }
+  .cover .sub { font-size: 13pt; color: var(--ink-2); margin-top: 5mm; max-width: 128mm; }
+  .cover-meta { display: grid; grid-template-columns: 1fr 1fr; border-top: 1.4pt solid var(--ink); }
+  .cover-meta div { padding: 7pt 10pt 7pt 0; border-bottom: .5pt solid var(--hair-soft); }
+  .cover-meta dt { font-family: "Segoe UI", Arial, sans-serif; font-size: 7.4pt; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 2pt; }
+  .cover-meta dd { margin: 0; font-family: "Segoe UI", Arial, sans-serif; font-size: 10pt; font-weight: 600; }
+  .classif { display: inline-block; font-family: "Segoe UI", Arial, sans-serif; font-size: 8pt; letter-spacing: .1em; text-transform: uppercase; font-weight: 700; color: #1F4E7A; border: 1.2pt solid #1F4E7A; padding: 3pt 8pt; background: #EAF1F8; }
+
+  /* tables */
+  table { border-collapse: collapse; width: 100%; font-size: 9.2pt; margin: 8pt 0 12pt; page-break-inside: avoid; }
+  th, td { text-align: left; padding: 5.5pt 7pt; border-bottom: .5pt solid var(--hair-soft); vertical-align: top; }
+  thead th { font-family: "Segoe UI", Arial, sans-serif; font-size: 7.6pt; letter-spacing: .07em; text-transform: uppercase; color: var(--ink); background: var(--surface); border-bottom: 1pt solid var(--hair); font-weight: 700; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  caption { caption-side: bottom; text-align: left; font-size: 8.2pt; color: var(--muted); padding-top: 4pt; font-family: "Segoe UI", Arial, sans-serif; }
+  td.id { font-family: "Segoe UI", Arial, sans-serif; font-weight: 700; font-size: 8.4pt; white-space: nowrap; color: var(--blue); }
+
+  /* callouts */
+  .box { border: .7pt solid var(--hair); border-left: 3pt solid var(--accent); background: var(--surface); padding: 9pt 11pt; margin: 10pt 0 12pt; page-break-inside: avoid; }
+  .box.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+  .box.dec { border-left-color: var(--blue); background: var(--blue-soft); }
+  .box p:last-child, .box ul:last-child { margin-bottom: 0; }
+  .box h4 { margin-top: 0; }
+
+  .toc-list { list-style: none; padding: 0; margin: 12pt 0 0; }
+  .toc-list li { display: flex; justify-content: space-between; gap: 8pt; padding: 5pt 0; border-bottom: .5pt dotted var(--hair); font-family: "Segoe UI", Arial, sans-serif; font-size: 10pt; }
+  .toc-list .s { color: var(--accent); font-weight: 700; width: 22pt; flex: none; }
+  .toc-list .t { flex: 1; }
+
+  .tag { display: inline-block; font-family: "Segoe UI", Arial, sans-serif; font-size: 7.2pt; letter-spacing: .07em; text-transform: uppercase; font-weight: 700; padding: 1.5pt 5pt; border-radius: 2pt; white-space: nowrap; }
+  .tag.must { background: #FBEDED; color: #8A2A2A; border: .5pt solid #8A2A2A; }
+  .tag.should { background: var(--warn-soft); color: var(--warn); border: .5pt solid var(--warn); }
+  .tag.could { background: var(--surface); color: var(--muted); border: .5pt solid var(--hair); }
+  .tag.done { background: var(--accent-soft); color: var(--accent); border: .5pt solid var(--accent); }
+
+  figure { margin: 12pt 0 14pt; page-break-inside: avoid; }
+  figure svg { width: 100%; height: auto; display: block; }
+  figcaption { font-family: "Segoe UI", Arial, sans-serif; font-size: 8.2pt; color: var(--muted); padding-top: 5pt; }
+  .dg-t { font-family: "Segoe UI", Arial, sans-serif; }
+</style>
+
+<div class="page">
+
+<!-- ============ COVER ============ -->
+<div class="cover">
+  <div class="cover-top">
+    <div class="rule"></div>
+    <div class="product">Forge &middot; Production Tracking Platform</div>
+    <h1>Requirements Document</h1>
+    <p class="sub">Business objectives, scope, stakeholders, functional and non-functional requirements, and the technology decision register for the Forge production tracking platform.</p>
+  </div>
+  <div>
+    <p style="margin-bottom:8mm;"><span class="classif">Internal</span></p>
+    <dl class="cover-meta">
+      <div><dt>Prepared for</dt><dd>Symbiosys Technologies</dd></div>
+      <div><dt>Document ID</dt><dd>SYM-FRG-REQ-001</dd></div>
+      <div><dt>Version</dt><dd>1.0 — Draft for review</dd></div>
+      <div><dt>Date</dt><dd>September 2026</dd></div>
+      <div><dt>Product status</dt><dd>Deployed and in production use</dd></div>
+      <div><dt>Author</dt><dd>Product &amp; Engineering</dd></div>
+    </dl>
+  </div>
+</div>
+
+<!-- ============ DOC CONTROL ============ -->
+<section>
+  <h2><span class="num">0.1</span> &nbsp;Document control</h2>
+  <h3>Revision history</h3>
+  <table>
+    <thead><tr><th style="width:12%">Version</th><th style="width:16%">Date</th><th style="width:24%">Author</th><th>Summary of change</th></tr></thead>
+    <tbody>
+      <tr><td>0.1</td><td>Sep 2026</td><td>Product &amp; Engineering</td><td>Initial structure, stakeholder analysis, scope definition.</td></tr>
+      <tr><td>1.0</td><td>Sep 2026</td><td>Product &amp; Engineering</td><td>First complete draft: full requirement set, process models, and technology decision register.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Approval</h3>
+  <table>
+    <thead><tr><th style="width:30%">Role</th><th style="width:28%">Name</th><th style="width:22%">Signature</th><th>Date</th></tr></thead>
+    <tbody>
+      <tr><td>Project Sponsor</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+      <tr><td>Head of Product</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+      <tr><td>Engineering Lead</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+      <tr><td>Production Head (user representative)</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Related documents</h3>
+  <table>
+    <thead><tr><th style="width:26%">ID</th><th>Document</th><th style="width:26%">Relationship</th></tr></thead>
+    <tbody>
+      <tr><td>SYM-FRG-SRS-001</td><td>Software Requirements Specification</td><td>Refines this document into testable software requirements</td></tr>
+      <tr><td>SYM-FRG-USG-001</td><td>Product Usage &amp; User Guide</td><td>Documents the delivered system</td></tr>
+      <tr><td>SYM-FRG-MKT-001</td><td>Marketing Analysis</td><td>Consumes proven capability from this document</td></tr>
+    </tbody>
+  </table>
+
+  <div class="box">
+    <h4>Requirement identifier scheme</h4>
+    <p>Used consistently across this document and the SRS so that traceability holds in both directions.</p>
+    <ul style="margin-bottom:0;">
+      <li><b>BR-nnn</b> — business requirement, stated in business language in this document.</li>
+      <li><b>FR-MODULE-nnn</b> — functional requirement, refined in the SRS.</li>
+      <li><b>NFR-CAT-nnn</b> — non-functional requirement.</li>
+      <li><b>DEC-nnn</b> — technology or architecture decision record (Section 10).</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============ TOC ============ -->
+<section>
+  <h2><span class="num">0.2</span> &nbsp;Contents</h2>
+  <ol class="toc-list">
+    <li><span class="s">1</span><span class="t">Executive summary</span></li>
+    <li><span class="s">2</span><span class="t">Business background and problem statement</span></li>
+    <li><span class="s">3</span><span class="t">Business objectives and success criteria</span></li>
+    <li><span class="s">4</span><span class="t">Scope</span></li>
+    <li><span class="s">5</span><span class="t">Stakeholders and user classes</span></li>
+    <li><span class="s">6</span><span class="t">System context</span></li>
+    <li><span class="s">7</span><span class="t">Current state and proposed state</span></li>
+    <li><span class="s">8</span><span class="t">Functional requirements</span></li>
+    <li><span class="s">9</span><span class="t">Non-functional requirements</span></li>
+    <li><span class="s">10</span><span class="t">Technology stack and decision register</span></li>
+    <li><span class="s">11</span><span class="t">Constraints and assumptions</span></li>
+    <li><span class="s">12</span><span class="t">Risks and mitigations</span></li>
+    <li><span class="s">13</span><span class="t">Dependencies</span></li>
+    <li><span class="s">14</span><span class="t">Acceptance and sign-off criteria</span></li>
+    <li><span class="s">15</span><span class="t">Appendix A — Glossary</span></li>
+    <li><span class="s">16</span><span class="t">Appendix B — Traceability seed</span></li>
+  </ol>
+</section>
+
+<!-- ============ 1 EXEC ============ -->
+<section>
+  <h2><span class="num">1</span> &nbsp;Executive summary</h2>
+  <p class="lede">Forge is a production tracking and review platform built for Symbiosys Technologies' animation and VFX operation, replacing spreadsheet-based shot tracking and ad-hoc review with a single system of record.</p>
+
+  <h3>1.1 The problem</h3>
+  <p>Production tracking ran on spreadsheets maintained per show. Shot status was accurate only as of the last manual update, review feedback arrived through chat and email where it was frequently lost, and approvals left no record of who signed off on what. Commercial alternatives were evaluated and rejected on cost, on their cloud-hosted delivery model, and on the pipeline work required to adapt them to the studio's existing episodic tracksheet format.</p>
+
+  <h3>1.2 The solution</h3>
+  <p>A self-hosted web platform covering the full production path: import of existing tracksheets, hierarchical tracking from project through episode, sequence and shot to individual task, role-scoped task assignment, a frame-accurate review player with annotation, a multi-stage approval chain, external client review by access link, and attendance and effort recording.</p>
+
+  <h3>1.3 Current status</h3>
+  <p>The system is deployed and in production use. At the time of writing it holds 1,065 shots and 1,066 tasks imported from live production tracksheets, across 65 user accounts spanning six roles. This document therefore records requirements for a system that largely exists — it is both a specification and a record of what was built, and each requirement carries a delivery status.</p>
+
+  <h3>1.4 Requirement summary</h3>
+  <table>
+    <thead><tr><th>Category</th><th class="num">Must</th><th class="num">Should</th><th class="num">Could</th><th class="num">Total</th></tr></thead>
+    <tbody>
+      <tr><td>Functional requirements</td><td class="num">48</td><td class="num">14</td><td class="num">9</td><td class="num">71</td></tr>
+      <tr><td>Non-functional requirements</td><td class="num">19</td><td class="num">7</td><td class="num">3</td><td class="num">29</td></tr>
+      <tr><td>Business requirements</td><td class="num">11</td><td class="num">3</td><td class="num">2</td><td class="num">16</td></tr>
+    </tbody>
+    <caption>Table 1.1 — Requirement counts by priority. Full listings in Sections 8 and 9.</caption>
+  </table>
+</section>
+
+<!-- ============ 2 BACKGROUND ============ -->
+<section>
+  <h2><span class="num">2</span> &nbsp;Business background and problem statement</h2>
+
+  <h3>2.1 Operating context</h3>
+  <p>Symbiosys Technologies produces animation and visual effects work, principally episodic content organised into episodes, sequences and shots. Work passes through departmental stages, each contributing to a shot before it advances. A single episode commonly contains several hundred shots, each requiring individual tracking, review and sign-off.</p>
+
+  <h3>2.2 Problems with the previous approach</h3>
+  <table>
+    <thead><tr><th style="width:26%">Problem</th><th style="width:37%">Observed consequence</th><th>Cost to the business</th></tr></thead>
+    <tbody>
+      <tr><td><b>Status held in spreadsheets</b></td><td>Accurate only as of the last manual edit; concurrent editing produced conflicting copies.</td><td>Production meetings spent establishing current state rather than acting on it.</td></tr>
+      <tr><td><b>Review feedback in chat and email</b></td><td>Notes detached from the frame and the version they referred to; lost when threads scrolled.</td><td>Avoidable retakes; artist time spent on work that had already been corrected.</td></tr>
+      <tr><td><b>No approval record</b></td><td>No reliable answer to who approved a shot, when, or on what version.</td><td>Disputes with clients over what was signed off; no audit trail.</td></tr>
+      <tr><td><b>Client delivery ad hoc</b></td><td>Media sent by file transfer, feedback returned by email in free text.</td><td>Slow review rounds; feedback not attached to the shot record.</td></tr>
+      <tr><td><b>No effort data</b></td><td>Time per shot unrecorded or reconstructed from memory.</td><td>Bids based on estimate rather than history.</td></tr>
+      <tr><td><b>Commercial tools rejected</b></td><td>Per-seat licensing at studio headcount; cloud hosting of unreleased client media; configuration effort to match the existing tracksheet structure.</td><td>Either unaffordable cost or unacceptable delivery model.</td></tr>
+    </tbody>
+    <caption>Table 2.1 — Problem statement with observed consequence and business cost.</caption>
+  </table>
+
+  <h3>2.3 Business requirements</h3>
+  <table>
+    <thead><tr><th style="width:12%">ID</th><th>Requirement</th><th style="width:14%">Priority</th></tr></thead>
+    <tbody>
+      <tr><td class="id">BR-001</td><td>The studio shall maintain a single authoritative record of the status of every shot in production.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">BR-002</td><td>Review feedback shall be permanently associated with the specific version and frame it refers to.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">BR-003</td><td>Every approval decision shall be recorded with its actor, timestamp and subject version.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">BR-004</td><td>Existing production tracksheets shall be importable without reformatting or re-entry.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">BR-005</td><td>All production media shall remain on infrastructure controlled by the studio.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">BR-006</td><td>The system shall carry no per-user licensing cost.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">BR-007</td><td>Access to production data shall be restricted according to the user's role and department.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">BR-008</td><td>External clients shall be able to review and comment without holding a studio account.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">BR-009</td><td>Effort expended per shot shall be recorded to inform future bidding.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">BR-010</td><td>The system shall operate on the studio's existing hardware without internet dependency for core function.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">BR-011</td><td>Administrative oversight shall be separable from production authority.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">BR-012</td><td>The system shall support onboarding of new staff without administrator intervention for every account, while reserving the granting of authority to an administrator.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">BR-013</td><td>Historical changes should be reversible where a mistake is identified after the fact.</td><td><span class="tag should">Should</span></td></tr>
+      <tr><td class="id">BR-014</td><td>The system should provide studio-wide visibility of workload distribution.</td><td><span class="tag should">Should</span></td></tr>
+      <tr><td class="id">BR-015</td><td>The platform could be extended by third-party plug-ins.</td><td><span class="tag could">Could</span></td></tr>
+      <tr><td class="id">BR-016</td><td>The platform could integrate directly with content creation applications.</td><td><span class="tag could">Could</span></td></tr>
+    </tbody>
+    <caption>Table 2.2 — Business requirements. Each is traced to functional requirements in Appendix B.</caption>
+  </table>
+</section>
+
+<!-- ============ 3 OBJECTIVES ============ -->
+<section>
+  <h2><span class="num">3</span> &nbsp;Business objectives and success criteria</h2>
+  <p class="lede">Each objective carries a measure and a baseline. Objectives without a measure are excluded, since they cannot be used to determine whether the project succeeded.</p>
+  <table>
+    <thead><tr><th style="width:9%">ID</th><th style="width:26%">Objective</th><th style="width:24%">Measure</th><th>Baseline and target</th></tr></thead>
+    <tbody>
+      <tr><td class="id">OBJ-1</td><td>Establish a single source of truth for shot status</td><td>Proportion of active shots tracked in the system</td><td>Baseline 0%. Target 100% of shots on active shows.</td></tr>
+      <tr><td class="id">OBJ-2</td><td>Eliminate per-seat licensing cost</td><td>Annual licensing spend on production tracking</td><td>Baseline: quoted per-seat cost at 65 accounts. Target: nil.</td></tr>
+      <tr><td class="id">OBJ-3</td><td>Retain review feedback permanently against its version</td><td>Proportion of review notes recorded against a version and frame</td><td>Baseline effectively 0% (chat and email). Target 100%.</td></tr>
+      <tr><td class="id">OBJ-4</td><td>Make approvals auditable</td><td>Time to establish who approved a given shot version</td><td>Baseline: manual search of message history, frequently unresolvable. Target: single screen.</td></tr>
+      <tr><td class="id">OBJ-5</td><td>Adopt without production disruption</td><td>Re-keyed rows during migration</td><td>Baseline: full re-entry under alternatives. Target: zero.</td></tr>
+      <tr><td class="id">OBJ-6</td><td>Keep client media on studio infrastructure</td><td>Media assets stored outside studio control</td><td>Baseline: transfers to third-party services. Target: nil.</td></tr>
+      <tr><td class="id">OBJ-7</td><td>Record effort against shots</td><td>Proportion of completed tasks with logged time</td><td>Baseline 0%. Target 90% of completed tasks.</td></tr>
+    </tbody>
+    <caption>Table 3.1 — Business objectives with measures. Traced to business requirements in Appendix B.</caption>
+  </table>
+</section>
+
+<!-- ============ 4 SCOPE ============ -->
+<section>
+  <h2><span class="num">4</span> &nbsp;Scope</h2>
+
+  <h3>4.1 In scope</h3>
+  <table>
+    <thead><tr><th style="width:30%">Area</th><th>Included</th></tr></thead>
+    <tbody>
+      <tr><td><b>Identity and access</b></td><td>Authentication, self-service registration, password recovery, session management, role-based access control, capability administration.</td></tr>
+      <tr><td><b>Production structure</b></td><td>Projects, episodes, sequences, shots, assets, departments, and configurable pipeline stages.</td></tr>
+      <tr><td><b>Tracking</b></td><td>Global tracking grid, filtering and grouping, saved views, spreadsheet import, CSV export.</td></tr>
+      <tr><td><b>Task management</b></td><td>Creation, assignment, claiming, status progression, dependencies, checklists, comments, attachments.</td></tr>
+      <tr><td><b>Review</b></td><td>Version management, media upload, frame-accurate playback, annotation, comparison tooling, frame-anchored comments, presentation mode.</td></tr>
+      <tr><td><b>Approval</b></td><td>Multi-stage approval chain with recorded history and change requests.</td></tr>
+      <tr><td><b>Client delivery</b></td><td>Access links with codes, external review interface, client feedback capture, delivery records.</td></tr>
+      <tr><td><b>Time and attendance</b></td><td>Automatic clock-in on sign-in, presence, daily logs, timesheets, daily standup.</td></tr>
+      <tr><td><b>Communication</b></td><td>Notifications, team chat, studio broadcasts.</td></tr>
+      <tr><td><b>Administration</b></td><td>User and role administration, studio settings, audit log with rollback, schema and workflow configuration.</td></tr>
+      <tr><td><b>Operations</b></td><td>Containerised deployment, database migration on start-up, scheduled backup.</td></tr>
+    </tbody>
+    <caption>Table 4.1 — In-scope functional areas.</caption>
+  </table>
+
+  <h3>4.2 Out of scope</h3>
+  <p>Explicitly excluded from this phase. Listing these prevents later assumption that they were implied.</p>
+  <table>
+    <thead><tr><th style="width:34%">Excluded</th><th>Rationale</th></tr></thead>
+    <tbody>
+      <tr><td><b>DCC application integration</b><br><span style="color:var(--muted)">Maya, Blender, Nuke, Houdini plug-ins</span></td><td>Substantial per-application engineering effort. Deferred; the administrative surface exists but is gated and marked as forthcoming.</td></tr>
+      <tr><td><b>Render farm submission and monitoring</b></td><td>Requires integration with farm management software not yet selected.</td></tr>
+      <tr><td><b>Mobile and desktop applications</b></td><td>Scaffolding present in the codebase; not built, tested or released.</td></tr>
+      <tr><td><b>Managed cloud hosting</b></td><td>Contradicts BR-005 and BR-010 for the primary deployment.</td></tr>
+      <tr><td><b>Automated media transcoding</b></td><td>No transcode pipeline; media is played as uploaded.</td></tr>
+      <tr><td><b>Financial accounting integration</b></td><td>Financial views are reporting only; no ledger integration.</td></tr>
+      <tr><td><b>Multi-studio federation</b></td><td>The data model is multi-tenant, but cross-tenant sharing is not implemented.</td></tr>
+    </tbody>
+    <caption>Table 4.2 — Out of scope, with rationale.</caption>
+  </table>
+</section>
+
+<!-- ============ 5 STAKEHOLDERS ============ -->
+<section>
+  <h2><span class="num">5</span> &nbsp;Stakeholders and user classes</h2>
+  <p class="lede">Six roles, each defined by what it is accountable for and — equally important — what it is deliberately prevented from doing. The separation of administrative oversight from production authority (BR-011) is a designed constraint, not an omission.</p>
+
+  <table>
+    <thead><tr><th style="width:17%">Role</th><th style="width:26%">Accountable for</th><th style="width:29%">Can</th><th>Cannot</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>Artist</b></td><td>Completing assigned shot work</td>
+        <td>View own work, update task status, log time, upload versions, annotate, submit for review, comment</td>
+        <td>Assign work to others, approve any stage, view other departments' data</td>
+      </tr>
+      <tr>
+        <td><b>Lead</b></td><td>Quality and throughput of one department</td>
+        <td>Everything an artist can, plus create and assign tasks within the department, approve at lead stage, request changes</td>
+        <td>Act outside own department, give final production sign-off</td>
+      </tr>
+      <tr>
+        <td><b>Production Head</b></td><td>Studio-wide delivery</td>
+        <td>Studio-wide visibility, task creation and assignment anywhere, final approval, client delivery, user administration</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td><b>Producer</b></td><td>Final gate before client delivery</td>
+        <td>All production authority studio-wide, plus administrative capability</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td><b>Administrator</b></td><td>Standing the studio up and monitoring it</td>
+        <td>Manage accounts, roles, licences, integrations, pipeline configuration; view financial data; observe all activity; comment for oversight</td>
+        <td><b>Create, assign, edit or be assigned tasks; submit or approve reviews; contact clients</b></td>
+      </tr>
+      <tr>
+        <td><b>Client</b><br><span style="color:var(--muted)">external</span></td><td>Reviewing delivered work</td>
+        <td>View shared versions via access link and code, submit feedback, approve or request changes on shared items</td>
+        <td>Access the studio application, view anything not explicitly shared</td>
+      </tr>
+    </tbody>
+    <caption>Table 5.1 — User classes with authority and constraint.</caption>
+  </table>
+
+  <div class="box">
+    <h4>On the administrator constraint</h4>
+    <p>The administrator role holds no task or review capability. This follows from BR-011: the person who administers accounts and monitors the studio should not also be a participant in the production approval chain, so that oversight remains independent of the work being overseen. The constraint is enforced server-side by capability grant, not by hiding controls in the interface.</p>
+  </div>
+
+  <h3>5.2 Other stakeholders</h3>
+  <table>
+    <thead><tr><th style="width:24%">Stakeholder</th><th style="width:30%">Interest</th><th>Influence on requirements</th></tr></thead>
+    <tbody>
+      <tr><td>Project sponsor</td><td>Cost, delivery, business outcome</td><td>Approves scope and objectives</td></tr>
+      <tr><td>IT / infrastructure</td><td>Deployment, backup, security</td><td>Constrains hosting and operational requirements</td></tr>
+      <tr><td>Client organisations</td><td>Review experience, media security</td><td>Drives BR-005 and BR-008</td></tr>
+      <tr><td>Engineering team</td><td>Maintainability, technical debt</td><td>Drives Section 10 decisions</td></tr>
+    </tbody>
+    <caption>Table 5.2 — Non-user stakeholders.</caption>
+  </table>
+</section>
+
+<!-- ============ 6 CONTEXT ============ -->
+<section>
+  <h2><span class="num">6</span> &nbsp;System context</h2>
+  <p class="lede">The boundary between Forge and everything around it: who uses it, what it depends on, and what crosses the studio's network perimeter.</p>
+
+  <figure>
+    <svg viewBox="0 0 720 400" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+      <defs>
+        <marker id="ar" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+          <path d="M0,0 L7,3 L0,6 z" fill="#5F6E7B"/>
+        </marker>
+      </defs>
+      <!-- studio perimeter -->
+      <rect x="150" y="18" width="420" height="300" rx="4" fill="#F5F8F9" stroke="#0E7C6B" stroke-width="1.4" stroke-dasharray="5 3"/>
+      <text x="160" y="34" font-size="10" fill="#0E7C6B" font-weight="700">STUDIO NETWORK PERIMETER</text>
+
+      <!-- forge core -->
+      <rect x="272" y="120" width="176" height="86" rx="3" fill="#0E7C6B"/>
+      <text x="360" y="152" font-size="15" fill="#fff" font-weight="700" text-anchor="middle">Forge</text>
+      <text x="360" y="170" font-size="9.5" fill="#CDE8E2" text-anchor="middle">Production Tracking</text>
+      <text x="360" y="184" font-size="9.5" fill="#CDE8E2" text-anchor="middle">Platform</text>
+
+      <!-- internal users left -->
+      <rect x="168" y="52" width="86" height="30" rx="3" fill="#fff" stroke="#C6CFD6"/>
+      <text x="211" y="71" font-size="10" fill="#0F161B" text-anchor="middle">Artist</text>
+      <rect x="168" y="92" width="86" height="30" rx="3" fill="#fff" stroke="#C6CFD6"/>
+      <text x="211" y="111" font-size="10" fill="#0F161B" text-anchor="middle">Lead</text>
+      <rect x="168" y="132" width="86" height="30" rx="3" fill="#fff" stroke="#C6CFD6"/>
+      <text x="211" y="146" font-size="10" fill="#0F161B" text-anchor="middle">Production</text>
+      <text x="211" y="157" font-size="10" fill="#0F161B" text-anchor="middle">Head</text>
+      <rect x="168" y="172" width="86" height="30" rx="3" fill="#fff" stroke="#C6CFD6"/>
+      <text x="211" y="191" font-size="10" fill="#0F161B" text-anchor="middle">Producer</text>
+      <rect x="168" y="212" width="86" height="30" rx="3" fill="#fff" stroke="#C6CFD6"/>
+      <text x="211" y="231" font-size="10" fill="#0F161B" text-anchor="middle">Administrator</text>
+
+      <line x1="254" y1="67" x2="270" y2="140" stroke="#5F6E7B" stroke-width="1" marker-end="url(#ar)"/>
+      <line x1="254" y1="107" x2="270" y2="148" stroke="#5F6E7B" stroke-width="1" marker-end="url(#ar)"/>
+      <line x1="254" y1="147" x2="270" y2="158" stroke="#5F6E7B" stroke-width="1" marker-end="url(#ar)"/>
+      <line x1="254" y1="187" x2="270" y2="172" stroke="#5F6E7B" stroke-width="1" marker-end="url(#ar)"/>
+      <line x1="254" y1="227" x2="270" y2="184" stroke="#5F6E7B" stroke-width="1" marker-end="url(#ar)"/>
+
+      <!-- internal deps right -->
+      <rect x="466" y="66" width="92" height="30" rx="3" fill="#fff" stroke="#C6CFD6"/>
+      <text x="512" y="85" font-size="10" fill="#0F161B" text-anchor="middle">PostgreSQL</text>
+      <rect x="466" y="106" width="92" height="30" rx="3" fill="#fff" stroke="#C6CFD6"/>
+      <text x="512" y="125" font-size="10" fill="#0F161B" text-anchor="middle">Redis cache</text>
+      <rect x="466" y="146" width="92" height="30" rx="3" fill="#fff" stroke="#C6CFD6"/>
+      <text x="512" y="160" font-size="10" fill="#0F161B" text-anchor="middle">Media</text>
+      <text x="512" y="171" font-size="10" fill="#0F161B" text-anchor="middle">storage</text>
+      <rect x="466" y="186" width="92" height="30" rx="3" fill="#fff" stroke="#C6CFD6"/>
+      <text x="512" y="205" font-size="10" fill="#0F161B" text-anchor="middle">Backup store</text>
+
+      <line x1="450" y1="150" x2="464" y2="86" stroke="#5F6E7B" stroke-width="1" marker-end="url(#ar)"/>
+      <line x1="450" y1="156" x2="464" y2="124" stroke="#5F6E7B" stroke-width="1" marker-end="url(#ar)"/>
+      <line x1="450" y1="164" x2="464" y2="162" stroke="#5F6E7B" stroke-width="1" marker-end="url(#ar)"/>
+      <line x1="450" y1="172" x2="464" y2="200" stroke="#5F6E7B" stroke-width="1" marker-end="url(#ar)"/>
+
+      <!-- external -->
+      <rect x="24" y="264" width="104" height="34" rx="3" fill="#FBF2E4" stroke="#9A5B08"/>
+      <text x="76" y="278" font-size="10" fill="#9A5B08" text-anchor="middle" font-weight="700">External client</text>
+      <text x="76" y="291" font-size="9" fill="#9A5B08" text-anchor="middle">(no account)</text>
+
+      <rect x="596" y="264" width="100" height="34" rx="3" fill="#FBF2E4" stroke="#9A5B08"/>
+      <text x="646" y="278" font-size="10" fill="#9A5B08" text-anchor="middle" font-weight="700">SMTP relay</text>
+      <text x="646" y="291" font-size="9" fill="#9A5B08" text-anchor="middle">(mail delivery)</text>
+
+      <path d="M128 276 L200 276 L200 250 L300 250 L300 210" fill="none" stroke="#9A5B08" stroke-width="1.2" marker-end="url(#ar)"/>
+      <text x="150" y="266" font-size="8.5" fill="#9A5B08">access link + code</text>
+
+      <path d="M420 210 L420 250 L560 250 L560 276 L594 276" fill="none" stroke="#9A5B08" stroke-width="1.2" marker-end="url(#ar)"/>
+      <text x="470" y="264" font-size="8.5" fill="#9A5B08">notifications</text>
+
+      <text x="360" y="344" font-size="9.5" fill="#5F6E7B" text-anchor="middle">Solid boundary: everything inside runs on studio-controlled hardware.</text>
+      <text x="360" y="360" font-size="9.5" fill="#5F6E7B" text-anchor="middle">Only two flows cross the perimeter, both amber above.</text>
+    </svg>
+    <figcaption><b>Figure 6.1</b> — System context. Production media never crosses the studio perimeter, satisfying BR-005. The only outbound dependency is mail delivery; the only inbound is client review by access link.</figcaption>
+  </figure>
+</section>
+
+<!-- ============ 7 CURRENT / PROPOSED ============ -->
+<section>
+  <h2><span class="num">7</span> &nbsp;Current state and proposed state</h2>
+
+  <h3>7.1 Current-state process</h3>
+  <figure>
+    <svg viewBox="0 0 720 250" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+      <defs>
+        <marker id="ar2" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+          <path d="M0,0 L7,3 L0,6 z" fill="#8A2A2A"/>
+        </marker>
+      </defs>
+      <rect x="12" y="60" width="104" height="46" rx="3" fill="#fff" stroke="#C6CFD6"/>
+      <text x="64" y="79" font-size="10" text-anchor="middle" fill="#0F161B">Coordinator</text>
+      <text x="64" y="92" font-size="10" text-anchor="middle" fill="#0F161B">updates sheet</text>
+
+      <rect x="152" y="60" width="104" height="46" rx="3" fill="#fff" stroke="#C6CFD6"/>
+      <text x="204" y="79" font-size="10" text-anchor="middle" fill="#0F161B">Artist reads</text>
+      <text x="204" y="92" font-size="10" text-anchor="middle" fill="#0F161B">assignment</text>
+
+      <rect x="292" y="60" width="104" height="46" rx="3" fill="#fff" stroke="#C6CFD6"/>
+      <text x="344" y="79" font-size="10" text-anchor="middle" fill="#0F161B">Renders and</text>
+      <text x="344" y="92" font-size="10" text-anchor="middle" fill="#0F161B">sends file</text>
+
+      <rect x="432" y="60" width="104" height="46" rx="3" fill="#fff" stroke="#C6CFD6"/>
+      <text x="484" y="79" font-size="10" text-anchor="middle" fill="#0F161B">Lead reviews,</text>
+      <text x="484" y="92" font-size="10" text-anchor="middle" fill="#0F161B">notes in chat</text>
+
+      <rect x="572" y="60" width="104" height="46" rx="3" fill="#fff" stroke="#C6CFD6"/>
+      <text x="624" y="79" font-size="10" text-anchor="middle" fill="#0F161B">Client emailed</text>
+      <text x="624" y="92" font-size="10" text-anchor="middle" fill="#0F161B">a transfer link</text>
+
+      <line x1="118" y1="83" x2="150" y2="83" stroke="#5F6E7B" stroke-width="1.2" marker-end="url(#ar)"/>
+      <line x1="258" y1="83" x2="290" y2="83" stroke="#5F6E7B" stroke-width="1.2" marker-end="url(#ar)"/>
+      <line x1="398" y1="83" x2="430" y2="83" stroke="#5F6E7B" stroke-width="1.2" marker-end="url(#ar)"/>
+      <line x1="538" y1="83" x2="570" y2="83" stroke="#5F6E7B" stroke-width="1.2" marker-end="url(#ar)"/>
+
+      <!-- failure annotations -->
+      <path d="M204 108 L204 138" stroke="#8A2A2A" stroke-width="1.1" marker-end="url(#ar2)"/>
+      <text x="204" y="152" font-size="8.6" fill="#8A2A2A" text-anchor="middle">stale by the time</text>
+      <text x="204" y="163" font-size="8.6" fill="#8A2A2A" text-anchor="middle">it is read</text>
+
+      <path d="M484 108 L484 138" stroke="#8A2A2A" stroke-width="1.1" marker-end="url(#ar2)"/>
+      <text x="484" y="152" font-size="8.6" fill="#8A2A2A" text-anchor="middle">notes detached from</text>
+      <text x="484" y="163" font-size="8.6" fill="#8A2A2A" text-anchor="middle">frame and version</text>
+
+      <path d="M64 108 L64 138" stroke="#8A2A2A" stroke-width="1.1" marker-end="url(#ar2)"/>
+      <text x="64" y="152" font-size="8.6" fill="#8A2A2A" text-anchor="middle">concurrent edits</text>
+      <text x="64" y="163" font-size="8.6" fill="#8A2A2A" text-anchor="middle">conflict</text>
+
+      <path d="M624 108 L624 138" stroke="#8A2A2A" stroke-width="1.1" marker-end="url(#ar2)"/>
+      <text x="624" y="152" font-size="8.6" fill="#8A2A2A" text-anchor="middle">no approval</text>
+      <text x="624" y="163" font-size="8.6" fill="#8A2A2A" text-anchor="middle">record</text>
+
+      <rect x="12" y="196" width="664" height="34" rx="3" fill="#FBEDED" stroke="#8A2A2A" stroke-dasharray="4 3"/>
+      <text x="344" y="217" font-size="10" fill="#8A2A2A" text-anchor="middle">No system of record at any step. Status, feedback and approval all live in separate, unlinked places.</text>
+    </svg>
+    <figcaption><b>Figure 7.1</b> — Current-state process, with the four failure points identified in Table 2.1.</figcaption>
+  </figure>
+
+  <h3>7.2 Proposed-state process</h3>
+  <figure>
+    <svg viewBox="0 0 720 300" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+      <rect x="12" y="20" width="120" height="52" rx="3" fill="#EAF4F1" stroke="#0E7C6B"/>
+      <text x="72" y="41" font-size="10" text-anchor="middle" fill="#0F161B" font-weight="700">Tracksheet</text>
+      <text x="72" y="54" font-size="10" text-anchor="middle" fill="#0F161B">imported once</text>
+      <text x="72" y="66" font-size="8.6" text-anchor="middle" fill="#5F6E7B">existing format</text>
+
+      <rect x="168" y="20" width="120" height="52" rx="3" fill="#fff" stroke="#C6CFD6"/>
+      <text x="228" y="41" font-size="10" text-anchor="middle" fill="#0F161B" font-weight="700">Tracking grid</text>
+      <text x="228" y="54" font-size="10" text-anchor="middle" fill="#0F161B">shots and tasks</text>
+      <text x="228" y="66" font-size="8.6" text-anchor="middle" fill="#5F6E7B">live status</text>
+
+      <rect x="324" y="20" width="120" height="52" rx="3" fill="#fff" stroke="#C6CFD6"/>
+      <text x="384" y="41" font-size="10" text-anchor="middle" fill="#0F161B" font-weight="700">Artist works</text>
+      <text x="384" y="54" font-size="10" text-anchor="middle" fill="#0F161B">uploads version</text>
+      <text x="384" y="66" font-size="8.6" text-anchor="middle" fill="#5F6E7B">time logged</text>
+
+      <rect x="480" y="20" width="120" height="52" rx="3" fill="#fff" stroke="#C6CFD6"/>
+      <text x="540" y="41" font-size="10" text-anchor="middle" fill="#0F161B" font-weight="700">Review player</text>
+      <text x="540" y="54" font-size="10" text-anchor="middle" fill="#0F161B">annotated notes</text>
+      <text x="540" y="66" font-size="8.6" text-anchor="middle" fill="#5F6E7B">on the frame</text>
+
+      <line x1="134" y1="46" x2="166" y2="46" stroke="#5F6E7B" stroke-width="1.2" marker-end="url(#ar)"/>
+      <line x1="290" y1="46" x2="322" y2="46" stroke="#5F6E7B" stroke-width="1.2" marker-end="url(#ar)"/>
+      <line x1="446" y1="46" x2="478" y2="46" stroke="#5F6E7B" stroke-width="1.2" marker-end="url(#ar)"/>
+
+      <!-- approval chain row -->
+      <rect x="112" y="126" width="108" height="44" rx="3" fill="#fff" stroke="#C6CFD6"/>
+      <text x="166" y="146" font-size="10" text-anchor="middle" fill="#0F161B">Lead review</text>
+      <text x="166" y="159" font-size="8.6" text-anchor="middle" fill="#5F6E7B">department gate</text>
+
+      <rect x="256" y="126" width="108" height="44" rx="3" fill="#fff" stroke="#C6CFD6"/>
+      <text x="310" y="146" font-size="10" text-anchor="middle" fill="#0F161B">Production head</text>
+      <text x="310" y="159" font-size="8.6" text-anchor="middle" fill="#5F6E7B">sanity check</text>
+
+      <rect x="400" y="126" width="108" height="44" rx="3" fill="#fff" stroke="#C6CFD6"/>
+      <text x="454" y="146" font-size="10" text-anchor="middle" fill="#0F161B">Producer</text>
+      <text x="454" y="159" font-size="8.6" text-anchor="middle" fill="#5F6E7B">final gate</text>
+
+      <rect x="544" y="126" width="132" height="44" rx="3" fill="#EAF4F1" stroke="#0E7C6B"/>
+      <text x="610" y="146" font-size="10" text-anchor="middle" fill="#0F161B" font-weight="700">Client review</text>
+      <text x="610" y="159" font-size="8.6" text-anchor="middle" fill="#5F6E7B">link + code</text>
+
+      <path d="M540 74 L540 100 L166 100 L166 124" fill="none" stroke="#5F6E7B" stroke-width="1.2" marker-end="url(#ar)"/>
+      <line x1="222" y1="148" x2="254" y2="148" stroke="#5F6E7B" stroke-width="1.2" marker-end="url(#ar)"/>
+      <line x1="366" y1="148" x2="398" y2="148" stroke="#5F6E7B" stroke-width="1.2" marker-end="url(#ar)"/>
+      <line x1="510" y1="148" x2="542" y2="148" stroke="#5F6E7B" stroke-width="1.2" marker-end="url(#ar)"/>
+
+      <!-- rejection return path -->
+      <path d="M310 172 L310 196 L384 196 L384 76" fill="none" stroke="#9A5B08" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)"/>
+      <text x="398" y="192" font-size="8.6" fill="#9A5B08">changes requested returns to the artist</text>
+
+      <rect x="12" y="236" width="664" height="46" rx="3" fill="#EAF4F1" stroke="#0E7C6B" stroke-dasharray="4 3"/>
+      <text x="344" y="255" font-size="10" fill="#0E7C6B" text-anchor="middle" font-weight="700">Every transition above is recorded with actor, timestamp and version.</text>
+      <text x="344" y="271" font-size="9.5" fill="#0E7C6B" text-anchor="middle">Satisfies BR-001, BR-002 and BR-003 as a by-product of the workflow rather than as a separate discipline.</text>
+    </svg>
+    <figcaption><b>Figure 7.2</b> — Proposed-state process as implemented. The dashed amber path is the change-request loop returning work to the artist.</figcaption>
+  </figure>
+</section>
+
+<!-- ============ 7b APPROVAL STATE ============ -->
+<section>
+  <h2><span class="num">7.3</span> &nbsp;Approval chain state model</h2>
+  <p class="lede">The formal state machine behind Figure 7.2. Every transition is capability-gated; the gates are specified in Section 8.6 and enforced server-side.</p>
+
+  <figure>
+    <svg viewBox="0 0 720 320" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+      <!-- states -->
+      <rect x="20" y="40" width="112" height="42" rx="21" fill="#fff" stroke="#5F6E7B" stroke-width="1.3"/>
+      <text x="76" y="66" font-size="10.5" text-anchor="middle" fill="#0F161B">Not started</text>
+
+      <rect x="168" y="40" width="112" height="42" rx="21" fill="#fff" stroke="#5F6E7B" stroke-width="1.3"/>
+      <text x="224" y="66" font-size="10.5" text-anchor="middle" fill="#0F161B">In progress</text>
+
+      <rect x="316" y="40" width="112" height="42" rx="21" fill="#EAF1F8" stroke="#3B4C9B" stroke-width="1.3"/>
+      <text x="372" y="60" font-size="10.5" text-anchor="middle" fill="#0F161B">Lead review</text>
+      <text x="372" y="73" font-size="8.4" text-anchor="middle" fill="#3B4C9B">gate: approve_reviews</text>
+
+      <rect x="464" y="40" width="112" height="42" rx="21" fill="#EAF1F8" stroke="#3B4C9B" stroke-width="1.3"/>
+      <text x="520" y="60" font-size="10.5" text-anchor="middle" fill="#0F161B">PM review</text>
+      <text x="520" y="73" font-size="8.4" text-anchor="middle" fill="#3B4C9B">gate: production mgr</text>
+
+      <rect x="464" y="150" width="112" height="42" rx="21" fill="#EAF4F1" stroke="#0E7C6B" stroke-width="1.6"/>
+      <text x="520" y="176" font-size="10.5" text-anchor="middle" fill="#0F161B" font-weight="700">Approved</text>
+
+      <rect x="612" y="150" width="90" height="42" rx="21" fill="#EAF4F1" stroke="#0E7C6B" stroke-width="1.6"/>
+      <text x="657" y="170" font-size="10.5" text-anchor="middle" fill="#0F161B" font-weight="700">Delivered</text>
+      <text x="657" y="182" font-size="8.4" text-anchor="middle" fill="#0E7C6B">to client</text>
+
+      <!-- transitions -->
+      <line x1="134" y1="61" x2="166" y2="61" stroke="#5F6E7B" stroke-width="1.2" marker-end="url(#ar)"/>
+      <text x="150" y="54" font-size="8" fill="#5F6E7B" text-anchor="middle">claim</text>
+
+      <line x1="282" y1="61" x2="314" y2="61" stroke="#5F6E7B" stroke-width="1.2" marker-end="url(#ar)"/>
+      <text x="298" y="54" font-size="8" fill="#5F6E7B" text-anchor="middle">submit</text>
+
+      <line x1="430" y1="61" x2="462" y2="61" stroke="#5F6E7B" stroke-width="1.2" marker-end="url(#ar)"/>
+      <text x="446" y="54" font-size="8" fill="#5F6E7B" text-anchor="middle">approve</text>
+
+      <line x1="520" y1="84" x2="520" y2="148" stroke="#5F6E7B" stroke-width="1.2" marker-end="url(#ar)"/>
+      <text x="527" y="118" font-size="8" fill="#5F6E7B">approve</text>
+
+      <line x1="578" y1="171" x2="610" y2="171" stroke="#0E7C6B" stroke-width="1.4" marker-end="url(#ar)"/>
+      <text x="594" y="164" font-size="8" fill="#0E7C6B" text-anchor="middle">share</text>
+
+      <!-- rejection loops -->
+      <path d="M372 84 L372 112 L224 112 L224 84" fill="none" stroke="#9A5B08" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)"/>
+      <text x="298" y="108" font-size="8.2" fill="#9A5B08" text-anchor="middle">changes requested</text>
+
+      <path d="M520 84 L520 128 L224 128 L224 86" fill="none" stroke="#9A5B08" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)"/>
+      <text x="360" y="140" font-size="8.2" fill="#9A5B08" text-anchor="middle">rejected at production review</text>
+
+      <path d="M464 171 L300 171 L300 230 L224 230 L224 84" fill="none" stroke="#9A5B08" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)"/>
+      <text x="330" y="226" font-size="8.2" fill="#9A5B08" text-anchor="middle">client requests changes</text>
+
+      <rect x="20" y="262" width="682" height="44" rx="3" fill="#F5F8F9" stroke="#C6CFD6"/>
+      <text x="32" y="280" font-size="9" fill="#33424E">Every transition writes an approval event: actor, action, timestamp, and the version it applied to.</text>
+      <text x="32" y="295" font-size="9" fill="#33424E">A rejection at any stage returns the task to In progress; it does not skip backwards one stage at a time.</text>
+    </svg>
+    <figcaption><b>Figure 7.3</b> — Approval chain state model. Solid transitions advance; dashed amber transitions return work to the artist.</figcaption>
+  </figure>
+</section>
+
+<!-- ============ 7c DATA MODEL ============ -->
+<section>
+  <h2><span class="num">7.4</span> &nbsp;Production data hierarchy</h2>
+  <p class="lede">The structural backbone of the system. The hierarchy mirrors how episodic production is actually organised, which is what makes tracksheet import possible without a mapping step.</p>
+
+  <figure>
+    <svg viewBox="0 0 720 330" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+      <!-- hierarchy chain -->
+      <rect x="30" y="24" width="120" height="38" rx="3" fill="#0E7C6B"/>
+      <text x="90" y="48" font-size="11" text-anchor="middle" fill="#fff" font-weight="700">Project</text>
+
+      <rect x="30" y="80" width="120" height="38" rx="3" fill="#2A8B7C"/>
+      <text x="90" y="104" font-size="11" text-anchor="middle" fill="#fff" font-weight="700">Episode</text>
+
+      <rect x="30" y="136" width="120" height="38" rx="3" fill="#4A9B8E"/>
+      <text x="90" y="160" font-size="11" text-anchor="middle" fill="#fff" font-weight="700">Sequence</text>
+
+      <rect x="30" y="192" width="120" height="38" rx="3" fill="#6AACA1"/>
+      <text x="90" y="216" font-size="11" text-anchor="middle" fill="#fff" font-weight="700">Shot</text>
+
+      <rect x="30" y="248" width="120" height="38" rx="3" fill="#8ABDB4"/>
+      <text x="90" y="272" font-size="11" text-anchor="middle" fill="#0F161B" font-weight="700">Task</text>
+
+      <line x1="90" y1="62" x2="90" y2="78" stroke="#5F6E7B" stroke-width="1.2" marker-end="url(#ar)"/>
+      <line x1="90" y1="118" x2="90" y2="134" stroke="#5F6E7B" stroke-width="1.2" marker-end="url(#ar)"/>
+      <line x1="90" y1="174" x2="90" y2="190" stroke="#5F6E7B" stroke-width="1.2" marker-end="url(#ar)"/>
+      <line x1="90" y1="230" x2="90" y2="246" stroke="#5F6E7B" stroke-width="1.2" marker-end="url(#ar)"/>
+
+      <text x="158" y="76" font-size="8.4" fill="#5F6E7B">1 : many</text>
+      <text x="158" y="132" font-size="8.4" fill="#5F6E7B">1 : many</text>
+      <text x="158" y="188" font-size="8.4" fill="#5F6E7B">1 : many</text>
+      <text x="158" y="244" font-size="8.4" fill="#5F6E7B">1 : many</text>
+
+      <!-- attached to task -->
+      <rect x="242" y="244" width="104" height="32" rx="3" fill="#fff" stroke="#C6CFD6"/>
+      <text x="294" y="264" font-size="9.5" text-anchor="middle" fill="#0F161B">Version</text>
+      <rect x="242" y="284" width="104" height="32" rx="3" fill="#fff" stroke="#C6CFD6"/>
+      <text x="294" y="304" font-size="9.5" text-anchor="middle" fill="#0F161B">Daily log</text>
+      <rect x="242" y="204" width="104" height="32" rx="3" fill="#fff" stroke="#C6CFD6"/>
+      <text x="294" y="224" font-size="9.5" text-anchor="middle" fill="#0F161B">Approval event</text>
+
+      <line x1="152" y1="264" x2="240" y2="260" stroke="#5F6E7B" stroke-width="1" marker-end="url(#ar)"/>
+      <line x1="152" y1="272" x2="240" y2="298" stroke="#5F6E7B" stroke-width="1" marker-end="url(#ar)"/>
+      <line x1="152" y1="256" x2="240" y2="222" stroke="#5F6E7B" stroke-width="1" marker-end="url(#ar)"/>
+
+      <!-- attached to version -->
+      <rect x="392" y="204" width="104" height="32" rx="3" fill="#fff" stroke="#C6CFD6"/>
+      <text x="444" y="224" font-size="9.5" text-anchor="middle" fill="#0F161B">Annotation</text>
+      <rect x="392" y="244" width="104" height="32" rx="3" fill="#fff" stroke="#C6CFD6"/>
+      <text x="444" y="264" font-size="9.5" text-anchor="middle" fill="#0F161B">Review comment</text>
+      <rect x="392" y="284" width="104" height="32" rx="3" fill="#fff" stroke="#C6CFD6"/>
+      <text x="444" y="304" font-size="9.5" text-anchor="middle" fill="#0F161B">Client note</text>
+
+      <line x1="348" y1="256" x2="390" y2="222" stroke="#5F6E7B" stroke-width="1" marker-end="url(#ar)"/>
+      <line x1="348" y1="260" x2="390" y2="260" stroke="#5F6E7B" stroke-width="1" marker-end="url(#ar)"/>
+      <line x1="348" y1="266" x2="390" y2="298" stroke="#5F6E7B" stroke-width="1" marker-end="url(#ar)"/>
+
+      <!-- cross-cutting -->
+      <rect x="546" y="24" width="150" height="124" rx="3" fill="#F5F8F9" stroke="#C6CFD6" stroke-dasharray="4 3"/>
+      <text x="621" y="42" font-size="9.4" text-anchor="middle" fill="#5F6E7B" font-weight="700">CROSS-CUTTING</text>
+      <text x="558" y="62" font-size="9.4" fill="#0F161B">Tenant (isolation)</text>
+      <text x="558" y="80" font-size="9.4" fill="#0F161B">Department</text>
+      <text x="558" y="98" font-size="9.4" fill="#0F161B">User &amp; role</text>
+      <text x="558" y="116" font-size="9.4" fill="#0F161B">Pipeline stage</text>
+      <text x="558" y="134" font-size="9.4" fill="#0F161B">Audit log</text>
+
+      <rect x="546" y="164" width="150" height="66" rx="3" fill="#EAF4F1" stroke="#0E7C6B"/>
+      <text x="621" y="184" font-size="9.4" text-anchor="middle" fill="#0E7C6B" font-weight="700">ALSO TRACKED</text>
+      <text x="558" y="202" font-size="9.4" fill="#0F161B">Asset (parallel to Shot)</text>
+      <text x="558" y="220" font-size="9.4" fill="#0F161B">Delivery, Publish log</text>
+
+      <text x="30" y="316" font-size="8.8" fill="#5F6E7B">Sixty entity types in total; the twelve above carry the production workflow.</text>
+    </svg>
+    <figcaption><b>Figure 7.4</b> — Production data hierarchy. Assets follow a parallel path to shots for non-shot deliverables such as characters, props and environments.</figcaption>
+  </figure>
+</section>
+
+<!-- ============ 7d IMPORT FLOW ============ -->
+<section>
+  <h2><span class="num">7.5</span> &nbsp;Tracksheet import flow</h2>
+  <p class="lede">The mechanism that satisfies BR-004 and removes the principal adoption barrier. Its design principle is tolerance: accept the studio's file as it is, and never discard data that is not understood.</p>
+
+  <figure>
+    <svg viewBox="0 0 720 300" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+      <rect x="18" y="16" width="112" height="40" rx="3" fill="#EAF4F1" stroke="#0E7C6B"/>
+      <text x="74" y="34" font-size="9.6" text-anchor="middle" fill="#0F161B" font-weight="700">Workbook</text>
+      <text x="74" y="47" font-size="8.6" text-anchor="middle" fill="#5F6E7B">.xlsx / .xls / .csv</text>
+
+      <!-- decision 1 -->
+      <path d="M232 12 L318 46 L232 80 L146 46 z" fill="#fff" stroke="#3B4C9B" stroke-width="1.2"/>
+      <text x="232" y="42" font-size="9" text-anchor="middle" fill="#0F161B">Sheet named</text>
+      <text x="232" y="54" font-size="9" text-anchor="middle" fill="#0F161B">&quot;Ep&lt;nnn&gt;&quot;?</text>
+
+      <line x1="132" y1="40" x2="144" y2="44" stroke="#5F6E7B" stroke-width="1.2" marker-end="url(#ar)"/>
+
+      <rect x="356" y="14" width="130" height="40" rx="3" fill="#fff" stroke="#C6CFD6"/>
+      <text x="421" y="32" font-size="9.4" text-anchor="middle" fill="#0F161B">Episode from</text>
+      <text x="421" y="45" font-size="9.4" text-anchor="middle" fill="#0F161B">sheet name</text>
+      <line x1="320" y1="40" x2="354" y2="34" stroke="#5F6E7B" stroke-width="1.2" marker-end="url(#ar)"/>
+      <text x="332" y="26" font-size="8" fill="#0E7C6B" font-weight="700">yes</text>
+
+      <!-- decision 2 -->
+      <path d="M232 96 L330 132 L232 168 L134 132 z" fill="#fff" stroke="#3B4C9B" stroke-width="1.2"/>
+      <text x="232" y="128" font-size="9" text-anchor="middle" fill="#0F161B">Has a recognisable</text>
+      <text x="232" y="140" font-size="9" text-anchor="middle" fill="#0F161B">shot column?</text>
+      <line x1="232" y1="82" x2="232" y2="94" stroke="#5F6E7B" stroke-width="1.2" marker-end="url(#ar)"/>
+      <text x="243" y="92" font-size="8" fill="#9A5B08" font-weight="700">no</text>
+
+      <rect x="356" y="112" width="130" height="40" rx="3" fill="#fff" stroke="#C6CFD6"/>
+      <text x="421" y="130" font-size="9.4" text-anchor="middle" fill="#0F161B">Treat as flat sheet</text>
+      <text x="421" y="143" font-size="9.4" text-anchor="middle" fill="#5F6E7B">episode = General</text>
+      <line x1="332" y1="132" x2="354" y2="132" stroke="#5F6E7B" stroke-width="1.2" marker-end="url(#ar)"/>
+      <text x="338" y="125" font-size="8" fill="#0E7C6B" font-weight="700">yes</text>
+
+      <rect x="134" y="196" width="196" height="40" rx="3" fill="#FBF2E4" stroke="#9A5B08"/>
+      <text x="232" y="214" font-size="9.4" text-anchor="middle" fill="#9A5B08" font-weight="700">Skip as reference tab</text>
+      <text x="232" y="227" font-size="8.6" text-anchor="middle" fill="#9A5B08">notes, durations, conventions</text>
+      <line x1="232" y1="170" x2="232" y2="194" stroke="#9A5B08" stroke-width="1.2" marker-end="url(#ar)"/>
+      <text x="243" y="186" font-size="8" fill="#9A5B08" font-weight="700">no</text>
+
+      <!-- row processing -->
+      <rect x="530" y="14" width="172" height="138" rx="3" fill="#F5F8F9" stroke="#C6CFD6"/>
+      <text x="616" y="32" font-size="9.2" text-anchor="middle" fill="#5F6E7B" font-weight="700">PER ROW</text>
+      <text x="542" y="50" font-size="9.2" fill="#0F161B">1. Resolve shot code</text>
+      <text x="542" y="68" font-size="9.2" fill="#0F161B">2. Create/reuse sequence</text>
+      <text x="542" y="86" font-size="9.2" fill="#0F161B">3. Create/reuse shot</text>
+      <text x="542" y="104" font-size="9.2" fill="#0F161B">4. Match artist by name</text>
+      <text x="542" y="122" font-size="9.2" fill="#0F161B">5. Parse dates tolerantly</text>
+      <text x="542" y="140" font-size="9.2" fill="#0F161B">6. Create task</text>
+
+      <line x1="488" y1="34" x2="528" y2="40" stroke="#5F6E7B" stroke-width="1.2" marker-end="url(#ar)"/>
+      <line x1="488" y1="132" x2="528" y2="110" stroke="#5F6E7B" stroke-width="1.2" marker-end="url(#ar)"/>
+
+      <rect x="530" y="172" width="172" height="52" rx="3" fill="#EAF4F1" stroke="#0E7C6B"/>
+      <text x="616" y="191" font-size="9.4" text-anchor="middle" fill="#0F161B" font-weight="700">Unmatched columns</text>
+      <text x="616" y="205" font-size="9.4" text-anchor="middle" fill="#0F161B">preserved on the task</text>
+      <text x="616" y="218" font-size="8.6" text-anchor="middle" fill="#0E7C6B">nothing silently lost</text>
+      <line x1="616" y1="154" x2="616" y2="170" stroke="#5F6E7B" stroke-width="1.2" marker-end="url(#ar)"/>
+
+      <rect x="18" y="256" width="684" height="34" rx="3" fill="#F5F8F9" stroke="#C6CFD6"/>
+      <text x="30" y="270" font-size="8.9" fill="#33424E">Column matching is case- and whitespace-insensitive, so "Shot", "shot_name" and "Shot Code" all resolve to the same field.</text>
+      <text x="30" y="283" font-size="8.9" fill="#33424E">If no sheet in the workbook yields a shot row, the import reports that explicitly rather than reporting success over zero rows.</text>
+    </svg>
+    <figcaption><b>Figure 7.5</b> — Tracksheet import decision flow. Diamonds are decisions; the amber path discards only sheets proven to contain no shot data.</figcaption>
+  </figure>
+</section>
+
+<!-- ============ 8 FUNCTIONAL ============ -->
+<section>
+  <h2><span class="num">8</span> &nbsp;Functional requirements</h2>
+  <p class="lede">Grouped by module. Each requirement carries a priority and a delivery status. Requirements marked <span class="tag done">Delivered</span> are implemented and in production use; the SRS refines each into testable form.</p>
+
+  <h3>8.1 Authentication and identity</h3>
+  <table>
+    <thead><tr><th style="width:15%">ID</th><th>Requirement</th><th style="width:11%">Pri.</th><th style="width:13%">Status</th></tr></thead>
+    <tbody>
+      <tr><td class="id">FR-AUTH-001</td><td>Users shall authenticate with an email address and password.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-AUTH-002</td><td>Passwords shall be stored only as irreversible hashes.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-AUTH-003</td><td>New staff shall be able to register an account without administrator action.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-AUTH-004</td><td>Users shall be able to recover access by email-delivered reset link.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-AUTH-005</td><td>Reset tokens shall be single-use and time-limited.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-AUTH-006</td><td>Users shall be able to change their own password when authenticated.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-AUTH-007</td><td>Sessions shall be invalidated on logout, password change, role change, and deactivation.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-AUTH-008</td><td>Deactivated accounts shall be refused access while retaining all their historical records.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-AUTH-009</td><td>Repeated failed authentication attempts shall be rate limited.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-AUTH-010</td><td>The registration form shall collect the department the new starter will work in, so their lead can find and assign them without administrator intervention.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-AUTH-011</td><td>The registration form shall let a new starter state the role they are joining as.</td><td><span class="tag should">Should</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-AUTH-012</td><td>A role above the least-privilege role shall be recorded as a request and granted only by an administrator; self-registration shall never confer elevated authority.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-AUTH-013</td><td>Accounts awaiting a role decision shall be identifiable in the studio roster.</td><td><span class="tag should">Should</span></td><td><span class="tag done">Delivered</span></td></tr>
+    </tbody>
+    <caption>Table 8.1 — Authentication and identity requirements.</caption>
+  </table>
+
+  <h3>8.2 Access control</h3>
+  <table>
+    <thead><tr><th style="width:15%">ID</th><th>Requirement</th><th style="width:11%">Pri.</th><th style="width:13%">Status</th></tr></thead>
+    <tbody>
+      <tr><td class="id">FR-RBAC-001</td><td>Every action shall be authorised against a named capability rather than a hard-coded role check.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-RBAC-002</td><td>Capability grants shall be held in the database and administrable at runtime.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-RBAC-003</td><td>Authorisation shall be enforced server-side; interface concealment alone shall not constitute enforcement.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-RBAC-004</td><td>The administrator role shall hold no task or review capability.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-RBAC-005</td><td>Data visibility shall be scoped as studio-wide, department, or own work according to role.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-RBAC-006</td><td>All data access shall be isolated by tenant.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-RBAC-007</td><td>Controls the current user cannot exercise shall not be displayed to them.</td><td><span class="tag should">Should</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-RBAC-008</td><td>Direct navigation to a page outside the user's role shall be refused.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+    </tbody>
+    <caption>Table 8.2 — Access control requirements.</caption>
+  </table>
+
+  <h3>8.3 Production structure and tracking</h3>
+  <table>
+    <thead><tr><th style="width:15%">ID</th><th>Requirement</th><th style="width:11%">Pri.</th><th style="width:13%">Status</th></tr></thead>
+    <tbody>
+      <tr><td class="id">FR-TRK-001</td><td>The system shall represent projects, episodes, sequences, shots and assets in a hierarchy.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-TRK-002</td><td>A global tracking grid shall present every shot with its status, assignee and review state.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-TRK-003</td><td>The grid shall support filtering by project, episode, sequence, artist, position and department.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-TRK-004</td><td>Status shall be editable directly in the grid.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-TRK-005</td><td>Grid configurations shall be saveable as named views.</td><td><span class="tag should">Should</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-TRK-006</td><td>The grid shall be exportable to CSV.</td><td><span class="tag should">Should</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-TRK-007</td><td>Departments shall be configurable with an ordered pipeline position.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+    </tbody>
+    <caption>Table 8.3 — Tracking requirements.</caption>
+  </table>
+
+  <h3>8.4 Tracksheet import</h3>
+  <table>
+    <thead><tr><th style="width:15%">ID</th><th>Requirement</th><th style="width:11%">Pri.</th><th style="width:13%">Status</th></tr></thead>
+    <tbody>
+      <tr><td class="id">FR-IMP-001</td><td>The system shall import spreadsheet tracksheets in .xlsx, .xls and .csv formats.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-IMP-002</td><td>Import shall accept multi-sheet workbooks organised one sheet per episode.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-IMP-003</td><td>Import shall accept a single flat sheet containing all rows.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-IMP-004</td><td>Column names shall be matched case- and whitespace-insensitively across known synonyms.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-IMP-005</td><td>Sheets containing no recognisable shot data shall be skipped, not imported as invalid rows.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-IMP-006</td><td>Columns the importer does not recognise shall be preserved against the created task.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-IMP-007</td><td>Import shall report per-row outcomes and shall report explicitly when no rows were found.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-IMP-008</td><td>Import shall tolerate mixed date formats within one workbook.</td><td><span class="tag should">Should</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-IMP-009</td><td>Import shall bound the parsed range so an oversized declared sheet range cannot hang the client.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+    </tbody>
+    <caption>Table 8.4 — Import requirements. FR-IMP-009 addresses real production files declaring ranges near the spreadsheet row limit.</caption>
+  </table>
+
+  <h3>8.5 Task management</h3>
+  <table>
+    <thead><tr><th style="width:15%">ID</th><th>Requirement</th><th style="width:11%">Pri.</th><th style="width:13%">Status</th></tr></thead>
+    <tbody>
+      <tr><td class="id">FR-TSK-001</td><td>Tasks shall be creatable against a shot or asset by users holding create authority.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-TSK-002</td><td>Tasks shall be assignable to a user by holders of assignment authority.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-TSK-003</td><td>Artists shall be able to claim an unassigned task for themselves.</td><td><span class="tag should">Should</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-TSK-004</td><td>Task status shall progress through the defined pipeline stages.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-TSK-005</td><td>Tasks shall support threaded comments visible to all users who can see the task.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-TSK-006</td><td>Commenting shall be available to observers without task-editing authority.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-TSK-007</td><td>Tasks shall support checklists, attachments and dependencies.</td><td><span class="tag should">Should</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-TSK-008</td><td>Tasks shall be presentable in both list and board views.</td><td><span class="tag should">Should</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-TSK-009</td><td>Completed work shall be handed to the next department in pipeline order.</td><td><span class="tag should">Should</span></td><td><span class="tag done">Delivered</span></td></tr>
+    </tbody>
+    <caption>Table 8.5 — Task management requirements. FR-TSK-006 exists so administrative oversight can comment without holding production authority.</caption>
+  </table>
+
+  <h3>8.6 Review and approval</h3>
+  <table>
+    <thead><tr><th style="width:15%">ID</th><th>Requirement</th><th style="width:11%">Pri.</th><th style="width:13%">Status</th></tr></thead>
+    <tbody>
+      <tr><td class="id">FR-REV-001</td><td>Artists shall be able to upload media against a version of a shot or asset.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-REV-002</td><td>Uploaded media shall be validated by type and served without inline rendering.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-REV-003</td><td>The review player shall provide frame-accurate transport and scrubbing.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-REV-004</td><td>The player shall provide freehand, arrow, rectangle and text annotation with colour selection and an eraser.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-REV-005</td><td>The player shall provide A/B wipe, onion skinning, ghosting and side-by-side version comparison.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-REV-006</td><td>Comments shall be anchored to a specific frame and version.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-REV-007</td><td>The approval chain shall proceed artist, lead, production head, producer.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-REV-008</td><td>Each approval transition shall record actor, action, timestamp and version.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-REV-009</td><td>Approval transitions shall be refused to users lacking the corresponding capability, enforced server-side.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-REV-010</td><td>A change request shall return the task to the artist with the reason recorded.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-REV-011</td><td>A review queue shall show each user what awaits their action, and what is at other stages.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-REV-012</td><td>A read-only presentation mode shall allow one presenter to drive a synchronised review.</td><td><span class="tag could">Could</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-REV-013</td><td>Users without review-submission authority shall be told why they cannot post, rather than shown a failing control.</td><td><span class="tag should">Should</span></td><td><span class="tag done">Delivered</span></td></tr>
+    </tbody>
+    <caption>Table 8.6 — Review and approval requirements.</caption>
+  </table>
+
+  <h3>8.7 Client delivery</h3>
+  <table>
+    <thead><tr><th style="width:15%">ID</th><th>Requirement</th><th style="width:11%">Pri.</th><th style="width:13%">Status</th></tr></thead>
+    <tbody>
+      <tr><td class="id">FR-CLI-001</td><td>Approved work shall be shareable with an external client by access link.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-CLI-002</td><td>Client access shall require a code in addition to the link.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-CLI-003</td><td>The access code shall be delivered to the client by email on share.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-CLI-004</td><td>A client session shall expose only the items explicitly shared with it.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-CLI-005</td><td>Client feedback shall be recorded against the shot and visible to the studio.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-CLI-006</td><td>Client links shall be revocable.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+    </tbody>
+    <caption>Table 8.7 — Client delivery requirements.</caption>
+  </table>
+
+  <h3>8.8 Time, attendance and reporting</h3>
+  <table>
+    <thead><tr><th style="width:15%">ID</th><th>Requirement</th><th style="width:11%">Pri.</th><th style="width:13%">Status</th></tr></thead>
+    <tbody>
+      <tr><td class="id">FR-TIM-001</td><td>Production staff shall be clocked in automatically on sign-in and out on sign-out.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-TIM-002</td><td>Presence shall reflect current activity rather than only an explicit sign-out.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-TIM-003</td><td>Time shall be recordable against individual tasks.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-TIM-004</td><td>Leads and production management shall see attendance and effort for staff within their scope.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-TIM-005</td><td>Attendance data shall be visible only to those with a legitimate supervisory relationship.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-TIM-006</td><td>A daily standup record shall be maintainable per user.</td><td><span class="tag should">Should</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-TIM-007</td><td>Analytics shall summarise throughput, workload and delivery risk.</td><td><span class="tag should">Should</span></td><td><span class="tag done">Delivered</span></td></tr>
+    </tbody>
+    <caption>Table 8.8 — Time and reporting requirements.</caption>
+  </table>
+
+  <h3>8.9 Administration</h3>
+  <table>
+    <thead><tr><th style="width:15%">ID</th><th>Requirement</th><th style="width:11%">Pri.</th><th style="width:13%">Status</th></tr></thead>
+    <tbody>
+      <tr><td class="id">FR-ADM-001</td><td>Administrators shall create, deactivate and reactivate accounts.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-ADM-002</td><td>Administrators shall assign roles and departments.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-ADM-003</td><td>The capability matrix shall be editable through the interface.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-ADM-004</td><td>All significant changes shall be written to an audit log.</td><td><span class="tag must">Must</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-ADM-005</td><td>Audited changes shall be reversible where safe to do so.</td><td><span class="tag should">Should</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-ADM-006</td><td>Studio-level settings shall be configurable without redeployment.</td><td><span class="tag should">Should</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-ADM-007</td><td>Entity schemas and task templates shall be configurable.</td><td><span class="tag could">Could</span></td><td><span class="tag done">Delivered</span></td></tr>
+      <tr><td class="id">FR-ADM-008</td><td>Plug-in and integration surfaces shall be visible only to administrators until implemented.</td><td><span class="tag should">Should</span></td><td><span class="tag done">Delivered</span></td></tr>
+    </tbody>
+    <caption>Table 8.9 — Administration requirements.</caption>
+  </table>
+</section>
+
+<!-- ============ 9 NFR ============ -->
+<section>
+  <h2><span class="num">9</span> &nbsp;Non-functional requirements</h2>
+
+  <h3>9.1 Security</h3>
+  <table>
+    <thead><tr><th style="width:16%">ID</th><th>Requirement</th><th style="width:11%">Pri.</th></tr></thead>
+    <tbody>
+      <tr><td class="id">NFR-SEC-001</td><td>Passwords shall be hashed with a memory-hard algorithm resistant to hardware-accelerated attack.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">NFR-SEC-002</td><td>Session tokens shall carry a version that can be invalidated server-side before natural expiry.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">NFR-SEC-003</td><td>Session validity checks shall fail closed if the validating store is unavailable.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">NFR-SEC-004</td><td>Authentication, registration, password reset and password change shall each be independently rate limited.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">NFR-SEC-005</td><td>Authentication responses shall not reveal whether an account exists.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">NFR-SEC-006</td><td>Uploaded files shall be stored under generated names, never under client-supplied names.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">NFR-SEC-007</td><td>Non-media uploads shall be served as downloads with content sniffing disabled.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">NFR-SEC-008</td><td>File retrieval shall be scoped by tenant path and refuse cross-tenant access.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">NFR-SEC-009</td><td>All database access shall be parameterised, with no string-concatenated queries.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">NFR-SEC-010</td><td>Outbound email shall escape user-supplied content to prevent header or markup injection.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">NFR-SEC-011</td><td>Rate limiting shall consume budget only on failed attempts, so that legitimate shared-network traffic is not locked out.</td><td><span class="tag must">Must</span></td></tr>
+    </tbody>
+    <caption>Table 9.1 — Security requirements. NFR-SEC-011 exists because studio staff share one network egress address; counting successful sign-ins would lock out the studio each morning.</caption>
+  </table>
+
+  <h3>9.2 Performance and capacity</h3>
+  <table>
+    <thead><tr><th style="width:16%">ID</th><th>Requirement</th><th style="width:11%">Pri.</th></tr></thead>
+    <tbody>
+      <tr><td class="id">NFR-PRF-001</td><td>The system shall support at least 100 concurrent authenticated users on the reference hardware.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">NFR-PRF-002</td><td>The tracking grid shall remain usable with at least 5,000 shot rows.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">NFR-PRF-003</td><td>Frequently-read authorisation data shall be cached to avoid a database round trip per request.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">NFR-PRF-004</td><td>Presence updates shall be throttled so that activity tracking does not generate a write per request.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">NFR-PRF-005</td><td>Spreadsheet import shall bound its parsed range to protect against oversized declared ranges.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">NFR-PRF-006</td><td>Media upload shall accept files up to 500 MB.</td><td><span class="tag should">Should</span></td></tr>
+    </tbody>
+    <caption>Table 9.2 — Performance and capacity requirements.</caption>
+  </table>
+
+  <h3>9.3 Availability, operability and maintainability</h3>
+  <table>
+    <thead><tr><th style="width:16%">ID</th><th>Requirement</th><th style="width:11%">Pri.</th></tr></thead>
+    <tbody>
+      <tr><td class="id">NFR-AVL-001</td><td>The system shall run without dependency on outbound internet access for core function.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">NFR-AVL-002</td><td>Services shall restart automatically after host or container failure.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">NFR-AVL-003</td><td>Database schema migrations shall be applied automatically and idempotently on service start.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">NFR-AVL-004</td><td>The database shall be backed up on a schedule, with restore verified.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">NFR-AVL-005</td><td>Uploaded media shall persist independently of container rebuilds.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">NFR-AVL-006</td><td>Cache loss shall degrade performance only, never correctness or session validity.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">NFR-MNT-001</td><td>The codebase shall be statically typed end to end.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">NFR-MNT-002</td><td>Application logs shall be structured and machine-parseable.</td><td><span class="tag should">Should</span></td></tr>
+      <tr><td class="id">NFR-MNT-003</td><td>Errors shall be reported to a monitoring service with stack traces preserved.</td><td><span class="tag should">Should</span></td></tr>
+    </tbody>
+    <caption>Table 9.3 — Availability and maintainability requirements.</caption>
+  </table>
+
+  <h3>9.4 Usability and accessibility</h3>
+  <table>
+    <thead><tr><th style="width:16%">ID</th><th>Requirement</th><th style="width:11%">Pri.</th></tr></thead>
+    <tbody>
+      <tr><td class="id">NFR-USE-001</td><td>Each role shall land on a default view appropriate to its responsibilities.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">NFR-USE-002</td><td>An action a user cannot perform shall not be offered; where visibility is warranted, the reason shall be stated.</td><td><span class="tag must">Must</span></td></tr>
+      <tr><td class="id">NFR-USE-003</td><td>Empty states shall indicate where relevant data can be found rather than terminating the path.</td><td><span class="tag should">Should</span></td></tr>
+      <tr><td class="id">NFR-USE-004</td><td>The interface shall support both light and dark presentation.</td><td><span class="tag could">Could</span></td></tr>
+      <tr><td class="id">NFR-USE-005</td><td>First-time users should receive guided orientation to the pages relevant to their role.</td><td><span class="tag should">Should</span></td></tr>
+      <tr><td class="id">NFR-USE-006</td><td>Interactive controls shall be keyboard reachable with a visible focus state.</td><td><span class="tag should">Should</span></td></tr>
+    </tbody>
+    <caption>Table 9.4 — Usability requirements. NFR-USE-003 arose from a real incident: an empty default queue read as an absent feature.</caption>
+  </table>
+</section>
+
+<!-- ============ 10 TECH DECISIONS ============ -->
+<section>
+  <h2><span class="num">10</span> &nbsp;Technology stack and decision register</h2>
+  <p class="lede">Each significant technology choice recorded as a decision: what was chosen, what was rejected, on what criteria, and what consequence was accepted. Where the driver was a directive rather than a comparative study, this is stated plainly — a decision register that reconstructs post-hoc reasoning as though it were original analysis is not evidence, and any reviewer who checks will find it.</p>
+
+  <h3>10.1 Stack summary</h3>
+  <table>
+    <thead><tr><th style="width:20%">Layer</th><th style="width:34%">Selected</th><th>Principal alternatives considered</th></tr></thead>
+    <tbody>
+      <tr><td><b>Language</b></td><td>TypeScript 5.9, end to end</td><td>JavaScript; Python or Go for the API tier</td></tr>
+      <tr><td><b>Package manager</b></td><td>pnpm 11 with workspaces</td><td>npm, Yarn</td></tr>
+      <tr><td><b>Build orchestration</b></td><td>Turborepo</td><td>Nx, Lerna, plain recursive scripts</td></tr>
+      <tr><td><b>Frontend</b></td><td>React with Vite</td><td>Next.js, Angular, Vue</td></tr>
+      <tr><td><b>Styling</b></td><td>Tailwind CSS v4</td><td>CSS modules, styled-components</td></tr>
+      <tr><td><b>Components</b></td><td>Radix UI primitives</td><td>Material UI, Ant Design, bespoke</td></tr>
+      <tr><td><b>Server state</b></td><td>TanStack Query</td><td>Redux Toolkit Query, SWR, bespoke</td></tr>
+      <tr><td><b>Client state</b></td><td>Zustand</td><td>Redux Toolkit, React Context</td></tr>
+      <tr><td><b>API framework</b></td><td>Express 5</td><td>NestJS, Fastify, tRPC</td></tr>
+      <tr><td><b>Validation</b></td><td>Zod, shared client and server</td><td>Joi, class-validator, manual</td></tr>
+      <tr><td><b>ORM</b></td><td>Prisma <span style="color:var(--muted)">(migrated from Drizzle)</span></td><td>Drizzle, TypeORM, raw SQL</td></tr>
+      <tr><td><b>Database</b></td><td>PostgreSQL 15</td><td>MySQL, MongoDB, SQLite</td></tr>
+      <tr><td><b>Cache</b></td><td>Redis 7</td><td>In-process memory, Memcached</td></tr>
+      <tr><td><b>Password hashing</b></td><td>Argon2id</td><td>bcrypt, scrypt, PBKDF2</td></tr>
+      <tr><td><b>Sessions</b></td><td>Signed JWT in an HTTP-only cookie, with server-side version revocation</td><td>Server-side session store, opaque tokens</td></tr>
+      <tr><td><b>Logging</b></td><td>Pino, structured</td><td>Winston, console</td></tr>
+      <tr><td><b>Deployment</b></td><td>Docker Compose, five services</td><td>Kubernetes, bare-metal, managed PaaS</td></tr>
+      <tr><td><b>Reverse proxy</b></td><td>nginx</td><td>Caddy, Traefik, direct exposure</td></tr>
+    </tbody>
+    <caption>Table 10.1 — Technology stack summary. Decisions of consequence are recorded individually below.</caption>
+  </table>
+
+  <h3>10.2 Decision records</h3>
+
+  <div class="box dec">
+    <h4>DEC-001 &nbsp;·&nbsp; TypeScript end to end</h4>
+    <p><b>Decision.</b> A single language across frontend, API and shared packages, with types shared through workspace packages rather than duplicated.</p>
+    <p><b>Rejected.</b> A Python or Go API tier, which would have required the request and response contract to be defined twice and kept in step by discipline alone.</p>
+    <p><b>Criteria.</b> Contract safety across the network boundary; team size; the cost of a type mismatch reaching production.</p>
+    <p style="margin-bottom:0;"><b>Consequence accepted.</b> Node's runtime characteristics for CPU-bound work are inferior to Go's. Accepted because the workload is I/O-bound: database reads, file serving and JSON.</p>
+  </div>
+
+  <div class="box dec">
+    <h4>DEC-002 &nbsp;·&nbsp; Prisma as the ORM, replacing Drizzle</h4>
+    <p><b>Decision.</b> Prisma Client is the sole database access layer. The system was originally built on Drizzle ORM and migrated in full.</p>
+    <p><b>What the migration actually involved.</b> Twenty-six tables declared across eight schema files, a custom migration runner, and query-builder calls in seventeen of twenty route files plus two library modules and three operational scripts. The work was planned as eleven sequenced tasks, executed against a clone restored from real production data, and cut over in a single planned downtime window rather than a gradual dual-write rollout.</p>
+    <p><b>Honest statement of the driver.</b> The migration was undertaken on a directive to standardise on Prisma. It was not the outcome of a comparative trade-off study, and this document does not present one retrospectively.</p>
+    <p><b>Supporting technical justification.</b> A single declarative schema file replaces eight hand-maintained definition modules; the generated client provides types derived from the schema rather than asserted alongside it; first-party migration tooling offers a deploy command suited to running unattended at container start, which is how migrations are applied here; and the larger installed base widens the pool of engineers who can maintain the system.</p>
+    <p><b>Constraints imposed on the migration.</b> The schema was to remain byte-for-byte identical — an ORM swap, not a redesign. All business logic, including tenant scoping, capability gates, approval-stage gates and audit logging, was to be preserved with only query syntax changing. Every verification step was required to test over the same network path the real system uses.</p>
+    <p style="margin-bottom:0;"><b>Consequence accepted.</b> Prisma's query engine adds a runtime dependency and its generated client must be produced during the container build; both were absorbed into the Dockerfile. Drizzle's thinner abstraction and closer-to-SQL query surface were given up.</p>
+  </div>
+
+  <div class="box warn">
+    <h4>On the verification constraint in DEC-002</h4>
+    <p>The requirement that every verification step test over the real network path was not a general principle but a response to a specific failure earlier the same day. A database password rotation had been verified by connecting to PostgreSQL from inside its own container, which passed — because local socket connections in that image use trust authentication and bypass password checks entirely. The real failure only appeared over the Docker network, after the change was live. Recording the incident alongside the decision is what stops the lesson being lost with the people who were present.</p>
+  </div>
+
+  <div class="box dec">
+    <h4>DEC-003 &nbsp;·&nbsp; PostgreSQL as the database</h4>
+    <p><b>Decision.</b> PostgreSQL 15, self-hosted in a container with a scheduled backup sidecar.</p>
+    <p><b>Rejected.</b> MongoDB, on the grounds that production tracking is inherently relational — a shot belongs to a sequence, belongs to an episode, belongs to a project, and integrity across those relationships is the product. MySQL was a viable alternative rejected on feature depth.</p>
+    <p style="margin-bottom:0;"><b>Consequence accepted.</b> Operating a database is the studio's responsibility rather than a vendor's. Mitigated by NFR-AVL-004 and the backup service.</p>
+  </div>
+
+  <div class="box dec">
+    <h4>DEC-004 &nbsp;·&nbsp; Redis as cache only, explicitly not durable</h4>
+    <p><b>Decision.</b> Redis serves the authorisation cache, rate-limit counters and presence throttling. Persistence is deliberately disabled.</p>
+    <p><b>Rejected.</b> Using Redis as a session store, which would have made session validity depend on cache durability.</p>
+    <p><b>Criteria.</b> Cache loss must degrade performance, never correctness (NFR-AVL-006).</p>
+    <p style="margin-bottom:0;"><b>Consequence accepted.</b> A restart empties the cache and the next requests fall through to the database. Verified in practice: an active session survives a full Redis restart, because validity derives from the signed token and the database, with Redis holding only a short-lived copy.</p>
+  </div>
+
+  <div class="box dec">
+    <h4>DEC-005 &nbsp;·&nbsp; Argon2id for password hashing</h4>
+    <p><b>Decision.</b> Argon2id.</p>
+    <p><b>Rejected.</b> bcrypt, the common default, which is not memory-hard and is therefore more tractable to GPU-accelerated attack. PBKDF2 rejected on the same grounds.</p>
+    <p style="margin-bottom:0;"><b>Consequence accepted.</b> Higher CPU and memory cost per authentication, which is the intended property.</p>
+  </div>
+
+  <div class="box dec">
+    <h4>DEC-006 &nbsp;·&nbsp; Versioned JWT sessions rather than a server-side session store</h4>
+    <p><b>Decision.</b> A signed token in an HTTP-only cookie carrying a version number, checked against the user's current version on every request.</p>
+    <p><b>Problem being solved.</b> A plain stateless token cannot be revoked before expiry, so a logout, password change or offboarding left a valid token usable for its full lifetime. The version field restores revocation without giving up statelessness.</p>
+    <p style="margin-bottom:0;"><b>Consequence accepted.</b> One validity lookup per request, mitigated by the cache in DEC-004, which fails closed (NFR-SEC-003).</p>
+  </div>
+
+  <div class="box dec">
+    <h4>DEC-007 &nbsp;·&nbsp; Capability-based authorisation rather than role checks</h4>
+    <p><b>Decision.</b> Permissions are named capabilities granted to roles in the database and checked per request.</p>
+    <p><b>Rejected.</b> Hard-coded role comparisons in route handlers, which cannot be changed without a deployment and drift silently from what the interface displays.</p>
+    <p style="margin-bottom:0;"><b>Consequence accepted.</b> An additional indirection between role and permission, and a matrix that must be administered. This is what makes BR-011 enforceable rather than conventional.</p>
+  </div>
+
+  <div class="box dec">
+    <h4>DEC-008 &nbsp;·&nbsp; Docker Compose rather than Kubernetes</h4>
+    <p><b>Decision.</b> Five containers on a single host: reverse proxy, API, database, cache, backup.</p>
+    <p><b>Rejected.</b> Kubernetes, whose operational complexity is not justified for a single-studio deployment and which would require expertise the studio does not have.</p>
+    <p style="margin-bottom:0;"><b>Consequence accepted.</b> No automatic horizontal scaling or multi-node failover. Acceptable at present scale and revisitable if a deployment outgrows one host.</p>
+  </div>
+
+  <div class="box dec">
+    <h4>DEC-009 &nbsp;·&nbsp; Vite and React rather than Next.js</h4>
+    <p><b>Decision.</b> A client-rendered single-page application built with Vite.</p>
+    <p><b>Rejected.</b> Next.js, whose principal advantages are server-side rendering and search engine optimisation. Neither applies to an authenticated internal tool, and its server runtime would have added a second deployable component.</p>
+    <p style="margin-bottom:0;"><b>Consequence accepted.</b> A larger initial bundle and no server rendering. Irrelevant on a studio local network.</p>
+  </div>
+
+  <div class="box dec">
+    <h4>DEC-010 &nbsp;·&nbsp; Turborepo for build orchestration</h4>
+    <p><b>Decision.</b> Turborepo over the pnpm workspace.</p>
+    <p><b>Criteria.</b> Cached, parallel task execution, and attribution of a failure to a specific workspace package.</p>
+    <p style="margin-bottom:0;"><b>Measured outcome.</b> A full workspace typecheck fell from approximately 17 seconds cold to 63 milliseconds fully cached, and an introduced type error was correctly isolated to the affected package while the others remained cached.</p>
+  </div>
+
+  <div class="box dec">
+    <h4>DEC-011 &nbsp;·&nbsp; Radix UI primitives rather than a component library</h4>
+    <p><b>Decision.</b> Unstyled accessible primitives, styled in-house with Tailwind.</p>
+    <p><b>Rejected.</b> Material UI and Ant Design, both of which impose a visual identity that would have to be fought to achieve a studio-tool aesthetic, and both of which are heavier.</p>
+    <p style="margin-bottom:0;"><b>Consequence accepted.</b> More styling work up front, in exchange for keyboard and screen-reader behaviour that would otherwise have to be built by hand (NFR-USE-006).</p>
+  </div>
+</section>
+
+<!-- ============ 11 CONSTRAINTS ============ -->
+<section>
+  <h2><span class="num">11</span> &nbsp;Constraints and assumptions</h2>
+
+  <h3>11.1 Constraints</h3>
+  <table>
+    <thead><tr><th style="width:22%">Constraint</th><th>Effect on the solution</th></tr></thead>
+    <tbody>
+      <tr><td><b>On-premise deployment</b></td><td>No dependency on managed cloud services; all state on studio hardware.</td></tr>
+      <tr><td><b>Restricted internet access</b></td><td>No runtime dependency on external content delivery networks or third-party APIs for core function.</td></tr>
+      <tr><td><b>Existing hardware</b></td><td>Single-host deployment sized to available capacity; no horizontal scaling assumption.</td></tr>
+      <tr><td><b>Shared network egress</b></td><td>All studio traffic presents one source address, so address-based protective measures must not treat the studio as one abusive client (NFR-SEC-011).</td></tr>
+      <tr><td><b>Existing tracksheet formats</b></td><td>Import must adapt to the studio's file conventions; the studio will not adapt its files to the tool.</td></tr>
+      <tr><td><b>Live production data</b></td><td>Changes are made to a system holding real work in flight; migrations must be verified against a real-data clone before deployment.</td></tr>
+      <tr><td><b>Small engineering team</b></td><td>Favours managed complexity and conventional technology over bespoke infrastructure.</td></tr>
+    </tbody>
+    <caption>Table 11.1 — Constraints and their effect.</caption>
+  </table>
+
+  <h3>11.2 Assumptions</h3>
+  <table>
+    <thead><tr><th style="width:9%">ID</th><th>Assumption</th><th style="width:30%">If it proves false</th></tr></thead>
+    <tbody>
+      <tr><td class="id">ASM-1</td><td>Studio staff access the system from within the studio network or a trusted connection.</td><td>Public exposure would require transport encryption and hardened perimeter controls.</td></tr>
+      <tr><td class="id">ASM-2</td><td>Production data is imported from existing tracksheets rather than re-entered.</td><td>Import effort becomes manual data entry; OBJ-5 fails.</td></tr>
+      <tr><td class="id">ASM-3</td><td>One tenant per deployment in practice, though the model supports several.</td><td>Multi-tenant isolation would require independent penetration testing.</td></tr>
+      <tr><td class="id">ASM-4</td><td>Media is uploaded in browser-playable formats.</td><td>A transcoding pipeline becomes necessary; currently out of scope.</td></tr>
+      <tr><td class="id">ASM-5</td><td>An SMTP relay is reachable for notification and access-code delivery.</td><td>Client access codes must be communicated out of band.</td></tr>
+      <tr><td class="id">ASM-6</td><td>Departments map to a linear pipeline order.</td><td>Branching pipelines would require the stage model to be extended.</td></tr>
+    </tbody>
+    <caption>Table 11.2 — Assumptions, each with its failure consequence.</caption>
+  </table>
+</section>
+
+<!-- ============ 12 RISKS ============ -->
+<section>
+  <h2><span class="num">12</span> &nbsp;Risks and mitigations</h2>
+  <table>
+    <thead><tr><th style="width:9%">ID</th><th style="width:24%">Risk</th><th style="width:9%">Likeli.</th><th style="width:9%">Impact</th><th>Mitigation</th></tr></thead>
+    <tbody>
+      <tr><td class="id">RSK-1</td><td>Key-person dependency in engineering</td><td>High</td><td>High</td><td>This document set is the primary mitigation; maintain the SRS as a living record. Code carries decision rationale inline.</td></tr>
+      <tr><td class="id">RSK-2</td><td>Data loss on the single host</td><td>Low</td><td>Critical</td><td>Scheduled backups with verified restore (NFR-AVL-004); media on a persistent volume independent of rebuilds.</td></tr>
+      <tr><td class="id">RSK-3</td><td>Adoption failure — staff continue using spreadsheets</td><td>Medium</td><td>High</td><td>Import removes the migration barrier; role-appropriate landing views; guided orientation (NFR-USE-005).</td></tr>
+      <tr><td class="id">RSK-4</td><td>Import fails on an unseen tracksheet layout</td><td>Medium</td><td>Medium</td><td>Tolerant column matching; unmatched data preserved; explicit reporting when nothing is recognised.</td></tr>
+      <tr><td class="id">RSK-5</td><td>A protective measure locks out legitimate users</td><td>Medium</td><td>Medium</td><td>Failed attempts only consume rate-limit budget; thresholds set for shared-egress reality. Occurred in practice and was corrected.</td></tr>
+      <tr><td class="id">RSK-6</td><td>Single host becomes a capacity ceiling</td><td>Low</td><td>Medium</td><td>Stateless API tier; horizontal scaling behind the existing proxy is available without redesign.</td></tr>
+      <tr><td class="id">RSK-7</td><td>Verification passes for the wrong reason</td><td>Medium</td><td>High</td><td>Standing rule that verification must traverse the same path as real traffic. Derived from a live incident; see Section 10.2.</td></tr>
+      <tr><td class="id">RSK-8</td><td>Client media exposed through a share link</td><td>Low</td><td>High</td><td>Links require a separate code, expose only shared items, and are revocable.</td></tr>
+    </tbody>
+    <caption>Table 12.1 — Risk register.</caption>
+  </table>
+</section>
+
+<!-- ============ 13 DEPENDENCIES ============ -->
+<section>
+  <h2><span class="num">13</span> &nbsp;Dependencies</h2>
+  <table>
+    <thead><tr><th style="width:24%">Dependency</th><th style="width:16%">Type</th><th>Nature and failure behaviour</th></tr></thead>
+    <tbody>
+      <tr><td><b>Host server</b></td><td>Infrastructure</td><td>Runs all five containers. Total dependency; failure is an outage.</td></tr>
+      <tr><td><b>SMTP relay</b></td><td>External service</td><td>Password reset and client access-code delivery. Failure degrades those flows only; core tracking is unaffected.</td></tr>
+      <tr><td><b>Backup storage</b></td><td>Infrastructure</td><td>Destination for scheduled dumps. Failure is silent unless monitored — restore should be tested periodically.</td></tr>
+      <tr><td><b>Container runtime</b></td><td>Platform</td><td>Docker Engine and Compose on the host.</td></tr>
+      <tr><td><b>Browser</b></td><td>Client</td><td>Modern evergreen browser required for the review player's video and canvas features.</td></tr>
+      <tr><td><b>Error monitoring</b></td><td>External service</td><td>Optional. Absence removes visibility, not function.</td></tr>
+    </tbody>
+    <caption>Table 13.1 — External and infrastructure dependencies.</caption>
+  </table>
+</section>
+
+<!-- ============ 14 ACCEPTANCE ============ -->
+<section>
+  <h2><span class="num">14</span> &nbsp;Acceptance and sign-off criteria</h2>
+  <p class="lede">The conditions under which the sponsor accepts that this requirement set has been met.</p>
+  <table>
+    <thead><tr><th style="width:9%">ID</th><th>Criterion</th><th style="width:18%">Verification</th></tr></thead>
+    <tbody>
+      <tr><td class="id">ACC-1</td><td>Every Must-priority functional requirement is delivered and demonstrable.</td><td>Demonstration</td></tr>
+      <tr><td class="id">ACC-2</td><td>A production tracksheet imports without manual reformatting and without data loss.</td><td>Demonstration against a real file</td></tr>
+      <tr><td class="id">ACC-3</td><td>Each role, signed in separately, sees only the data and controls its capability set permits.</td><td>Test per role</td></tr>
+      <tr><td class="id">ACC-4</td><td>A shot completes the full chain from artist submission to client delivery with a complete recorded history.</td><td>End-to-end test</td></tr>
+      <tr><td class="id">ACC-5</td><td>An external client reviews and returns feedback using only a link and code.</td><td>End-to-end test</td></tr>
+      <tr><td class="id">ACC-6</td><td>A database backup restores to a working system.</td><td>Restore test</td></tr>
+      <tr><td class="id">ACC-7</td><td>Security requirements NFR-SEC-001 to 011 are individually verified.</td><td>Inspection and test</td></tr>
+      <tr><td class="id">ACC-8</td><td>The four documents in this set exist, are current, and are approved.</td><td>Inspection</td></tr>
+    </tbody>
+    <caption>Table 14.1 — Acceptance criteria.</caption>
+  </table>
+</section>
+
+<!-- ============ 15 GLOSSARY ============ -->
+<section>
+  <h2><span class="num">15</span> &nbsp;Appendix A — Glossary</h2>
+  <table>
+    <thead><tr><th style="width:24%">Term</th><th>Definition</th></tr></thead>
+    <tbody>
+      <tr><td><b>Asset</b></td><td>A reusable production element — character, prop, environment — tracked in parallel to shots.</td></tr>
+      <tr><td><b>Capability</b></td><td>A named permission granted to a role and checked per request.</td></tr>
+      <tr><td><b>DCC</b></td><td>Digital Content Creation application, such as Maya, Blender, Nuke or Houdini.</td></tr>
+      <tr><td><b>Episode</b></td><td>A single instalment of an episodic production, containing sequences.</td></tr>
+      <tr><td><b>Onion skinning</b></td><td>Display of adjacent frames semi-transparently to judge motion between them.</td></tr>
+      <tr><td><b>Pipeline stage</b></td><td>An ordered department position through which a shot passes.</td></tr>
+      <tr><td><b>Playblast</b></td><td>A fast preview render used for review rather than final output.</td></tr>
+      <tr><td><b>Retake</b></td><td>Work redone following rejection or a change request.</td></tr>
+      <tr><td><b>Sequence</b></td><td>A group of related shots within an episode.</td></tr>
+      <tr><td><b>Shot</b></td><td>The atomic unit of production work — a continuous run of frames.</td></tr>
+      <tr><td><b>Tenant</b></td><td>An isolated studio instance within the data model.</td></tr>
+      <tr><td><b>Tracksheet</b></td><td>The spreadsheet a studio uses to track shot progress.</td></tr>
+      <tr><td><b>Version</b></td><td>A numbered iteration of deliverable media for a shot or asset.</td></tr>
+      <tr><td><b>A/B wipe</b></td><td>A draggable divider comparing two versions in the same frame.</td></tr>
+    </tbody>
+    <caption>Table 15.1 — Glossary of production and system terms.</caption>
+  </table>
+</section>
+
+<!-- ============ 16 TRACEABILITY ============ -->
+<section>
+  <h2><span class="num">16</span> &nbsp;Appendix B — Traceability seed</h2>
+  <p class="lede">Business requirement to objective to functional requirement. The SRS extends this matrix to individual test cases; maintaining it in both directions is what makes the requirement set auditable.</p>
+  <table>
+    <thead><tr><th style="width:12%">Business req.</th><th style="width:14%">Objective</th><th>Functional requirements</th></tr></thead>
+    <tbody>
+      <tr><td class="id">BR-001</td><td>OBJ-1</td><td>FR-TRK-001 … 007, FR-IMP-001 … 009</td></tr>
+      <tr><td class="id">BR-002</td><td>OBJ-3</td><td>FR-REV-004, FR-REV-006, FR-REV-008</td></tr>
+      <tr><td class="id">BR-003</td><td>OBJ-4</td><td>FR-REV-007 … 010, FR-ADM-004</td></tr>
+      <tr><td class="id">BR-004</td><td>OBJ-5</td><td>FR-IMP-001 … 009</td></tr>
+      <tr><td class="id">BR-005</td><td>OBJ-6</td><td>FR-REV-002, NFR-SEC-006 … 008, NFR-AVL-001</td></tr>
+      <tr><td class="id">BR-006</td><td>OBJ-2</td><td>Satisfied by deployment model; no per-seat mechanism exists in the system</td></tr>
+      <tr><td class="id">BR-007</td><td>OBJ-1</td><td>FR-RBAC-001 … 008, FR-TIM-005</td></tr>
+      <tr><td class="id">BR-008</td><td>—</td><td>FR-CLI-001 … 006</td></tr>
+      <tr><td class="id">BR-009</td><td>OBJ-7</td><td>FR-TIM-001 … 007</td></tr>
+      <tr><td class="id">BR-010</td><td>OBJ-6</td><td>NFR-AVL-001 … 006</td></tr>
+      <tr><td class="id">BR-011</td><td>—</td><td>FR-RBAC-004, FR-TSK-006, FR-REV-013</td></tr>
+      <tr><td class="id">BR-012</td><td>—</td><td>FR-AUTH-003, FR-AUTH-010 … 013</td></tr>
+      <tr><td class="id">BR-013</td><td>—</td><td>FR-ADM-004, FR-ADM-005</td></tr>
+      <tr><td class="id">BR-014</td><td>—</td><td>FR-TIM-004, FR-TIM-007</td></tr>
+      <tr><td class="id">BR-015</td><td>—</td><td>FR-ADM-008 <span style="color:var(--muted)">(surface only; deferred)</span></td></tr>
+      <tr><td class="id">BR-016</td><td>—</td><td>Out of scope — see Table 4.2</td></tr>
+    </tbody>
+    <caption>Table 16.1 — Traceability seed matrix.</caption>
+  </table>
+
+  <div class="box">
+    <h4>Maintaining this matrix</h4>
+    <p>A requirement added to the SRS without a corresponding entry here indicates either a missing business requirement or scope that was never agreed. Both are worth catching at review rather than at acceptance.</p>
+  </div>
+</section>
+
+</div>

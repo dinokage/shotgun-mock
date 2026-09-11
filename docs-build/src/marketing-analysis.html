@@ -1,0 +1,845 @@
+<meta charset="utf-8">
+<title>Forge — Marketing Analysis</title>
+<style>
+  /* Deliberately system fonts, not webfonts: the target studio network has
+     no outbound internet access, and a document build must render identically
+     on every machine that runs it. A silently-substituted font would reflow
+     every page number in the printed set. */
+  :root {
+    --ink: #0F161B;
+    --ink-2: #33424E;
+    --muted: #5F6E7B;
+    --hair: #C6CFD6;
+    --hair-soft: #E1E7EB;
+    --accent: #0E7C6B;
+    --accent-soft: #EAF4F1;
+    --warn: #9A5B08;
+    --warn-soft: #FBF2E4;
+    --surface: #F5F8F9;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: Georgia, Cambria, "Times New Roman", serif;
+    font-size: 10.6pt;
+    line-height: 1.58;
+    color: var(--ink);
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .page { padding: 0 14mm; }
+  .brk { page-break-before: always; }
+
+  h1, h2, h3, h4, .sans {
+    font-family: "Segoe UI", Arial, Helvetica, sans-serif;
+  }
+  h1 { font-size: 25pt; line-height: 1.12; letter-spacing: -.4pt; margin: 0 0 10pt; }
+  h2 {
+    font-size: 15pt; line-height: 1.22; margin: 0 0 4pt;
+    padding-bottom: 5pt; border-bottom: 1.6pt solid var(--ink);
+  }
+  h2 .num { color: var(--accent); }
+  h3 { font-size: 11.6pt; margin: 16pt 0 5pt; line-height: 1.3; }
+  h4 {
+    font-size: 8.2pt; letter-spacing: .09em; text-transform: uppercase;
+    color: var(--muted); margin: 13pt 0 4pt;
+  }
+  p { margin: 0 0 8pt; }
+  .lede { font-size: 11.4pt; color: var(--ink-2); margin-bottom: 12pt; }
+  ul, ol { margin: 0 0 9pt; padding-left: 16pt; }
+  li { margin-bottom: 4pt; }
+  b, strong { font-weight: 700; }
+
+  section { page-break-before: always; padding-top: 2pt; }
+  section.first { page-break-before: avoid; }
+
+  /* ---------- cover ---------- */
+  .cover { height: 235mm; display: flex; flex-direction: column; justify-content: space-between; }
+  .cover-top { padding-top: 26mm; }
+  .cover .rule { height: 4pt; background: var(--accent); width: 58mm; margin-bottom: 14mm; }
+  .cover .product {
+    font-family: "Segoe UI", Arial, sans-serif; font-size: 9pt; letter-spacing: .22em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 6mm;
+  }
+  .cover h1 { font-size: 36pt; letter-spacing: -1pt; }
+  .cover .sub { font-size: 13pt; color: var(--ink-2); margin-top: 5mm; max-width: 128mm; }
+  .cover-meta {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 0;
+    border-top: 1.4pt solid var(--ink);
+  }
+  .cover-meta div { padding: 7pt 10pt 7pt 0; border-bottom: .5pt solid var(--hair-soft); }
+  .cover-meta dt {
+    font-family: "Segoe UI", Arial, sans-serif; font-size: 7.4pt; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 2pt;
+  }
+  .cover-meta dd { margin: 0; font-family: "Segoe UI", Arial, sans-serif; font-size: 10pt; font-weight: 600; }
+  .classif {
+    display: inline-block; font-family: "Segoe UI", Arial, sans-serif; font-size: 8pt;
+    letter-spacing: .1em; text-transform: uppercase; font-weight: 700;
+    color: #7A2020; border: 1.2pt solid #7A2020; padding: 3pt 8pt; background: #FBEDED;
+  }
+
+  /* ---------- tables ---------- */
+  table { border-collapse: collapse; width: 100%; font-size: 9.2pt; margin: 8pt 0 12pt; page-break-inside: avoid; }
+  th, td { text-align: left; padding: 5.5pt 7pt; border-bottom: .5pt solid var(--hair-soft); vertical-align: top; }
+  thead th {
+    font-family: "Segoe UI", Arial, sans-serif; font-size: 7.6pt; letter-spacing: .07em;
+    text-transform: uppercase; color: var(--ink); background: var(--surface);
+    border-bottom: 1pt solid var(--hair); font-weight: 700;
+  }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tbody tr.total td { border-top: 1pt solid var(--hair); font-weight: 700; background: var(--surface); }
+  caption {
+    caption-side: bottom; text-align: left; font-size: 8.2pt; color: var(--muted);
+    padding-top: 4pt; font-family: "Segoe UI", Arial, sans-serif;
+  }
+
+  /* ---------- callouts ---------- */
+  .box {
+    border: .7pt solid var(--hair); border-left: 3pt solid var(--accent);
+    background: var(--surface); padding: 9pt 11pt; margin: 10pt 0 12pt;
+    page-break-inside: avoid;
+  }
+  .box.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+  .box p:last-child, .box ul:last-child { margin-bottom: 0; }
+  .box h4 { margin-top: 0; }
+
+  .kpi-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; margin: 10pt 0 14pt; border: .7pt solid var(--hair); page-break-inside: avoid; }
+  .kpi-row > div { padding: 9pt 11pt; border-right: .7pt solid var(--hair); }
+  .kpi-row > div:last-child { border-right: none; }
+  /* line-height 1.1 clipped the glyph box: the rendered text measured 30px
+     inside a 28px line, so the figures collided with the label beneath. */
+  .kpi-row .v { font-family: "Segoe UI", Arial, sans-serif; font-size: 19pt; font-weight: 700; color: var(--accent); line-height: 1.28; }
+  .kpi-row .k { font-family: "Segoe UI", Arial, sans-serif; font-size: 7.6pt; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-top: 3pt; }
+
+  .toc-list { list-style: none; padding: 0; margin: 12pt 0 0; }
+  .toc-list li {
+    display: flex; justify-content: space-between; gap: 8pt;
+    padding: 5pt 0; border-bottom: .5pt dotted var(--hair);
+    font-family: "Segoe UI", Arial, sans-serif; font-size: 10pt;
+  }
+  .toc-list .s { color: var(--accent); font-weight: 700; width: 22pt; flex: none; }
+  .toc-list .t { flex: 1; }
+
+  .tag {
+    display: inline-block; font-family: "Segoe UI", Arial, sans-serif; font-size: 7.2pt;
+    letter-spacing: .07em; text-transform: uppercase; font-weight: 700;
+    padding: 1.5pt 5pt; border-radius: 2pt; white-space: nowrap;
+  }
+  .tag.ship { background: var(--accent-soft); color: var(--accent); border: .5pt solid var(--accent); }
+  .tag.plan { background: var(--warn-soft); color: var(--warn); border: .5pt solid var(--warn); }
+
+  .src { font-size: 8.4pt; color: var(--muted); }
+  .src li { margin-bottom: 3pt; }
+  .win { color: var(--accent); font-weight: 700; }
+  .lose { color: #9A3030; }
+</style>
+
+<div class="page">
+
+<!-- ================= COVER ================= -->
+<div class="cover">
+  <div class="cover-top">
+    <div class="rule"></div>
+    <div class="product">Forge &middot; Production Tracking Platform</div>
+    <h1>Marketing Analysis</h1>
+    <p class="sub">Market sizing, competitive positioning, and the commercial case for taking Forge to the global animation and VFX market.</p>
+  </div>
+  <div>
+    <p style="margin-bottom:8mm;"><span class="classif">Confidential &middot; Commercial</span></p>
+    <dl class="cover-meta">
+      <div><dt>Prepared for</dt><dd>Symbiosys Technologies</dd></div>
+      <div><dt>Document ID</dt><dd>SYM-FRG-MKT-001</dd></div>
+      <div><dt>Version</dt><dd>1.0 — Draft for review</dd></div>
+      <div><dt>Date</dt><dd>September 2026</dd></div>
+      <div><dt>Product status</dt><dd>Deployed and in production use</dd></div>
+      <div><dt>Author</dt><dd>Product &amp; Engineering</dd></div>
+    </dl>
+  </div>
+</div>
+
+<!-- ================= REVISION / SIGNOFF ================= -->
+<section>
+  <h2><span class="num">0.1</span> &nbsp;Document control</h2>
+  <h3>Revision history</h3>
+  <table>
+    <thead><tr><th style="width:12%">Version</th><th style="width:16%">Date</th><th style="width:22%">Author</th><th>Summary of change</th></tr></thead>
+    <tbody>
+      <tr><td>0.1</td><td>Sep 2026</td><td>Product &amp; Engineering</td><td>Initial structure and market research.</td></tr>
+      <tr><td>1.0</td><td>Sep 2026</td><td>Product &amp; Engineering</td><td>First complete draft: sizing, competitive matrix, ICP, pricing, and go-to-market.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Approval</h3>
+  <table>
+    <thead><tr><th style="width:30%">Role</th><th style="width:30%">Name</th><th style="width:22%">Signature</th><th>Date</th></tr></thead>
+    <tbody>
+      <tr><td>Managing Director</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+      <tr><td>Head of Product</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+      <tr><td>Commercial Lead</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Related documents</h3>
+  <table>
+    <thead><tr><th style="width:26%">ID</th><th>Document</th><th style="width:22%">Relationship</th></tr></thead>
+    <tbody>
+      <tr><td>SYM-FRG-REQ-001</td><td>Forge — Requirements Document</td><td>Source of scope</td></tr>
+      <tr><td>SYM-FRG-SRS-001</td><td>Forge — Software Requirements Specification</td><td>Source of capability claims</td></tr>
+      <tr><td>SYM-FRG-USG-001</td><td>Forge — Product Usage &amp; User Guide</td><td>Evidence for demonstrations</td></tr>
+    </tbody>
+  </table>
+
+  <div class="box warn">
+    <h4>Claim discipline</h4>
+    <p>Every capability asserted in this document is traceable to functionality already implemented and running in the deployed system, and is marked <span class="tag ship">Shipped</span>. Anything forward-looking is marked <span class="tag plan">Planned</span> and appears only in Section 13. No claim in this document should be repeated in customer-facing material without that label attached.</p>
+  </div>
+</section>
+
+<!-- ================= TOC ================= -->
+<section>
+  <h2><span class="num">0.2</span> &nbsp;Contents</h2>
+  <ol class="toc-list">
+    <li><span class="s">1</span><span class="t">Executive summary</span></li>
+    <li><span class="s">2</span><span class="t">Market definition and segmentation</span></li>
+    <li><span class="s">3</span><span class="t">Market sizing — TAM, SAM, SOM</span></li>
+    <li><span class="s">4</span><span class="t">Industry trends and why now</span></li>
+    <li><span class="s">5</span><span class="t">Competitive landscape</span></li>
+    <li><span class="s">6</span><span class="t">Ideal customer profile and the sweet spot</span></li>
+    <li><span class="s">7</span><span class="t">Value proposition and messaging hierarchy</span></li>
+    <li><span class="s">8</span><span class="t">Customer benefits and quantified outcomes</span></li>
+    <li><span class="s">9</span><span class="t">The switching story</span></li>
+    <li><span class="s">10</span><span class="t">Pricing and packaging strategy</span></li>
+    <li><span class="s">11</span><span class="t">Go-to-market motion</span></li>
+    <li><span class="s">12</span><span class="t">Objection handling</span></li>
+    <li><span class="s">13</span><span class="t">Future scope and roadmap</span></li>
+    <li><span class="s">14</span><span class="t">Risks and commercial assumptions</span></li>
+    <li><span class="s">15</span><span class="t">Appendix A — Sizing workings</span></li>
+    <li><span class="s">16</span><span class="t">Appendix B — Sources</span></li>
+  </ol>
+</section>
+
+<!-- ================= 1 EXEC ================= -->
+<section>
+  <h2><span class="num">1</span> &nbsp;Executive summary</h2>
+  <p class="lede">Forge is a production tracking and review platform for animation and VFX studios, built and proven inside a working studio pipeline. It is now positioned to be sold to the several thousand studios worldwide whose production tracking still runs on spreadsheets — and to the segment that finds the incumbent commercial tools too expensive, too heavy, or too cloud-bound to adopt.</p>
+
+  <div class="kpi-row">
+    <div><div class="v">$2.2B</div><div class="k">India animation &amp; VFX sector, 2026</div></div>
+    <div><div class="v">4,000+</div><div class="k">VFX studios in India alone</div></div>
+    <div><div class="v">17.5%</div><div class="k">India sector CAGR</div></div>
+  </div>
+
+  <h3>The opportunity in one paragraph</h3>
+  <p>The animation and VFX production market is large and growing quickly, and India is its fastest-growing major territory. Yet the tooling market serving it is polarised: at the top, Autodesk's Flow Production Tracking (formerly ShotGrid) and ftrack sell quote-only, per-seat, cloud-hosted systems designed for large facilities with dedicated pipeline engineers. At the bottom, the genuine market leader by installed base is Microsoft Excel. Between those two poles sits a very large, underserved middle: studios of roughly twenty to a hundred and fifty seats, running episodic or outsourced work, who need real tracking and review but cannot justify enterprise licence costs or a month of pipeline configuration.</p>
+
+  <h3>Why Forge wins in that middle</h3>
+  <p>Three structural advantages, each already built rather than planned:</p>
+  <ol>
+    <li><b>Near-zero switching cost.</b> Forge imports the studio's existing production tracksheet in whatever layout they already keep it — multi-sheet episodic workbooks or a single flat sheet — matching columns tolerantly and preserving anything it does not recognise. The industry's single largest adoption barrier is migration risk, and this removes most of it.</li>
+    <li><b>Self-hosted by design.</b> The entire system runs as five containers on the studio's own hardware. There is no per-seat licence, no footage leaving the premises, and no dependency on an internet link that many production facilities deliberately restrict.</li>
+    <li><b>A complete review pipeline, not a task list.</b> Frame-accurate playback with a full annotation toolset, a multi-stage approval chain from artist through lead and production head, and external client review by access link — the workflow that actually consumes a studio's day.</li>
+  </ol>
+
+  <h3>The ask</h3>
+  <p>Sequence entry rather than attempting the whole market at once. Enter through the Indian mid-market, where studio density is highest, cost sensitivity is greatest, and Symbiosys has home-market credibility; use those references to expand into the wider Asia-Pacific outsourcing corridor; then approach European and North American boutiques through the same self-hosting and data-residency argument. Section 11 sets out the sequence, and Section 3 sizes each stage.</p>
+</section>
+
+<!-- ================= 2 MARKET DEF ================= -->
+<section>
+  <h2><span class="num">2</span> &nbsp;Market definition and segmentation</h2>
+  <p class="lede">Defining the category precisely matters, because the widely-quoted animation and VFX market figures describe content production spend, not tooling spend. Conflating the two produces a market size that impresses nobody who reads carefully.</p>
+
+  <h3>2.1 Category definition</h3>
+  <p>Forge competes in <b>production tracking and review software for visual content production</b>. A product in this category manages the hierarchy of work (project, episode, sequence, shot, asset, task), tracks each item's status through a defined pipeline, routes finished work through structured review and approval, and provides a record of who did what and when.</p>
+  <p>It is adjacent to, but distinct from, three neighbouring categories: general project management (Asana, monday.com, Jira), media review and approval (Frame.io, Autodesk Flow Capture), and digital asset management. Products from those categories are frequently pressed into service as substitutes, and are therefore treated as competitors in Section 5 even though they are not built for this purpose.</p>
+
+  <h3>2.2 The addressable buyer</h3>
+  <p>The buying unit is a studio or production facility that produces animation, visual effects, or motion content on a project basis, with enough concurrent work that spreadsheet tracking has begun to fail. Empirically this threshold appears somewhere around fifteen to twenty concurrent contributors.</p>
+
+  <h3>2.3 Segmentation</h3>
+  <p>Three orthogonal axes matter commercially. Segmenting on all three is what makes it possible to address the whole market while still sequencing entry sensibly.</p>
+
+  <h4>By studio size</h4>
+  <table>
+    <thead><tr><th style="width:22%">Segment</th><th style="width:14%">Seats</th><th>Characteristics</th><th style="width:20%">Fit for Forge</th></tr></thead>
+    <tbody>
+      <tr><td><b>Micro / boutique</b></td><td class="num">1–19</td><td>Owner-operated, project-to-project, tracking in spreadsheets or a general PM tool. Extremely price-sensitive, no pipeline staff.</td><td>Good — but low revenue per account</td></tr>
+      <tr><td><b>Lower mid-market</b></td><td class="num">20–74</td><td>Multiple concurrent shows, informal pipeline, first real pain from spreadsheet tracking. Usually no dedicated pipeline engineer.</td><td class="win">Primary target</td></tr>
+      <tr><td><b>Upper mid-market</b></td><td class="num">75–199</td><td>Formal departments, a pipeline TD or small team, active evaluation of commercial tools, real budget.</td><td class="win">Primary target</td></tr>
+      <tr><td><b>Enterprise facility</b></td><td class="num">200+</td><td>Established incumbent tooling, in-house pipeline engineering, heavy DCC integration requirements, long procurement.</td><td>Deferred — see §13</td></tr>
+    </tbody>
+    <caption>Table 2.1 — Segmentation by studio size, with commercial fit.</caption>
+  </table>
+
+  <h4>By content type</h4>
+  <table>
+    <thead><tr><th style="width:26%">Segment</th><th>Workflow shape</th><th style="width:20%">Fit</th></tr></thead>
+    <tbody>
+      <tr><td><b>Episodic animation</b></td><td>Long-running series, high shot volume, repetitive per-episode structure, heavy outsourcing. Tracking is the dominant problem.</td><td class="win">Strongest fit</td></tr>
+      <tr><td><b>Film / streaming VFX</b></td><td>Fewer, more complex shots; deep DCC integration expectations; often enterprise-scale.</td><td>Moderate</td></tr>
+      <tr><td><b>Advertising &amp; motion</b></td><td>Short turnarounds, small teams, review speed matters more than pipeline depth.</td><td>Good</td></tr>
+      <tr><td><b>Games cinematics</b></td><td>Hybrid pipelines, often already inside a game-engine toolchain.</td><td>Moderate</td></tr>
+      <tr><td><b>Architectural / product viz</b></td><td>Small teams, client-review heavy, minimal pipeline complexity.</td><td>Good — review-led sale</td></tr>
+    </tbody>
+    <caption>Table 2.2 — Segmentation by content type.</caption>
+  </table>
+
+  <h4>By geography</h4>
+  <p>India is the near market and the natural entry point: the highest concentration of target-size studios anywhere, the fastest sector growth of any major territory, and home-market advantage for Symbiosys. The wider Asia-Pacific outsourcing corridor follows, then Europe and North America, where the argument shifts from cost to data residency and control.</p>
+</section>
+
+<!-- ================= 3 SIZING ================= -->
+<section>
+  <h2><span class="num">3</span> &nbsp;Market sizing — TAM, SAM, SOM</h2>
+  <p class="lede">Built bottom-up from studio counts and realistic annual contract value, then sanity-checked against published sector figures. The arithmetic is shown in full in Appendix A so any assumption can be challenged individually rather than the total being taken on trust.</p>
+
+  <div class="box warn">
+    <h4>An honest note on the headline figures</h4>
+    <p>Published research puts the global animation and VFX market at roughly <b>USD 220.7 billion in 2026</b>, growing to about <b>USD 386.3 billion by 2031</b> at an 11.86% compound rate. Those figures describe the value of content produced, not money spent on tracking software. They establish that the industry is large and growing; they are not our addressable market and should never be presented as such. Our tooling market is roughly three orders of magnitude smaller, and is calculated independently below.</p>
+  </div>
+
+  <h3>3.1 Method</h3>
+  <p>For each geography we estimate the number of studios in the target size bands, apply an average seat count, apply a realistic annual value per studio derived from our pricing model (Section 10), and discount for the share of studios that will never buy any tool. This yields an annual recurring revenue opportunity, not a cumulative one.</p>
+
+  <h3>3.2 Total addressable market</h3>
+  <p>TAM is every studio worldwide producing animation, VFX, or motion content at a scale where production tracking is a genuine need — that is, twenty seats and above — regardless of whether they could realistically be reached or sold to today.</p>
+  <table>
+    <thead><tr><th>Territory</th><th class="num">Target-size studios (est.)</th><th class="num">Avg. annual value</th><th class="num">TAM (annual)</th></tr></thead>
+    <tbody>
+      <tr><td>India</td><td class="num">1,200</td><td class="num">$7,500</td><td class="num">$9.0M</td></tr>
+      <tr><td>Asia-Pacific excl. India</td><td class="num">1,900</td><td class="num">$9,000</td><td class="num">$17.1M</td></tr>
+      <tr><td>Europe</td><td class="num">1,600</td><td class="num">$12,000</td><td class="num">$19.2M</td></tr>
+      <tr><td>North America</td><td class="num">1,500</td><td class="num">$14,000</td><td class="num">$21.0M</td></tr>
+      <tr><td>Rest of world</td><td class="num">600</td><td class="num">$8,000</td><td class="num">$4.8M</td></tr>
+      <tr class="total"><td>Global TAM</td><td class="num">6,800</td><td class="num">—</td><td class="num">$71.1M</td></tr>
+    </tbody>
+    <caption>Table 3.1 — Bottom-up TAM. Studio counts are estimates derived from the published Indian figure of 4,000+ studios of all sizes, with target-size studios taken as roughly 30% of that base and other territories scaled by relative sector size. See Appendix A.</caption>
+  </table>
+
+  <h3>3.3 Serviceable addressable market</h3>
+  <p>SAM narrows TAM to studios Forge can serve today with its current capability set and delivery model. Three filters apply: the studio must be in the 20–199 seat range (enterprise facilities are excluded pending DCC integration, per Section 13); it must be willing to self-host; and it must be reachable through the channels described in Section 11 — which for now means India, the wider Asia-Pacific corridor, and inbound interest from elsewhere.</p>
+  <table>
+    <thead><tr><th>Filter applied</th><th class="num">Studios</th><th class="num">Annual value</th></tr></thead>
+    <tbody>
+      <tr><td>Global TAM</td><td class="num">6,800</td><td class="num">$71.1M</td></tr>
+      <tr><td>Exclude 200+ seat enterprise facilities (est. 12%)</td><td class="num">5,984</td><td class="num">$60.4M</td></tr>
+      <tr><td>Restrict to India + Asia-Pacific (near-term reachable)</td><td class="num">2,728</td><td class="num">$23.9M</td></tr>
+      <tr><td>Exclude studios that will not self-host (est. 30%)</td><td class="num">1,910</td><td class="num">$16.7M</td></tr>
+      <tr class="total"><td>SAM (annual)</td><td class="num">1,910</td><td class="num">$16.7M</td></tr>
+    </tbody>
+    <caption>Table 3.2 — SAM derivation. Each filter is a stated assumption, individually testable.</caption>
+  </table>
+
+  <h3>3.4 Serviceable obtainable market</h3>
+  <p>SOM is what can realistically be won in three years given a small commercial team and a services-led motion. We model a deliberately conservative capture rate, because the constraint on this business in years one and two is delivery capacity, not demand.</p>
+  <table>
+    <thead><tr><th>Year</th><th class="num">Customers</th><th class="num">Share of SAM</th><th class="num">Annual revenue</th><th>Basis</th></tr></thead>
+    <tbody>
+      <tr><td>Year 1</td><td class="num">8</td><td class="num">0.4%</td><td class="num">$60K</td><td>Founder-led, home market, reference building</td></tr>
+      <tr><td>Year 2</td><td class="num">30</td><td class="num">1.6%</td><td class="num">$225K</td><td>First reference customers, partner channel opens</td></tr>
+      <tr><td>Year 3</td><td class="num">75</td><td class="num">3.9%</td><td class="num">$563K</td><td>Repeatable motion, regional expansion</td></tr>
+    </tbody>
+    <caption>Table 3.3 — Three-year SOM. Revenue assumes the blended $7,500 annual value from Table 3.1; see Section 10 for the packaging that produces it.</caption>
+  </table>
+
+  <div class="box">
+    <h4>Reading these numbers correctly</h4>
+    <p>A $71M global TAM is modest by software standards, and that is the honest position. This is a focused vertical tool, not a horizontal platform. The commercial case rests on three things it makes possible rather than on market size alone: high gross margin from a self-hosted product with no per-seat cloud cost, a services and customisation attach that can exceed licence revenue in this vertical, and the strategic value of a proven product that demonstrates Symbiosys capability to prospective services clients.</p>
+  </div>
+</section>
+
+<!-- ================= 4 TRENDS ================= -->
+<section>
+  <h2><span class="num">4</span> &nbsp;Industry trends and why now</h2>
+  <p class="lede">Five conditions make this a better moment to enter than three years ago, and each one is a talking point in a sales conversation.</p>
+
+  <h3>4.1 India is the fastest-growing major production territory</h3>
+  <p>The Indian animation and VFX sector is on track to reach approximately <b>USD 2.2 billion by 2026</b>, up from about USD 1.3 billion in 2023 — a compound growth rate near <b>17.5%</b>, ahead of every other major territory. Roughly <b>70%</b> of that revenue comes from international work for Hollywood studios and global streaming platforms. Growth of that speed creates studios crossing the twenty-seat threshold every quarter, and a studio crossing that threshold is precisely when tracking stops working on a spreadsheet.</p>
+
+  <h3>4.2 Consolidation of the incumbent under a single vendor</h3>
+  <p>ShotGrid — for years the category's default — is now Autodesk Flow Production Tracking, folded into a broader Autodesk platform strategy. Platform consolidation reliably produces a cohort of customers who dislike the direction, the packaging, or the pricing, and who become receptive to alternatives for the first time in years.</p>
+
+  <h3>4.3 Opaque, quote-only pricing at the top of the market</h3>
+  <p>Neither Autodesk Flow Production Tracking nor ftrack publishes standard per-seat pricing; both are quoted on request. For a forty-person studio, an evaluation that begins with a sales call rather than a number is friction — and it is friction we can convert directly, because our pricing can be published.</p>
+
+  <h3>4.4 Data residency and the return of on-premise preference</h3>
+  <p>Studios working on unreleased content operate under client security requirements that increasingly specify where media may reside. Meanwhile production facilities routinely restrict outbound internet access on artist workstations for exactly this reason. A cloud-only tracking tool is in tension with both; a self-hosted one resolves them.</p>
+
+  <h3>4.5 Spreadsheets remain the true incumbent</h3>
+  <p>The most important competitive fact in this market is that most target studios are not choosing between Forge and ShotGrid. They are choosing between Forge and the spreadsheet they already have. That reframes the entire sale: the competition is inertia, and the winning move is to make the spreadsheet the on-ramp rather than the obstacle — which is exactly what the tracksheet import does.</p>
+</section>
+
+<!-- ================= 5 COMPETITIVE ================= -->
+<section>
+  <h2><span class="num">5</span> &nbsp;Competitive landscape</h2>
+  <p class="lede">Assessed honestly, including where competitors are genuinely stronger. A matrix with no concessions is not read as confidence; it is read as marketing, and it loses the technical evaluator.</p>
+
+  <h3>5.1 Direct competitors</h3>
+  <table>
+    <thead>
+      <tr><th style="width:19%">Product</th><th style="width:15%">Model</th><th style="width:14%">Pricing</th><th>Position</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><b>Autodesk Flow Production Tracking</b> <span style="color:var(--muted)">(formerly ShotGrid)</span></td>
+        <td>Cloud, per-seat</td><td>Quote only</td>
+        <td>The category incumbent and the deepest product. Extensive DCC integration and a mature API. Widely regarded as heavy to configure and priced for larger facilities; commonly described as overengineered for smaller teams, where a lengthy configuration period cannot repay itself on a short project.</td>
+      </tr>
+      <tr>
+        <td><b>ftrack</b></td><td>Cloud, per-seat</td><td>Quote only</td>
+        <td>The established alternative to ShotGrid, strong in review and notes. Same structural issues for our target segment: per-seat cost and cloud hosting.</td>
+      </tr>
+      <tr>
+        <td><b>Kitsu</b></td><td>Open source, self-host</td><td>Free</td>
+        <td>The most direct philosophical competitor: open source and self-hostable. Genuinely strong and genuinely free, which makes it the hardest competitor to displace on price. Our differentiation is not cost but the tracksheet import path, the depth of the review player, and commercial support.</td>
+      </tr>
+      <tr>
+        <td><b>Autodesk Flow Capture</b></td><td>Cloud</td><td>Quote only</td>
+        <td>Review and dailies rather than full tracking; often deployed alongside a tracking tool rather than instead of one.</td>
+      </tr>
+    </tbody>
+    <caption>Table 5.1 — Direct competitors in production tracking.</caption>
+  </table>
+
+  <h3>5.2 Substitutes and adjacent tools</h3>
+  <table>
+    <thead><tr><th style="width:20%">Product</th><th style="width:18%">Published pricing</th><th>Why studios use it, and where it breaks</th></tr></thead>
+    <tbody>
+      <tr><td><b>Excel / Google Sheets</b></td><td>Included</td><td>The real market leader by installed base. Infinitely flexible, universally understood, zero adoption cost. Breaks on concurrent editing, has no review workflow, no audit trail, and no enforcement of who may change what.</td></tr>
+      <tr><td><b>Frame.io</b></td><td>Free tier; from ~$15/user/mo</td><td>Excellent review and comment experience. Not a production tracker: no shot hierarchy, no task assignment, no pipeline stages.</td></tr>
+      <tr><td><b>monday.com</b></td><td>From ~$9/seat/mo</td><td>Good generic work tracking. No concept of shots, versions, or frame-accurate review.</td></tr>
+      <tr><td><b>Asana</b></td><td>From ~$10.99/user/mo</td><td>As above — project-shaped, not pipeline-shaped.</td></tr>
+      <tr><td><b>Airtable</b></td><td>Free; ~$20/seat/mo</td><td>The common spreadsheet upgrade path. Better structure, still no review pipeline.</td></tr>
+    </tbody>
+    <caption>Table 5.2 — Substitutes. Published rates as advertised; treat as indicative.</caption>
+  </table>
+
+  <h3>5.3 Competitive matrix</h3>
+  <table>
+    <thead><tr><th style="width:28%">Dimension</th><th>Forge</th><th>Flow / ftrack</th><th>Kitsu</th><th>Spreadsheet</th></tr></thead>
+    <tbody>
+      <tr><td>Shot &amp; task hierarchy</td><td class="win">Full</td><td class="win">Full</td><td class="win">Full</td><td class="lose">Manual</td></tr>
+      <tr><td>Frame-accurate review player</td><td class="win">Full</td><td class="win">Full</td><td>Basic</td><td class="lose">None</td></tr>
+      <tr><td>Annotation toolset</td><td class="win">Full</td><td class="win">Full</td><td>Partial</td><td class="lose">None</td></tr>
+      <tr><td>Multi-stage approval chain</td><td class="win">Full</td><td class="win">Full</td><td>Partial</td><td class="lose">None</td></tr>
+      <tr><td>External client review</td><td class="win">Link + code</td><td class="win">Yes</td><td>Limited</td><td class="lose">Email</td></tr>
+      <tr><td>Spreadsheet import of existing tracker</td><td class="win">Format-tolerant</td><td>CSV mapping</td><td>CSV mapping</td><td>n/a</td></tr>
+      <tr><td>Self-hosted, no data egress</td><td class="win">Yes</td><td class="lose">Cloud</td><td class="win">Yes</td><td class="win">Yes</td></tr>
+      <tr><td>Per-seat licence cost</td><td class="win">None</td><td class="lose">Per seat</td><td class="win">None</td><td class="win">None</td></tr>
+      <tr><td>Published pricing</td><td class="win">Yes</td><td class="lose">Quote only</td><td class="win">Free</td><td>n/a</td></tr>
+      <tr><td>DCC plug-in integration</td><td class="lose">Planned</td><td class="win">Extensive</td><td>Partial</td><td class="lose">None</td></tr>
+      <tr><td>Render farm submission</td><td class="lose">Planned</td><td class="win">Yes</td><td>Partial</td><td class="lose">None</td></tr>
+      <tr><td>Vendor maturity &amp; ecosystem</td><td class="lose">New entrant</td><td class="win">Established</td><td>Community</td><td class="win">Universal</td></tr>
+      <tr><td>Commercial support</td><td class="win">Direct</td><td class="win">Enterprise</td><td class="lose">Community</td><td class="lose">None</td></tr>
+    </tbody>
+    <caption>Table 5.3 — Competitive matrix. Rows where Forge is weaker are stated plainly; they drive the roadmap in Section 13 and the objection handling in Section 12.</caption>
+  </table>
+
+  <div class="box warn">
+    <h4>Where we genuinely lose today</h4>
+    <p>Against a studio whose pipeline depends on artists publishing directly from Maya, Houdini, or Nuke into the tracker, Forge does not yet compete — DCC integration is roadmap, not product. Against a studio that wants a fully managed cloud service with no infrastructure of its own, self-hosting is a disadvantage rather than a feature. Both cases should be disqualified early rather than pursued; a lost evaluation costs far more than a declined one.</p>
+  </div>
+</section>
+
+<!-- ================= 6 ICP ================= -->
+<section>
+  <h2><span class="num">6</span> &nbsp;Ideal customer profile and the sweet spot</h2>
+  <p class="lede">The sweet spot is the intersection where our advantage is largest and the incumbent's is weakest — not simply the largest segment.</p>
+
+  <h3>6.1 The profile</h3>
+  <table>
+    <thead><tr><th style="width:28%">Attribute</th><th>Ideal</th></tr></thead>
+    <tbody>
+      <tr><td><b>Size</b></td><td>20–150 seats. Large enough that spreadsheets have failed, small enough to lack a pipeline engineering team.</td></tr>
+      <tr><td><b>Content</b></td><td>Episodic animation or outsourced VFX, with repeating per-episode structure and high shot volume.</td></tr>
+      <tr><td><b>Current tooling</b></td><td>An established spreadsheet tracker they maintain carefully and do not want to abandon.</td></tr>
+      <tr><td><b>Infrastructure</b></td><td>Owns a server or is comfortable running one; already restricts internet access on artist machines.</td></tr>
+      <tr><td><b>Commercial posture</b></td><td>Cost-sensitive; per-seat pricing at headcount is a genuine barrier.</td></tr>
+      <tr><td><b>Trigger event</b></td><td>Won a larger show, headcount jump, a client demanding structured review, or a missed delivery traced to lost feedback.</td></tr>
+      <tr><td><b>Geography</b></td><td>India first, then the wider Asia-Pacific outsourcing corridor.</td></tr>
+    </tbody>
+    <caption>Table 6.1 — Ideal customer profile.</caption>
+  </table>
+
+  <h3>6.2 The buying committee</h3>
+  <p>Four people matter, and each buys for a different reason. Addressing only one of them is the most common way a deal in this category stalls.</p>
+  <table>
+    <thead><tr><th style="width:20%">Role</th><th style="width:26%">What they care about</th><th>What to show them</th></tr></thead>
+    <tbody>
+      <tr><td><b>Studio head / owner</b></td><td>Cost, delivery risk, client perception</td><td>Total cost against per-seat alternatives at their headcount; the client review experience their customers will see.</td></tr>
+      <tr><td><b>Production head</b></td><td>Visibility, whether anything is slipping</td><td>The tracking grid over their own imported data, and the studio-wide dashboard.</td></tr>
+      <tr><td><b>Pipeline TD / IT</b></td><td>Deployment, control, escape routes</td><td>The container topology, the database being ordinary PostgreSQL they can query, the backup path — and an honest answer on DCC integration.</td></tr>
+      <tr><td><b>Department lead</b></td><td>Whether it makes their day faster or slower</td><td>The review player and the approval chain; specifically, that feedback lands on a frame rather than in a chat thread.</td></tr>
+    </tbody>
+    <caption>Table 6.2 — Buying committee and tailored proof.</caption>
+  </table>
+
+  <h3>6.3 Disqualification criteria</h3>
+  <p>Say no early to: facilities above 200 seats with existing incumbent deployments; studios whose pipeline requires DCC publishing today; and any prospect requiring a managed cloud service. Pursuing these consumes the capacity that reference customers need.</p>
+</section>
+
+<!-- ================= 7 VALUE PROP ================= -->
+<section>
+  <h2><span class="num">7</span> &nbsp;Value proposition and messaging hierarchy</h2>
+
+  <h3>7.1 Positioning statement</h3>
+  <div class="box">
+    <p style="font-size:11.6pt; margin:0;">For animation and VFX studios of twenty to a hundred and fifty artists who have outgrown spreadsheet tracking but cannot justify enterprise pipeline software, <b>Forge</b> is a production tracking and review platform that runs entirely on the studio's own infrastructure. Unlike per-seat cloud tools, Forge imports the tracksheet the studio already maintains, costs nothing per artist, and keeps every frame of footage inside the building.</p>
+  </div>
+
+  <h3>7.2 The three pillars</h3>
+  <table>
+    <thead><tr><th style="width:24%">Pillar</th><th style="width:34%">Claim</th><th>Proof</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>Adopt it without abandoning what works</b></td>
+        <td>Your existing tracksheet is the starting point, not an obstacle.</td>
+        <td>Import accepts multi-sheet episodic workbooks and flat single-sheet trackers; matches column names case- and spacing-insensitively; preserves unrecognised columns rather than discarding them. <span class="tag ship">Shipped</span></td>
+      </tr>
+      <tr>
+        <td><b>Own your pipeline and your footage</b></td>
+        <td>Five containers on your hardware. No per-seat licence, no footage leaving the premises.</td>
+        <td>Self-hosted deployment; media served from the studio's own storage under per-tenant path scoping. <span class="tag ship">Shipped</span></td>
+      </tr>
+      <tr>
+        <td><b>Review is the product, not an add-on</b></td>
+        <td>Frame-accurate review with real annotation and a real approval chain.</td>
+        <td>Freehand, arrow, rectangle and text annotation, eraser and colour selection, A/B wipe, onion skinning, ghosting, version comparison, snapshot; artist → lead → production head → producer chain with recorded history; client review by access link and code. <span class="tag ship">Shipped</span></td>
+      </tr>
+    </tbody>
+    <caption>Table 7.1 — Messaging pillars, each with traceable proof.</caption>
+  </table>
+
+  <h3>7.3 Message by audience</h3>
+  <table>
+    <thead><tr><th style="width:22%">Audience</th><th>Lead message</th></tr></thead>
+    <tbody>
+      <tr><td><b>Studio head</b></td><td>"Production tracking that costs the same whether you have twenty artists or a hundred and fifty."</td></tr>
+      <tr><td><b>Production head</b></td><td>"Every shot's status in one grid — imported from the tracksheet you already keep."</td></tr>
+      <tr><td><b>Pipeline TD / IT</b></td><td>"Runs on your hardware. Ordinary PostgreSQL underneath. Your data stays queryable and yours."</td></tr>
+      <tr><td><b>Department lead</b></td><td>"Notes land on the frame, and approvals leave a record."</td></tr>
+      <tr><td><b>Client-facing producer</b></td><td>"Send the client a link and a code. They review in the browser; the feedback comes back into the shot."</td></tr>
+    </tbody>
+    <caption>Table 7.2 — Message hierarchy by buyer role.</caption>
+  </table>
+</section>
+
+<!-- ================= 8 BENEFITS ================= -->
+<section>
+  <h2><span class="num">8</span> &nbsp;Customer benefits and quantified outcomes</h2>
+  <p class="lede">Capabilities translated into outcomes a buyer can put a number against. Where a figure depends on the studio's own situation, the calculation is given rather than a fabricated benchmark.</p>
+
+  <h3>8.1 Direct cost avoidance</h3>
+  <p>The clearest quantified benefit is licence cost that is never incurred. Because incumbent tracking tools are quoted rather than published, the honest way to present this is as a calculation the prospect completes with their own quote:</p>
+  <div class="box">
+    <p style="margin:0;"><b>Annual saving</b> = (quoted per-seat annual rate) × (seats) − (Forge annual support fee)</p>
+    <p style="margin:6pt 0 0 0;">At the indicative substitute rates in Table 5.2 — taking $15 per user per month as a conservative floor drawn from published adjacent tooling — a 60-seat studio spends approximately <b>$10,800 per year</b> on per-seat licensing alone. Forge's proposed support tier for that size (Section 10) is <b>$7,500</b>, before accounting for the fact that Forge's figure does not scale with headcount while the alternative does.</p>
+  </div>
+
+  <h3>8.2 Operational outcomes</h3>
+  <table>
+    <thead><tr><th style="width:30%">Outcome</th><th style="width:34%">Mechanism</th><th>How the studio measures it</th></tr></thead>
+    <tbody>
+      <tr><td><b>Status chasing eliminated</b></td><td>Single tracking grid with live status across every shot, visible studio-wide</td><td>Time spent in status meetings before and after; number of "where is this shot" messages per week</td></tr>
+      <tr><td><b>Feedback stops getting lost</b></td><td>Notes anchored to a frame on a version, retained with the shot permanently</td><td>Count of retakes caused by missed or misread notes</td></tr>
+      <tr><td><b>Approvals become auditable</b></td><td>Multi-stage chain recording who approved what and when</td><td>Time to answer "who signed this off" — from hours of searching to a single screen</td></tr>
+      <tr><td><b>Client review without file transfers</b></td><td>Access link and code to a browser review page</td><td>Turnaround time per client review round</td></tr>
+      <tr><td><b>Attendance and effort visible</b></td><td>Automatic clock-in on sign-in, presence heartbeat, per-task time logs</td><td>Effort recorded per shot; accuracy of the next bid</td></tr>
+      <tr><td><b>Onboarding cost near zero</b></td><td>Existing tracksheet imported in its own format</td><td>Days from purchase to first real shot tracked</td></tr>
+    </tbody>
+    <caption>Table 8.1 — Operational outcomes and their measurement.</caption>
+  </table>
+
+  <div class="box warn">
+    <h4>On benchmark claims</h4>
+    <p>This section deliberately contains no invented percentages — no "40% faster reviews". Until Forge has instrumented before-and-after data from named deployments, such figures would be fabricated, and a prospect who asks for the underlying study would expose it. Once the first reference customers are live, replace the measurement column with their actual results and cite them by name with permission.</p>
+  </div>
+</section>
+
+<!-- ================= 9 SWITCHING ================= -->
+<section>
+  <h2><span class="num">9</span> &nbsp;The switching story</h2>
+  <p class="lede">Migration risk is the single largest objection in this category and deserves its own section, because it is also where Forge's strongest structural advantage sits.</p>
+
+  <h3>9.1 Why studios do not switch</h3>
+  <p>A production tracker holds the live state of every shot in flight. Replacing one mid-show risks losing that state, and no studio will accept that risk during delivery. The result is that evaluations happen but purchases do not — the tool is judged fine and adopted anyway "after this show", which never arrives. Any competitor requiring the studio to re-enter its tracking data, or to conform its data to a prescribed template, is asking for exactly the risk the studio is trying to avoid.</p>
+
+  <h3>9.2 How Forge removes it</h3>
+  <p>Forge's import takes the studio's tracksheet as it already exists. It does not require a prescribed column layout, a specific sheet naming convention, or a preparatory cleanup pass. Specifically:</p>
+  <ul>
+    <li>Multi-sheet episodic workbooks — one sheet per episode — are recognised and unpacked into episodes, sequences, and shots automatically. <span class="tag ship">Shipped</span></li>
+    <li>A single flat sheet containing everything is equally acceptable. <span class="tag ship">Shipped</span></li>
+    <li>Column names are matched tolerantly, so "Shot", "Shot Name", and "Shot Code" all resolve to the same field. <span class="tag ship">Shipped</span></li>
+    <li>Reference tabs that are not shot data — notes, duration tables, conventions — are detected and skipped rather than importing as garbage. <span class="tag ship">Shipped</span></li>
+    <li>Columns the importer does not recognise are preserved against the shot rather than discarded, so nothing in the source sheet is silently lost. <span class="tag ship">Shipped</span></li>
+  </ul>
+
+  <h3>9.3 The proposed evaluation path</h3>
+  <p>This converts the strongest objection into the demonstration itself. The prospect sends their real tracksheet; we import it and show them their own production in the grid within the same conversation. Nothing else in this market answers "will this work with my data" as directly as showing them their data.</p>
+  <table>
+    <thead><tr><th style="width:14%">Stage</th><th style="width:22%">Duration</th><th>Activity</th></tr></thead>
+    <tbody>
+      <tr><td><b>1</b></td><td>Single call</td><td>Prospect supplies a representative tracksheet; import demonstrated live against their own data.</td></tr>
+      <tr><td><b>2</b></td><td>1–2 weeks</td><td>Pilot instance stood up on their hardware or ours, seeded with one live show.</td></tr>
+      <tr><td><b>3</b></td><td>2–4 weeks</td><td>One department runs in parallel with the existing spreadsheet. Spreadsheet remains authoritative.</td></tr>
+      <tr><td><b>4</b></td><td>At show boundary</td><td>Cut over at a natural break — end of episode block or new show start — never mid-delivery.</td></tr>
+    </tbody>
+    <caption>Table 9.1 — Low-risk evaluation and adoption path.</caption>
+  </table>
+</section>
+
+<!-- ================= 10 PRICING ================= -->
+<section>
+  <h2><span class="num">10</span> &nbsp;Pricing and packaging strategy</h2>
+  <p class="lede">Pricing is a positioning instrument here, not just a revenue lever. Because the two leading competitors quote rather than publish, publishing a number is itself a differentiator.</p>
+
+  <h3>10.1 Principles</h3>
+  <ol>
+    <li><b>Never price per seat.</b> It is the incumbent's model and the source of the pain we are selling against. Pricing that penalises a studio for growing contradicts the entire pitch.</li>
+    <li><b>Publish the price.</b> An evaluator who can compute their cost without a sales call reaches the shortlist without our involvement.</li>
+    <li><b>Band by studio size, not usage.</b> Bands are predictable, easy to self-select into, and align cost with ability to pay.</li>
+    <li><b>Charge for support and services, not for the software running.</b> The product is self-hosted; what carries ongoing cost for us is support, upgrades, and customisation.</li>
+  </ol>
+
+  <h3>10.2 Proposed packaging</h3>
+  <table>
+    <thead><tr><th style="width:16%">Tier</th><th style="width:14%">Studio size</th><th class="num" style="width:16%">Annual</th><th>Includes</th></tr></thead>
+    <tbody>
+      <tr><td><b>Studio</b></td><td>Up to 25 seats</td><td class="num">$3,000</td><td>Full platform, self-hosted, email support, minor version upgrades.</td></tr>
+      <tr><td><b>Production</b></td><td>26–75 seats</td><td class="num">$7,500</td><td>Adds priority support, guided installation, and tracksheet import assistance.</td></tr>
+      <tr><td><b>Facility</b></td><td>76–150 seats</td><td class="num">$15,000</td><td>Adds named support contact, quarterly upgrade assistance, and limited customisation hours.</td></tr>
+      <tr><td><b>Enterprise</b></td><td>150+ seats</td><td class="num">Quoted</td><td>Bespoke — deferred until DCC integration ships (Section 13).</td></tr>
+    </tbody>
+    <caption>Table 10.1 — Proposed tiers. Indicative and to be validated against the first ten sales conversations.</caption>
+  </table>
+
+  <h3>10.3 Services attach</h3>
+  <p>In this vertical, services frequently exceed licence revenue and should be planned for deliberately rather than discovered: installation and deployment, tracksheet migration for complex or long-running shows, pipeline customisation and bespoke fields, and integration work as the roadmap items in Section 13 land. Expect a healthy multiple of licence value in year one for larger accounts.</p>
+
+  <h3>10.4 The perpetual option</h3>
+  <p>Some studios — particularly those with capital rather than operational budgets — will prefer a one-time perpetual licence with an optional annual support renewal. Offering this as an alternative rather than the default captures that budget without undermining recurring revenue. Suggested structure: perpetual licence at roughly 2.5× the annual tier, with support renewable at 20% of licence value.</p>
+</section>
+
+<!-- ================= 11 GTM ================= -->
+<section>
+  <h2><span class="num">11</span> &nbsp;Go-to-market motion</h2>
+  <p class="lede">You asked to address the whole market rather than a slice. The way to do that credibly is to segment the whole market, as Section 2 does, then sequence entry so each stage funds and credentials the next. Attempting all segments simultaneously with a small team produces presence in none of them.</p>
+
+  <h3>11.1 Three-phase sequence</h3>
+  <table>
+    <thead><tr><th style="width:16%">Phase</th><th style="width:20%">Target</th><th style="width:22%">Motion</th><th>Exit criterion</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>Phase 1</b><br><span style="color:var(--muted)">Months 0–12</span></td>
+        <td>Indian mid-market episodic and outsourcing studios</td>
+        <td>Founder-led, direct. Import demonstration as the primary sales asset.</td>
+        <td>Eight paying studios and three willing to be named as references.</td>
+      </tr>
+      <tr>
+        <td><b>Phase 2</b><br><span style="color:var(--muted)">Months 12–24</span></td>
+        <td>Wider Asia-Pacific outsourcing corridor</td>
+        <td>Reference-led, plus partner channel through pipeline consultancies and hardware integrators.</td>
+        <td>Thirty customers; a repeatable sale not requiring the founder.</td>
+      </tr>
+      <tr>
+        <td><b>Phase 3</b><br><span style="color:var(--muted)">Months 24–36</span></td>
+        <td>European and North American boutiques</td>
+        <td>Inbound-led on the data-residency and cost arguments; industry events and trade press.</td>
+        <td>Seventy-five customers; first enterprise-tier deployment.</td>
+      </tr>
+    </tbody>
+    <caption>Table 11.1 — Phased go-to-market.</caption>
+  </table>
+
+  <h3>11.2 Channels, in priority order</h3>
+  <ol>
+    <li><b>Direct outreach to studios by name.</b> This market is enumerable — the target studios in India can be listed. Named-account outreach beats broad marketing at this scale.</li>
+    <li><b>Industry events and festivals.</b> Where production heads and pipeline TDs gather, and where a live import demonstration is unusually effective.</li>
+    <li><b>Partner channel.</b> Pipeline consultancies, systems integrators, and hardware vendors already selling into these studios.</li>
+    <li><b>Content marketing on the switching problem.</b> Write for the person searching for a ShotGrid alternative — that search is a purchase intent signal.</li>
+    <li><b>Educational institutions.</b> Animation and VFX schools; graduates carry familiar tools into the studios that hire them. Long payback, low cost, strong compounding.</li>
+  </ol>
+
+  <h3>11.3 First-100-customers plan</h3>
+  <p>Reaching a hundred customers requires roughly two thousand qualified conversations at the conversion rates typical of a considered B2B purchase in a small vertical. That number is reachable precisely because the market is enumerable: a target list of two thousand named studios across India and Asia-Pacific is a research exercise, not a demand-generation gamble.</p>
+
+  <h3>11.4 Key performance indicators</h3>
+  <table>
+    <thead><tr><th style="width:34%">Metric</th><th style="width:22%">Target</th><th>Why it matters</th></tr></thead>
+    <tbody>
+      <tr><td>Tracksheets received for import demo</td><td class="num">15 / month</td><td>The single best leading indicator — it means real evaluation, not curiosity.</td></tr>
+      <tr><td>Demo-to-pilot conversion</td><td class="num">&gt; 30%</td><td>Tests whether the import demonstration actually persuades.</td></tr>
+      <tr><td>Pilot-to-paid conversion</td><td class="num">&gt; 50%</td><td>Tests whether the product survives real production use.</td></tr>
+      <tr><td>Time from purchase to first tracked shot</td><td class="num">&lt; 5 days</td><td>Directly tests the low-switching-cost claim.</td></tr>
+      <tr><td>Annual gross retention</td><td class="num">&gt; 90%</td><td>A self-hosted tool that is not renewed usually means it was not adopted.</td></tr>
+      <tr><td>Services revenue as multiple of licence</td><td class="num">1.5–3×</td><td>Validates the commercial model in Section 10.</td></tr>
+    </tbody>
+    <caption>Table 11.2 — Go-to-market KPIs.</caption>
+  </table>
+</section>
+
+<!-- ================= 12 OBJECTIONS ================= -->
+<section>
+  <h2><span class="num">12</span> &nbsp;Objection handling</h2>
+  <p class="lede">Every serious objection with an honest answer. The dishonest version of this section is worse than none, because the technical evaluator will test it.</p>
+
+  <table>
+    <thead><tr><th style="width:30%">Objection</th><th>Honest response</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>"You're a new vendor. What if you stop developing it?"</b></td>
+        <td>The most legitimate objection on this list. It runs on your hardware, the data is in a standard PostgreSQL database you can query directly, and your footage sits on your own storage — so the failure mode is a product that stops improving, not one that takes your production with it. For larger accounts, offer a source-code escrow arrangement.</td>
+      </tr>
+      <tr>
+        <td><b>"Our artists publish from Maya and Houdini. Does it integrate?"</b></td>
+        <td>Not yet — DCC integration is on the roadmap, not in the product. If direct publishing from the application is a hard requirement today, we are not the right choice yet, and we would rather say so than lose a deployment six weeks in.</td>
+      </tr>
+      <tr>
+        <td><b>"Kitsu is free and also self-hosted."</b></td>
+        <td>True, and it is a good product. The differences worth weighing are the import path for your existing tracksheet, the depth of the review and annotation tooling, and having a commercial party accountable for support and upgrades rather than a community forum.</td>
+      </tr>
+      <tr>
+        <td><b>"We don't want to run our own server."</b></td>
+        <td>Then the self-hosted model is a cost to you rather than a benefit, and a managed cloud tool may suit you better. We can host a managed instance as a service engagement, but that is not where our advantage lies.</td>
+      </tr>
+      <tr>
+        <td><b>"Can it handle our volume?"</b></td>
+        <td>The reference deployment runs over a thousand shots and a comparable number of tasks across sixty-five accounts on a single modest server. Larger figures than that we have not yet proven, and we will say so rather than guess.</td>
+      </tr>
+      <tr>
+        <td><b>"Migration will disrupt our show."</b></td>
+        <td>Which is why the recommended path runs Forge in parallel with your spreadsheet for one department, with the spreadsheet authoritative, and cuts over at a show boundary. See Section 9.3.</td>
+      </tr>
+      <tr>
+        <td><b>"What about support in our timezone?"</b></td>
+        <td>Direct support during Indian business hours, which covers the Asia-Pacific corridor well and Europe partially. North American coverage is a Phase 3 commitment, not a current one.</td>
+      </tr>
+    </tbody>
+    <caption>Table 12.1 — Objections and responses.</caption>
+  </table>
+</section>
+
+<!-- ================= 13 ROADMAP ================= -->
+<section>
+  <h2><span class="num">13</span> &nbsp;Future scope and roadmap</h2>
+  <p class="lede">Forward-looking capability, deliberately quarantined in its own section. Everything here is <span class="tag plan">Planned</span> and must be presented to customers as such — a roadmap sold as a product is the fastest way to lose a reference account.</p>
+
+  <table>
+    <thead><tr><th style="width:26%">Initiative</th><th style="width:14%">Horizon</th><th>Commercial significance</th></tr></thead>
+    <tbody>
+      <tr><td><b>DCC integrations</b><br><span style="color:var(--muted)">Maya, Blender, Nuke, Houdini</span></td><td>Near</td><td>The single largest gap against the incumbent, and the gate to the enterprise tier. Publishing directly from the application into the tracker is the expectation at facility scale.</td></tr>
+      <tr><td><b>Plug-in marketplace</b></td><td>Near</td><td>Already scaffolded in the product behind an administrator gate. Converts customisation demand into a platform rather than bespoke services.</td></tr>
+      <tr><td><b>Render farm submission</b></td><td>Medium</td><td>Closes the second significant functional gap for facility-scale buyers.</td></tr>
+      <tr><td><b>Desktop and mobile shells</b></td><td>Medium</td><td>Scaffolding exists in the codebase. Producers reviewing on a phone is a common request; a desktop shell helps studios that restrict browsers.</td></tr>
+      <tr><td><b>Managed cloud offering</b></td><td>Medium</td><td>Opens the segment explicitly disqualified in Section 6.3, without compromising the self-hosted proposition for those who want it.</td></tr>
+      <tr><td><b>Scheduling and capacity intelligence</b></td><td>Longer</td><td>Uses the effort data the system already collects to forecast delivery risk — a genuine differentiator rather than parity feature.</td></tr>
+      <tr><td><b>Multi-studio federation</b></td><td>Longer</td><td>Aimed squarely at the outsourcing corridor: a lead studio and its vendors sharing shot state without sharing infrastructure.</td></tr>
+    </tbody>
+    <caption>Table 13.1 — Roadmap and its commercial rationale.</caption>
+  </table>
+
+  <div class="box">
+    <h4>Using the roadmap in a sale, correctly</h4>
+    <p>The roadmap's legitimate use is to show direction and seriousness to a prospect who is otherwise convinced, and to justify a multi-year commitment. Its illegitimate use is to close a gap the prospect has identified as a requirement. If a buyer needs DCC publishing to operate, the roadmap is not an answer — Section 6.3 is.</p>
+  </div>
+</section>
+
+<!-- ================= 14 RISKS ================= -->
+<section>
+  <h2><span class="num">14</span> &nbsp;Risks and commercial assumptions</h2>
+
+  <h3>14.1 Assumptions this plan depends on</h3>
+  <ol>
+    <li>Target-size studios are willing to self-host. Section 3 discounts 30% who will not; if the true figure is materially higher, SAM contracts proportionally.</li>
+    <li>The tracksheet import generalises beyond the formats seen so far. It currently handles the reference studio's episodic workbooks and flat sheets; each new prospect's file is a test of that assumption.</li>
+    <li>Studios will pay for a self-hosted tool when a free open-source alternative exists. This is the assumption most in need of early validation — put it to the first ten conversations directly.</li>
+    <li>Support can be delivered from a single timezone in phases 1 and 2.</li>
+  </ol>
+
+  <h3>14.2 Risk register</h3>
+  <table>
+    <thead><tr><th style="width:26%">Risk</th><th style="width:12%">Likelihood</th><th style="width:12%">Impact</th><th>Mitigation</th></tr></thead>
+    <tbody>
+      <tr><td>Autodesk cuts price or launches a lightweight tier</td><td>Medium</td><td>High</td><td>Compete on self-hosting and import rather than price alone; price is the most easily matched advantage.</td></tr>
+      <tr><td>Kitsu closes the review and import gap</td><td>Medium</td><td>High</td><td>Maintain the review player lead; compete on support accountability, which an open-source project structurally cannot match.</td></tr>
+      <tr><td>Import fails on real-world files in the field</td><td>Medium</td><td>High</td><td>Treat every prospect tracksheet as a regression test; widen format tolerance continuously.</td></tr>
+      <tr><td>Support load exceeds a small team</td><td>High</td><td>Medium</td><td>Price support explicitly; invest early in the user documentation set; qualify out poor-fit deployments.</td></tr>
+      <tr><td>Key-person dependency in engineering</td><td>High</td><td>High</td><td>The document set this belongs to is itself the mitigation; maintain the SRS and requirements documents as living records.</td></tr>
+      <tr><td>Enterprise prospects arrive before DCC integration</td><td>Medium</td><td>Medium</td><td>Disqualify openly and stay in contact; a deferred prospect is recoverable, a failed deployment is not.</td></tr>
+    </tbody>
+    <caption>Table 14.1 — Risk register.</caption>
+  </table>
+</section>
+
+<!-- ================= 15 APPENDIX A ================= -->
+<section>
+  <h2><span class="num">15</span> &nbsp;Appendix A — Sizing workings</h2>
+  <p class="lede">Every figure in Section 3, with its derivation, so each assumption can be challenged independently.</p>
+
+  <h3>A.1 Studio count derivation</h3>
+  <p>The published figure of <b>4,000+ VFX studios in India</b> covers studios of all sizes, the large majority of which are below the twenty-seat threshold at which production tracking becomes a genuine need. We take target-size studios (20+ seats) as approximately <b>30%</b> of that base, giving roughly 1,200 for India.</p>
+  <p>Other territories are scaled by relative sector activity rather than counted directly. India represents approximately 1% of the global animation and VFX content market by value ($2.2B of $220.7B) but a considerably larger share by studio count, because Indian studios are on average smaller and more numerous — a consequence of the outsourcing model. The territory estimates in Table 3.1 reflect that asymmetry: Europe and North America have fewer but larger studios, and correspondingly higher average contract value.</p>
+  <div class="box warn">
+    <h4>Confidence</h4>
+    <p>The Indian figure is derived from a published count and is the most reliable line in the table. The other territories are estimates and should be labelled as such in any external use. Before this document is shown outside the company, those four rows should be replaced with counts from a proper industry directory.</p>
+  </div>
+
+  <h3>A.2 Annual value derivation</h3>
+  <p>Average annual value per territory is the weighted midpoint of the tiers in Table 10.1, adjusted for expected size distribution. India skews toward the Studio and Production tiers, hence $7,500; North America and Europe skew toward Production and Facility, hence $12,000–$14,000.</p>
+
+  <h3>A.3 SOM capture-rate rationale</h3>
+  <p>Year-one capture of 0.4% of SAM assumes a founder-led motion with no dedicated sales team, and is deliberately below what a funded team would target. Year three at 3.9% assumes a repeatable motion and partner channel, and remains below the 5–10% share a category leader would hold — appropriate for a new entrant against an established incumbent and a free open-source alternative.</p>
+
+  <h3>A.4 Reconciliation with published sector figures</h3>
+  <table>
+    <thead><tr><th style="width:44%">Figure</th><th class="num">Value</th><th>Use in this document</th></tr></thead>
+    <tbody>
+      <tr><td>Global animation &amp; VFX content market, 2026</td><td class="num">$220.7B</td><td>Context only — not addressable</td></tr>
+      <tr><td>Same, forecast 2031</td><td class="num">$386.3B</td><td>Growth context</td></tr>
+      <tr><td>Sector CAGR, 2026–2031</td><td class="num">11.86%</td><td>Growth context</td></tr>
+      <tr><td>India animation &amp; VFX sector, 2026</td><td class="num">$2.2B</td><td>Territory prioritisation</td></tr>
+      <tr><td>India sector CAGR</td><td class="num">17.5%</td><td>Territory prioritisation</td></tr>
+      <tr><td>Indian VFX studios, all sizes</td><td class="num">4,000+</td><td>Basis of studio-count derivation</td></tr>
+      <tr class="total"><td>Forge tooling TAM (calculated)</td><td class="num">$71.1M</td><td>Addressable market</td></tr>
+    </tbody>
+    <caption>Table A.1 — Reconciliation of published sector figures against the calculated tooling market.</caption>
+  </table>
+</section>
+
+<!-- ================= 16 APPENDIX B ================= -->
+<section>
+  <h2><span class="num">16</span> &nbsp;Appendix B — Sources</h2>
+  <p class="lede">Market data cited in this document, with retrieval date September 2026. Competitor pricing marked "quote only" reflects the absence of published rates at that date, which is itself a finding used in Section 4.3.</p>
+
+  <h4>Market size and growth</h4>
+  <ul class="src">
+    <li>Mordor Intelligence — <i>Animation and VFX Industry Report: Market Analysis, Size &amp; Growth Insights.</i> Global market $220.69B (2026), $386.34B (2031), 11.86% CAGR.</li>
+    <li>India Brand Equity Foundation (IBEF) — <i>India's Animation and VFX segment to reach US$ 2.2 billion by 2026.</i></li>
+    <li>ANI News — <i>India's Animation and VFX segment to reach $2.2 billion by 2026</i> (report coverage). Growth from $1.3B in 2023; 17.5% CAGR; ~70% of revenue from international partnerships.</li>
+    <li>Vitrina — <i>Top VFX Companies In India: Complete Directory &amp; Outsourcing Guide.</i> 4,000+ VFX studios in India as of October 2024.</li>
+    <li>Statista — <i>India: market size of animation and VFX industry.</i></li>
+  </ul>
+
+  <h4>Competitive intelligence</h4>
+  <ul class="src">
+    <li>Storyflow — <i>Autodesk Flow Production Tracking Alternatives: What to Use If ShotGrid Is Too Much.</i> Source for quote-only pricing, alternative pricing table, and the overengineering critique.</li>
+    <li>GetApp, Capterra, Software Advice — Flow Production Tracking listings; pricing not publicly disclosed, quote on request.</li>
+    <li>Published vendor pricing pages for Frame.io, monday.com, Asana, Airtable (rates as advertised, September 2026).</li>
+    <li>Kitsu — open-source project documentation and licensing.</li>
+  </ul>
+
+  <h4>Internal sources</h4>
+  <ul class="src">
+    <li>Forge repository — technology stack, implemented capability, and the Drizzle-to-Prisma migration record.</li>
+    <li>Forge production deployment — operational scale figures (1,065 shots; 1,066 tasks; 65 accounts).</li>
+    <li>SYM-FRG-SRS-001 — Software Requirements Specification (in preparation) for capability traceability.</li>
+  </ul>
+
+  <div class="box">
+    <h4>Before external distribution</h4>
+    <p>Two items in this document require attention before it is shown outside Symbiosys: the four estimated territory studio counts in Table 3.1 should be replaced with directory-sourced figures, and the pricing tiers in Table 10.1 should be validated against the first ten sales conversations. Both are marked in place.</p>
+  </div>
+</section>
+
+</div>

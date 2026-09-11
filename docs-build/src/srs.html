@@ -1,0 +1,1123 @@
+<meta charset="utf-8">
+<title>Forge — Software Requirements Specification</title>
+<style>
+  :root {
+    --ink: #0F161B; --ink-2: #33424E; --muted: #5F6E7B;
+    --hair: #C6CFD6; --hair-soft: #E1E7EB;
+    --accent: #0E7C6B; --accent-soft: #EAF4F1;
+    --warn: #9A5B08; --warn-soft: #FBF2E4;
+    --surface: #F5F8F9;
+    --blue: #3B4C9B; --blue-soft: #ECEEF8;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: Georgia, Cambria, "Times New Roman", serif;
+    font-size: 10.4pt; line-height: 1.55; color: var(--ink);
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .page { padding: 0 14mm; }
+  h1, h2, h3, h4, h5, .sans { font-family: "Segoe UI", Arial, Helvetica, sans-serif; }
+  h1 { font-size: 25pt; line-height: 1.12; letter-spacing: -.4pt; margin: 0 0 10pt; }
+  h2 { font-size: 15pt; line-height: 1.22; margin: 0 0 4pt; padding-bottom: 5pt; border-bottom: 1.6pt solid var(--ink); }
+  h2 .num { color: var(--accent); }
+  h3 { font-size: 11.4pt; margin: 15pt 0 5pt; line-height: 1.3; }
+  h3 .num { color: var(--accent); font-weight: 700; }
+  h4 { font-size: 10pt; margin: 12pt 0 4pt; color: var(--ink-2); }
+  h5 { font-size: 8.2pt; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 11pt 0 4pt; }
+  p { margin: 0 0 7pt; }
+  .lede { font-size: 11.2pt; color: var(--ink-2); margin-bottom: 11pt; }
+  ul, ol { margin: 0 0 8pt; padding-left: 16pt; }
+  li { margin-bottom: 3.5pt; }
+  section { page-break-before: always; padding-top: 2pt; }
+
+  .cover { height: 235mm; display: flex; flex-direction: column; justify-content: space-between; }
+  .cover-top { padding-top: 26mm; }
+  .cover .rule { height: 4pt; background: var(--accent); width: 58mm; margin-bottom: 14mm; }
+  .cover .product { font-family: "Segoe UI", Arial, sans-serif; font-size: 9pt; letter-spacing: .22em; text-transform: uppercase; color: var(--muted); margin-bottom: 6mm; }
+  .cover h1 { font-size: 33pt; letter-spacing: -.9pt; }
+  .cover .sub { font-size: 13pt; color: var(--ink-2); margin-top: 5mm; max-width: 128mm; }
+  .cover-meta { display: grid; grid-template-columns: 1fr 1fr; border-top: 1.4pt solid var(--ink); }
+  .cover-meta div { padding: 7pt 10pt 7pt 0; border-bottom: .5pt solid var(--hair-soft); }
+  .cover-meta dt { font-family: "Segoe UI", Arial, sans-serif; font-size: 7.4pt; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 2pt; }
+  .cover-meta dd { margin: 0; font-family: "Segoe UI", Arial, sans-serif; font-size: 10pt; font-weight: 600; }
+  .classif { display: inline-block; font-family: "Segoe UI", Arial, sans-serif; font-size: 8pt; letter-spacing: .1em; text-transform: uppercase; font-weight: 700; color: #1F4E7A; border: 1.2pt solid #1F4E7A; padding: 3pt 8pt; background: #EAF1F8; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 9pt; margin: 7pt 0 11pt; page-break-inside: avoid; }
+  th, td { text-align: left; padding: 5pt 6.5pt; border-bottom: .5pt solid var(--hair-soft); vertical-align: top; }
+  thead th { font-family: "Segoe UI", Arial, sans-serif; font-size: 7.5pt; letter-spacing: .07em; text-transform: uppercase; color: var(--ink); background: var(--surface); border-bottom: 1pt solid var(--hair); font-weight: 700; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  caption { caption-side: bottom; text-align: left; font-size: 8.1pt; color: var(--muted); padding-top: 4pt; font-family: "Segoe UI", Arial, sans-serif; }
+  td.id { font-family: "Segoe UI", Arial, sans-serif; font-weight: 700; font-size: 8.2pt; white-space: nowrap; color: var(--blue); }
+  td.mono, .mono { font-family: Consolas, "Courier New", monospace; font-size: 8.4pt; }
+
+  .box { border: .7pt solid var(--hair); border-left: 3pt solid var(--accent); background: var(--surface); padding: 8pt 10pt; margin: 9pt 0 11pt; page-break-inside: avoid; }
+  .box.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+  .box.dec { border-left-color: var(--blue); background: var(--blue-soft); }
+  .box p:last-child, .box ul:last-child { margin-bottom: 0; }
+  .box h5 { margin-top: 0; }
+
+  .toc-list { list-style: none; padding: 0; margin: 10pt 0 0; }
+  .toc-list li { display: flex; gap: 8pt; padding: 3.6pt 0; border-bottom: .5pt dotted var(--hair); font-family: "Segoe UI", Arial, sans-serif; font-size: 9.4pt; }
+  .toc-list .s { color: var(--accent); font-weight: 700; width: 26pt; flex: none; }
+  .toc-list .t { flex: 1; }
+  .toc-list li.sub { padding-left: 26pt; font-size: 8.8pt; color: var(--ink-2); border-bottom: none; padding-top: 2pt; padding-bottom: 2pt; }
+
+  .tag { display: inline-block; font-family: "Segoe UI", Arial, sans-serif; font-size: 7pt; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; padding: 1.4pt 4.5pt; border-radius: 2pt; white-space: nowrap; }
+  .tag.h { background: #FBEDED; color: #8A2A2A; border: .5pt solid #8A2A2A; }
+  .tag.m { background: var(--warn-soft); color: var(--warn); border: .5pt solid var(--warn); }
+  .tag.l { background: var(--surface); color: var(--muted); border: .5pt solid var(--hair); }
+
+  /* Deliberately breakable. Several feature blocks are taller than one
+     printable page (4.8 is 1058px against a 957px limit), and Chrome cannot
+     honour page-break-inside:avoid on a block that does not fit -- it
+     overflows into the footer instead. Keeping the heading welded to the
+     block that follows gives the intended result without that failure. */
+  .feat { border-top: 1.4pt solid var(--accent); padding-top: 8pt; margin-top: 14pt; }
+  .feat > h3 { break-after: avoid; page-break-after: avoid; }
+  .feat > p { break-inside: avoid; }
+  .feat-meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; border: .6pt solid var(--hair); margin: 6pt 0 9pt; font-family: "Segoe UI", Arial, sans-serif; }
+  .feat-meta > div { padding: 5pt 8pt; border-right: .6pt solid var(--hair); }
+  .feat-meta > div:last-child { border-right: none; }
+  .feat-meta dt { font-size: 7pt; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 2pt; }
+  .feat-meta dd { margin: 0; font-size: 9pt; font-weight: 600; }
+  figure { margin: 10pt 0 12pt; page-break-inside: avoid; }
+  figure svg { width: 100%; height: auto; display: block; }
+  figcaption { font-family: "Segoe UI", Arial, sans-serif; font-size: 8.1pt; color: var(--muted); padding-top: 5pt; }
+</style>
+
+<div class="page">
+
+<!-- ============ COVER ============ -->
+<div class="cover">
+  <div class="cover-top">
+    <div class="rule"></div>
+    <div class="product">Forge &middot; Production Tracking Platform</div>
+    <h1>Software Requirements Specification</h1>
+    <p class="sub">Structured to ISO/IEC/IEEE 29148:2018. Defines the external interfaces, system features, functional and non-functional requirements, and verification approach for the Forge platform.</p>
+  </div>
+  <div>
+    <p style="margin-bottom:8mm;"><span class="classif">Internal</span></p>
+    <dl class="cover-meta">
+      <div><dt>Prepared for</dt><dd>Symbiosys Technologies</dd></div>
+      <div><dt>Document ID</dt><dd>SYM-FRG-SRS-001</dd></div>
+      <div><dt>Version</dt><dd>1.0 — Draft for review</dd></div>
+      <div><dt>Date</dt><dd>September 2026</dd></div>
+      <div><dt>Standard</dt><dd>ISO/IEC/IEEE 29148:2018</dd></div>
+      <div><dt>Author</dt><dd>Engineering</dd></div>
+    </dl>
+  </div>
+</div>
+
+<!-- ============ DOC CONTROL ============ -->
+<section>
+  <h2><span class="num">0.1</span> &nbsp;Document control</h2>
+  <h3>Revision history</h3>
+  <table>
+    <thead><tr><th style="width:12%">Version</th><th style="width:16%">Date</th><th style="width:22%">Author</th><th>Summary of change</th></tr></thead>
+    <tbody>
+      <tr><td>0.1</td><td>Sep 2026</td><td>Engineering</td><td>Structure established against ISO/IEC/IEEE 29148:2018.</td></tr>
+      <tr><td>1.0</td><td>Sep 2026</td><td>Engineering</td><td>First complete specification: interfaces, 15 system features, non-functional requirements, data model, and verification matrix.</td></tr>
+    </tbody>
+  </table>
+  <h3>Approval</h3>
+  <table>
+    <thead><tr><th style="width:32%">Role</th><th style="width:26%">Name</th><th style="width:22%">Signature</th><th>Date</th></tr></thead>
+    <tbody>
+      <tr><td>Engineering Lead</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+      <tr><td>Quality Assurance</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+      <tr><td>Head of Product</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+    </tbody>
+  </table>
+
+  <div class="box">
+    <h5>Requirement conventions</h5>
+    <p>Requirements use <b>shall</b> for mandatory behaviour, <b>should</b> for recommended behaviour, and <b>may</b> for optional behaviour, per the standard. Each requirement is atomic, uniquely identified, and verifiable by at least one method named in Section 7.</p>
+    <p style="margin-bottom:0;">Priority is recorded as <span class="tag h">High</span>, <span class="tag m">Medium</span> or <span class="tag l">Low</span>. Every requirement traces to a business requirement in SYM-FRG-REQ-001; the matrix is in Appendix C.</p>
+  </div>
+</section>
+
+<!-- ============ TOC ============ -->
+<section>
+  <h2><span class="num">0.2</span> &nbsp;Contents</h2>
+  <ol class="toc-list">
+    <li><span class="s">1</span><span class="t">Introduction</span></li>
+    <li class="sub">1.1 Purpose · 1.2 Scope · 1.3 Definitions · 1.4 References · 1.5 Overview</li>
+    <li><span class="s">2</span><span class="t">Overall description</span></li>
+    <li class="sub">2.1 Product perspective · 2.2 Product functions · 2.3 User classes · 2.4 Operating environment · 2.5 Design constraints · 2.6 User documentation · 2.7 Assumptions and dependencies</li>
+    <li><span class="s">3</span><span class="t">External interface requirements</span></li>
+    <li class="sub">3.1 User interfaces · 3.2 Hardware interfaces · 3.3 Software interfaces · 3.4 Communication interfaces</li>
+    <li><span class="s">4</span><span class="t">System features</span></li>
+    <li class="sub">4.1 Authentication · 4.2 Session management · 4.3 Access control · 4.4 Multi-tenancy · 4.5 Visibility scoping · 4.6 Production structure · 4.7 Tracking grid · 4.8 Spreadsheet import · 4.9 Task management · 4.10 Versioning and media · 4.11 Review player · 4.12 Approval chain · 4.13 Client access · 4.14 Attendance and effort · 4.15 Administration and audit</li>
+    <li><span class="s">5</span><span class="t">Non-functional requirements</span></li>
+    <li class="sub">5.1 Performance · 5.2 Security · 5.3 Reliability and availability · 5.4 Quality attributes · 5.5 Business rules</li>
+    <li><span class="s">6</span><span class="t">Data requirements</span></li>
+    <li><span class="s">7</span><span class="t">Verification</span></li>
+    <li><span class="s">8</span><span class="t">Appendix A — Capability reference</span></li>
+    <li><span class="s">9</span><span class="t">Appendix B — Configuration parameters</span></li>
+    <li><span class="s">10</span><span class="t">Appendix C — Traceability matrix</span></li>
+  </ol>
+</section>
+
+<!-- ============ 1 INTRO ============ -->
+<section>
+  <h2><span class="num">1</span> &nbsp;Introduction</h2>
+
+  <h3><span class="num">1.1</span> Purpose</h3>
+  <p>This document specifies the software requirements for Forge, a production tracking and review platform for animation and visual effects production. It is the engineering document of record: it defines what the software shall do in terms precise enough to design against, test against, and audit.</p>
+  <p>Its intended readers are the engineering team implementing and maintaining the system, quality assurance staff deriving test cases, and any party auditing the system's behaviour against its stated requirements.</p>
+
+  <h3><span class="num">1.2</span> Scope</h3>
+  <p>Forge is a self-hosted web application that manages the production of visual content from initial tracking through departmental work, internal review and approval, to external client delivery. It replaces spreadsheet-based shot tracking and unstructured review feedback with a single system of record.</p>
+  <p>The software covers: identity and access management; the production hierarchy of projects, episodes, sequences, shots and assets; a tracking grid with spreadsheet import; task creation, assignment and progression; version management and media upload; a frame-accurate review player with annotation; a multi-stage approval chain; external client review by access link; attendance and effort recording; and studio administration with audit.</p>
+  <p>The software explicitly does not cover content creation application integration, render farm submission, media transcoding, financial ledger integration, or cross-tenant federation. These exclusions are recorded with rationale in SYM-FRG-REQ-001 Table 4.2.</p>
+
+  <h3><span class="num">1.3</span> Definitions, acronyms and abbreviations</h3>
+  <table>
+    <thead><tr><th style="width:20%">Term</th><th>Definition as used in this specification</th></tr></thead>
+    <tbody>
+      <tr><td><b>Actor</b></td><td>A user or external system that initiates an interaction with the software.</td></tr>
+      <tr><td><b>Asset</b></td><td>A reusable production element tracked in parallel to shots.</td></tr>
+      <tr><td><b>Capability</b></td><td>A named permission, granted to a role, and evaluated per request to authorise an action.</td></tr>
+      <tr><td><b>Client session</b></td><td>An authenticated session established by an external reviewer through an access link, holding no user identity.</td></tr>
+      <tr><td><b>DCC</b></td><td>Digital Content Creation application.</td></tr>
+      <tr><td><b>Episode</b></td><td>An instalment of an episodic production, containing sequences.</td></tr>
+      <tr><td><b>JWT</b></td><td>JSON Web Token, the session token format.</td></tr>
+      <tr><td><b>ORM</b></td><td>Object-Relational Mapper; here, Prisma.</td></tr>
+      <tr><td><b>RBAC</b></td><td>Role-Based Access Control.</td></tr>
+      <tr><td><b>Scope</b></td><td>The subset of records a user may see, resolved as studio-wide, department, or own.</td></tr>
+      <tr><td><b>Sequence</b></td><td>A group of related shots within an episode.</td></tr>
+      <tr><td><b>Shot</b></td><td>The atomic unit of production work: a continuous run of frames.</td></tr>
+      <tr><td><b>Studio-wide role</b></td><td>A role whose visibility scope covers every record in the tenant.</td></tr>
+      <tr><td><b>Tenant</b></td><td>An isolated studio instance; every record belongs to exactly one.</td></tr>
+      <tr><td><b>Token version</b></td><td>An integer in both the session token and the user record; a mismatch invalidates the session.</td></tr>
+      <tr><td><b>Tracksheet</b></td><td>A spreadsheet used by a studio to track shot progress.</td></tr>
+      <tr><td><b>Version</b></td><td>A numbered iteration of deliverable media for a shot or asset.</td></tr>
+    </tbody>
+    <caption>Table 1.1 — Definitions.</caption>
+  </table>
+
+  <h3><span class="num">1.4</span> References</h3>
+  <table>
+    <thead><tr><th style="width:26%">Reference</th><th>Title</th></tr></thead>
+    <tbody>
+      <tr><td>ISO/IEC/IEEE 29148:2018</td><td>Systems and software engineering — Life cycle processes — Requirements engineering</td></tr>
+      <tr><td>SYM-FRG-REQ-001</td><td>Forge — Requirements Document</td></tr>
+      <tr><td>SYM-FRG-USG-001</td><td>Forge — Product Usage &amp; User Guide</td></tr>
+      <tr><td>SYM-FRG-MKT-001</td><td>Forge — Marketing Analysis</td></tr>
+      <tr><td>RFC 9106</td><td>Argon2 Memory-Hard Function for Password Hashing and Proof-of-Work Applications</td></tr>
+      <tr><td>RFC 7519</td><td>JSON Web Token</td></tr>
+    </tbody>
+    <caption>Table 1.2 — Referenced documents and standards.</caption>
+  </table>
+
+  <h3><span class="num">1.5</span> Document overview</h3>
+  <p>Section 2 describes the product in context. Section 3 specifies the external interfaces. Section 4 specifies system features and their functional requirements, and is the largest section. Section 5 specifies non-functional requirements. Section 6 specifies data requirements. Section 7 defines how each requirement class is verified. Appendices provide the capability reference, configuration parameters, and the traceability matrix.</p>
+</section>
+
+<!-- ============ 2 OVERALL ============ -->
+<section>
+  <h2><span class="num">2</span> &nbsp;Overall description</h2>
+
+  <h3><span class="num">2.1</span> Product perspective</h3>
+  <p>Forge is a self-contained system, not a component of a larger product. It replaces a manual process rather than an existing system. It comprises a browser-delivered client application, an HTTP application programming interface, a relational database, an in-memory cache, and a reverse proxy, deployed together as containers on a single host controlled by the studio.</p>
+
+  <figure>
+    <svg viewBox="0 0 720 268" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+      <defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="#5F6E7B"/></marker></defs>
+
+      <rect x="14" y="86" width="104" height="60" rx="3" fill="#fff" stroke="#C6CFD6"/>
+      <text x="66" y="110" font-size="10" text-anchor="middle" fill="#0F161B" font-weight="700">Browser</text>
+      <text x="66" y="124" font-size="8.6" text-anchor="middle" fill="#5F6E7B">React client</text>
+      <text x="66" y="136" font-size="8.6" text-anchor="middle" fill="#5F6E7B">(SPA)</text>
+
+      <rect x="164" y="40" width="516" height="196" rx="4" fill="#F5F8F9" stroke="#0E7C6B" stroke-width="1.3" stroke-dasharray="5 3"/>
+      <text x="174" y="56" font-size="9.4" fill="#0E7C6B" font-weight="700">DOCKER COMPOSE — SINGLE HOST</text>
+
+      <rect x="184" y="86" width="104" height="60" rx="3" fill="#fff" stroke="#C6CFD6"/>
+      <text x="236" y="106" font-size="10" text-anchor="middle" fill="#0F161B" font-weight="700">nginx</text>
+      <text x="236" y="120" font-size="8.6" text-anchor="middle" fill="#5F6E7B">static assets</text>
+      <text x="236" y="132" font-size="8.6" text-anchor="middle" fill="#5F6E7B">reverse proxy</text>
+
+      <rect x="326" y="86" width="112" height="60" rx="3" fill="#0E7C6B"/>
+      <text x="382" y="106" font-size="10" text-anchor="middle" fill="#fff" font-weight="700">API server</text>
+      <text x="382" y="120" font-size="8.6" text-anchor="middle" fill="#CDE8E2">Node / Express</text>
+      <text x="382" y="132" font-size="8.6" text-anchor="middle" fill="#CDE8E2">Prisma client</text>
+
+      <rect x="476" y="60" width="104" height="48" rx="3" fill="#fff" stroke="#C6CFD6"/>
+      <text x="528" y="80" font-size="10" text-anchor="middle" fill="#0F161B" font-weight="700">PostgreSQL</text>
+      <text x="528" y="94" font-size="8.6" text-anchor="middle" fill="#5F6E7B">system of record</text>
+
+      <rect x="476" y="124" width="104" height="48" rx="3" fill="#fff" stroke="#C6CFD6"/>
+      <text x="528" y="144" font-size="10" text-anchor="middle" fill="#0F161B" font-weight="700">Redis</text>
+      <text x="528" y="158" font-size="8.6" text-anchor="middle" fill="#5F6E7B">cache, non-durable</text>
+
+      <rect x="476" y="188" width="104" height="40" rx="3" fill="#fff" stroke="#C6CFD6"/>
+      <text x="528" y="206" font-size="10" text-anchor="middle" fill="#0F161B" font-weight="700">Backup</text>
+      <text x="528" y="219" font-size="8.6" text-anchor="middle" fill="#5F6E7B">scheduled dump</text>
+
+      <rect x="600" y="86" width="70" height="60" rx="3" fill="#fff" stroke="#C6CFD6"/>
+      <text x="635" y="108" font-size="9.4" text-anchor="middle" fill="#0F161B" font-weight="700">Volume</text>
+      <text x="635" y="121" font-size="8.4" text-anchor="middle" fill="#5F6E7B">uploaded</text>
+      <text x="635" y="132" font-size="8.4" text-anchor="middle" fill="#5F6E7B">media</text>
+
+      <line x1="120" y1="116" x2="182" y2="116" stroke="#5F6E7B" stroke-width="1.2" marker-end="url(#a)"/>
+      <text x="151" y="110" font-size="7.8" text-anchor="middle" fill="#5F6E7B">HTTP</text>
+      <line x1="290" y1="116" x2="324" y2="116" stroke="#5F6E7B" stroke-width="1.2" marker-end="url(#a)"/>
+      <text x="307" y="110" font-size="7.8" text-anchor="middle" fill="#5F6E7B">/api</text>
+      <line x1="440" y1="106" x2="474" y2="88" stroke="#5F6E7B" stroke-width="1.2" marker-end="url(#a)"/>
+      <line x1="440" y1="126" x2="474" y2="144" stroke="#5F6E7B" stroke-width="1.2" marker-end="url(#a)"/>
+      <line x1="440" y1="116" x2="598" y2="116" stroke="#5F6E7B" stroke-width="1.2" marker-end="url(#a)"/>
+      <line x1="528" y1="174" x2="528" y2="186" stroke="#5F6E7B" stroke-width="1.2" marker-end="url(#a)"/>
+
+      <text x="382" y="256" font-size="8.8" text-anchor="middle" fill="#5F6E7B">All five services and both persistent volumes reside on studio-controlled hardware.</text>
+    </svg>
+    <figcaption><b>Figure 2.1</b> — Deployment architecture. The API tier is stateless; all durable state is in PostgreSQL and the media volume.</figcaption>
+  </figure>
+
+  <h3><span class="num">2.2</span> Product functions</h3>
+  <p>At summary level the software shall provide: authentication and account lifecycle management; capability-based authorisation with scoped visibility; management of the production hierarchy; a filterable tracking grid with spreadsheet import and export; task lifecycle management; version and media management; frame-accurate review with annotation; a multi-stage approval chain; external client review; attendance and effort recording; notification and messaging; and administration with an auditable change history.</p>
+
+  <h3><span class="num">2.3</span> User classes and characteristics</h3>
+  <table>
+    <thead><tr><th style="width:16%">Class</th><th style="width:15%">Frequency of use</th><th style="width:16%">Technical expertise</th><th>Privilege summary</th></tr></thead>
+    <tbody>
+      <tr><td><b>Artist</b></td><td>Daily, sustained</td><td>Domain expert, non-technical</td><td>Own work only; edit and submit; no assignment or approval authority.</td></tr>
+      <tr><td><b>Lead</b></td><td>Daily</td><td>Domain expert, some technical</td><td>Own department; create, assign, approve at lead stage.</td></tr>
+      <tr><td><b>Production Head</b></td><td>Daily</td><td>Domain expert</td><td>Studio-wide; full production authority plus member administration.</td></tr>
+      <tr><td><b>Producer</b></td><td>Daily</td><td>Domain expert</td><td>Studio-wide; final approval gate; administrative capability.</td></tr>
+      <tr><td><b>Administrator</b></td><td>Occasional</td><td>Technical</td><td>Accounts, roles, licences, integrations, pipeline configuration; no task or review capability.</td></tr>
+      <tr><td><b>External client</b></td><td>Intermittent</td><td>Non-technical</td><td>Only items explicitly shared; comment and review decision.</td></tr>
+    </tbody>
+    <caption>Table 2.1 — User classes.</caption>
+  </table>
+
+  <h3><span class="num">2.4</span> Operating environment</h3>
+  <table>
+    <thead><tr><th style="width:24%">Element</th><th>Requirement</th></tr></thead>
+    <tbody>
+      <tr><td><b>Server operating system</b></td><td>Any operating system supporting Docker Engine and Docker Compose.</td></tr>
+      <tr><td><b>Container runtime</b></td><td>Docker Engine with Compose v2.</td></tr>
+      <tr><td><b>Database</b></td><td>PostgreSQL 15.</td></tr>
+      <tr><td><b>Cache</b></td><td>Redis 7, persistence disabled.</td></tr>
+      <tr><td><b>Application runtime</b></td><td>Node.js 24 within the API container.</td></tr>
+      <tr><td><b>Client</b></td><td>Evergreen desktop browser with HTML5 video and Canvas support.</td></tr>
+      <tr><td><b>Network</b></td><td>Studio local network. Outbound internet not required for core function.</td></tr>
+    </tbody>
+    <caption>Table 2.2 — Operating environment.</caption>
+  </table>
+
+  <h3><span class="num">2.5</span> Design and implementation constraints</h3>
+  <ul>
+    <li><b>CON-1.</b> The system shall be deployable entirely on studio-controlled hardware.</li>
+    <li><b>CON-2.</b> Core function shall not depend on outbound internet access, prohibiting runtime reliance on external content delivery networks or third-party APIs.</li>
+    <li><b>CON-3.</b> All studio traffic may present a single network source address; protective controls shall not treat the studio as one abusive client.</li>
+    <li><b>CON-4.</b> The system holds live production data; schema changes shall be verified against a clone restored from production before deployment.</li>
+    <li><b>CON-5.</b> Verification of any change shall exercise the same network path as real traffic.</li>
+    <li><b>CON-6.</b> The implementation language shall be TypeScript across all tiers.</li>
+    <li><b>CON-7.</b> Database access shall be through the Prisma client; raw SQL is permitted only where the client cannot express the query, and shall be parameterised.</li>
+  </ul>
+
+  <h3><span class="num">2.6</span> User documentation</h3>
+  <p>The software shall be accompanied by SYM-FRG-USG-001, structured so that each role has a self-contained access path covering only the functionality available to that role, plus installation, configuration and troubleshooting material for the deploying administrator.</p>
+
+  <h3><span class="num">2.7</span> Assumptions and dependencies</h3>
+  <p>Assumptions ASM-1 to ASM-6 and dependencies are specified in SYM-FRG-REQ-001 Sections 11.2 and 13, and are incorporated here by reference. The dependency of note for this specification is the SMTP relay: its unavailability shall degrade password recovery and client access-code delivery without affecting any other function.</p>
+</section>
+
+<!-- ============ 3 INTERFACES ============ -->
+<section>
+  <h2><span class="num">3</span> &nbsp;External interface requirements</h2>
+
+  <h3><span class="num">3.1</span> User interfaces</h3>
+  <table>
+    <thead><tr><th style="width:16%">ID</th><th>Requirement</th><th style="width:10%">Pri.</th></tr></thead>
+    <tbody>
+      <tr><td class="id">UI-001</td><td>The client application shall be delivered as a single-page application over HTTP and shall require no installation on the user's workstation.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">UI-002</td><td>On successful authentication the system shall route each user to a landing view determined by their role.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">UI-003</td><td>Navigation shall present only destinations the authenticated user's role is permitted to reach.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">UI-004</td><td>Controls invoking an action the user lacks capability for shall not be rendered.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">UI-005</td><td>Where the absence of a control would be ambiguous, the interface shall state the reason the action is unavailable.</td><td><span class="tag m">Med</span></td></tr>
+      <tr><td class="id">UI-006</td><td>An empty result set shall indicate where related data may be found rather than presenting a terminal state.</td><td><span class="tag m">Med</span></td></tr>
+      <tr><td class="id">UI-007</td><td>The interface shall render correctly in both light and dark presentation.</td><td><span class="tag l">Low</span></td></tr>
+      <tr><td class="id">UI-008</td><td>All interactive controls shall be reachable by keyboard and shall present a visible focus indicator.</td><td><span class="tag m">Med</span></td></tr>
+      <tr><td class="id">UI-009</td><td>The review player shall provide keyboard shortcuts for transport and tool selection.</td><td><span class="tag m">Med</span></td></tr>
+    </tbody>
+    <caption>Table 3.1 — User interface requirements.</caption>
+  </table>
+
+  <h3><span class="num">3.2</span> Hardware interfaces</h3>
+  <p>The software has no direct hardware interface. It requires host storage for the database volume and the media volume, sized in Appendix B. No specialised hardware, dongle or licence device is required.</p>
+
+  <h3><span class="num">3.3</span> Software interfaces</h3>
+  <table>
+    <thead><tr><th style="width:16%">ID</th><th>Requirement</th><th style="width:10%">Pri.</th></tr></thead>
+    <tbody>
+      <tr><td class="id">SI-001</td><td>The API shall persist all durable state to PostgreSQL 15 through the Prisma client.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SI-002</td><td>The API shall use Redis for authorisation caching, rate-limit counters and presence throttling, and shall treat all Redis contents as reconstructible.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SI-003</td><td>The API shall deliver electronic mail through an SMTP relay configured by environment variable.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SI-004</td><td>Schema migrations shall be applied by the migration runner at API container start, and shall be idempotent.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SI-005</td><td>The system may export error and performance telemetry to an external monitoring service; its absence shall not affect function.</td><td><span class="tag l">Low</span></td></tr>
+    </tbody>
+    <caption>Table 3.2 — Software interface requirements.</caption>
+  </table>
+
+  <h3><span class="num">3.4</span> Communication interfaces</h3>
+  <table>
+    <thead><tr><th style="width:16%">ID</th><th>Requirement</th><th style="width:10%">Pri.</th></tr></thead>
+    <tbody>
+      <tr><td class="id">CI-001</td><td>Client-to-server communication shall use HTTP with JSON request and response bodies, except file upload which shall use multipart form encoding.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">CI-002</td><td>The session token shall be transmitted in an HTTP cookie marked HttpOnly and SameSite=Lax.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">CI-003</td><td>The session cookie shall be marked Secure when the deployment is configured for transport encryption.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">CI-004</td><td>The API shall be reachable only through the reverse proxy, which shall forward the originating client address.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">CI-005</td><td>The API shall trust exactly one proxy hop when resolving the client address, so that a client cannot forge its apparent origin.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">CI-006</td><td>Media responses shall support HTTP range requests to permit seeking without full download.</td><td><span class="tag h">High</span></td></tr>
+    </tbody>
+    <caption>Table 3.3 — Communication interface requirements.</caption>
+  </table>
+
+  <div class="box warn">
+    <h5>Note on CI-005</h5>
+    <p>The number of trusted proxy hops is security-relevant. Trusting more hops than exist allows a client to inject a forged forwarded-address header and defeat address-based rate limiting; trusting fewer collapses every client onto the proxy's own address. The deployment has exactly one proxy, and the configuration shall state one.</p>
+  </div>
+</section>
+
+<!-- ============ 4 FEATURES ============ -->
+<section>
+  <h2><span class="num">4</span> &nbsp;System features</h2>
+  <p class="lede">Fifteen features, each with a description, a priority, its stimulus and response behaviour, and its functional requirements. Requirement identifiers correspond to those in SYM-FRG-REQ-001 Section 8 where a direct counterpart exists.</p>
+
+  <!-- 4.1 -->
+  <div class="feat">
+    <h3><span class="num">4.1</span> Authentication</h3>
+    <dl class="feat-meta">
+      <div><dt>Priority</dt><dd>High</dd></div>
+      <div><dt>Traces to</dt><dd>BR-012</dd></div>
+      <div><dt>Actors</dt><dd>All internal users</dd></div>
+    </dl>
+    <p><b>Description.</b> Establishes and verifies user identity, and manages the credential lifecycle including self-registration and recovery.</p>
+    <p><b>Stimulus and response.</b> A user submits an email address and password; the system verifies the credential and, on success, establishes a session and returns the user's identity, role and capability set. On failure the system returns an indistinguishable error regardless of whether the account exists.</p>
+    <table>
+      <thead><tr><th style="width:17%">ID</th><th>Requirement</th><th style="width:10%">Pri.</th></tr></thead>
+      <tbody>
+        <tr><td class="id">SRS-AUTH-001</td><td>The system shall authenticate a user by email address and password.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-AUTH-002</td><td>The system shall store passwords only as Argon2id hashes and shall never store or log a plaintext password.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-AUTH-003</td><td>On authentication failure the system shall return a message that does not distinguish an unknown account from an incorrect password.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-AUTH-004</td><td>When the submitted email address matches no account, the system shall perform a hash verification against a decoy value so that response time does not disclose account existence.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-AUTH-005</td><td>The system shall refuse authentication to an account whose status is not active, and shall state that the account is deactivated.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-AUTH-006</td><td>The system shall permit an unauthenticated visitor to register an account, collecting name, email address, password, department and a requested role.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-AUTH-006a</td><td>The system shall provide an unauthenticated endpoint listing the departments and role names available at registration, rate limited on the registration budget.</td><td><span class="tag m">Med</span></td></tr>
+        <tr><td class="id">SRS-AUTH-006b</td><td>A self-selected department shall be validated as belonging to the registering tenant before it is stored.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-AUTH-006c</td><td>The system shall create every self-registered account at the least-privilege role, irrespective of the role requested.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-AUTH-006d</td><td>Where the requested role carries more authority than the least-privilege role, the system shall record the request against the account for an administrator to decide.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-AUTH-006e</td><td>An unrecognised requested role shall be discarded without failing the registration, so the field cannot be used to probe which roles exist.</td><td><span class="tag m">Med</span></td></tr>
+        <tr><td class="id">SRS-AUTH-006f</td><td>A pending role request shall be visible only to actors whose visibility scope is studio-wide.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-AUTH-006g</td><td>An administrator setting a user's role shall clear any pending role request on that account.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-AUTH-007</td><td>The system shall respond to a registration attempt for an already-registered address with the same message as a successful registration.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-AUTH-008</td><td>The system shall permit a user to request a password reset by email address.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-AUTH-009</td><td>The system shall store password reset tokens only as SHA-256 hashes.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-AUTH-010</td><td>A password reset token shall be single-use and shall expire 30 minutes after issue.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-AUTH-011</td><td>Consuming a password reset token shall invalidate all existing sessions for that user.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-AUTH-012</td><td>The system shall permit an authenticated user to change their own password on presentation of the current password.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-AUTH-013</td><td>A successful password change shall invalidate all other sessions for that user.</td><td><span class="tag h">High</span></td></tr>
+      </tbody>
+      <caption>Table 4.1 — Authentication requirements.</caption>
+    </table>
+    <div class="box warn">
+      <h5>Rationale for SRS-AUTH-006c</h5>
+      <p style="margin-bottom:0;">Registration is reachable by anyone who can load the sign-in page. If the role field were honoured as submitted, that person could grant themselves studio-wide authority by choosing it from a dropdown — the most direct privilege escalation the system could offer. Separating the request from the grant keeps onboarding self-service without making authority self-service: the new starter can sign in and work immediately, and the only thing that waits on an administrator is the elevation itself.</p>
+    </div>
+  </div>
+
+  <!-- 4.2 -->
+  <div class="feat">
+    <h3><span class="num">4.2</span> Session management</h3>
+    <dl class="feat-meta">
+      <div><dt>Priority</dt><dd>High</dd></div>
+      <div><dt>Traces to</dt><dd>BR-007</dd></div>
+      <div><dt>Actors</dt><dd>All users</dd></div>
+    </dl>
+    <p><b>Description.</b> Maintains authenticated state across requests and provides server-side revocation of a stateless token.</p>
+    <table>
+      <thead><tr><th style="width:17%">ID</th><th>Requirement</th><th style="width:10%">Pri.</th></tr></thead>
+      <tbody>
+        <tr><td class="id">SRS-SESS-001</td><td>The system shall represent a session as a signed JWT conveyed in an HttpOnly cookie.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-SESS-002</td><td>A session token shall expire 7 days after issue.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-SESS-003</td><td>The session token shall carry the tenant identifier, user identifier, role identifier, department identifier and token version.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-SESS-004</td><td>The system shall reject any request whose token version does not equal the current token version of the referenced user.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-SESS-005</td><td>The system shall reject any request whose referenced user is not active.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-SESS-006</td><td>The system shall increment a user's token version on logout, password change, password reset, role change and deactivation.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-SESS-007</td><td>Session validity data may be cached for no longer than 300 seconds, and the cache entry shall be deleted when the token version is incremented.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-SESS-008</td><td>If session validity cannot be determined, the system shall reject the request.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-SESS-009</td><td>An active session shall survive loss of the cache without requiring re-authentication.</td><td><span class="tag h">High</span></td></tr>
+      </tbody>
+      <caption>Table 4.2 — Session management requirements. SRS-SESS-008 and SRS-SESS-009 together specify fail-closed validity with fail-soft performance.</caption>
+    </table>
+    <div class="box dec">
+      <h5>Design note</h5>
+      <p style="margin-bottom:0;">SRS-SESS-004 is what makes a stateless token revocable. Without it, logout would clear only the browser's copy of a token that remains valid for its full seven-day life — a token captured from a shared workstation would continue to work after the user believed they had signed out.</p>
+    </div>
+  </div>
+
+  <!-- 4.3 -->
+  <div class="feat">
+    <h3><span class="num">4.3</span> Access control</h3>
+    <dl class="feat-meta">
+      <div><dt>Priority</dt><dd>High</dd></div>
+      <div><dt>Traces to</dt><dd>BR-007, BR-011</dd></div>
+      <div><dt>Actors</dt><dd>All users</dd></div>
+    </dl>
+    <p><b>Description.</b> Authorises each action against a named capability granted to the actor's role.</p>
+    <table>
+      <thead><tr><th style="width:17%">ID</th><th>Requirement</th><th style="width:10%">Pri.</th></tr></thead>
+      <tbody>
+        <tr><td class="id">SRS-RBAC-001</td><td>The system shall evaluate authorisation against a named capability held by the actor's role, retrieved from persistent storage.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-RBAC-002</td><td>The system shall not authorise any action on the basis of a hard-coded role name comparison.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-RBAC-003</td><td>The system shall enforce authorisation on the server for every request, independently of any client-side concealment.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-RBAC-004</td><td>The system shall return HTTP 403 with no resource detail when an authenticated actor lacks the required capability.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-RBAC-005</td><td>The administrator role shall hold none of: create_tasks, edit_tasks, assign_tasks, delete_tasks, submit_reviews, approve_reviews.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-RBAC-006</td><td>The system shall permit an authorised administrator to modify capability grants at runtime without redeployment.</td><td><span class="tag m">Med</span></td></tr>
+        <tr><td class="id">SRS-RBAC-007</td><td>A capability change shall take effect on the affected users' next request.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-RBAC-008</td><td>The system shall refuse navigation to an application route not permitted to the actor's role.</td><td><span class="tag h">High</span></td></tr>
+      </tbody>
+      <caption>Table 4.3 — Access control requirements. The complete capability reference is Appendix A.</caption>
+    </table>
+  </div>
+
+  <!-- 4.4 -->
+  <div class="feat">
+    <h3><span class="num">4.4</span> Multi-tenancy and isolation</h3>
+    <dl class="feat-meta">
+      <div><dt>Priority</dt><dd>High</dd></div>
+      <div><dt>Traces to</dt><dd>BR-007</dd></div>
+      <div><dt>Actors</dt><dd>System</dd></div>
+    </dl>
+    <table>
+      <thead><tr><th style="width:17%">ID</th><th>Requirement</th><th style="width:10%">Pri.</th></tr></thead>
+      <tbody>
+        <tr><td class="id">SRS-TEN-001</td><td>Every production record shall carry a tenant identifier.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-TEN-002</td><td>Every query shall be constrained by the tenant identifier of the requesting session.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-TEN-003</td><td>A request for a record belonging to another tenant shall be answered as not found, not as forbidden.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-TEN-004</td><td>File retrieval paths shall include the tenant identifier and shall refuse a mismatch.</td><td><span class="tag h">High</span></td></tr>
+      </tbody>
+      <caption>Table 4.4 — Tenancy requirements. SRS-TEN-003 prevents cross-tenant existence disclosure.</caption>
+    </table>
+  </div>
+
+  <!-- 4.5 -->
+  <div class="feat">
+    <h3><span class="num">4.5</span> Visibility scoping</h3>
+    <dl class="feat-meta">
+      <div><dt>Priority</dt><dd>High</dd></div>
+      <div><dt>Traces to</dt><dd>BR-007</dd></div>
+      <div><dt>Actors</dt><dd>All internal users</dd></div>
+    </dl>
+    <p><b>Description.</b> Determines, within a tenant, which records an actor may see. Distinct from capability: capability governs what kind of action is permitted, scope governs which records it may be applied to.</p>
+    <table>
+      <thead><tr><th style="width:17%">ID</th><th>Requirement</th><th style="width:10%">Pri.</th></tr></thead>
+      <tbody>
+        <tr><td class="id">SRS-SCP-001</td><td>The system shall resolve an actor's visibility scope as one of: all, department, or own.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-SCP-002</td><td>Roles designated studio-wide shall resolve to scope "all".</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-SCP-003</td><td>A lead shall resolve to scope "department", limited to their assigned department.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-SCP-004</td><td>An artist shall resolve to scope "own".</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-SCP-005</td><td>Holding a capability shall not extend an actor's scope; an actor may only act on records within scope.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-SCP-006</td><td>Personal data attached to a user record, including contact address and attendance times, shall be returned only to actors with a supervisory relationship or to the subject.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-SCP-007</td><td>A client session shall resolve to a scope containing only records explicitly shared with its access link.</td><td><span class="tag h">High</span></td></tr>
+      </tbody>
+      <caption>Table 4.5 — Visibility scoping requirements.</caption>
+    </table>
+    <div class="box warn">
+      <h5>Note on SRS-SCP-005</h5>
+      <p style="margin-bottom:0;">Capability and scope must both be checked. Holding edit_tasks states what kind of change an actor may make, not which tasks they may make it to; without an independent scope check an artist holding edit_tasks could modify any task in the tenant, including work in departments they cannot list.</p>
+    </div>
+  </div>
+
+  <!-- 4.6 -->
+  <div class="feat">
+    <h3><span class="num">4.6</span> Production structure</h3>
+    <dl class="feat-meta">
+      <div><dt>Priority</dt><dd>High</dd></div>
+      <div><dt>Traces to</dt><dd>BR-001</dd></div>
+      <div><dt>Actors</dt><dd>Production management</dd></div>
+    </dl>
+    <table>
+      <thead><tr><th style="width:17%">ID</th><th>Requirement</th><th style="width:10%">Pri.</th></tr></thead>
+      <tbody>
+        <tr><td class="id">SRS-STR-001</td><td>The system shall represent projects, and within a project, episodes, sequences and shots in a strict hierarchy.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-STR-002</td><td>The system shall represent assets as first-class records parallel to shots.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-STR-003</td><td>The system shall represent departments with an ordered pipeline position.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-STR-004</td><td>Deleting a parent record shall cascade to its children or be refused; orphaned children shall not result.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-STR-005</td><td>Shot identifiers shall be unique within a project.</td><td><span class="tag h">High</span></td></tr>
+      </tbody>
+      <caption>Table 4.6 — Production structure requirements.</caption>
+    </table>
+  </div>
+
+  <!-- 4.7 -->
+  <div class="feat">
+    <h3><span class="num">4.7</span> Tracking grid</h3>
+    <dl class="feat-meta">
+      <div><dt>Priority</dt><dd>High</dd></div>
+      <div><dt>Traces to</dt><dd>BR-001</dd></div>
+      <div><dt>Actors</dt><dd>Leads, production management</dd></div>
+    </dl>
+    <table>
+      <thead><tr><th style="width:17%">ID</th><th>Requirement</th><th style="width:10%">Pri.</th></tr></thead>
+      <tbody>
+        <tr><td class="id">SRS-GRD-001</td><td>The system shall present a tabular view of shots showing project, episode, sequence, shot, assignee, status, version, and review states.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-GRD-002</td><td>The grid shall be filterable by project, episode, sequence, artist, position and department.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-GRD-003</td><td>The grid shall permit in-place editing of status and review state by actors holding edit capability.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-GRD-004</td><td>The grid shall present only records within the actor's visibility scope.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-GRD-005</td><td>The system shall permit a grid configuration to be saved and recalled as a named view.</td><td><span class="tag m">Med</span></td></tr>
+        <tr><td class="id">SRS-GRD-006</td><td>The system shall export the current grid view as CSV.</td><td><span class="tag m">Med</span></td></tr>
+        <tr><td class="id">SRS-GRD-007</td><td>Pending in-place edits shall be committed explicitly and shall be discardable before commit.</td><td><span class="tag m">Med</span></td></tr>
+      </tbody>
+      <caption>Table 4.7 — Tracking grid requirements.</caption>
+    </table>
+  </div>
+
+  <!-- 4.8 -->
+  <div class="feat">
+    <h3><span class="num">4.8</span> Spreadsheet import</h3>
+    <dl class="feat-meta">
+      <div><dt>Priority</dt><dd>High</dd></div>
+      <div><dt>Traces to</dt><dd>BR-004</dd></div>
+      <div><dt>Actors</dt><dd>Production management</dd></div>
+    </dl>
+    <p><b>Description.</b> Ingests an existing studio tracksheet without requiring the studio to reformat it. Its governing principle is tolerance: accept what is given, and never discard what is not understood.</p>
+    <p><b>Stimulus and response.</b> An authorised user selects a project and supplies a workbook. The system parses each sheet, creates or reuses episodes, sequences and shots, creates a task per row, and reports the outcome of every row.</p>
+    <table>
+      <thead><tr><th style="width:17%">ID</th><th>Requirement</th><th style="width:10%">Pri.</th></tr></thead>
+      <tbody>
+        <tr><td class="id">SRS-IMP-001</td><td>The system shall accept workbooks in .xlsx, .xls and .csv formats.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-IMP-002</td><td>Where a sheet name matches the pattern for an episode designation, the system shall derive the episode from the sheet name.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-IMP-003</td><td>Where no sheet name matches that pattern, the system shall import any sheet containing recognisable shot rows under a default episode.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-IMP-004</td><td>The system shall skip a sheet containing no recognisable shot column, and shall not create records from it.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-IMP-005</td><td>Column matching shall be insensitive to case, whitespace, underscores and hyphens, and shall accept a defined set of synonyms per field.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-IMP-006</td><td>The system shall preserve every non-empty column it does not map to a known field, recorded against the created task.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-IMP-007</td><td>The system shall limit the parsed row range to a bounded maximum irrespective of the range the sheet declares.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-IMP-008</td><td>The system shall parse both slash-separated and eight-digit day-month-year date forms, and shall record no date rather than an incorrect one where a value cannot be confidently parsed.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-IMP-009</td><td>The system shall attempt to match a named artist to an existing user by whole-word comparison of all name parts.</td><td><span class="tag m">Med</span></td></tr>
+        <tr><td class="id">SRS-IMP-010</td><td>The system shall report the outcome of each row as created, updated or skipped, with a reason for each skip.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-IMP-011</td><td>Where no shot row is found anywhere in the workbook, the system shall report this as a failure and shall state what was expected.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-IMP-012</td><td>Import shall be idempotent with respect to shots: re-importing a workbook shall reuse existing shots rather than duplicating them.</td><td><span class="tag h">High</span></td></tr>
+      </tbody>
+      <caption>Table 4.8 — Import requirements.</caption>
+    </table>
+    <div class="box warn">
+      <h5>Rationale for SRS-IMP-007</h5>
+      <p style="margin-bottom:0;">A real production tracksheet was observed declaring a range extending to the spreadsheet format's maximum row count, because a single stray value existed at that row. Parsing the declared range materialised approximately one million mostly-empty row objects and took over thirty seconds, which presents as a hung application. The bound is a correctness requirement, not an optimisation.</p>
+    </div>
+    <div class="box warn">
+      <h5>Rationale for SRS-IMP-011</h5>
+      <p style="margin-bottom:0;">Reporting "0 of 0 rows imported" as a success is indistinguishable from a silent failure to the user. The system shall state that no shot column was recognised and name the headers it looks for.</p>
+    </div>
+  </div>
+
+  <!-- 4.9 -->
+  <div class="feat">
+    <h3><span class="num">4.9</span> Task management</h3>
+    <dl class="feat-meta">
+      <div><dt>Priority</dt><dd>High</dd></div>
+      <div><dt>Traces to</dt><dd>BR-001, BR-011</dd></div>
+      <div><dt>Actors</dt><dd>All internal users</dd></div>
+    </dl>
+    <table>
+      <thead><tr><th style="width:17%">ID</th><th>Requirement</th><th style="width:10%">Pri.</th></tr></thead>
+      <tbody>
+        <tr><td class="id">SRS-TSK-001</td><td>An actor holding create_tasks shall create a task against a shot or asset.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-TSK-002</td><td>Changing a task's assignee shall require assign_tasks; changing any other field shall require edit_tasks.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-TSK-003</td><td>An actor may assign an unassigned task to themselves without holding assign_tasks; this exemption shall apply only where the task is currently unassigned and the assignee set is the actor.</td><td><span class="tag m">Med</span></td></tr>
+        <tr><td class="id">SRS-TSK-004</td><td>A task modification shall be refused where the task lies outside the actor's visibility scope, irrespective of capability.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-TSK-005</td><td>The system shall validate that a nominated assignee belongs to the same tenant.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-TSK-006</td><td>The system shall permit any actor who can view a task to post a comment on it, without requiring edit_tasks.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-TSK-007</td><td>A client session shall not post task comments.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-TSK-008</td><td>The system shall support checklist items, file attachments and inter-task dependencies.</td><td><span class="tag m">Med</span></td></tr>
+        <tr><td class="id">SRS-TSK-009</td><td>The system shall present tasks in both list and board arrangements.</td><td><span class="tag m">Med</span></td></tr>
+        <tr><td class="id">SRS-TSK-010</td><td>On approval, the system shall offer handoff of the task to the next department in pipeline order.</td><td><span class="tag m">Med</span></td></tr>
+      </tbody>
+      <caption>Table 4.9 — Task management requirements.</caption>
+    </table>
+    <div class="box dec">
+      <h5>Rationale for SRS-TSK-006</h5>
+      <p style="margin-bottom:0;">Commenting is an oversight action, not production work. Requiring edit_tasks to comment would prevent the administrator role — which by SRS-RBAC-005 holds no task capability — from asking a question about work it is responsible for monitoring. Visibility is the correct gate; capability is not.</p>
+    </div>
+  </div>
+
+  <!-- 4.10 -->
+  <div class="feat">
+    <h3><span class="num">4.10</span> Versioning and media</h3>
+    <dl class="feat-meta">
+      <div><dt>Priority</dt><dd>High</dd></div>
+      <div><dt>Traces to</dt><dd>BR-002, BR-005</dd></div>
+      <div><dt>Actors</dt><dd>Artists, leads</dd></div>
+    </dl>
+    <table>
+      <thead><tr><th style="width:17%">ID</th><th>Requirement</th><th style="width:10%">Pri.</th></tr></thead>
+      <tbody>
+        <tr><td class="id">SRS-VER-001</td><td>The system shall record versions against a shot or asset, each with an ordinal and a review status.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-VER-002</td><td>Media upload shall require submit_reviews.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-VER-003</td><td>The system shall accept video uploads of MP4, WebM, QuickTime and AVI types, determined by declared media type, and shall reject all others.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-VER-004</td><td>Video uploads shall be limited to 500 MB; general file attachments shall be limited to 200 MB.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-VER-005</td><td>Uploaded files shall be stored under a generated identifier, never under the name supplied by the client.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-VER-006</td><td>Uploaded media shall be written to a storage volume that persists independently of container lifecycle.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-VER-007</td><td>Video shall be served with its true media type and shall support range requests.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-VER-008</td><td>Non-video attachments shall be served with a generic binary media type, with content sniffing disabled and a disposition forcing download.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-VER-009</td><td>Uploaded media shall be associated with the version record so that it is visible to every actor who can view that version, not only to the uploader.</td><td><span class="tag h">High</span></td></tr>
+      </tbody>
+      <caption>Table 4.10 — Versioning and media requirements.</caption>
+    </table>
+    <div class="box warn">
+      <h5>Rationale for SRS-VER-008</h5>
+      <p style="margin-bottom:0;">An uploaded HTML or SVG document served inline with its natural media type would execute as a same-origin page with access to the session cookie. Because attachments share an origin with the application, the client-declared type is never trusted to determine how a response is rendered. Video is the deliberate exception under SRS-VER-003, where the accepted type set is restricted at write time.</p>
+    </div>
+  </div>
+
+  <!-- 4.11 -->
+  <div class="feat">
+    <h3><span class="num">4.11</span> Review player</h3>
+    <dl class="feat-meta">
+      <div><dt>Priority</dt><dd>High</dd></div>
+      <div><dt>Traces to</dt><dd>BR-002</dd></div>
+      <div><dt>Actors</dt><dd>Artists, leads, production management, clients</dd></div>
+    </dl>
+    <p><b>Description.</b> The frame-accurate playback and annotation surface where review actually happens.</p>
+    <table>
+      <thead><tr><th style="width:17%">ID</th><th>Requirement</th><th style="width:10%">Pri.</th></tr></thead>
+      <tbody>
+        <tr><td class="id">SRS-PLR-001</td><td>The player shall provide play, pause, step-forward and step-backward transport, and shall display the current frame and total frame count.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-PLR-002</td><td>The player shall permit seeking to an arbitrary frame.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-PLR-003</td><td>The player shall provide freehand, arrow, rectangle and text annotation tools.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-PLR-004</td><td>The player shall provide a selection tool and an eraser that removes only the acting user's own annotations.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-PLR-005</td><td>The player shall provide a colour selection of at least six values applied to subsequently created annotations.</td><td><span class="tag m">Med</span></td></tr>
+        <tr><td class="id">SRS-PLR-006</td><td>Annotations shall be stored against a specific version and frame and shall persist across sessions.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-PLR-007</td><td>The player shall provide an A/B wipe comparing two versions across a draggable divider.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-PLR-008</td><td>The player shall provide onion skinning displaying adjacent frames semi-transparently.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-PLR-009</td><td>The player shall provide ghosting and side-by-side version comparison.</td><td><span class="tag m">Med</span></td></tr>
+        <tr><td class="id">SRS-PLR-010</td><td>The player shall capture the current frame including annotations to the system clipboard.</td><td><span class="tag l">Low</span></td></tr>
+        <tr><td class="id">SRS-PLR-011</td><td>Comments posted from the player shall record the frame at which they were made and shall permit navigation back to that frame.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-PLR-012</td><td>The player shall provide a read-only mode in which no annotation or modification is possible.</td><td><span class="tag m">Med</span></td></tr>
+        <tr><td class="id">SRS-PLR-013</td><td>The system shall provide a presentation mode in which one presenter's frame position is followed by other viewers of the same version.</td><td><span class="tag l">Low</span></td></tr>
+        <tr><td class="id">SRS-PLR-014</td><td>A viewer in a presenter-led session shall be prevented from altering playback position or annotations.</td><td><span class="tag m">Med</span></td></tr>
+        <tr><td class="id">SRS-PLR-015</td><td>Where no media has been uploaded for a version, the player shall state this and, for actors holding submit_reviews, offer upload.</td><td><span class="tag m">Med</span></td></tr>
+        <tr><td class="id">SRS-PLR-016</td><td>An actor lacking submit_reviews shall be shown the reason they cannot post feedback rather than a control that fails on use.</td><td><span class="tag m">Med</span></td></tr>
+      </tbody>
+      <caption>Table 4.11 — Review player requirements.</caption>
+    </table>
+  </div>
+
+  <!-- 4.12 -->
+  <div class="feat">
+    <h3><span class="num">4.12</span> Approval chain</h3>
+    <dl class="feat-meta">
+      <div><dt>Priority</dt><dd>High</dd></div>
+      <div><dt>Traces to</dt><dd>BR-003</dd></div>
+      <div><dt>Actors</dt><dd>Artists, leads, production management</dd></div>
+    </dl>
+    <p><b>Description.</b> The staged progression of work from artist submission to final approval, with a permanent record of each decision. The state model is specified in SYM-FRG-REQ-001 Figure 7.3.</p>
+    <table>
+      <thead><tr><th style="width:17%">ID</th><th>Requirement</th><th style="width:10%">Pri.</th></tr></thead>
+      <tbody>
+        <tr><td class="id">SRS-APR-001</td><td>The system shall support the stages: not started, in progress, lead review, production review, approved.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-APR-002</td><td>Advancing a task to production review shall require the actor to hold departmental leadership authority for that task's department.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-APR-003</td><td>Advancing a task to approved shall require the actor to hold production management authority.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-APR-004</td><td>Stage-advancing authority shall be enforced on the server; the interface shall not be the only gate.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-APR-005</td><td>Every stage transition shall create an immutable approval event recording actor, action, timestamp and subject version.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-APR-006</td><td>A rejection or change request shall return the task to in progress and shall record the reason.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-APR-007</td><td>The system shall present a review queue distinguishing items awaiting the actor from items at other stages.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-APR-008</td><td>Where no item awaits the actor, the queue shall indicate the number of items at other stages and provide navigation to them.</td><td><span class="tag m">Med</span></td></tr>
+        <tr><td class="id">SRS-APR-009</td><td>Approval history shall be displayed alongside the version it concerns.</td><td><span class="tag h">High</span></td></tr>
+      </tbody>
+      <caption>Table 4.12 — Approval chain requirements.</caption>
+    </table>
+  </div>
+
+  <!-- 4.13 -->
+  <div class="feat">
+    <h3><span class="num">4.13</span> External client access</h3>
+    <dl class="feat-meta">
+      <div><dt>Priority</dt><dd>High</dd></div>
+      <div><dt>Traces to</dt><dd>BR-008</dd></div>
+      <div><dt>Actors</dt><dd>Production management, external clients</dd></div>
+    </dl>
+    <table>
+      <thead><tr><th style="width:17%">ID</th><th>Requirement</th><th style="width:10%">Pri.</th></tr></thead>
+      <tbody>
+        <tr><td class="id">SRS-CLI-001</td><td>An authorised actor shall generate an access link granting an external party review access to nominated items.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-CLI-002</td><td>Redemption of an access link shall additionally require a code issued with it.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-CLI-003</td><td>The system shall deliver the access code to the nominated recipient by email on creation.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-CLI-004</td><td>Content in outbound mail derived from user input shall be escaped so that it cannot inject markup or additional mail headers.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-CLI-005</td><td>A client session shall carry no user identity and shall be distinguishable from an employee session by the system.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-CLI-006</td><td>A client session shall be refused access to every endpoint except those explicitly permitted to client access.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-CLI-007</td><td>A client session shall see only the items associated with its access link.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-CLI-008</td><td>Client feedback shall be recorded against the subject item and shall be visible to studio users who can view that item.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-CLI-009</td><td>An access link shall be revocable, and revocation shall take effect on the next request made with it.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-CLI-010</td><td>A client review decision shall be written through an endpoint scoped to client sessions, not through the general update path.</td><td><span class="tag h">High</span></td></tr>
+      </tbody>
+      <caption>Table 4.13 — Client access requirements.</caption>
+    </table>
+  </div>
+
+  <!-- 4.14 -->
+  <div class="feat">
+    <h3><span class="num">4.14</span> Attendance and effort</h3>
+    <dl class="feat-meta">
+      <div><dt>Priority</dt><dd>Medium</dd></div>
+      <div><dt>Traces to</dt><dd>BR-009</dd></div>
+      <div><dt>Actors</dt><dd>All internal users</dd></div>
+    </dl>
+    <table>
+      <thead><tr><th style="width:17%">ID</th><th>Requirement</th><th style="width:10%">Pri.</th></tr></thead>
+      <tbody>
+        <tr><td class="id">SRS-ATT-001</td><td>On successful authentication of a user in a production role, the system shall record a clock-in time if none is open.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-ATT-002</td><td>On sign-out, the system shall close any open clock-in for that user.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-ATT-003</td><td>Clock-in on authentication shall be idempotent; repeated sign-in shall not create overlapping records.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-ATT-004</td><td>The system shall record a last-seen timestamp for each authenticated user, updated on request activity.</td><td><span class="tag m">Med</span></td></tr>
+        <tr><td class="id">SRS-ATT-005</td><td>Last-seen updates shall be throttled to at most one database write per user per 45 seconds.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-ATT-006</td><td>A user shall be presented as online where their last-seen timestamp is within 90 seconds of the present.</td><td><span class="tag m">Med</span></td></tr>
+        <tr><td class="id">SRS-ATT-007</td><td>Presence shall not be derived from clock-in state alone.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-ATT-008</td><td>Presence and attendance data shall be returned only within the requesting actor's attendance visibility scope.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-ATT-009</td><td>Where an actor may not see another user's presence, the system shall present a neutral state rather than an inferred offline state.</td><td><span class="tag m">Med</span></td></tr>
+        <tr><td class="id">SRS-ATT-010</td><td>The system shall record time logged against individual tasks.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-ATT-011</td><td>The system shall support a daily standup record per user per day.</td><td><span class="tag m">Med</span></td></tr>
+      </tbody>
+      <caption>Table 4.14 — Attendance and effort requirements.</caption>
+    </table>
+    <div class="box dec">
+      <h5>Rationale for SRS-ATT-007</h5>
+      <p style="margin-bottom:0;">Clock-in is an attendance fact that survives closing a laptop; presence is a statement about current activity. Deriving one from the other means a user who closes their browser without signing out is displayed as online indefinitely. The heartbeat in SRS-ATT-004 to 006 is what separates them.</p>
+    </div>
+  </div>
+
+  <!-- 4.15 -->
+  <div class="feat">
+    <h3><span class="num">4.15</span> Administration and audit</h3>
+    <dl class="feat-meta">
+      <div><dt>Priority</dt><dd>High</dd></div>
+      <div><dt>Traces to</dt><dd>BR-011, BR-013</dd></div>
+      <div><dt>Actors</dt><dd>Administrators, production management</dd></div>
+    </dl>
+    <table>
+      <thead><tr><th style="width:17%">ID</th><th>Requirement</th><th style="width:10%">Pri.</th></tr></thead>
+      <tbody>
+        <tr><td class="id">SRS-ADM-001</td><td>An actor holding manage_members shall create, deactivate and reactivate accounts.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-ADM-002</td><td>Deactivation shall preserve all records authored by or referring to the deactivated user.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-ADM-003</td><td>Deactivating an account or changing its role shall invalidate that user's existing sessions.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-ADM-004</td><td>An actor holding manage_roles shall modify capability grants.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-ADM-005</td><td>The system shall write an audit record for each significant state change, capturing actor, entity, action and timestamp.</td><td><span class="tag h">High</span></td></tr>
+        <tr><td class="id">SRS-ADM-006</td><td>The system shall permit reversal of an audited change where reversal is safe, and shall record the reversal as its own audit event.</td><td><span class="tag m">Med</span></td></tr>
+        <tr><td class="id">SRS-ADM-007</td><td>Studio-level configuration shall be modifiable without redeployment.</td><td><span class="tag m">Med</span></td></tr>
+        <tr><td class="id">SRS-ADM-008</td><td>Entity schemas and task templates shall be configurable by authorised actors.</td><td><span class="tag l">Low</span></td></tr>
+        <tr><td class="id">SRS-ADM-009</td><td>Features not yet implemented shall be visible only to administrators and shall be labelled as forthcoming rather than presented as operational.</td><td><span class="tag m">Med</span></td></tr>
+      </tbody>
+      <caption>Table 4.15 — Administration and audit requirements.</caption>
+    </table>
+  </div>
+</section>
+
+<!-- ============ 5 NFR ============ -->
+<section>
+  <h2><span class="num">5</span> &nbsp;Non-functional requirements</h2>
+
+  <h3><span class="num">5.1</span> Performance requirements</h3>
+  <table>
+    <thead><tr><th style="width:17%">ID</th><th>Requirement</th><th style="width:10%">Pri.</th></tr></thead>
+    <tbody>
+      <tr><td class="id">SRS-PRF-001</td><td>The system shall serve at least 100 concurrent authenticated sessions on the reference hardware without degradation of interactive response.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SRS-PRF-002</td><td>The tracking grid shall render and remain interactive with at least 5,000 shot rows in scope.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SRS-PRF-003</td><td>Session validity determination shall not require a database query on every request under normal cache operation.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SRS-PRF-004</td><td>Presence tracking shall not generate a database write per request.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SRS-PRF-005</td><td>Spreadsheet parsing shall complete within 10 seconds for a workbook of up to 5,000 data rows.</td><td><span class="tag m">Med</span></td></tr>
+      <tr><td class="id">SRS-PRF-006</td><td>Media playback shall begin without requiring the complete file to transfer.</td><td><span class="tag h">High</span></td></tr>
+    </tbody>
+    <caption>Table 5.1 — Performance requirements.</caption>
+  </table>
+
+  <h3><span class="num">5.2</span> Security requirements</h3>
+  <table>
+    <thead><tr><th style="width:17%">ID</th><th>Requirement</th><th style="width:10%">Pri.</th></tr></thead>
+    <tbody>
+      <tr><td class="id">SRS-SEC-001</td><td>Passwords shall be hashed with Argon2id.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SRS-SEC-002</td><td>The system shall never write a plaintext password or session token to any log.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SRS-SEC-003</td><td>All database access shall be parameterised; query text shall never be assembled by concatenating request data.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SRS-SEC-004</td><td>Authentication attempts shall be rate limited per source address and per account independently.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SRS-SEC-005</td><td>Only failed authentication attempts shall consume rate-limit budget.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SRS-SEC-006</td><td>Registration, password reset request, reset consumption and password change shall each be independently rate limited.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SRS-SEC-007</td><td>Rate limits shall be set so that a studio sharing one network egress address is not locked out by legitimate use.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SRS-SEC-008</td><td>Where the rate-limiting store is unavailable, requests shall be permitted rather than denied.</td><td><span class="tag m">Med</span></td></tr>
+      <tr><td class="id">SRS-SEC-009</td><td>Session validity checks shall deny the request where validity cannot be determined.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SRS-SEC-010</td><td>Uploaded file names supplied by the client shall never determine the storage path.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SRS-SEC-011</td><td>File retrieval shall reduce any supplied name to its base component, preventing directory traversal.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SRS-SEC-012</td><td>Outbound mail shall escape user-supplied content against markup and header injection.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SRS-SEC-013</td><td>Error responses shall not disclose stack traces, query text or internal identifiers to the client.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SRS-SEC-014</td><td>The system shall not disclose whether an email address corresponds to an account through any unauthenticated endpoint.</td><td><span class="tag h">High</span></td></tr>
+    </tbody>
+    <caption>Table 5.2 — Security requirements. Configured rate-limit values are in Appendix B.</caption>
+  </table>
+
+  <div class="box warn">
+    <h5>Rationale for the asymmetry between SRS-SEC-008 and SRS-SEC-009</h5>
+    <p style="margin-bottom:0;">These two requirements deliberately fail in opposite directions. Rate limiting is an availability control: if its store is unavailable, denying every request would convert a cache outage into a total outage, so it fails open. Session validity is a security control: if it cannot be determined, permitting the request would allow a revoked session to continue, so it fails closed. Stating both explicitly prevents a future maintainer from "correcting" one to match the other.</p>
+  </div>
+
+  <h3><span class="num">5.3</span> Reliability and availability</h3>
+  <table>
+    <thead><tr><th style="width:17%">ID</th><th>Requirement</th><th style="width:10%">Pri.</th></tr></thead>
+    <tbody>
+      <tr><td class="id">SRS-REL-001</td><td>Core function shall not require outbound internet access.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SRS-REL-002</td><td>Containers shall restart automatically unless deliberately stopped.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SRS-REL-003</td><td>The API shall not accept traffic until the database and cache report healthy.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SRS-REL-004</td><td>Schema migrations shall run automatically at API start and shall be idempotent.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SRS-REL-005</td><td>The database shall be dumped on a schedule to a volume independent of the database volume.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SRS-REL-006</td><td>Uploaded media shall persist across container rebuild and image replacement.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SRS-REL-007</td><td>Loss of the cache shall degrade performance only, and shall not invalidate sessions or alter authorisation outcomes.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SRS-REL-008</td><td>A failure in a non-essential side effect, such as notification dispatch, shall not fail the primary operation.</td><td><span class="tag m">Med</span></td></tr>
+    </tbody>
+    <caption>Table 5.3 — Reliability requirements.</caption>
+  </table>
+
+  <h3><span class="num">5.4</span> Software quality attributes</h3>
+  <table>
+    <thead><tr><th style="width:17%">ID</th><th>Requirement</th><th style="width:10%">Pri.</th></tr></thead>
+    <tbody>
+      <tr><td class="id">SRS-QUA-001</td><td>All application source shall be statically typed and shall pass type checking with no suppressed errors in the release build.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SRS-QUA-002</td><td>Application logs shall be emitted as structured records.</td><td><span class="tag m">Med</span></td></tr>
+      <tr><td class="id">SRS-QUA-003</td><td>The request and response contract shall be defined once and shared between client and server rather than declared independently.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SRS-QUA-004</td><td>Build and type-check tasks shall be independently cacheable per workspace package.</td><td><span class="tag m">Med</span></td></tr>
+      <tr><td class="id">SRS-QUA-005</td><td>Code implementing a non-obvious constraint shall record the reason for that constraint at the point of implementation.</td><td><span class="tag m">Med</span></td></tr>
+    </tbody>
+    <caption>Table 5.4 — Quality attributes.</caption>
+  </table>
+
+  <h3><span class="num">5.5</span> Business rules</h3>
+  <table>
+    <thead><tr><th style="width:17%">ID</th><th>Rule</th></tr></thead>
+    <tbody>
+      <tr><td class="id">BRU-001</td><td>A task may advance to production review only through a departmental lead of that task's department.</td></tr>
+      <tr><td class="id">BRU-002</td><td>A task may be approved only by production management.</td></tr>
+      <tr><td class="id">BRU-003</td><td>The administrator role performs no production work and holds no task or review capability.</td></tr>
+      <tr><td class="id">BRU-004</td><td>An artist sees only work assigned to them; a lead sees only their department; production management sees the studio.</td></tr>
+      <tr><td class="id">BRU-005</td><td>An external client sees only what has been explicitly shared and never enters the studio application.</td></tr>
+      <tr><td class="id">BRU-006</td><td>Production media remains on studio-controlled storage at all times.</td></tr>
+      <tr><td class="id">BRU-007</td><td>Approval history is append-only and is never edited or deleted.</td></tr>
+      <tr><td class="id">BRU-008</td><td>Deactivating a person removes their access but never their contribution history.</td></tr>
+    </tbody>
+    <caption>Table 5.5 — Business rules.</caption>
+  </table>
+</section>
+
+<!-- ============ 6 DATA ============ -->
+<section>
+  <h2><span class="num">6</span> &nbsp;Data requirements</h2>
+
+  <h3><span class="num">6.1</span> Logical data model</h3>
+  <p>The system comprises 60 entity types. The production workflow is carried by the hierarchy specified in SYM-FRG-REQ-001 Figure 7.4; the remainder support communication, configuration, administration and audit.</p>
+  <table>
+    <thead><tr><th style="width:24%">Group</th><th>Principal entities</th></tr></thead>
+    <tbody>
+      <tr><td><b>Tenancy and identity</b></td><td>Tenant, User, TenantRole, TenantRoleCapability, PendingInvite, PasswordResetToken, PlatformUser</td></tr>
+      <tr><td><b>Production hierarchy</b></td><td>Project, Episode, Sequence, Shot, Asset, Department, SequenceTeamMember</td></tr>
+      <tr><td><b>Work</b></td><td>Task, TaskComment, TaskChecklistItem, TaskAttachment, TaskDependency, TaskApprovalEvent, TaskTemplate, TaskTemplateItem</td></tr>
+      <tr><td><b>Review</b></td><td>Version, Review, ReviewComment, ReviewPresentation, Annotation, ClientNote</td></tr>
+      <tr><td><b>Client delivery</b></td><td>ClientAccessLink, Delivery, DeliveryItem, DeliveryDownload, PublishLog</td></tr>
+      <tr><td><b>Time and activity</b></td><td>DailyLog, StandupUpdate, StandupApproval, StandupPlaylistItem, AssetActivity</td></tr>
+      <tr><td><b>Communication</b></td><td>Notification, NotificationPreference, ChatChannel, ChatChannelMember, ChatMessage, Broadcast</td></tr>
+      <tr><td><b>Pipeline configuration</b></td><td>PipelineTemplate, PipelineStage, ProjectPipeline, Workflow, WorkflowRun, EntityTypeDef, EntityFieldDef, TrackingView</td></tr>
+      <tr><td><b>Platform administration</b></td><td>StudioSetting, ApiKey, Webhook, Integration, TenantPlugin, LicenseServer</td></tr>
+      <tr><td><b>Audit</b></td><td>AuditLog, AuditRollback</td></tr>
+    </tbody>
+    <caption>Table 6.1 — Entity groups.</caption>
+  </table>
+
+  <h3><span class="num">6.2</span> Data integrity requirements</h3>
+  <table>
+    <thead><tr><th style="width:17%">ID</th><th>Requirement</th><th style="width:10%">Pri.</th></tr></thead>
+    <tbody>
+      <tr><td class="id">SRS-DAT-001</td><td>Referential integrity shall be enforced by the database through foreign key constraints, not by application logic alone.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SRS-DAT-002</td><td>Every tenant-owned entity shall carry a non-null tenant identifier.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SRS-DAT-003</td><td>User email addresses shall be unique across the system.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SRS-DAT-004</td><td>Password reset token hashes shall be unique.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SRS-DAT-005</td><td>Records supporting soft deletion shall be excluded from normal queries while remaining recoverable.</td><td><span class="tag m">Med</span></td></tr>
+      <tr><td class="id">SRS-DAT-006</td><td>Approval events and audit records shall be append-only.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SRS-DAT-007</td><td>Schema changes shall be expressed as ordered, versioned migration scripts held in source control.</td><td><span class="tag h">High</span></td></tr>
+      <tr><td class="id">SRS-DAT-008</td><td>A migration shall be additive where possible; a destructive migration shall be identified as such before application.</td><td><span class="tag h">High</span></td></tr>
+    </tbody>
+    <caption>Table 6.2 — Data integrity requirements.</caption>
+  </table>
+
+  <h3><span class="num">6.3</span> Retention</h3>
+  <table>
+    <thead><tr><th style="width:28%">Data class</th><th style="width:22%">Retention</th><th>Basis</th></tr></thead>
+    <tbody>
+      <tr><td>Production records</td><td>Indefinite</td><td>Project history and dispute resolution</td></tr>
+      <tr><td>Approval and audit events</td><td>Indefinite, append-only</td><td>Auditability (BRU-007)</td></tr>
+      <tr><td>Uploaded media</td><td>Indefinite unless deleted by an authorised actor</td><td>Storage capacity is the practical limit</td></tr>
+      <tr><td>Deactivated user records</td><td>Indefinite</td><td>Contribution history preserved (BRU-008)</td></tr>
+      <tr><td>Password reset tokens</td><td>30 minutes, single use</td><td>SRS-AUTH-010</td></tr>
+      <tr><td>Session validity cache</td><td>300 seconds maximum</td><td>SRS-SESS-007</td></tr>
+      <tr><td>Rate-limit counters</td><td>Duration of the window</td><td>Appendix B</td></tr>
+      <tr><td>Database backups</td><td>Per operator retention policy</td><td>SRS-REL-005</td></tr>
+    </tbody>
+    <caption>Table 6.3 — Retention by data class.</caption>
+  </table>
+</section>
+
+<!-- ============ 7 VERIFICATION ============ -->
+<section>
+  <h2><span class="num">7</span> &nbsp;Verification</h2>
+  <p class="lede">Every requirement shall be verified by at least one of the four methods below. The method is chosen by the nature of the requirement, not by convenience.</p>
+
+  <table>
+    <thead><tr><th style="width:18%">Method</th><th style="width:34%">Definition</th><th>Applied to</th></tr></thead>
+    <tbody>
+      <tr><td><b>Inspection</b></td><td>Examination of source, configuration or documentation without executing the system.</td><td>Quality attributes, data integrity constraints, retention definitions.</td></tr>
+      <tr><td><b>Demonstration</b></td><td>Operation of the system to observe a stated behaviour, without measurement.</td><td>User interface requirements, workflow progression, administrative functions.</td></tr>
+      <tr><td><b>Test</b></td><td>Execution against defined inputs with results compared to expected values.</td><td>Authentication, authorisation, import, session and security requirements.</td></tr>
+      <tr><td><b>Analysis</b></td><td>Reasoning from measurement, modelling or extrapolation.</td><td>Performance and capacity requirements.</td></tr>
+    </tbody>
+    <caption>Table 7.1 — Verification methods.</caption>
+  </table>
+
+  <h3><span class="num">7.1</span> Verification constraints</h3>
+  <div class="box warn">
+    <h5>VER-CON-1 — Verification shall traverse the real path</h5>
+    <p>Any verification of a deployed behaviour shall exercise the same network path, authentication mechanism and configuration as production traffic. Verification through a privileged local channel that bypasses a control under test shall not be accepted as evidence.</p>
+    <p style="margin-bottom:0;"><b>Basis.</b> A database credential rotation was previously verified by connecting from within the database container, which succeeded because local socket connections in that image use trust authentication and bypass password verification entirely. The real failure appeared only over the network, after the change was live. The constraint exists so this class of false-positive cannot recur.</p>
+  </div>
+  <div class="box warn">
+    <h5>VER-CON-2 — Schema changes shall be verified against real data</h5>
+    <p style="margin-bottom:0;">Any migration or data-layer change shall be executed against a clone restored from a production backup before being applied to the live system, and the restored clone shall be confirmed non-empty before it is used as evidence.</p>
+  </div>
+
+  <h3><span class="num">7.2</span> Verification matrix by requirement class</h3>
+  <table>
+    <thead><tr><th style="width:30%">Requirement class</th><th style="width:20%">Primary method</th><th>Acceptance</th></tr></thead>
+    <tbody>
+      <tr><td>Authentication (4.1)</td><td>Test</td><td>Each requirement exercised with valid, invalid and boundary inputs.</td></tr>
+      <tr><td>Session management (4.2)</td><td>Test</td><td>Revocation confirmed by observing a formerly-valid token rejected after each triggering event.</td></tr>
+      <tr><td>Access control (4.3)</td><td>Test</td><td>Every capability-gated endpoint attempted by a role lacking that capability and refused.</td></tr>
+      <tr><td>Tenancy (4.4)</td><td>Test</td><td>Cross-tenant access attempted for each entity type and answered as not found.</td></tr>
+      <tr><td>Visibility scoping (4.5)</td><td>Test</td><td>Each role's result set compared against its expected scope.</td></tr>
+      <tr><td>Import (4.8)</td><td>Test</td><td>Verified against real studio workbooks, including multi-sheet, flat, and malformed inputs.</td></tr>
+      <tr><td>Review player (4.11)</td><td>Demonstration</td><td>Each tool and comparison mode operated on a real version.</td></tr>
+      <tr><td>Approval chain (4.12)</td><td>Test + demonstration</td><td>Full traversal by role, with unauthorised transitions attempted and refused.</td></tr>
+      <tr><td>Client access (4.13)</td><td>Test</td><td>Access attempted without a code, with a revoked link, and for unshared items.</td></tr>
+      <tr><td>Performance (5.1)</td><td>Analysis</td><td>Measured at stated volumes on reference hardware.</td></tr>
+      <tr><td>Security (5.2)</td><td>Test + inspection</td><td>Each requirement individually evidenced; negative cases required.</td></tr>
+      <tr><td>Reliability (5.3)</td><td>Demonstration</td><td>Cache loss, container restart and restore-from-backup each exercised.</td></tr>
+    </tbody>
+    <caption>Table 7.2 — Verification approach by requirement class.</caption>
+  </table>
+</section>
+
+<!-- ============ 8 APPENDIX A ============ -->
+<section>
+  <h2><span class="num">8</span> &nbsp;Appendix A — Capability reference</h2>
+  <p class="lede">The fourteen capabilities and their allocation. This table is the authoritative statement of the access model; the runtime grants are held in the database and shall correspond to it.</p>
+  <table>
+    <thead>
+      <tr><th style="width:20%">Capability</th><th style="width:8%">Artist</th><th style="width:8%">Lead</th><th style="width:11%">Prod. Head</th><th style="width:9%">Producer</th><th style="width:9%">Admin</th><th style="width:8%">Client</th><th>Governs</th></tr>
+    </thead>
+    <tbody>
+      <tr><td class="mono">create_tasks</td><td>—</td><td>Yes</td><td>Yes</td><td>Yes</td><td>—</td><td>—</td><td>Task creation, import</td></tr>
+      <tr><td class="mono">edit_tasks</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td><td>—</td><td>—</td><td>Task field modification</td></tr>
+      <tr><td class="mono">assign_tasks</td><td>—</td><td>Yes</td><td>Yes</td><td>Yes</td><td>—</td><td>—</td><td>Assignee changes</td></tr>
+      <tr><td class="mono">delete_tasks</td><td>—</td><td>—</td><td>Yes</td><td>Yes</td><td>—</td><td>—</td><td>Task deletion</td></tr>
+      <tr><td class="mono">submit_reviews</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td><td>—</td><td>Yes</td><td>Media upload, review submission, annotation</td></tr>
+      <tr><td class="mono">approve_reviews</td><td>—</td><td>Yes</td><td>Yes</td><td>Yes</td><td>—</td><td>Yes</td><td>Stage approval</td></tr>
+      <tr><td class="mono">broadcast_updates</td><td>—</td><td>—</td><td>Yes</td><td>Yes</td><td>—</td><td>—</td><td>Studio-wide announcements</td></tr>
+      <tr><td class="mono">view_financials</td><td>—</td><td>—</td><td>Yes</td><td>Yes</td><td>Yes</td><td>—</td><td>Financial views</td></tr>
+      <tr><td class="mono">edit_financials</td><td>—</td><td>—</td><td>Yes</td><td>Yes</td><td>—</td><td>—</td><td>Financial modification</td></tr>
+      <tr><td class="mono">manage_pipeline</td><td>—</td><td>—</td><td>Yes</td><td>Yes</td><td>Yes</td><td>—</td><td>Department order, stages, rollback</td></tr>
+      <tr><td class="mono">manage_members</td><td>—</td><td>—</td><td>Yes</td><td>Yes</td><td>Yes</td><td>—</td><td>Account lifecycle</td></tr>
+      <tr><td class="mono">manage_roles</td><td>—</td><td>—</td><td>Yes</td><td>Yes</td><td>Yes</td><td>—</td><td>Capability grants</td></tr>
+      <tr><td class="mono">manage_licenses</td><td>—</td><td>—</td><td>Yes</td><td>Yes</td><td>Yes</td><td>—</td><td>Licence administration</td></tr>
+      <tr><td class="mono">manage_integrations</td><td>—</td><td>—</td><td>Yes</td><td>Yes</td><td>Yes</td><td>—</td><td>Integration configuration</td></tr>
+    </tbody>
+    <caption>Table 8.1 — Capability allocation by role. The administrator column is deliberately empty of every production capability, satisfying SRS-RBAC-005 and BRU-003.</caption>
+  </table>
+</section>
+
+<!-- ============ 9 APPENDIX B ============ -->
+<section>
+  <h2><span class="num">9</span> &nbsp;Appendix B — Configuration parameters</h2>
+  <p class="lede">Values that govern specified behaviour. A change to any of these changes the system's conformance to the requirement that references it, and shall be treated as a specification change.</p>
+
+  <h3><span class="num">9.1</span> Session and credential parameters</h3>
+  <table>
+    <thead><tr><th style="width:34%">Parameter</th><th style="width:18%">Value</th><th>Governed by</th></tr></thead>
+    <tbody>
+      <tr><td>Session token lifetime</td><td class="mono">7 days</td><td>SRS-SESS-002</td></tr>
+      <tr><td>Session cookie flags</td><td class="mono">HttpOnly, SameSite=Lax</td><td>CI-002</td></tr>
+      <tr><td>Session validity cache TTL</td><td class="mono">300 s</td><td>SRS-SESS-007</td></tr>
+      <tr><td>Password hash algorithm</td><td class="mono">Argon2id</td><td>SRS-SEC-001</td></tr>
+      <tr><td>Password reset token lifetime</td><td class="mono">30 minutes</td><td>SRS-AUTH-010</td></tr>
+      <tr><td>Password reset token storage</td><td class="mono">SHA-256 hash</td><td>SRS-AUTH-009</td></tr>
+    </tbody>
+    <caption>Table 9.1 — Session and credential parameters.</caption>
+  </table>
+
+  <h3><span class="num">9.2</span> Rate-limit parameters</h3>
+  <table>
+    <thead><tr><th style="width:30%">Control</th><th style="width:14%">Keyed by</th><th class="num" style="width:11%">Limit</th><th class="num" style="width:13%">Window</th><th>Governed by</th></tr></thead>
+    <tbody>
+      <tr><td>Sign-in</td><td>Source address</td><td class="num">60</td><td class="num">900 s</td><td>SRS-SEC-004</td></tr>
+      <tr><td>Sign-in</td><td>Account</td><td class="num">8</td><td class="num">900 s</td><td>SRS-SEC-004</td></tr>
+      <tr><td>Registration</td><td>Source address</td><td class="num">20</td><td class="num">3600 s</td><td>SRS-SEC-006</td></tr>
+      <tr><td>Password reset request</td><td>Source address</td><td class="num">5</td><td class="num">900 s</td><td>SRS-SEC-006</td></tr>
+      <tr><td>Password reset consumption</td><td>Source address</td><td class="num">10</td><td class="num">900 s</td><td>SRS-SEC-006</td></tr>
+      <tr><td>Password change</td><td>Account</td><td class="num">8</td><td class="num">900 s</td><td>SRS-SEC-006</td></tr>
+    </tbody>
+    <caption>Table 9.2 — Rate-limit configuration. Address-keyed limits are sized for a whole studio behind one egress address, per SRS-SEC-007.</caption>
+  </table>
+
+  <h3><span class="num">9.3</span> Upload and presence parameters</h3>
+  <table>
+    <thead><tr><th style="width:34%">Parameter</th><th style="width:26%">Value</th><th>Governed by</th></tr></thead>
+    <tbody>
+      <tr><td>Video upload size limit</td><td class="mono">500 MB</td><td>SRS-VER-004</td></tr>
+      <tr><td>Attachment size limit</td><td class="mono">200 MB</td><td>SRS-VER-004</td></tr>
+      <tr><td>Accepted video types</td><td class="mono">mp4, webm, mov, avi</td><td>SRS-VER-003</td></tr>
+      <tr><td>Presence write throttle</td><td class="mono">45 s</td><td>SRS-ATT-005</td></tr>
+      <tr><td>Online freshness window</td><td class="mono">90 s</td><td>SRS-ATT-006</td></tr>
+      <tr><td>Import parsed row ceiling</td><td class="mono">5,000 rows</td><td>SRS-IMP-007</td></tr>
+      <tr><td>Trusted proxy hops</td><td class="mono">1</td><td>CI-005</td></tr>
+    </tbody>
+    <caption>Table 9.3 — Upload, presence and import parameters.</caption>
+  </table>
+</section>
+
+<!-- ============ 10 APPENDIX C ============ -->
+<section>
+  <h2><span class="num">10</span> &nbsp;Appendix C — Traceability matrix</h2>
+  <p class="lede">Each business requirement from SYM-FRG-REQ-001 traced forward to the specification sections that satisfy it. A specification requirement with no business antecedent indicates unagreed scope; a business requirement with no specification indicates a gap.</p>
+  <table>
+    <thead><tr><th style="width:11%">Business req.</th><th style="width:38%">Statement (abbreviated)</th><th>Specification coverage</th></tr></thead>
+    <tbody>
+      <tr><td class="id">BR-001</td><td>Single authoritative record of shot status</td><td>4.6 SRS-STR-001…005; 4.7 SRS-GRD-001…007; 4.9 SRS-TSK-001…010</td></tr>
+      <tr><td class="id">BR-002</td><td>Feedback bound to version and frame</td><td>4.10 SRS-VER-001, 009; 4.11 SRS-PLR-003…006, 011</td></tr>
+      <tr><td class="id">BR-003</td><td>Approvals recorded with actor and time</td><td>4.12 SRS-APR-001…009; 6.2 SRS-DAT-006; BRU-007</td></tr>
+      <tr><td class="id">BR-004</td><td>Existing tracksheets importable</td><td>4.8 SRS-IMP-001…012</td></tr>
+      <tr><td class="id">BR-005</td><td>Media remains on studio infrastructure</td><td>4.10 SRS-VER-005…008; 5.3 SRS-REL-001, 006; BRU-006</td></tr>
+      <tr><td class="id">BR-006</td><td>No per-user licensing cost</td><td>Satisfied by architecture; no licensing mechanism is specified or present</td></tr>
+      <tr><td class="id">BR-007</td><td>Access restricted by role and department</td><td>4.3 SRS-RBAC-001…008; 4.4 SRS-TEN-001…004; 4.5 SRS-SCP-001…007</td></tr>
+      <tr><td class="id">BR-008</td><td>External client review without an account</td><td>4.13 SRS-CLI-001…010</td></tr>
+      <tr><td class="id">BR-009</td><td>Effort recorded per shot</td><td>4.14 SRS-ATT-001…011</td></tr>
+      <tr><td class="id">BR-010</td><td>Runs on studio hardware without internet</td><td>2.5 CON-1, CON-2; 5.3 SRS-REL-001…007</td></tr>
+      <tr><td class="id">BR-011</td><td>Oversight separable from production authority</td><td>4.3 SRS-RBAC-005; 4.9 SRS-TSK-006; 4.11 SRS-PLR-016; BRU-003; Appendix A</td></tr>
+      <tr><td class="id">BR-012</td><td>Self-service onboarding, authority still granted by an administrator</td><td>4.1 SRS-AUTH-006 … 006g, 007</td></tr>
+      <tr><td class="id">BR-013</td><td>Historical changes reversible</td><td>4.15 SRS-ADM-005, 006</td></tr>
+      <tr><td class="id">BR-014</td><td>Studio-wide workload visibility</td><td>4.7 SRS-GRD-001…004; 4.14 SRS-ATT-008, 010</td></tr>
+      <tr><td class="id">BR-015</td><td>Third-party plug-in extension</td><td>4.15 SRS-ADM-009 — surface only; capability deferred</td></tr>
+      <tr><td class="id">BR-016</td><td>DCC integration</td><td>Not specified — excluded from scope</td></tr>
+    </tbody>
+    <caption>Table 10.1 — Business requirement to specification traceability.</caption>
+  </table>
+
+  <div class="box">
+    <h5>Extending this matrix</h5>
+    <p style="margin-bottom:0;">Quality assurance shall extend Table 10.1 with a third dimension recording, for each specification requirement, the test case or verification record that evidences it. A requirement without such a record shall be treated as unverified regardless of whether the behaviour is believed to work.</p>
+  </div>
+</section>
+
+</div>

@@ -1,0 +1,1057 @@
+<meta charset="utf-8">
+<title>Forge — Product Usage &amp; User Guide</title>
+<style>
+  :root {
+    --ink: #0F161B; --ink-2: #33424E; --muted: #5F6E7B;
+    --hair: #C6CFD6; --hair-soft: #E1E7EB;
+    --accent: #0E7C6B; --accent-soft: #EAF4F1;
+    --warn: #9A5B08; --warn-soft: #FBF2E4;
+    --surface: #F5F8F9;
+    --blue: #3B4C9B; --blue-soft: #ECEEF8;
+    --r-artist: #0E7C6B; --r-lead: #3B4C9B; --r-prod: #8E3560; --r-admin: #7A5A12; --r-client: #1F6E8C;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: Georgia, Cambria, "Times New Roman", serif;
+    font-size: 10.5pt; line-height: 1.57; color: var(--ink);
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .page { padding: 0 14mm; }
+  h1, h2, h3, h4, h5, .sans { font-family: "Segoe UI", Arial, Helvetica, sans-serif; }
+  h1 { font-size: 25pt; line-height: 1.12; letter-spacing: -.4pt; margin: 0 0 10pt; }
+  h2 { font-size: 15pt; line-height: 1.22; margin: 0 0 4pt; padding-bottom: 5pt; border-bottom: 1.6pt solid var(--ink); }
+  h2 .num { color: var(--accent); }
+  h3 { font-size: 11.5pt; margin: 15pt 0 5pt; line-height: 1.3; }
+  h3 .num { color: var(--accent); font-weight: 700; }
+  h4 { font-size: 10pt; margin: 12pt 0 4pt; color: var(--ink-2); }
+  h5 { font-size: 8.2pt; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 11pt 0 4pt; }
+  p { margin: 0 0 8pt; }
+  .lede { font-size: 11.3pt; color: var(--ink-2); margin-bottom: 11pt; }
+  ul, ol { margin: 0 0 9pt; padding-left: 16pt; }
+  li { margin-bottom: 4pt; }
+  section { page-break-before: always; padding-top: 2pt; }
+
+  .cover { height: 235mm; display: flex; flex-direction: column; justify-content: space-between; }
+  .cover-top { padding-top: 26mm; }
+  .cover .rule { height: 4pt; background: var(--accent); width: 58mm; margin-bottom: 14mm; }
+  .cover .product { font-family: "Segoe UI", Arial, sans-serif; font-size: 9pt; letter-spacing: .22em; text-transform: uppercase; color: var(--muted); margin-bottom: 6mm; }
+  .cover h1 { font-size: 34pt; letter-spacing: -.9pt; }
+  .cover .sub { font-size: 13pt; color: var(--ink-2); margin-top: 5mm; max-width: 128mm; }
+  .cover-meta { display: grid; grid-template-columns: 1fr 1fr; border-top: 1.4pt solid var(--ink); }
+  .cover-meta div { padding: 7pt 10pt 7pt 0; border-bottom: .5pt solid var(--hair-soft); }
+  .cover-meta dt { font-family: "Segoe UI", Arial, sans-serif; font-size: 7.4pt; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 2pt; }
+  .cover-meta dd { margin: 0; font-family: "Segoe UI", Arial, sans-serif; font-size: 10pt; font-weight: 600; }
+  .classif { display: inline-block; font-family: "Segoe UI", Arial, sans-serif; font-size: 8pt; letter-spacing: .1em; text-transform: uppercase; font-weight: 700; color: #1F4E7A; border: 1.2pt solid #1F4E7A; padding: 3pt 8pt; background: #EAF1F8; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 9.1pt; margin: 7pt 0 11pt; page-break-inside: avoid; }
+  th, td { text-align: left; padding: 5pt 6.5pt; border-bottom: .5pt solid var(--hair-soft); vertical-align: top; }
+  thead th { font-family: "Segoe UI", Arial, sans-serif; font-size: 7.5pt; letter-spacing: .07em; text-transform: uppercase; color: var(--ink); background: var(--surface); border-bottom: 1pt solid var(--hair); font-weight: 700; }
+  caption { caption-side: bottom; text-align: left; font-size: 8.1pt; color: var(--muted); padding-top: 4pt; font-family: "Segoe UI", Arial, sans-serif; }
+  td.mono, .mono { font-family: Consolas, "Courier New", monospace; font-size: 8.5pt; }
+  .yes { color: var(--accent); font-weight: 700; }
+  .no { color: #9A3030; }
+
+  pre {
+    background: #10171C; color: #D8E4EA; padding: 8pt 10pt; margin: 7pt 0 10pt;
+    font-family: Consolas, "Courier New", monospace; font-size: 8.4pt; line-height: 1.5;
+    white-space: pre-wrap; word-break: break-word; page-break-inside: avoid; border-radius: 2pt;
+  }
+  pre .c { color: #7FA8B8; }
+  code { font-family: Consolas, "Courier New", monospace; font-size: .9em; background: var(--surface); border: .5pt solid var(--hair-soft); padding: .05em .3em; }
+
+  .box { border: .7pt solid var(--hair); border-left: 3pt solid var(--accent); background: var(--surface); padding: 8pt 10pt; margin: 9pt 0 11pt; page-break-inside: avoid; }
+  .box.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+  .box.dec { border-left-color: var(--blue); background: var(--blue-soft); }
+  .box p:last-child, .box ul:last-child { margin-bottom: 0; }
+  .box h5 { margin-top: 0; }
+
+  figure { margin: 10pt 0 13pt; page-break-inside: avoid; }
+  figure img { width: 100%; height: auto; display: block; border: .7pt solid var(--hair); }
+  figcaption { font-family: "Segoe UI", Arial, sans-serif; font-size: 8.2pt; color: var(--muted); padding-top: 5pt; line-height: 1.45; }
+  figcaption b { color: var(--ink-2); }
+
+  .rolehdr { border-top: 5pt solid var(--rc); padding-top: 9pt; margin-bottom: 4pt; }
+  .rolehdr .badge {
+    display: inline-block; font-family: "Segoe UI", Arial, sans-serif; font-size: 7.6pt;
+    letter-spacing: .12em; text-transform: uppercase; font-weight: 700; color: #fff;
+    background: var(--rc); padding: 2.5pt 7pt; margin-bottom: 6pt;
+  }
+  .cando { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: .7pt solid var(--hair); margin: 8pt 0 12pt; page-break-inside: avoid; }
+  .cando > div { padding: 8pt 10pt; }
+  .cando > div:first-child { border-right: .7pt solid var(--hair); }
+  .cando h5 { margin-top: 0; }
+  .cando ul { margin: 0; padding-left: 14pt; font-size: 9.4pt; }
+  .cando li { margin-bottom: 3pt; }
+
+  .steps { counter-reset: st; list-style: none; padding: 0; margin: 8pt 0 10pt; }
+  .steps > li { counter-increment: st; display: grid; grid-template-columns: 17pt 1fr; gap: 8pt; margin-bottom: 7pt; }
+  .steps > li::before {
+    content: counter(st); font-family: "Segoe UI", Arial, sans-serif; font-size: 8pt; font-weight: 700;
+    color: #fff; background: var(--accent); width: 14pt; height: 14pt; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; margin-top: 1.5pt;
+  }
+  .toc-list { list-style: none; padding: 0; margin: 10pt 0 0; }
+  .toc-list li { display: flex; gap: 8pt; padding: 3.4pt 0; border-bottom: .5pt dotted var(--hair); font-family: "Segoe UI", Arial, sans-serif; font-size: 9.4pt; }
+  .toc-list .s { color: var(--accent); font-weight: 700; width: 26pt; flex: none; }
+  .toc-list li.part { border-bottom: 1.2pt solid var(--ink); margin-top: 8pt; font-weight: 700; font-size: 9.8pt; }
+</style>
+
+<div class="page">
+
+<!-- ============ COVER ============ -->
+<div class="cover">
+  <div class="cover-top">
+    <div class="rule"></div>
+    <div class="product">Forge &middot; Production Tracking Platform</div>
+    <h1>Product Usage &amp;<br>User Guide</h1>
+    <p class="sub">Why Forge exists, how to install and configure it, and a self-contained operating guide for each role that uses it.</p>
+  </div>
+  <div>
+    <p style="margin-bottom:8mm;"><span class="classif">Internal</span></p>
+    <dl class="cover-meta">
+      <div><dt>Prepared for</dt><dd>Symbiosys Technologies</dd></div>
+      <div><dt>Document ID</dt><dd>SYM-FRG-USG-001</dd></div>
+      <div><dt>Version</dt><dd>1.0 — Draft for review</dd></div>
+      <div><dt>Date</dt><dd>September 2026</dd></div>
+      <div><dt>Applies to</dt><dd>Forge, current release</dd></div>
+      <div><dt>Author</dt><dd>Product &amp; Engineering</dd></div>
+    </dl>
+  </div>
+</div>
+
+<!-- ============ DOC CONTROL ============ -->
+<section>
+  <h2><span class="num">0.1</span> &nbsp;Document control</h2>
+  <table>
+    <thead><tr><th style="width:12%">Version</th><th style="width:16%">Date</th><th style="width:24%">Author</th><th>Summary of change</th></tr></thead>
+    <tbody>
+      <tr><td>1.0</td><td>Sep 2026</td><td>Product &amp; Engineering</td><td>First complete guide: rationale, installation, configuration, and per-role operating paths.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="box warn">
+    <h5>About the screenshots in this guide</h5>
+    <p style="margin-bottom:0;">Every figure was captured from a live deployment, then anonymised before capture completed. Personal names, email addresses, the studio name, the client name and project shot codes have all been replaced with fictional equivalents, and profile photographs are obscured. Any name appearing in a figure — <b>A. Sharma</b>, <b>Demo Series</b>, <b>Demo Studio</b> — is fictional. The interface, data volumes and layout are genuine.</p>
+  </div>
+
+  <h3>How to use this guide</h3>
+  <table>
+    <thead><tr><th style="width:26%">If you are</th><th style="width:26%">Read</th><th>You can skip</th></tr></thead>
+    <tbody>
+      <tr><td><b>An artist</b></td><td>Part A §2, Part C §14 and §15</td><td>All of Part B, and the other role paths</td></tr>
+      <tr><td><b>A department lead</b></td><td>Part A, Part C §14, §15 and §16</td><td>Part B, administrator path</td></tr>
+      <tr><td><b>Production head or producer</b></td><td>Part A, Part C §14 and §17</td><td>Part B unless you also deploy</td></tr>
+      <tr><td><b>An administrator or IT</b></td><td>All of Part B, and Part C §18</td><td>The artist and lead paths</td></tr>
+      <tr><td><b>Evaluating Forge</b></td><td>Part A in full</td><td>Everything else on first pass</td></tr>
+    </tbody>
+    <caption>Table 0.1 — Reading paths. Each role path in Part C is self-contained and can be read without the others.</caption>
+  </table>
+</section>
+
+<!-- ============ TOC ============ -->
+<section>
+  <h2><span class="num">0.2</span> &nbsp;Contents</h2>
+  <ol class="toc-list">
+    <li class="part"><span class="s">A</span><span>Why Forge exists</span></li>
+    <li><span class="s">1</span><span>Purpose and product philosophy</span></li>
+    <li><span class="s">2</span><span>Why we built Forge instead of using ShotGrid</span></li>
+    <li><span class="s">3</span><span>Goals and non-goals</span></li>
+    <li class="part"><span class="s">B</span><span>Installation and environment</span></li>
+    <li><span class="s">4</span><span>System requirements and prerequisites</span></li>
+    <li><span class="s">5</span><span>Installation — containerised deployment</span></li>
+    <li><span class="s">6</span><span>Configuration reference</span></li>
+    <li><span class="s">7</span><span>Service topology</span></li>
+    <li><span class="s">8</span><span>Importing your existing tracksheet</span></li>
+    <li><span class="s">9</span><span>Backup, restore and upgrade</span></li>
+    <li><span class="s">10</span><span>Troubleshooting</span></li>
+    <li class="part"><span class="s">C</span><span>Operating guide by role</span></li>
+    <li><span class="s">11</span><span>Getting started — everyone</span></li>
+    <li><span class="s">12</span><span>Artist access path</span></li>
+    <li><span class="s">13</span><span>Lead access path</span></li>
+    <li><span class="s">14</span><span>Production head and producer access path</span></li>
+    <li><span class="s">15</span><span>Administrator access path</span></li>
+    <li><span class="s">16</span><span>Client access path</span></li>
+    <li><span class="s">17</span><span>The review player in depth</span></li>
+    <li class="part"><span class="s">D</span><span>Reference</span></li>
+    <li><span class="s">18</span><span>Capability matrix</span></li>
+    <li><span class="s">19</span><span>Glossary and frequently asked questions</span></li>
+  </ol>
+</section>
+
+<!-- ============ PART A ============ -->
+<section>
+  <h2><span class="num">1</span> &nbsp;Purpose and product philosophy</h2>
+  <p class="lede">Forge is a production tracking and review platform for animation and visual effects work. It holds the current state of every shot, routes finished work through review and approval, and delivers it to the client — all on hardware the studio owns.</p>
+
+  <h3><span class="num">1.1</span> What Forge is, in three sentences</h3>
+  <p>Forge replaces the spreadsheet that tracks your shots and the chat thread that carries your review notes with one system that holds both, permanently linked. Every shot has a status, an owner and a history; every review note is attached to the exact frame and version it refers to; every approval records who gave it and when. It runs on your own server, costs nothing per artist, and imports the tracksheet you already maintain.</p>
+
+  <h3><span class="num">1.2</span> The three principles behind it</h3>
+  <table>
+    <thead><tr><th style="width:26%">Principle</th><th>What it means in practice</th></tr></thead>
+    <tbody>
+      <tr><td><b>One source of truth</b></td><td>A shot's status lives in exactly one place. If the grid says a shot is in lead review, that is what it is — there is no second spreadsheet that might disagree.</td></tr>
+      <tr><td><b>Feedback belongs to the frame</b></td><td>A note is not a message that scrolls away. It is attached to a version and a frame number, and it stays attached for the life of the project.</td></tr>
+      <tr><td><b>The studio owns its pipeline</b></td><td>Your media, your database, your server. No per-seat licence, no footage leaving the building, and no dependency on an internet connection to do a day's work.</td></tr>
+    </tbody>
+    <caption>Table 1.1 — Design principles and their practical consequence.</caption>
+  </table>
+</section>
+
+<section>
+  <h2><span class="num">2</span> &nbsp;Why we built Forge instead of using ShotGrid</h2>
+  <p class="lede">This section exists because it is the first question any experienced production person asks. The answer given here is deliberately fair: ShotGrid is a capable product, and there are situations where it remains the better choice.</p>
+
+  <h3><span class="num">2.1</span> What the alternatives are</h3>
+  <p>The established commercial options are Autodesk Flow Production Tracking, which is the product formerly sold as ShotGrid, and ftrack. Both are mature, both are cloud-hosted, and both are licensed per user. Kitsu is a capable open-source alternative. Beyond those, most studios of our size are, in practice, running on spreadsheets.</p>
+
+  <h3><span class="num">2.2</span> The four reasons we built our own</h3>
+  <table>
+    <thead><tr><th style="width:22%">Reason</th><th>Detail</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>Per-seat cost at our headcount</b></td>
+        <td>Both commercial products are licensed per user and quoted rather than published. At a studio of our size the annual figure is a material line item that grows every time we hire. Forge has no per-seat mechanism at all — the cost of adding the sixty-sixth artist is zero.</td>
+      </tr>
+      <tr>
+        <td><b>Where the media lives</b></td>
+        <td>Client contracts increasingly specify where unreleased material may reside. A cloud tracking tool means uploading work-in-progress footage to infrastructure we do not control. Forge keeps every frame on our own storage.</td>
+      </tr>
+      <tr>
+        <td><b>Adapting the tool to our tracksheet</b></td>
+        <td>Our production is episodic and tracked in workbooks with one sheet per episode, in a column layout that has evolved over years. Making a commercial tool understand that structure is pipeline work. Forge was built to read the files as they are.</td>
+      </tr>
+      <tr>
+        <td><b>Configuration effort against project length</b></td>
+        <td>A tool that takes weeks to configure cannot repay that effort on a short project. Forge is deliberately narrower and correspondingly faster to stand up.</td>
+      </tr>
+    </tbody>
+    <caption>Table 2.1 — Reasons for building rather than buying.</caption>
+  </table>
+
+  <h3><span class="num">2.3</span> Where ShotGrid is still better</h3>
+  <div class="box warn">
+    <p>A comparison with no concessions is marketing, not analysis. Three areas where the incumbent is genuinely ahead:</p>
+    <ul style="margin-bottom:0;">
+      <li><b>Content creation application integration.</b> ShotGrid has mature plug-ins letting artists publish directly from Maya, Nuke and Houdini into the tracker. Forge does not have this. If your pipeline depends on it today, that is a real gap.</li>
+      <li><b>Render farm integration.</b> Submitting and monitoring renders from the tracker is not something Forge does.</li>
+      <li><b>Ecosystem and longevity.</b> A large installed base, an established API, third-party tooling and a vendor with a long track record all carry genuine value that a new internal tool cannot claim.</li>
+    </ul>
+  </div>
+
+  <h3><span class="num">2.4</span> Feature comparison</h3>
+  <table>
+    <thead><tr><th style="width:34%">Capability</th><th style="width:15%">Forge</th><th style="width:19%">Flow / ftrack</th><th style="width:15%">Kitsu</th><th>Spreadsheet</th></tr></thead>
+    <tbody>
+      <tr><td>Shot and task hierarchy</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">Manual</td></tr>
+      <tr><td>Frame-accurate review player</td><td class="yes">Yes</td><td class="yes">Yes</td><td>Basic</td><td class="no">No</td></tr>
+      <tr><td>Annotation on frame</td><td class="yes">Yes</td><td class="yes">Yes</td><td>Partial</td><td class="no">No</td></tr>
+      <tr><td>Multi-stage approval chain</td><td class="yes">Yes</td><td class="yes">Yes</td><td>Partial</td><td class="no">No</td></tr>
+      <tr><td>External client review</td><td class="yes">Link + code</td><td class="yes">Yes</td><td>Limited</td><td class="no">Email</td></tr>
+      <tr><td>Imports your existing tracksheet</td><td class="yes">Any layout</td><td>Mapped CSV</td><td>Mapped CSV</td><td>—</td></tr>
+      <tr><td>Self-hosted, media stays local</td><td class="yes">Yes</td><td class="no">Cloud</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+      <tr><td>Per-seat licence cost</td><td class="yes">None</td><td class="no">Per seat</td><td class="yes">None</td><td class="yes">None</td></tr>
+      <tr><td>DCC plug-in publishing</td><td class="no">Not yet</td><td class="yes">Extensive</td><td>Partial</td><td class="no">No</td></tr>
+      <tr><td>Render farm submission</td><td class="no">Not yet</td><td class="yes">Yes</td><td>Partial</td><td class="no">No</td></tr>
+      <tr><td>Attendance and effort tracking</td><td class="yes">Built in</td><td>Add-on</td><td>Partial</td><td class="no">Separate</td></tr>
+    </tbody>
+    <caption>Table 2.2 — Capability comparison, including the two rows where Forge is behind.</caption>
+  </table>
+</section>
+
+<section>
+  <h2><span class="num">3</span> &nbsp;Goals and non-goals</h2>
+  <div class="cando">
+    <div>
+      <h5>Forge sets out to</h5>
+      <ul>
+        <li>Hold the authoritative status of every shot</li>
+        <li>Keep review feedback attached to its frame and version</li>
+        <li>Make every approval decision auditable</li>
+        <li>Import existing tracksheets without reformatting</li>
+        <li>Keep all media on studio infrastructure</li>
+        <li>Cost nothing per additional artist</li>
+        <li>Let clients review without a studio account</li>
+        <li>Record effort against shots for future bidding</li>
+      </ul>
+    </div>
+    <div>
+      <h5>Forge deliberately does not</h5>
+      <ul>
+        <li>Integrate with Maya, Nuke, Houdini or Blender</li>
+        <li>Submit or monitor render farm jobs</li>
+        <li>Transcode uploaded media</li>
+        <li>Replace your accounting system</li>
+        <li>Run as a managed cloud service</li>
+        <li>Share data between separate studios</li>
+        <li>Ship as a mobile or desktop application</li>
+      </ul>
+    </div>
+  </div>
+  <p>The non-goals are as important as the goals. Each was a deliberate decision recorded with its reasoning in the Requirements Document, and several are on the roadmap rather than permanently excluded.</p>
+</section>
+
+<!-- ============ PART B ============ -->
+<section>
+  <h2><span class="num">4</span> &nbsp;System requirements and prerequisites</h2>
+  <p class="lede">Part B is written for whoever deploys and maintains Forge. If you only use the application, skip to Part C.</p>
+
+  <h3><span class="num">4.1</span> Server requirements</h3>
+  <table>
+    <thead><tr><th style="width:20%">Resource</th><th style="width:24%">Minimum</th><th style="width:24%">Recommended</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><b>CPU</b></td><td>4 cores</td><td>8 cores</td><td>Import and media serving are the heaviest operations.</td></tr>
+      <tr><td><b>Memory</b></td><td>8 GB</td><td>16 GB</td><td>Database and cache are the main consumers.</td></tr>
+      <tr><td><b>Disk — system</b></td><td>40 GB</td><td>80 GB SSD</td><td>Container images and the database.</td></tr>
+      <tr><td><b>Disk — media</b></td><td>500 GB</td><td>2 TB or more</td><td>Grows with every uploaded version; size for your delivery volume.</td></tr>
+      <tr><td><b>Operating system</b></td><td colspan="2">Any supporting Docker Engine and Compose v2</td><td>Linux recommended for production.</td></tr>
+      <tr><td><b>Network</b></td><td colspan="2">Static address on the studio network</td><td>Outbound internet not required for core function.</td></tr>
+    </tbody>
+    <caption>Table 4.1 — Server sizing. Media storage is the dimension that grows without bound.</caption>
+  </table>
+
+  <h3><span class="num">4.2</span> Client requirements</h3>
+  <table>
+    <thead><tr><th style="width:26%">Requirement</th><th>Detail</th></tr></thead>
+    <tbody>
+      <tr><td><b>Browser</b></td><td>Current Chrome, Edge or Firefox. The review player requires HTML5 video and Canvas support.</td></tr>
+      <tr><td><b>Display</b></td><td>1440 × 900 or larger. The tracking grid and review player both assume desktop width.</td></tr>
+      <tr><td><b>Network</b></td><td>Access to the Forge server over the studio network.</td></tr>
+      <tr><td><b>Installation</b></td><td>None. Forge is delivered entirely through the browser.</td></tr>
+    </tbody>
+    <caption>Table 4.2 — Client requirements.</caption>
+  </table>
+
+  <h3><span class="num">4.3</span> Prerequisites on the host</h3>
+  <table>
+    <thead><tr><th style="width:26%">Software</th><th style="width:20%">Version</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td><b>Docker Engine</b></td><td>24 or later</td><td>Runs all five services</td></tr>
+      <tr><td><b>Docker Compose</b></td><td>v2</td><td>Orchestrates the stack</td></tr>
+      <tr><td><b>Git</b></td><td>Any current</td><td>Obtaining and updating the source</td></tr>
+      <tr><td><b>Node.js</b></td><td>24 LTS</td><td>Only for local development, not for containerised deployment</td></tr>
+      <tr><td><b>pnpm</b></td><td>11.20.0</td><td>Only for local development; the version is pinned in the repository</td></tr>
+    </tbody>
+    <caption>Table 4.3 — Host prerequisites. A containerised deployment needs only the first three.</caption>
+  </table>
+</section>
+
+<section>
+  <h2><span class="num">5</span> &nbsp;Installation — containerised deployment</h2>
+  <p class="lede">The supported production path. Five containers are built and started together; the database schema is created automatically on first start.</p>
+
+  <ol class="steps">
+    <li>
+      <b>Obtain the source.</b>
+      <pre>git clone &lt;repository-url&gt; forge
+cd forge</pre>
+    </li>
+    <li>
+      <b>Create the environment file.</b> Copy the example and edit it. Every variable is documented in Section 6. At minimum you must set the database password and the session signing secret — the stack refuses to start without them.
+      <pre>cp .env.example .env
+<span class="c"># edit .env and set POSTGRES_PASSWORD and JWT_SECRET to long random values</span></pre>
+    </li>
+    <li>
+      <b>Generate strong secrets.</b> Do not reuse a value from another system, and do not use a dictionary word.
+      <pre>openssl rand -base64 36   <span class="c"># run twice: once for each secret</span></pre>
+    </li>
+    <li>
+      <b>Build and start the stack.</b> The first build takes several minutes as dependencies are installed and the client application is compiled.
+      <pre>docker compose build
+docker compose up -d</pre>
+    </li>
+    <li>
+      <b>Confirm the services are healthy.</b> All five should report running, and the database and cache should report healthy.
+      <pre>docker compose ps</pre>
+    </li>
+    <li>
+      <b>Confirm migrations applied.</b> The API container runs schema migrations before it begins serving. You are looking for the migration lines followed by the server starting.
+      <pre>docker compose logs api | tail -20
+<span class="c"># expect: "Running migrations..." then "Migrations complete." then the server listening</span></pre>
+    </li>
+    <li>
+      <b>Create the first administrator.</b> Run the bootstrap script, which creates the initial tenant, roles, capability grants and administrator account.
+      <pre>docker compose exec api node /app/prod/scripts/reset-and-bootstrap-admin.js</pre>
+    </li>
+    <li>
+      <b>Sign in.</b> Open the server address in a browser. You should reach the sign-in page shown in Figure 5.1.
+    </li>
+  </ol>
+
+  <figure>
+    <img src="../img/01-signin.png" alt="Forge sign-in page">
+    <figcaption><b>Figure 5.1</b> — The sign-in page. Note the three routes below the form: password recovery, self-service registration for new staff, and the separate client access-link entry point for external reviewers.</figcaption>
+  </figure>
+
+  <div class="box warn">
+    <h5>Before you put this into production</h5>
+    <ul style="margin-bottom:0;">
+      <li>Change the bootstrap administrator password immediately after first sign-in.</li>
+      <li>Confirm the media volume is on storage with enough capacity for your delivery volume, and that it is included in your backup regime.</li>
+      <li>If the server is reachable from outside the studio network, put it behind transport encryption and set <code>COOKIE_SECURE=true</code>.</li>
+      <li>Verify a backup restores before you rely on it. An untested backup is an assumption, not a safeguard.</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">6</span> &nbsp;Configuration reference</h2>
+  <p class="lede">Every environment variable, what it does, and what happens if it is wrong.</p>
+  <table>
+    <thead><tr><th style="width:23%">Variable</th><th style="width:11%">Required</th><th style="width:26%">Purpose</th><th>If set incorrectly</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">POSTGRES_PASSWORD</td><td><b>Yes</b></td><td>Database superuser password.</td><td>The stack refuses to start. Changing it after first run without also updating the database requires a manual reset.</td></tr>
+      <tr><td class="mono">POSTGRES_USER</td><td>No</td><td>Database user. Defaults to <span class="mono">postgres</span>.</td><td>Connection failures at API start.</td></tr>
+      <tr><td class="mono">POSTGRES_DB</td><td>No</td><td>Database name. Defaults to <span class="mono">forge</span>.</td><td>Migrations create a schema in the wrong database.</td></tr>
+      <tr><td class="mono">DATABASE_URL</td><td>Derived</td><td>Full connection string, assembled from the values above.</td><td>Override only if pointing at an external database.</td></tr>
+      <tr><td class="mono">JWT_SECRET</td><td><b>Yes</b></td><td>Signs session tokens.</td><td>A weak value allows forged sessions. Changing it signs everyone out immediately.</td></tr>
+      <tr><td class="mono">COOKIE_SECURE</td><td>No</td><td>Marks the session cookie Secure. Set <span class="mono">true</span> when serving over HTTPS.</td><td>Set true without HTTPS and nobody can sign in — the browser discards the cookie.</td></tr>
+      <tr><td class="mono">UPLOAD_DIR</td><td>No</td><td>Media storage path inside the container. Defaults to <span class="mono">/app/uploads</span>.</td><td>Point it outside the mounted volume and uploads vanish on rebuild.</td></tr>
+      <tr><td class="mono">SMTP_HOST</td><td>For mail</td><td>Mail relay hostname.</td><td>Password resets and client access codes are not delivered.</td></tr>
+      <tr><td class="mono">SMTP_PORT</td><td>For mail</td><td>Relay port.</td><td>As above.</td></tr>
+      <tr><td class="mono">SMTP_USER</td><td>For mail</td><td>Relay account.</td><td>As above.</td></tr>
+      <tr><td class="mono">SMTP_PASS</td><td>For mail</td><td>Relay credential. Treat as a secret.</td><td>As above.</td></tr>
+      <tr><td class="mono">SMTP_FROM</td><td>For mail</td><td>Sender address on outbound mail.</td><td>Mail may be rejected by the recipient's server.</td></tr>
+      <tr><td class="mono">APP_URL</td><td>For mail</td><td>Base address used to build links in email.</td><td>Password reset and client links point somewhere unreachable.</td></tr>
+      <tr><td class="mono">REDIS_URL</td><td>No</td><td>Cache connection. Defaults to the compose service.</td><td>Cache misses fall through to the database; performance degrades but nothing breaks.</td></tr>
+      <tr><td class="mono">SENTRY_DSN</td><td>No</td><td>Error reporting destination.</td><td>Unset simply disables error reporting.</td></tr>
+    </tbody>
+    <caption>Table 6.1 — Environment variables. Secrets should be held in the environment file with restricted permissions, never committed to source control.</caption>
+  </table>
+</section>
+
+<section>
+  <h2><span class="num">7</span> &nbsp;Service topology</h2>
+  <p class="lede">Five containers on one host. Understanding which does what makes troubleshooting considerably faster.</p>
+  <table>
+    <thead><tr><th style="width:16%">Service</th><th style="width:16%">Container</th><th style="width:22%">Role</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><b>web</b></td><td class="mono">forge-web</td><td>nginx — serves the client application and proxies API calls</td><td>The only service published to the studio network. Caches an upstream address at start, so restart it after the API container is recreated.</td></tr>
+      <tr><td><b>api</b></td><td class="mono">forge-api</td><td>Application server</td><td>Runs schema migrations at start, then serves requests. Stateless.</td></tr>
+      <tr><td><b>db</b></td><td class="mono">forge-db</td><td>PostgreSQL — system of record</td><td>All durable state. Backed by a named volume.</td></tr>
+      <tr><td><b>redis</b></td><td class="mono">forge-redis</td><td>Cache and rate-limit counters</td><td>Persistence deliberately disabled. Losing it costs performance, never data.</td></tr>
+      <tr><td><b>db-backup</b></td><td class="mono">forge-db-backup</td><td>Scheduled database dump</td><td>Writes to a separate volume from the database itself.</td></tr>
+    </tbody>
+    <caption>Table 7.1 — Service topology.</caption>
+  </table>
+
+  <div class="box">
+    <h5>The one operational quirk worth knowing</h5>
+    <p style="margin-bottom:0;">nginx resolves the API container's address when it starts and holds it. If you rebuild or recreate the API container on its own, the proxy may keep pointing at the old address and every API call will fail while the application itself appears to be running. The fix is to restart the proxy: <code>docker restart forge-web</code>. Make this the reflex after any API-only deployment.</p>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">8</span> &nbsp;Importing your existing tracksheet</h2>
+  <p class="lede">The fastest way to make Forge useful is to load your real production data into it. The importer is built to accept your workbook in whatever layout you already keep it.</p>
+
+  <h3><span class="num">8.1</span> What the importer accepts</h3>
+  <ul>
+    <li><b>File types.</b> <span class="mono">.xlsx</span>, <span class="mono">.xls</span> and <span class="mono">.csv</span>.</li>
+    <li><b>Multi-sheet workbooks.</b> One sheet per episode, named so the episode can be identified — for example <span class="mono">Ep002</span> or <span class="mono">SERIES_Ep014</span>.</li>
+    <li><b>A single flat sheet.</b> Everything on one tab, with no per-episode split, is equally acceptable.</li>
+    <li><b>Varied column names.</b> Matching ignores case, spaces, underscores and hyphens, so <span class="mono">Shot</span>, <span class="mono">shot_name</span> and <span class="mono">Shot Code</span> all resolve to the same field.</li>
+    <li><b>Mixed date formats.</b> Both slash-separated and eight-digit day-month-year forms are understood.</li>
+    <li><b>Reference tabs.</b> Sheets holding notes, durations or conventions are detected and skipped rather than imported as broken rows.</li>
+  </ul>
+
+  <h3><span class="num">8.2</span> What it does with columns it does not recognise</h3>
+  <p>It keeps them. Any non-empty column that does not map to a known field is preserved against the created task rather than discarded. Nothing in your source sheet is silently lost, which means an import is never a one-way loss of information.</p>
+
+  <h3><span class="num">8.3</span> Running an import</h3>
+  <ol class="steps">
+    <li>Open <b>Tracking Grid</b> and choose <b>Import Tracksheet</b>. The control appears only if your role can create tasks.</li>
+    <li>Select the project the tracksheet belongs to. The file upload area stays disabled until you do.</li>
+    <li>Choose the workbook. Parsing begins immediately.</li>
+    <li>Read the result panel. Every row is reported as created or skipped, with a reason for each skip.</li>
+    <li>Check the grid. The entry count at the foot of the page should have grown by the number of rows imported.</li>
+  </ol>
+
+  <div class="box warn">
+    <h5>If the import reports that no shot rows were found</h5>
+    <p style="margin-bottom:0;">This means no sheet in the workbook had a column the importer recognised as identifying a shot. It looks for <span class="mono">SC#</span>, <span class="mono">SHOT_CODE</span>, <span class="mono">Shot Code</span>, <span class="mono">Shot</span> and <span class="mono">Shot Name</span>. Rename your shot column to any of those and import again. The importer reports this as a failure rather than as a successful import of zero rows, precisely so it cannot be mistaken for success.</p>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">9</span> &nbsp;Backup, restore and upgrade</h2>
+
+  <h3><span class="num">9.1</span> What is backed up</h3>
+  <p>The backup service dumps the PostgreSQL database on a schedule to a volume separate from the database's own. <b>Uploaded media is not included in that dump.</b> The media volume must be backed up by your normal file backup regime — this is the single most commonly missed step in deploying Forge.</p>
+
+  <h3><span class="num">9.2</span> Taking a manual backup</h3>
+  <pre>docker compose exec db pg_dump -U postgres forge &gt; forge-$(date +%F).sql</pre>
+
+  <h3><span class="num">9.3</span> Restoring</h3>
+  <ol class="steps">
+    <li>Stop the API so nothing writes during the restore: <code>docker compose stop api</code></li>
+    <li>Restore the dump into the database container.
+      <pre>cat forge-2026-09-10.sql | docker compose exec -T db psql -U postgres forge</pre>
+    </li>
+    <li>Start the API again: <code>docker compose start api</code></li>
+    <li>Restart the proxy so it re-resolves the API address: <code>docker restart forge-web</code></li>
+    <li>Sign in and confirm the expected data is present.</li>
+  </ol>
+
+  <h3><span class="num">9.4</span> Upgrading</h3>
+  <ol class="steps">
+    <li>Take a backup first. Always.</li>
+    <li>Fetch the new version: <code>git pull</code></li>
+    <li>Rebuild: <code>docker compose build</code></li>
+    <li>Restart the affected services: <code>docker compose up -d</code></li>
+    <li>Restart the proxy: <code>docker restart forge-web</code></li>
+    <li>Check the API log to confirm any new migrations applied cleanly.</li>
+  </ol>
+  <p>Schema migrations run automatically when the API container starts and are safe to apply repeatedly — a container that restarts with no pending migrations reports that and continues.</p>
+</section>
+
+<section>
+  <h2><span class="num">10</span> &nbsp;Troubleshooting</h2>
+  <p class="lede">Symptoms drawn from real incidents on this deployment, with the actual cause and fix.</p>
+  <table>
+    <thead><tr><th style="width:26%">Symptom</th><th style="width:30%">Likely cause</th><th>Resolution</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>The page loads but every action fails</b></td>
+        <td>nginx is holding a stale address for the API container after it was recreated.</td>
+        <td><code>docker restart forge-web</code>. Make this routine after any API-only deployment.</td>
+      </tr>
+      <tr>
+        <td><b>"Invalid email or password" for a password you know is correct</b></td>
+        <td>The account rate limit has been reached. Repeated failed attempts — including from other people on the same studio connection — consume a shared budget.</td>
+        <td>Wait for the window to pass, or clear the specific counter in the cache. Only failed attempts count against it.</td>
+      </tr>
+      <tr>
+        <td><b>Signing in with different credentials keeps returning the same account</b></td>
+        <td>An existing session cookie is still present. Navigating to the sign-in page does not clear it.</td>
+        <td>Use the avatar menu and choose <b>Log out</b> first, then sign in. This is the single most common source of confusion when testing multiple roles.</td>
+      </tr>
+      <tr>
+        <td><b>Import reports zero rows</b></td>
+        <td>No recognised shot column in any sheet.</td>
+        <td>See Section 8.3. Rename the shot column to a recognised heading.</td>
+      </tr>
+      <tr>
+        <td><b>Review player says "No footage uploaded yet"</b></td>
+        <td>The version exists but no media has been uploaded against it. This is the normal state for a newly created version.</td>
+        <td>An artist or lead uses <b>Insert Video</b> to upload. Administrators cannot — they hold no review capability by design.</td>
+      </tr>
+      <tr>
+        <td><b>Reviews page appears empty</b></td>
+        <td>The default tab shows only work awaiting you personally, which is legitimately empty most of the time.</td>
+        <td>Use the link beneath the empty state, or the <b>All</b> tab, to see work at other stages.</td>
+      </tr>
+      <tr>
+        <td><b>Password reset email never arrives</b></td>
+        <td>SMTP is not configured, or is configured incorrectly.</td>
+        <td>Check the SMTP variables in Section 6 and the API log for delivery errors.</td>
+      </tr>
+      <tr>
+        <td><b>Uploads disappear after a rebuild</b></td>
+        <td><span class="mono">UPLOAD_DIR</span> points outside the mounted volume.</td>
+        <td>Correct the path and restore the media from your file backup.</td>
+      </tr>
+      <tr>
+        <td><b>Everyone shows as offline</b></td>
+        <td>Presence is derived from recent activity, not from being clocked in. A user with no requests in the last ninety seconds reads as offline.</td>
+        <td>Expected behaviour. Clocked-in status and online status are deliberately separate.</td>
+      </tr>
+    </tbody>
+    <caption>Table 10.1 — Troubleshooting reference.</caption>
+  </table>
+</section>
+
+<!-- ============ PART C ============ -->
+<section>
+  <h2><span class="num">11</span> &nbsp;Getting started — everyone</h2>
+  <p class="lede">This short section applies to every role. From Section 12 onward, each role has its own self-contained path — read only yours.</p>
+
+  <h3><span class="num">11.1</span> Signing in</h3>
+  <p>Open the Forge address in your browser. Enter your work email address and password, and choose <b>Sign In</b>. If you are new and have no account, use <b>Create an account</b> beneath the form; if you have forgotten your password, use <b>Forgot your password?</b> and a reset link will be emailed to you. That link works once and expires after thirty minutes.</p>
+
+  <h3><span class="num">11.1a</span> Registering as a new starter</h3>
+  <p>The registration form asks for your name, work email and a password, and then two things that matter for getting you working quickly:</p>
+  <ul>
+    <li><b>Department.</b> Pick the one you will actually work in. Your lead uses this to find you and assign you shots — without it, you can sign in but nobody can give you work.</li>
+    <li><b>Your role.</b> Say what you are joining as. If you pick anything above artist, that is recorded as a request rather than granted on the spot: you can sign in and start work immediately as an artist, and an administrator approves the higher role. This is deliberate, so that nobody can give themselves studio-wide authority simply by choosing it from a dropdown.</li>
+  </ul>
+  <p>If you requested a role above artist and it has not taken effect yet, ask your production head or administrator — your account appears in the Studio Roster marked with the role you asked for.</p>
+
+  <div class="box warn">
+    <h5>Switching between accounts</h5>
+    <p style="margin-bottom:0;">If you are already signed in, going to the sign-in page will not let you sign in as someone else — your existing session stays active. You must open the avatar menu at the top right and choose <b>Log out</b> first. This matters most when testing or demonstrating different roles.</p>
+  </div>
+
+  <h3><span class="num">11.2</span> What happens automatically when you sign in</h3>
+  <p>If you hold a production role, signing in clocks you in for the day. Signing out clocks you out. You do not need to do this manually, and signing in twice does not create a duplicate record. Separately, your online status is derived from recent activity rather than from being clocked in, so closing your laptop without signing out will show you as offline after about ninety seconds, while your clock-in for the day remains intact.</p>
+
+  <h3><span class="num">11.3</span> Finding your way around</h3>
+  <p>The left sidebar lists only the areas your role can reach — it will look different for an artist than for a production head, and that is expected rather than a fault. The top bar carries search, your clock status, notifications and your avatar menu. The search box, or <span class="mono">Ctrl+K</span>, opens a command palette for jumping directly to a project, shot or task.</p>
+
+  <h3><span class="num">11.4</span> Why a control you expected is missing</h3>
+  <p>Forge hides actions your role cannot perform rather than showing them and failing when you try. If a colleague can see a button that you cannot, that is a difference in role capability, not a bug. Section 18 lists exactly which role holds which capability.</p>
+</section>
+
+<!-- ARTIST -->
+<section>
+  <div class="rolehdr" style="--rc: var(--r-artist)">
+    <span class="badge">Access path 1</span>
+    <h2><span class="num">12</span> &nbsp;Artist</h2>
+  </div>
+  <p class="lede">Everything an artist does, from finding today's work to getting a shot approved. Nothing in this section requires any other part of the guide.</p>
+
+  <div class="cando">
+    <div>
+      <h5>You can</h5>
+      <ul>
+        <li>See work assigned to you</li>
+        <li>Claim unassigned work</li>
+        <li>Update the status of your tasks</li>
+        <li>Log time against a task</li>
+        <li>Upload a version for review</li>
+        <li>Annotate and comment on your shots</li>
+        <li>Submit work for lead review</li>
+      </ul>
+    </div>
+    <div>
+      <h5>You cannot</h5>
+      <ul>
+        <li>Assign work to other people</li>
+        <li>Approve any review stage</li>
+        <li>See other departments' work</li>
+        <li>See colleagues' attendance</li>
+        <li>Share anything with a client</li>
+        <li>Change roles or settings</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3><span class="num">12.1</span> Your task board</h3>
+  <p>You land on <b>My Tasks</b> after signing in. It shows only your work, arranged in columns by stage. The count beside each filter tells you how much sits at that stage.</p>
+  <figure>
+    <img src="../img/10-artist-tasks.png" alt="Artist task board">
+    <figcaption><b>Figure 12.1</b> — The artist task board. Note the sidebar: an artist sees seven areas, where a production head sees eighteen. The <b>Available Tasks</b> column at the left holds unassigned work you may claim for yourself.</figcaption>
+  </figure>
+
+  <h3><span class="num">12.2</span> Working a task</h3>
+  <ol class="steps">
+    <li><b>Open the task</b> by clicking its row or card. A panel opens on the right with the full detail: description, shot, department, due date, and the time logged so far.</li>
+    <li><b>Move it to In Progress</b> when you start, using the status control. Everyone tracking the show sees this immediately.</li>
+    <li><b>Log your time</b> as you go. This feeds the studio's effort history and is what makes future bids accurate.</li>
+    <li><b>Add comments</b> for anything the next person needs to know. Comments stay with the task permanently.</li>
+    <li><b>Upload your version</b> when you have something to show — see 12.3.</li>
+    <li><b>Submit for review</b> when it is ready. It moves to your lead's queue.</li>
+  </ol>
+
+  <h3><span class="num">12.3</span> Uploading a version and submitting it</h3>
+  <p>Open <b>Reviews</b> from the sidebar and select the shot you are working on. If nothing has been uploaded yet the player shows "No footage uploaded yet" with an <b>Insert Video</b> button. Choose it and select your file — MP4, WebM, MOV and AVI are accepted, up to 500 MB.</p>
+  <p>Once the media is in, you can review your own work with the full annotation toolset before sending it on. When you are satisfied, use <b>Submit to Lead/Supervisor for Review</b> in the top bar. The shot moves to lead review and your lead sees it in their queue.</p>
+  <figure>
+    <img src="../img/11-artist-reviews.png" alt="Artist reviews queue">
+    <figcaption><b>Figure 12.2</b> — The Reviews queue as an artist sees it. The default <b>Awaiting Me</b> tab is empty here, which is normal — it holds only work blocked on you personally. The link beneath tells you how many reviews sit at other stages and takes you to them.</figcaption>
+  </figure>
+
+  <h3><span class="num">12.4</span> When changes are requested</h3>
+  <p>If your lead requests changes, the shot returns to you with the reason recorded, and the task moves back to In Progress. The note will be attached to the specific frame it concerns — open the review, click the frame number beside the comment, and the player jumps straight there.</p>
+
+  <h3><span class="num">12.5</span> Your shots and assets</h3>
+  <figure>
+    <img src="../img/12-artist-shots.png" alt="Artist shot list">
+    <figcaption><b>Figure 12.3</b> — <b>My Shots</b> lists every shot you are responsible for with its current stage, giving a shot-level view where the task board gives a task-level one.</figcaption>
+  </figure>
+
+  <h3><span class="num">12.6</span> Timesheets and standup</h3>
+  <figure>
+    <img src="../img/13-artist-timesheets.png" alt="Artist timesheet">
+    <figcaption><b>Figure 12.4</b> — <b>Timesheets</b> shows your own recorded hours. Your lead and production management can see this; other artists cannot.</figcaption>
+  </figure>
+  <figure>
+    <img src="../img/14-artist-standup.png" alt="Daily standup">
+    <figcaption><b>Figure 12.5</b> — <b>Daily Standup</b>. A short daily record of what you are working on, posted automatically when you sign out or written by hand.</figcaption>
+  </figure>
+</section>
+
+<!-- LEAD -->
+<section>
+  <div class="rolehdr" style="--rc: var(--r-lead)">
+    <span class="badge">Access path 2</span>
+    <h2><span class="num">13</span> &nbsp;Department lead</h2>
+  </div>
+  <p class="lede">A lead does everything an artist does, within their own department, plus assignment and first-stage approval.</p>
+
+  <div class="cando">
+    <div>
+      <h5>You can</h5>
+      <ul>
+        <li>Everything an artist can</li>
+        <li>Create tasks in your department</li>
+        <li>Assign and reassign your team's work</li>
+        <li>Approve or request changes at lead stage</li>
+        <li>See your department's tracking grid</li>
+        <li>See your team's attendance and effort</li>
+        <li>Present a review to other viewers</li>
+      </ul>
+    </div>
+    <div>
+      <h5>You cannot</h5>
+      <ul>
+        <li>Act outside your own department</li>
+        <li>Give final production sign-off</li>
+        <li>Share work with a client</li>
+        <li>Administer accounts or roles</li>
+        <li>Change studio settings</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3><span class="num">13.1</span> Your department dashboard</h3>
+  <figure>
+    <img src="../img/20-lead-dashboard.png" alt="Lead production dashboard">
+    <figcaption><b>Figure 13.1</b> — The Production Dashboard scoped to a lead. Counts cover your department only. The filters at the top right switch between all shots, those needing review, and those flagged at risk.</figcaption>
+  </figure>
+
+  <h3><span class="num">13.2</span> Reviewing submitted work</h3>
+  <p>Work submitted by your artists arrives in <b>Reviews</b>. The <b>Awaiting Me</b> tab holds what is blocked on your decision; <b>Lead Review</b> shows everything at your stage across the department.</p>
+  <ol class="steps">
+    <li>Open the shot. The player loads the submitted version with its full history beside it.</li>
+    <li>Play it through. Use the annotation tools to mark anything that needs attention — see Section 17 for the complete toolset.</li>
+    <li>Add comments. Each is anchored to the frame you were on, so the artist sees exactly what you meant.</li>
+    <li>Decide. <b>Approve</b> sends it to production review; <b>Request Changes</b> returns it to the artist with your reason recorded.</li>
+  </ol>
+  <figure>
+    <img src="../img/21-lead-reviews.png" alt="Lead review queue">
+    <figcaption><b>Figure 13.2</b> — The review queue as a lead. Every item shows its shot, department, assignee and current stage.</figcaption>
+  </figure>
+
+  <h3><span class="num">13.3</span> Assigning and reassigning work</h3>
+  <p>Open any task in your department and use <b>Reassign</b> beside the assignee to move it to someone else on your team. The dropdown lists your department's roster. You can also create new tasks with <b>Assign Task</b> in the top bar.</p>
+
+  <h3><span class="num">13.4</span> The tracking grid</h3>
+  <figure>
+    <img src="../img/22-lead-tracking.png" alt="Tracking grid">
+    <figcaption><b>Figure 13.3</b> — The Global Tracking Grid. Status and review states are editable in place; changes are staged until you choose <b>Save Changes</b>, so an accidental click is recoverable.</figcaption>
+  </figure>
+
+  <h3><span class="num">13.5</span> Scheduling and capacity</h3>
+  <figure>
+    <img src="../img/23-lead-scheduling.png" alt="Scheduling view">
+    <figcaption><b>Figure 13.4</b> — <b>Scheduling</b> shows workload across your team, making it visible when one artist is carrying more than they can deliver.</figcaption>
+  </figure>
+</section>
+
+<!-- PRODUCTION HEAD -->
+<section>
+  <div class="rolehdr" style="--rc: var(--r-prod)">
+    <span class="badge">Access path 3</span>
+    <h2><span class="num">14</span> &nbsp;Production head and producer</h2>
+  </div>
+  <p class="lede">Studio-wide authority: every department, final approval, and the handover to the client.</p>
+
+  <div class="cando">
+    <div>
+      <h5>You can</h5>
+      <ul>
+        <li>See and act on every department</li>
+        <li>Give final approval after lead review</li>
+        <li>Share approved work with clients</li>
+        <li>Create and assign work anywhere</li>
+        <li>Import tracksheets</li>
+        <li>See all attendance and effort</li>
+        <li>Administer accounts and roles</li>
+        <li>View financial reporting</li>
+      </ul>
+    </div>
+    <div>
+      <h5>Worth knowing</h5>
+      <ul>
+        <li>You are the last gate before a client sees work</li>
+        <li>Sharing with a client is a one-way door — confirm before sending</li>
+        <li>Your approval is recorded permanently against the version</li>
+        <li>You can act in any department, so check the department filter before bulk edits</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3><span class="num">14.1</span> The studio dashboard</h3>
+  <figure>
+    <img src="../img/30-ph-dashboard.png" alt="Studio dashboard">
+    <figcaption><b>Figure 14.1</b> — The studio-wide dashboard: active projects, shot counts, progress against the whole slate, and the pending review queue.</figcaption>
+  </figure>
+
+  <h3><span class="num">14.2</span> The tracking grid, studio-wide</h3>
+  <figure>
+    <img src="../img/31-ph-tracking.png" alt="Studio-wide tracking grid">
+    <figcaption><b>Figure 14.2</b> — The same grid a lead sees, but across every department. The department status rollup above the table summarises progress per department. <b>Import Tracksheet</b> and <b>Export CSV</b> both sit in the top bar.</figcaption>
+  </figure>
+
+  <h3><span class="num">14.3</span> Final approval</h3>
+  <p>Work approved by a lead arrives at production review. Open it, satisfy yourself it is ready, and approve. That approval is recorded against the version with your name and the time, and it is the point at which the shot becomes eligible to share with the client.</p>
+
+  <h3><span class="num">14.4</span> Sharing with a client</h3>
+  <ol class="steps">
+    <li>Open the approved version and choose <b>Share with Client</b>.</li>
+    <li>Enter the client's email address. Forge generates an access link and a separate code.</li>
+    <li>The code is emailed to the client automatically. They need both the link and the code to see anything.</li>
+    <li>Their feedback returns into the shot record, where your team can see it.</li>
+    <li>You can revoke the link at any time; access stops on their next request.</li>
+  </ol>
+
+  <h3><span class="num">14.5</span> Projects, people and reporting</h3>
+  <figure>
+    <img src="../img/32-ph-projects.png" alt="Projects list">
+    <figcaption><b>Figure 14.3</b> — <b>Projects</b>. Progress is computed from completed tasks against the total, so it reflects real state rather than a manually maintained percentage.</figcaption>
+  </figure>
+  <figure>
+    <img src="../img/33-ph-roster.png" alt="Studio roster">
+    <figcaption><b>Figure 14.4</b> — <b>Studio Roster</b>. Online and offline badges reflect genuine recent activity rather than whether someone remembered to sign out. Names, emails and photographs in this figure are fictional.</figcaption>
+  </figure>
+  <figure>
+    <img src="../img/34-ph-analytics.png" alt="Analytics">
+    <figcaption><b>Figure 14.5</b> — <b>Analytics</b> summarises throughput, workload distribution and delivery risk across the studio.</figcaption>
+  </figure>
+  <figure>
+    <img src="../img/35-ph-deliveries.png" alt="Deliveries">
+    <figcaption><b>Figure 14.6</b> — <b>Deliveries</b> records what has been sent to which client and when.</figcaption>
+  </figure>
+</section>
+
+<!-- ADMIN -->
+<section>
+  <div class="rolehdr" style="--rc: var(--r-admin)">
+    <span class="badge">Access path 4</span>
+    <h2><span class="num">15</span> &nbsp;Administrator</h2>
+  </div>
+  <p class="lede">The administrator stands the studio up and watches it run. It is deliberately not a production role, and this is the most commonly misunderstood part of Forge.</p>
+
+  <div class="box warn">
+    <h5>Why you cannot assign or approve work</h5>
+    <p style="margin-bottom:0;">The administrator holds no task or review capability at all. This is a designed separation, not an oversight: the person who administers accounts and monitors the studio should not also be a participant in the approval chain they oversee. You can see everything and comment on anything, but you cannot create, assign, edit or approve production work. If you need to do those things, you need a production role as well.</p>
+  </div>
+
+  <div class="cando">
+    <div>
+      <h5>You can</h5>
+      <ul>
+        <li>Create, deactivate and reactivate accounts</li>
+        <li>Assign roles and departments</li>
+        <li>Edit the capability matrix</li>
+        <li>Configure departments and pipeline order</li>
+        <li>Manage licences and integrations</li>
+        <li>View the audit log and roll changes back</li>
+        <li>View financial reporting</li>
+        <li>See and comment on any task</li>
+      </ul>
+    </div>
+    <div>
+      <h5>You cannot</h5>
+      <ul>
+        <li>Create, assign or edit tasks</li>
+        <li>Be assigned work</li>
+        <li>Upload versions or submit reviews</li>
+        <li>Approve any review stage</li>
+        <li>Share work with clients</li>
+        <li>Send studio broadcasts</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3><span class="num">15.1</span> Your dashboard</h3>
+  <figure>
+    <img src="../img/40-admin-dashboard.png" alt="Administrator dashboard">
+    <figcaption><b>Figure 15.1</b> — The administrator dashboard. Note there is no task creation control anywhere on it, consistent with the separation described above.</figcaption>
+  </figure>
+
+  <h3><span class="num">15.2</span> Managing people</h3>
+  <ol class="steps">
+    <li>Open <b>Studio Roster</b> to see everyone, their role, department and current status.</li>
+    <li>To onboard someone, either create the account directly or let them register themselves. A self-registered account arrives as an artist with its department already set, so their lead can assign work immediately without waiting for you.</li>
+    <li>Look for an amber <b>Requested</b> badge on a roster card. That person asked to join at a higher role than artist, and it is waiting on your decision. Setting their role — whether to what they asked for or to something else — resolves the request and clears the badge.</li>
+    <li>To offboard someone, deactivate the account. This immediately ends their sessions and refuses future sign-in, while keeping every task, comment and approval they contributed.</li>
+  </ol>
+  <div class="box">
+    <h5>Deactivate rather than delete</h5>
+    <p style="margin-bottom:0;">Deactivation removes access but preserves history. Deleting a user would orphan every task they worked on and every approval they gave, which is why the interface does not offer it. A deactivated person can be reactivated at any time.</p>
+  </div>
+  <figure>
+    <img src="../img/41-admin-roster.png" alt="Administrator roster view">
+    <figcaption><b>Figure 15.2</b> — The roster as an administrator sees it, showing account status alongside each person. All names and addresses shown are fictional.</figcaption>
+  </figure>
+
+  <h3><span class="num">15.3</span> Roles and capabilities</h3>
+  <p>Capabilities are named permissions granted to roles, held in the database and checked on every request. Editing the matrix changes what a role can do immediately, without a redeployment. Section 18 documents the default allocation.</p>
+  <figure>
+    <img src="../img/42-admin-settings.png" alt="Settings and roles">
+    <figcaption><b>Figure 15.3</b> — <b>Settings</b>, including the roles and permissions matrix. Changes here take effect on affected users' next request.</figcaption>
+  </figure>
+
+  <h3><span class="num">15.4</span> Audit and rollback</h3>
+  <figure>
+    <img src="../img/43-admin-audit.png" alt="Audit log">
+    <figcaption><b>Figure 15.4</b> — The audit log records significant changes with actor, entity and timestamp. Where a change can be safely reversed, the rollback is itself recorded as a new audit event rather than erasing the original.</figcaption>
+  </figure>
+
+  <h3><span class="num">15.5</span> Integrations and plug-ins</h3>
+  <figure>
+    <img src="../img/44-admin-integrations.png" alt="Integrations hub">
+    <figcaption><b>Figure 15.5</b> — The Integrations Hub. These surfaces are visible only to administrators and are labelled as forthcoming, so that nobody elsewhere in the studio mistakes a planned capability for an available one.</figcaption>
+  </figure>
+</section>
+
+<!-- CLIENT -->
+<section>
+  <div class="rolehdr" style="--rc: var(--r-client)">
+    <span class="badge">Access path 5</span>
+    <h2><span class="num">16</span> &nbsp;External client</h2>
+  </div>
+  <p class="lede">What your client experiences. Worth reading even if you are not one, because producers are frequently asked to explain it.</p>
+
+  <h3><span class="num">16.1</span> What the client receives</h3>
+  <p>Two things, and both are needed: a link to a review page, and a separate access code delivered by email. Neither works alone.</p>
+
+  <h3><span class="num">16.2</span> What they can do</h3>
+  <ul>
+    <li>Watch the shared version in their browser, with no account and no software to install.</li>
+    <li>Leave feedback, which returns into the shot record where the studio team can see it.</li>
+    <li>Approve, or request changes.</li>
+  </ul>
+
+  <h3><span class="num">16.3</span> What they cannot do</h3>
+  <ul>
+    <li>See anything that was not explicitly shared with them — no other shots, no other projects, no studio data.</li>
+    <li>Reach the studio application itself. A client session is a different kind of session and is refused everywhere else.</li>
+    <li>See who is working on what, attendance, or any internal discussion.</li>
+  </ul>
+
+  <div class="box">
+    <h5>Revoking access</h5>
+    <p style="margin-bottom:0;">A producer can revoke an access link at any time. It stops working on the client's next action. Revoke links once a review round is closed rather than leaving them open indefinitely.</p>
+  </div>
+</section>
+
+<!-- PLAYER -->
+<section>
+  <h2><span class="num">17</span> &nbsp;The review player in depth</h2>
+  <p class="lede">The most feature-dense screen in Forge, and where most of a reviewing day is spent. This section applies to artists, leads, production management and clients alike; which tools you see depends on your role.</p>
+
+  <h3><span class="num">17.1</span> Transport and navigation</h3>
+  <table>
+    <thead><tr><th style="width:26%">Control</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td><b>Play / pause</b></td><td>Runs the version at its native rate.</td></tr>
+      <tr><td><b>Step forward / back</b></td><td>Moves exactly one frame. The frame counter shows current and total.</td></tr>
+      <tr><td><b>Timeline scrub</b></td><td>Drag to any frame. Reviews are given in frame numbers, so this is how you find the frame a note refers to.</td></tr>
+      <tr><td><b>Previous / next shot</b></td><td>Moves through the sequence without returning to the queue.</td></tr>
+    </tbody>
+    <caption>Table 17.1 — Transport controls.</caption>
+  </table>
+
+  <h3><span class="num">17.2</span> Annotation tools</h3>
+  <table>
+    <thead><tr><th style="width:26%">Tool</th><th>Use</th></tr></thead>
+    <tbody>
+      <tr><td><b>Select</b></td><td>Pick an existing annotation to move or remove it.</td></tr>
+      <tr><td><b>Freehand</b></td><td>Draw directly on the frame — the most-used tool in practice.</td></tr>
+      <tr><td><b>Arrow</b></td><td>Point at something specific.</td></tr>
+      <tr><td><b>Rectangle</b></td><td>Box a region needing attention.</td></tr>
+      <tr><td><b>Text</b></td><td>Place a written note on the frame itself.</td></tr>
+      <tr><td><b>Eraser</b></td><td>Removes your own annotations. It will not remove someone else's.</td></tr>
+      <tr><td><b>Colour</b></td><td>Six colours. Convention is worth agreeing per studio — for example red for required changes, green for approved detail.</td></tr>
+    </tbody>
+    <caption>Table 17.2 — Annotation toolset. Annotations are saved against the version and frame and persist for the life of the project.</caption>
+  </table>
+
+  <h3><span class="num">17.3</span> Comparison tools</h3>
+  <table>
+    <thead><tr><th style="width:26%">Tool</th><th>Use</th></tr></thead>
+    <tbody>
+      <tr><td><b>A/B wipe</b></td><td>Drag a divider across the frame to compare two versions in place. The fastest way to show what changed between revisions.</td></tr>
+      <tr><td><b>Onion skinning</b></td><td>Displays adjacent frames semi-transparently. Essential for judging animation timing and spacing.</td></tr>
+      <tr><td><b>Ghosting</b></td><td>Overlays a previous version faintly over the current one to check drift.</td></tr>
+      <tr><td><b>Compare versions</b></td><td>Places two versions side by side.</td></tr>
+      <tr><td><b>Screenshot</b></td><td>Copies the current frame including annotations to your clipboard, for pasting into an email or message.</td></tr>
+    </tbody>
+    <caption>Table 17.3 — Comparison and capture tools.</caption>
+  </table>
+
+  <h3><span class="num">17.4</span> Comments and the approval chain</h3>
+  <p>The panel on the right carries three tabs. <b>Comments</b> holds the discussion, the approval chain and the history. <b>Client</b> holds external feedback. <b>Properties</b> holds the version's metadata.</p>
+  <p>A comment posted from the player records the frame you were on. Anyone reading it later can click the frame number and jump straight there — this is what stops "the thing in the top left" from being ambiguous three days later. The approval chain above the comments shows which stages have been passed and by whom.</p>
+
+  <h3><span class="num">17.5</span> Presentation mode</h3>
+  <p>A lead or producer can start a presentation, which synchronises the frame position of everyone viewing that version to the presenter's. Viewers cannot scrub or annotate while it runs, so everyone is genuinely looking at the same frame. Use it for supervised dailies.</p>
+
+  <h3><span class="num">17.6</span> Read-only reviewer mode</h3>
+  <p>The <b>Read-only Reviewer</b> toggle disables your own annotation and editing tools for the session. It is useful when demonstrating to a client over a shared screen and you want no risk of accidentally drawing on the frame.</p>
+</section>
+
+<!-- ============ PART D ============ -->
+<section>
+  <h2><span class="num">18</span> &nbsp;Capability matrix</h2>
+  <p class="lede">Which role holds which permission. If a control is missing for you, this table explains why.</p>
+  <table>
+    <thead>
+      <tr><th style="width:22%">Capability</th><th style="width:9%">Artist</th><th style="width:9%">Lead</th><th style="width:12%">Prod. Head</th><th style="width:10%">Producer</th><th style="width:9%">Admin</th><th>Governs</th></tr>
+    </thead>
+    <tbody>
+      <tr><td class="mono">create_tasks</td><td class="no">—</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">—</td><td>Creating tasks; importing tracksheets</td></tr>
+      <tr><td class="mono">edit_tasks</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">—</td><td>Changing task fields</td></tr>
+      <tr><td class="mono">assign_tasks</td><td class="no">—</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">—</td><td>Assigning and reassigning</td></tr>
+      <tr><td class="mono">delete_tasks</td><td class="no">—</td><td class="no">—</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">—</td><td>Deleting tasks</td></tr>
+      <tr><td class="mono">submit_reviews</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">—</td><td>Uploading media; submitting; annotating</td></tr>
+      <tr><td class="mono">approve_reviews</td><td class="no">—</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">—</td><td>Approving a review stage</td></tr>
+      <tr><td class="mono">broadcast_updates</td><td class="no">—</td><td class="no">—</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">—</td><td>Studio-wide announcements</td></tr>
+      <tr><td class="mono">view_financials</td><td class="no">—</td><td class="no">—</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td>Financial views</td></tr>
+      <tr><td class="mono">edit_financials</td><td class="no">—</td><td class="no">—</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">—</td><td>Editing financial data</td></tr>
+      <tr><td class="mono">manage_pipeline</td><td class="no">—</td><td class="no">—</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td>Departments, stage order, rollback</td></tr>
+      <tr><td class="mono">manage_members</td><td class="no">—</td><td class="no">—</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td>Account lifecycle</td></tr>
+      <tr><td class="mono">manage_roles</td><td class="no">—</td><td class="no">—</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td>Capability grants</td></tr>
+      <tr><td class="mono">manage_licenses</td><td class="no">—</td><td class="no">—</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td>Licence administration</td></tr>
+      <tr><td class="mono">manage_integrations</td><td class="no">—</td><td class="no">—</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td>Integration configuration</td></tr>
+    </tbody>
+    <caption>Table 18.1 — Capability allocation. The administrator column holds no production capability at all — see Section 15.</caption>
+  </table>
+</section>
+
+<section>
+  <h2><span class="num">19</span> &nbsp;Glossary and frequently asked questions</h2>
+
+  <h3><span class="num">19.1</span> Glossary</h3>
+  <table>
+    <thead><tr><th style="width:24%">Term</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><b>A/B wipe</b></td><td>A draggable divider comparing two versions within the same frame.</td></tr>
+      <tr><td><b>Asset</b></td><td>A reusable element — character, prop, environment — tracked alongside shots.</td></tr>
+      <tr><td><b>Capability</b></td><td>A named permission granted to a role.</td></tr>
+      <tr><td><b>Episode</b></td><td>One instalment of a series, containing sequences.</td></tr>
+      <tr><td><b>Ghosting</b></td><td>A faint overlay of a previous version over the current one.</td></tr>
+      <tr><td><b>Onion skinning</b></td><td>Semi-transparent display of adjacent frames, for judging motion.</td></tr>
+      <tr><td><b>Pipeline stage</b></td><td>A department's ordered position in the production flow.</td></tr>
+      <tr><td><b>Sequence</b></td><td>A group of related shots within an episode.</td></tr>
+      <tr><td><b>Shot</b></td><td>The atomic unit of work: a continuous run of frames.</td></tr>
+      <tr><td><b>Tracksheet</b></td><td>The spreadsheet a studio uses to track shot progress.</td></tr>
+      <tr><td><b>Version</b></td><td>A numbered iteration of media for a shot or asset.</td></tr>
+    </tbody>
+    <caption>Table 19.1 — Glossary.</caption>
+  </table>
+
+  <h3><span class="num">19.2</span> Frequently asked questions</h3>
+  <table>
+    <thead><tr><th style="width:36%">Question</th><th>Answer</th></tr></thead>
+    <tbody>
+      <tr><td><b>Why can I see fewer menu items than my colleague?</b></td><td>Forge shows only what your role can use. See Section 18.</td></tr>
+      <tr><td><b>My Reviews page is empty. Is it broken?</b></td><td>Almost certainly not. The default tab shows only work blocked on you. Use the link beneath the empty state to see work at other stages.</td></tr>
+      <tr><td><b>I signed in as someone else but still see my own account.</b></td><td>Log out from the avatar menu first. Going to the sign-in page does not end an existing session.</td></tr>
+      <tr><td><b>Do I need to clock in and out?</b></td><td>No. Signing in and out does it. You will not create duplicate records by signing in twice.</td></tr>
+      <tr><td><b>I closed my laptop without signing out. Am I still clocked in?</b></td><td>Yes, your clock-in for the day stands. Your online indicator will show offline after about ninety seconds, which is separate.</td></tr>
+      <tr><td><b>Can a client see other projects?</b></td><td>No. A client sees only what was explicitly shared with their link, and cannot reach the studio application at all.</td></tr>
+      <tr><td><b>Can I get my data out?</b></td><td>Yes. The grid exports to CSV, and the underlying database is standard PostgreSQL you can query directly.</td></tr>
+      <tr><td><b>What happens to my work if someone leaves?</b></td><td>Their account is deactivated, not deleted. Every task, comment and approval they contributed remains intact.</td></tr>
+      <tr><td><b>Does Forge work without internet?</b></td><td>Yes, for everything except outgoing email. Core tracking and review run entirely on the studio network.</td></tr>
+      <tr><td><b>Can I publish directly from Maya or Nuke?</b></td><td>Not yet. Content creation application integration is on the roadmap and is documented as out of scope in the current release.</td></tr>
+    </tbody>
+    <caption>Table 19.2 — Frequently asked questions.</caption>
+  </table>
+</section>
+
+</div>
