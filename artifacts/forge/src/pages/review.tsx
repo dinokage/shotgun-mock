@@ -918,20 +918,14 @@ export default function Review() {
         setSelectedAnnotationId(null);
         setTool("select");
       },
+      // Delete removes the selected mark. Backspace deliberately does NOT:
+      // an annotation is a reviewer's note with no undo behind it, and
+      // Backspace is the key people hit reflexively to go back or to correct
+      // a typo after focus has moved off a field. One stray press silently
+      // destroying somebody's review notes is not a trade worth the
+      // convenience -- Delete alone is unambiguous.
       Delete: () => {
-        if (viewerMode || isLockedViewer) return;
-        if (selectedAnnotationId) {
-          deleteAnnotation.mutate(selectedAnnotationId);
-          setVideoClips((prev) =>
-            prev.filter(
-              (v) => v.id !== selectedAnnotationId || v.id === "base-v1",
-            ),
-          );
-          setSelectedAnnotationId(null);
-        }
-      },
-      Backspace: () => {
-        if (viewerMode || isLockedViewer) return;
+        if (!canEdit) return;
         if (selectedAnnotationId) {
           deleteAnnotation.mutate(selectedAnnotationId);
           setVideoClips((prev) =>

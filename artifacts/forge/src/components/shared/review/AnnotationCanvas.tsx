@@ -169,22 +169,33 @@ export function AnnotationCanvas({
     keySuffix = "",
   ) => {
     const key = `${a.id}${keySuffix}`;
-    // Select already deletes a shape annotation on click (there's no
-    // separate "selected then press delete" step for shapes, only for text
-    // — see the text overlay below). The eraser reuses that exact
-    // hit-testing/delete path rather than adding a new one.
+    // Clicking a shape SELECTS it. It used to delete it -- and because select
+    // is the default tool, clicking your own mark to look at it, move it, or
+    // change its colour destroyed it instantly, with no undo and no
+    // confirmation. That is the whole of "I draw something and it doesn't
+    // stay": it stayed, and then the next click erased it.
+    //
+    // Deleting is the eraser's job, which is the tool people reach for when
+    // they mean to remove something, and Delete on a selected mark.
     //
     // Restricted to the current user's own marks: an annotation whose
     // `createdById` doesn't match `currentUserId` (including annotations
     // with no `createdById` at all, and client sessions with no
     // `currentUserId`) is not deletable through this path. This is a UI
-    // convenience only — the server independently enforces the same rule.
-    const handleDelete = () =>
-      !readOnly &&
-      (tool === "select" || tool === "eraser") &&
-      a.createdById !== undefined &&
-      a.createdById === currentUserId &&
-      onAnnotationsChange((prev) => prev.filter((p) => p.id !== a.id));
+    // convenience only -- the server independently enforces the same rule.
+    const ownedByViewer =
+      a.createdById !== undefined && a.createdById === currentUserId;
+    const handleShapeClick = () => {
+      if (readOnly) return;
+      if (tool === "eraser") {
+        if (ownedByViewer) {
+          onAnnotationsChange((prev) => prev.filter((p) => p.id !== a.id));
+          if (selectedAnnotationId === a.id) onSelectedAnnotationIdChange(null);
+        }
+        return;
+      }
+      if (tool === "select") onSelectedAnnotationIdChange(a.id);
+    };
     const pointerClassName =
       interactive && !readOnly
         ? "pointer-events-auto cursor-pointer"
@@ -203,7 +214,7 @@ export function AnnotationCanvas({
           strokeWidth={2}
           style={{ opacity }}
           className={pointerClassName}
-          onClick={interactive ? handleDelete : undefined}
+          onClick={interactive ? handleShapeClick : undefined}
         />
       );
     }
@@ -223,7 +234,7 @@ export function AnnotationCanvas({
             pointerClassName,
             interactive && "hover:stroke-opacity-70",
           )}
-          onClick={interactive ? handleDelete : undefined}
+          onClick={interactive ? handleShapeClick : undefined}
         />
       );
     }
@@ -240,7 +251,7 @@ export function AnnotationCanvas({
           style={{ opacity }}
           markerEnd={`url(#arrowhead-${a.color.replace("#", "")})`}
           className={pointerClassName}
-          onClick={interactive ? handleDelete : undefined}
+          onClick={interactive ? handleShapeClick : undefined}
         />
       );
     }
@@ -536,7 +547,19 @@ export function AnnotationCanvas({
                     fontSize: `${a.fontSize}px`,
                   }}
                   readOnly={readOnly}
-                  autoFocus={!readOnly}
+                  // No autoFocus. This used to focus *every* saved text note
+                  // on mount, so simply opening a review put a destructive
+                  // blur handler in play on notes nobody intended to touch --
+                  // and with several notes on a frame they fought over the
+                  // focus. New notes are typed in the draft input below, which
+                  // is the only one that should ever grab focus.
+                  //
+                  // `key` on the stored text so the uncontrolled input is
+                  // remounted when the value changes underneath it (an
+                  // optimistic row being swapped for the server's, or another
+                  // reviewer's edit arriving). Without it the DOM kept a stale
+                  // value that the next blur would write back.
+                  key={`${a.id}:${a.text ?? ""}`}
                   defaultValue={a.text}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") e.currentTarget.blur();
@@ -545,6 +568,16 @@ export function AnnotationCanvas({
                     if (readOnly) return;
                     const val = e.target.value.trim();
                     if (!val) {
+                      // Only discard a note that was ALREADY empty. Deleting
+                      // whenever the field reads empty made blur a data-loss
+                      // path: any moment the DOM value and the stored value
+                      // disagreed -- a stale uncontrolled input, a remount, a
+                      // focused field torn down by a re-render -- silently
+                      // destroyed a saved note and its text with it. Clearing
+                      // a note's text on purpose is an edit, so it saves as an
+                      // empty note rather than deleting the mark.
+                      const wasAlreadyEmpty = !(a.text ?? "").trim();
+                      if (!wasAlreadyEmpty) return;
                       onAnnotationsChange((prev) =>
                         prev.filter((p) => p.id !== a.id),
                       );
