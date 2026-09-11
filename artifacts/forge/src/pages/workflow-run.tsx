@@ -20,9 +20,12 @@ import {
   EmptyTitle,
   EmptyDescription,
 } from "@/components/ui/empty";
-import { WORKFLOWS } from "@/data/mockData";
-import { useWorkflowsStore, type WorkflowRunState } from "@/store/workflows";
-import { useAuthStore } from "@/store/auth";
+import {
+  useWorkflow,
+  useWorkflowRuns,
+  useWorkflowRunDecision,
+  type WorkflowRunDTO,
+} from "@/hooks/useWorkflows";
 import { useCapability } from "@/hooks/use-capability";
 
 type RunStepStatus = "complete" | "running" | "paused" | "rejected" | "pending";
@@ -55,7 +58,7 @@ function stepVisuals(status: RunStepStatus) {
 /** Turns a run's flat log into an ordered set of pipeline steps with a
  * per-step status, so the diagram reflects whatever this specific workflow
  * actually did instead of a fixed 4-node demo shape. */
-function buildRunSteps(run: WorkflowRunState): RunStepView[] {
+function buildRunSteps(run: WorkflowRunDTO): RunStepView[] {
   const order: string[] = [];
   const statusByNode = new Map<string, RunStepStatus>();
 
@@ -85,7 +88,7 @@ function buildRunSteps(run: WorkflowRunState): RunStepView[] {
   }));
 }
 
-function headerBadge(status: WorkflowRunState["status"]) {
+function headerBadge(status: WorkflowRunDTO["status"]) {
   switch (status) {
     case "completed":
       return (
@@ -120,26 +123,33 @@ function headerBadge(status: WorkflowRunState["status"]) {
 export default function WorkflowRun() {
   const [, params] = useRoute("/workflows/run/:id");
   const workflowId = params?.id;
-  const workflow = workflowId
-    ? WORKFLOWS.find((wf) => wf.id === workflowId)
-    : undefined;
 
   const { toast } = useToast();
-  const currentUser = useAuthStore((s) => s.currentUser);
   const canApprove = useCapability("approve_reviews");
 
-  const run = useWorkflowsStore((s) =>
-    workflowId ? s.getRun(workflowId) : undefined,
+  const {
+    data: workflow,
+    isLoading: workflowLoading,
+    isError: workflowError,
+  } = useWorkflow(workflowId);
+  const { data: runs = [], isLoading: runsLoading } =
+    useWorkflowRuns(workflowId);
+  const decide = useWorkflowRunDecision(workflowId);
+
+  // Runs come back newest-first. Prefer one that is actually mid-flight (so
+  // Approve/Reject has something real to act on), otherwise just show the
+  // latest run. A workflow that has never been triggered has none at all.
+  const run = useMemo(
+    () => runs.find((r) => r.status === "running") ?? runs[0],
+    [runs],
   );
-  const approveRunStep = useWorkflowsStore((s) => s.approveRunStep);
-  const rejectRunStep = useWorkflowsStore((s) => s.rejectRunStep);
 
   const steps = useMemo(() => (run ? buildRunSteps(run) : []), [run]);
   const gateStep = steps.find((s) => s.status === "paused");
 
-  if (!workflowId || !workflow || !run) {
+  if (!workflowId || (!workflowLoading && (workflowError || !workflow))) {
     return (
-      <div className="flex flex-col h-screen bg-background">
+      <div className="flex flex-col h-full bg-background">
         <div className="h-14 border-b border-border bg-card flex items-center px-4 shrink-0">
           <Button
             variant="ghost"
@@ -167,27 +177,37 @@ export default function WorkflowRun() {
     );
   }
 
-  const handleApprove = () => {
-    if (!canApprove || !gateStep) return;
-    approveRunStep(workflowId, currentUser?.name ?? "Unknown User");
-    toast({
-      title: "Workflow completed",
-      description: "All steps executed successfully.",
-    });
-  };
-
-  const handleReject = () => {
-    if (!canApprove || !gateStep) return;
-    rejectRunStep(workflowId, currentUser?.name ?? "Unknown User");
-    toast({
-      title: "Step rejected",
-      description: `${gateStep.label} was rejected. The run has been halted.`,
-      variant: "destructive",
-    });
+  const handleDecision = (decision: "approve" | "reject") => {
+    if (!canApprove || !gateStep || !run) return;
+    decide.mutate(
+      { runId: run.id, decision },
+      {
+        onSuccess: () =>
+          toast(
+            decision === "approve"
+              ? {
+                  title: "Workflow completed",
+                  description: "All steps executed successfully.",
+                }
+              : {
+                  title: "Step rejected",
+                  description: `${gateStep.label} was rejected. The run has been halted.`,
+                  variant: "destructive",
+                },
+          ),
+        onError: (err: unknown) =>
+          toast({
+            title: "Couldn't record that decision",
+            description:
+              err instanceof Error ? err.message : "Please try again.",
+            variant: "destructive",
+          }),
+      },
+    );
   };
 
   return (
-    <div className="flex flex-col h-screen bg-background relative">
+    <div className="flex flex-col h-full bg-background relative">
       <div className="h-14 border-b border-border bg-card flex items-center justify-between px-4 shrink-0">
         <div className="flex items-center gap-4">
           <Button
@@ -202,17 +222,21 @@ export default function WorkflowRun() {
           </Button>
           <div>
             <div className="font-semibold flex items-center gap-2">
-              Run: {workflow.name}
-              {headerBadge(run.status)}
+              Run: {workflow?.name ?? "…"}
+              {run && headerBadge(run.status)}
             </div>
-            <div className="text-[11px] text-muted-foreground">{run.id}</div>
+            <div className="text-[11px] text-muted-foreground">
+              {run?.id ?? ""}
+            </div>
           </div>
         </div>
       </div>
 
       <div className="flex-1 bg-muted/10 relative overflow-hidden flex flex-col">
         <div className="flex-1 relative overflow-auto">
-          {steps.length === 0 ? (
+          {runsLoading ? (
+            <div className="p-6 text-muted-foreground">Loading runs...</div>
+          ) : steps.length === 0 ? (
             <Empty className="h-full">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
@@ -278,7 +302,8 @@ export default function WorkflowRun() {
                         <Button
                           size="sm"
                           className="bg-status-green hover:bg-status-green/90 text-white shadow-lg"
-                          onClick={handleApprove}
+                          disabled={decide.isPending}
+                          onClick={() => handleDecision("approve")}
                         >
                           Approve Step
                         </Button>
@@ -286,7 +311,8 @@ export default function WorkflowRun() {
                           size="sm"
                           variant="destructive"
                           className="shadow-lg"
-                          onClick={handleReject}
+                          disabled={decide.isPending}
+                          onClick={() => handleDecision("reject")}
                         >
                           Reject
                         </Button>
@@ -312,7 +338,7 @@ export default function WorkflowRun() {
             Log
           </div>
           <div className="flex-1 overflow-y-auto p-4 font-mono text-xs space-y-1.5">
-            {run.logs.length === 0 ? (
+            {!run || run.logs.length === 0 ? (
               <div className="text-muted-foreground">
                 No log entries for this run yet.
               </div>

@@ -7,6 +7,26 @@ import { logger } from "./lib/logger";
 
 const app: Express = express();
 
+// Exactly one hop: nginx (artifacts/forge/nginx.conf) sets X-Forwarded-For.
+// Without this every request looks like it came from the nginx container, so
+// per-IP rate limiting would share one bucket across the whole studio and a
+// single attacker would lock everyone out. `1` rather than `true` so a
+// client can't prepend its own X-Forwarded-For entries and be believed.
+app.set("trust proxy", 1);
+// Framework fingerprinting aid; nothing depends on it.
+app.disable("x-powered-by");
+
+// Names which replica served a request. With the API scaled behind nginx
+// there is otherwise no way to tell whether requests are actually spreading
+// across instances or all landing on one, and no way to attribute a fault to
+// a particular container. The value is the container's own hostname, which
+// Docker sets to the short container id -- no configuration to keep in sync.
+const INSTANCE_ID = process.env.HOSTNAME || "unknown";
+app.use((_req, res, next) => {
+  res.setHeader("X-Forge-Instance", INSTANCE_ID);
+  next();
+});
+
 app.use(cookieParser());
 app.use(
   pinoHttp({

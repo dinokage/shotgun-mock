@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import type {
   Annotation,
@@ -96,6 +96,38 @@ export function AnnotationCanvas({
     w: number;
     h: number;
   } | null>(null);
+
+  /**
+   * An unsaved text note being typed. Local only: it becomes a real
+   * annotation on commit and is simply dropped if it is left empty, so
+   * clicking around with the text tool never litters the version with blank
+   * notes.
+   */
+  const [draftText, setDraftText] = useState<Point | null>(null);
+
+  /** Commits the draft, if it says anything. */
+  const commitDraftText = (value: string) => {
+    const text = value.trim();
+    setDraftText(null);
+    if (!text || !draftText) return;
+    addAnnotation({
+      type: "text",
+      color,
+      x: draftText.x,
+      y: draftText.y,
+      text,
+      fontFamily: "font-sans",
+      fontSize: 14,
+      backgroundColor: "transparent",
+    });
+  };
+
+  // A draft belongs to the frame it was started on. Moving the playhead is
+  // effectively abandoning it, and carrying it to another frame would attach
+  // the note to footage the person was not looking at when they wrote it.
+  useEffect(() => {
+    setDraftText(null);
+  }, [frame]);
 
   // The eraser reuses the select tool's click-to-delete hit-testing below
   // (it needs the same "no full-canvas pointer-capture surface" treatment
@@ -343,16 +375,13 @@ export function AnnotationCanvas({
               const rect = e.currentTarget.getBoundingClientRect();
               const x = e.clientX - rect.left;
               const y = e.clientY - rect.top;
-              addAnnotation({
-                type: "text",
-                color,
-                x,
-                y,
-                text: "",
-                fontFamily: "font-sans",
-                fontSize: 14,
-                backgroundColor: "transparent",
-              });
+              // Held locally until it actually says something. Creating the
+              // annotation on the click wrote an empty row to the database
+              // immediately, so every stray click with the text tool active
+              // left a blank note behind -- and one abandoned by navigating
+              // away mid-edit was never cleaned up, because the blur that
+              // removes empty text never fired.
+              setDraftText({ x, y });
             }
           }}
           onMouseMove={(e) => {
@@ -533,6 +562,34 @@ export function AnnotationCanvas({
               </div>
             );
           })}
+
+        {/* The unsaved note. Looks and behaves exactly like a committed one,
+            but nothing has been written yet -- Enter or clicking away saves
+            it, Escape or leaving it blank discards it. */}
+        {draftText && !readOnly && (
+          <div
+            className="absolute pointer-events-auto"
+            style={{ left: draftText.x, top: draftText.y }}
+          >
+            <input
+              type="text"
+              autoFocus
+              data-annotation-marker="text"
+              placeholder="Type a note, Enter to save"
+              className="bg-transparent text-white font-medium focus:outline-none min-w-[160px] px-2 py-1 drop-shadow-md placeholder:text-white/40 placeholder:font-normal border-b border-dashed border-white/30"
+              style={{ color, fontSize: "14px", fontFamily: "Inter, sans-serif" }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  commitDraftText(e.currentTarget.value);
+                } else if (e.key === "Escape") {
+                  e.stopPropagation();
+                  setDraftText(null);
+                }
+              }}
+              onBlur={(e) => commitDraftText(e.target.value)}
+            />
+          </div>
+        )}
       </div>
     </>
   );

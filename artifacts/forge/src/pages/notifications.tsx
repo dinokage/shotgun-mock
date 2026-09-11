@@ -11,7 +11,7 @@ import {
   EmptyTitle,
   EmptyDescription,
 } from "@/components/ui/empty";
-import { useNotificationStore } from "@/store/notifications";
+import { useNotificationPreferences } from "@/hooks/useNotificationPreferences";
 import {
   useNotifications,
   useMarkNotificationRead,
@@ -57,7 +57,7 @@ export default function Notifications() {
   // talks to the server and so could never show another user's activity
   // or survive a reload on a different device.
   const { data: notifications = [] } = useNotifications();
-  const preferences = useNotificationStore((s) => s.preferences);
+  const { preferences } = useNotificationPreferences();
   const markReadMutation = useMarkNotificationRead();
   const markAllReadMutation = useMarkAllNotificationsRead();
   const [, setLocation] = useLocation();

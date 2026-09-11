@@ -1,5 +1,7 @@
+import { normalizeTaskStatus } from "@/lib/trackingStatus";
 import { useState, useMemo, type MouseEvent } from "react";
 import { useAuthStore } from "@/store/auth";
+import { useCapability } from "@/hooks/use-capability";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -101,6 +103,11 @@ export default function Tasks() {
 
   const isArtist = currentUser ? currentUser.role === "artist" : true;
   const forceMyTasksOnly = isArtist;
+  // Narrower than !isArtist: admin is non-artist but holds no assign_tasks
+  // capability (it monitors, it doesn't do production work), so the button
+  // that opens CreateTaskModal needs its own real capability check rather
+  // than riding along with the view-toggle buttons everyone non-artist sees.
+  const canAssignTasks = useCapability("assign_tasks");
   const currentUserId = currentUser?.id || "";
   const isLeadOrSupervisor =
     !!currentUser && DEPARTMENT_LEADERSHIP_ROLES.includes(currentUser.role);
@@ -113,7 +120,7 @@ export default function Tasks() {
   const filtered = useMemo(() => {
     return liveTasks.filter((t) => {
       if (needsReviewOnly) {
-        const awaitingReview = t.status === "review";
+        const awaitingReview = normalizeTaskStatus(t.status) === "review";
         const inMyDepartment =
           !myDepartmentName || t.department === myDepartmentName;
         return awaitingReview && inMyDepartment;
@@ -123,7 +130,8 @@ export default function Tasks() {
 
       if (search && !t.title.toLowerCase().includes(search.toLowerCase()))
         return false;
-      if (statusFilter !== "all" && t.status !== statusFilter) return false;
+      if (statusFilter !== "all" && normalizeTaskStatus(t.status) !== statusFilter)
+        return false;
       if (
         projectFilter !== "all" &&
         entityProjectMap[t.entityId] !== projectFilter
@@ -154,7 +162,8 @@ export default function Tasks() {
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = { all: liveTasks.length };
     liveTasks.forEach((t) => {
-      counts[t.status] = (counts[t.status] || 0) + 1;
+      const stage = normalizeTaskStatus(t.status);
+      counts[stage] = (counts[stage] || 0) + 1;
     });
     return counts;
   }, [liveTasks]);
@@ -163,7 +172,7 @@ export default function Tasks() {
     if (!isLeadOrSupervisor) return 0;
     return liveTasks.filter(
       (t) =>
-        t.status === "review" &&
+        normalizeTaskStatus(t.status) === "review" &&
         (!myDepartmentName || t.department === myDepartmentName),
     ).length;
   }, [liveTasks, isLeadOrSupervisor, myDepartmentName, liveDepartments]);
@@ -244,13 +253,15 @@ export default function Tasks() {
                   <LayoutGrid className="w-4 h-4" />
                 </Button>
               </div>
-              <Button
-                onClick={() => setCreateTaskModalOpen(true)}
-                size="sm"
-                className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-md"
-              >
-                Assign Task
-              </Button>
+              {canAssignTasks && (
+                <Button
+                  onClick={() => setCreateTaskModalOpen(true)}
+                  size="sm"
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-md"
+                >
+                  Assign Task
+                </Button>
+              )}
             </>
           )}
         </div>

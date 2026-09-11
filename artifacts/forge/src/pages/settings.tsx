@@ -53,51 +53,189 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/store/auth";
+import { apiFetch } from "@/lib/apiClient";
 import { useUserStore } from "@/store/users";
+import { useRoles } from "@/hooks/useRoles";
 import { useCapability } from "@/hooks/use-capability";
 import {
   CAPABILITIES,
   CAPABILITY_CATEGORIES,
   ROLES_ORDER,
-  DEFAULT_PERMISSION_SCHEME,
 } from "@/store/permissions";
 import {
-  useNotificationStore,
+  useNotificationPreferences,
+  useSetNotificationPreference,
   NOTIFICATION_PREFERENCE_META,
-} from "@/store/notifications";
+  type NotificationCategory,
+  type NotificationChannelPrefs,
+} from "@/hooks/useNotificationPreferences";
 import {
-  useStudioSettingsStore,
-  type PipelineDept,
-} from "@/store/studioSettings";
+  useStudioSetting,
+  useSaveStudioSetting,
+  useApiKeys,
+  useCreateApiKey,
+  useRevokeApiKey,
+  useWebhooks,
+  useCreateWebhook,
+  useDeleteWebhook,
+  useLicenseServers,
+  useCreateLicenseServer,
+} from "@/hooks/useStudioSettings";
+
+type PipelineDept = "VFX" | "3D" | "2D";
+
+interface StudioProfileValue {
+  studioName: string;
+  industry: string;
+  timezone: string;
+}
+
+interface SecurityPolicyValue {
+  oktaConfigured: boolean;
+  oktaDomain: string;
+  enforce2FA: boolean;
+  ipAllowlist: string;
+}
+
+type PipelineStagesValue = Record<PipelineDept, string[]>;
+
+// Blank starting points for a tenant that has never saved these documents --
+// the form renders empty rather than showing invented studio details.
+const EMPTY_PROFILE: StudioProfileValue = {
+  studioName: "",
+  industry: "",
+  timezone: "",
+};
+const EMPTY_SECURITY: SecurityPolicyValue = {
+  oktaConfigured: false,
+  oktaDomain: "",
+  enforce2FA: false,
+  ipAllowlist: "",
+};
+// Product defaults for the stage editor (the standard stage order for each
+// discipline), not studio-specific data.
+const DEFAULT_PIPELINE_STAGES: PipelineStagesValue = {
+  VFX: ["Tracking", "Roto", "Paint", "Compositing", "Client Review", "Final"],
+  "3D": [
+    "Modeling",
+    "Rigging",
+    "Layout",
+    "Animation",
+    "Lighting",
+    "Rendering",
+    "Client Review",
+  ],
+  "2D": [
+    "Storyboarding",
+    "Layout",
+    "Rough Anim",
+    "Clean Up",
+    "Color",
+    "Comp",
+    "Client Review",
+  ],
+};
+
+function formatTimestamp(value: string | null) {
+  return value ? new Date(value).toLocaleString() : null;
+}
 
 export default function Settings() {
   const { toast } = useToast();
 
   const currentUser = useAuthStore((s) => s.currentUser);
+  const updateCurrentUser = useAuthStore((s) => s.updateCurrentUser);
   const users = useUserStore((s) => s.users);
-  const notificationPreferences = useNotificationStore((s) => s.preferences);
-  const setNotificationPreference = useNotificationStore(
-    (s) => s.setPreferenceChannel,
+  // The Roles matrix renders the tenant's real grants rather than a
+  // hardcoded scheme, so what it shows is what requireCapability enforces.
+  const { data: tenantRoles = [] } = useRoles();
+  const grantsByRoleName = useMemo(() => {
+    const map: Record<string, Set<string>> = {};
+    tenantRoles.forEach((role) => {
+      map[role.name] = new Set(role.capabilities);
+    });
+    return map;
+  }, [tenantRoles]);
+  const { preferences: notificationPreferences } = useNotificationPreferences();
+  const setNotificationPreferenceMutation = useSetNotificationPreference();
+  // Both channels go up together: the stored row may not exist yet, so
+  // sending only the toggled one would reset the other to a column default.
+  const setNotificationPreference = (
+    category: NotificationCategory,
+    channel: keyof NotificationChannelPrefs,
+    value: boolean,
+  ) => {
+    const next = { ...notificationPreferences[category], [channel]: value };
+    setNotificationPreferenceMutation.mutate(
+      { category, push: next.push, email: next.email },
+      {
+        onError: (err: unknown) =>
+          toast({
+            title: "Could not save preference",
+            description:
+              err instanceof Error ? err.message : "Please try again.",
+            variant: "destructive",
+          }),
+      },
+    );
+  };
+
+  // Role-scoped tab visibility: derived from the current user's real capabilities
+  // as returned by /api/auth/me, not a hardcoded role list.
+  // Notifications is a personal preference, so it's always visible to anyone who reaches this page
+  // (see App.tsx's route-level LeadershipGuard, which must not wrap /settings or
+  // non-leadership members can never reach this tab at all).
+  const canManageRoles = useCapability("manage_roles");
+  const canManageMembers = useCapability("manage_members");
+  const canManagePipeline = useCapability("manage_pipeline");
+  const canManageLicenses = useCapability("manage_licenses");
+  const canManageIntegrations = useCapability("manage_integrations");
+
+  const profileSetting = useStudioSetting<StudioProfileValue>(
+    "studio_profile",
+    canManageRoles,
   );
-  const profile = useStudioSettingsStore((s) => s.profile);
-  const setProfile = useStudioSettingsStore((s) => s.setProfile);
-  const security = useStudioSettingsStore((s) => s.security);
-  const setSecurity = useStudioSettingsStore((s) => s.setSecurity);
-  const pipelineStages = useStudioSettingsStore((s) => s.pipelineStages);
-  const addPipelineStage = useStudioSettingsStore((s) => s.addPipelineStage);
-  const admins = useStudioSettingsStore((s) => s.admins);
-  const toggleAdmin = useStudioSettingsStore((s) => s.toggleAdmin);
-  const apiKeys = useStudioSettingsStore((s) => s.apiKeys);
-  const generateApiKey = useStudioSettingsStore((s) => s.generateApiKey);
-  const revokeApiKey = useStudioSettingsStore((s) => s.revokeApiKey);
-  const webhookEndpoints = useStudioSettingsStore((s) => s.webhookEndpoints);
-  const addWebhookEndpoint = useStudioSettingsStore(
-    (s) => s.addWebhookEndpoint,
+  const saveProfile = useSaveStudioSetting<StudioProfileValue>("studio_profile");
+  const securitySetting = useStudioSetting<SecurityPolicyValue>(
+    "security_policy",
+    canManageRoles,
   );
-  const licenseServers = useStudioSettingsStore((s) => s.licenseServers);
-  const addLicenseServer = useStudioSettingsStore((s) => s.addLicenseServer);
-  const pendingInvites = useStudioSettingsStore((s) => s.pendingInvites);
-  const inviteMember = useStudioSettingsStore((s) => s.inviteMember);
+  const saveSecurity =
+    useSaveStudioSetting<SecurityPolicyValue>("security_policy");
+  const stagesSetting = useStudioSetting<PipelineStagesValue>(
+    "pipeline_stages",
+    canManagePipeline,
+  );
+  const saveStages = useSaveStudioSetting<PipelineStagesValue>(
+    "pipeline_stages",
+  );
+
+  const apiKeysQuery = useApiKeys(canManageIntegrations);
+  const createApiKey = useCreateApiKey();
+  const revokeApiKey = useRevokeApiKey();
+  const webhooksQuery = useWebhooks(canManageIntegrations);
+  const createWebhook = useCreateWebhook();
+  const deleteWebhook = useDeleteWebhook();
+  const licenseServersQuery = useLicenseServers(canManageLicenses);
+  const createLicenseServer = useCreateLicenseServer();
+
+  // Local drafts sit on top of the saved document so typing doesn't fire a
+  // request per keystroke; the explicit save buttons below write them back.
+  const [profileDraft, setProfileDraft] = useState<StudioProfileValue | null>(
+    null,
+  );
+  const [securityDraft, setSecurityDraft] = useState<SecurityPolicyValue | null>(
+    null,
+  );
+  const profile = profileDraft ?? profileSetting.data?.value ?? EMPTY_PROFILE;
+  const security =
+    securityDraft ?? securitySetting.data?.value ?? EMPTY_SECURITY;
+  const pipelineStages =
+    stagesSetting.data?.value ?? DEFAULT_PIPELINE_STAGES;
+
+  const apiKeys = apiKeysQuery.data ?? [];
+  const webhookEndpoints = webhooksQuery.data ?? [];
+  const licenseServers = licenseServersQuery.data ?? [];
 
   const [oktaDialogOpen, setOktaDialogOpen] = useState(false);
   const [oktaDomainDraft, setOktaDomainDraft] = useState("");
@@ -107,12 +245,9 @@ export default function Settings() {
   );
   const [newStageName, setNewStageName] = useState("");
 
-  const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
-  const [inviteEmailDraft, setInviteEmailDraft] = useState("");
-
   const [licenseDialogOpen, setLicenseDialogOpen] = useState(false);
   const [licenseNameDraft, setLicenseNameDraft] = useState("");
-  const [licenseTypeDraft, setLicenseTypeDraft] = useState("Floating");
+  const [licenseVendorDraft, setLicenseVendorDraft] = useState("");
   const [licenseSeatsDraft, setLicenseSeatsDraft] = useState("10");
 
   const [tokenDialogOpen, setTokenDialogOpen] = useState(false);
@@ -124,19 +259,59 @@ export default function Settings() {
     "task.status.changed",
   );
 
+  // Holds a value the server will never hand back again (a raw API token, a
+  // webhook signing secret). It exists only for as long as this dialog is open.
+  const [revealedSecret, setRevealedSecret] = useState<{
+    title: string;
+    description: string;
+    value: string;
+  } | null>(null);
+
+  const reportError = (title: string, err: unknown) =>
+    toast({
+      title,
+      description: err instanceof Error ? err.message : "Please try again.",
+      variant: "destructive",
+    });
+
+  const handleSaveProfile = async () => {
+    try {
+      await saveProfile.mutateAsync(profile);
+      toast({ title: "Studio profile saved" });
+    } catch (err) {
+      reportError("Could not save studio profile", err);
+    }
+  };
+
   const handleConfigureOkta = () => {
     setOktaDomainDraft(security.oktaDomain);
     setOktaDialogOpen(true);
   };
 
-  const handleSubmitOkta = () => {
-    if (!oktaDomainDraft.trim()) return;
-    setSecurity({ oktaConfigured: true, oktaDomain: oktaDomainDraft.trim() });
-    toast({
-      title: "Okta SSO configured",
-      description: `Members will now be directed to ${oktaDomainDraft.trim()} to sign in.`,
-    });
-    setOktaDialogOpen(false);
+  const handleSubmitOkta = async () => {
+    const domain = oktaDomainDraft.trim();
+    if (!domain) return;
+    const next = { ...security, oktaConfigured: true, oktaDomain: domain };
+    try {
+      await saveSecurity.mutateAsync(next);
+      setSecurityDraft(next);
+      toast({
+        title: "Okta SSO configured",
+        description: `Members will now be directed to ${domain} to sign in.`,
+      });
+      setOktaDialogOpen(false);
+    } catch (err) {
+      reportError("Could not configure Okta SSO", err);
+    }
+  };
+
+  const handleSaveSecurity = async () => {
+    try {
+      await saveSecurity.mutateAsync(security);
+      toast({ title: "Security settings saved" });
+    } catch (err) {
+      reportError("Could not save security settings", err);
+    }
   };
 
   const handleOpenAddStage = (dept: PipelineDept) => {
@@ -144,71 +319,114 @@ export default function Settings() {
     setStageDialogDept(dept);
   };
 
-  const handleSubmitStage = () => {
-    if (!stageDialogDept || !newStageName.trim()) return;
-    addPipelineStage(stageDialogDept, newStageName.trim());
-    toast({
-      title: "Stage added",
-      description: `"${newStageName.trim()}" added to the ${stageDialogDept} pipeline.`,
-    });
-    setStageDialogDept(null);
+  const handleSubmitStage = async () => {
+    const stage = newStageName.trim();
+    if (!stageDialogDept || !stage) return;
+    const next: PipelineStagesValue = {
+      ...pipelineStages,
+      [stageDialogDept]: [...pipelineStages[stageDialogDept], stage],
+    };
+    try {
+      await saveStages.mutateAsync(next);
+      toast({
+        title: "Stage added",
+        description: `"${stage}" added to the ${stageDialogDept} pipeline.`,
+      });
+      setStageDialogDept(null);
+    } catch (err) {
+      reportError("Could not add stage", err);
+    }
   };
 
-  const handleSubmitInvite = () => {
-    if (!inviteEmailDraft.trim()) return;
-    inviteMember(inviteEmailDraft.trim());
-    toast({
-      title: "Invitation sent",
-      description: `An invite was sent to ${inviteEmailDraft.trim()}.`,
-    });
-    setInviteEmailDraft("");
-    setInviteDialogOpen(false);
+  const handleSubmitLicense = async () => {
+    const name = licenseNameDraft.trim();
+    if (!name) return;
+    try {
+      await createLicenseServer.mutateAsync({
+        name,
+        vendor: licenseVendorDraft.trim(),
+        seatsTotal: Number(licenseSeatsDraft) || 0,
+      });
+      toast({
+        title: "License server added",
+        description: `${name} is now tracked in License Management.`,
+      });
+      setLicenseNameDraft("");
+      setLicenseVendorDraft("");
+      setLicenseSeatsDraft("10");
+      setLicenseDialogOpen(false);
+    } catch (err) {
+      reportError("Could not add license server", err);
+    }
   };
 
-  const handleSubmitLicense = () => {
-    if (!licenseNameDraft.trim()) return;
-    addLicenseServer({
-      name: licenseNameDraft.trim(),
-      type: licenseTypeDraft,
-      owned: Number(licenseSeatsDraft) || 0,
-    });
-    toast({
-      title: "License server added",
-      description: `${licenseNameDraft.trim()} is now tracked in License Management.`,
-    });
-    setLicenseNameDraft("");
-    setLicenseSeatsDraft("10");
-    setLicenseDialogOpen(false);
+  const handleSubmitToken = async () => {
+    const name = tokenNameDraft.trim();
+    if (!name) return;
+    try {
+      const created = await createApiKey.mutateAsync({ name });
+      setTokenNameDraft("");
+      setTokenDialogOpen(false);
+      setRevealedSecret({
+        title: "Copy your API token now",
+        description: `"${created.name}" is stored hashed — this is the only time it can be shown. If you lose it, revoke the key and generate a new one.`,
+        value: created.token,
+      });
+    } catch (err) {
+      reportError("Could not generate API token", err);
+    }
   };
 
-  const handleSubmitToken = () => {
-    const name = tokenNameDraft.trim() || "Untitled Token";
-    generateApiKey(name);
-    toast({
-      title: "API token generated",
-      description: `"${name}" can now be used to authenticate API requests.`,
-    });
-    setTokenNameDraft("");
-    setTokenDialogOpen(false);
+  const handleRevokeApiKey = async (id: string, name: string) => {
+    try {
+      await revokeApiKey.mutateAsync(id);
+      toast({
+        title: "API key revoked",
+        description: `"${name}" can no longer be used to authenticate.`,
+      });
+    } catch (err) {
+      reportError("Could not revoke API key", err);
+    }
   };
 
-  const handleRevokeApiKey = (id: string, name: string) => {
-    revokeApiKey(id);
-    toast({
-      title: "API key revoked",
-      description: `"${name}" can no longer be used to authenticate.`,
-    });
+  const handleSubmitWebhook = async () => {
+    const url = webhookUrlDraft.trim();
+    if (!url) return;
+    try {
+      const created = await createWebhook.mutateAsync({
+        url,
+        events: [webhookEventDraft],
+      });
+      setWebhookUrlDraft("");
+      setWebhookDialogOpen(false);
+      setRevealedSecret({
+        title: "Copy your webhook signing secret now",
+        description: `Use this to verify the signature on deliveries to ${created.url}. It is stored server-side only and cannot be shown again.`,
+        value: created.secret,
+      });
+    } catch (err) {
+      reportError("Could not add webhook endpoint", err);
+    }
   };
 
-  const handleSubmitWebhook = () => {
-    if (!webhookUrlDraft.trim()) return;
-    addWebhookEndpoint(webhookUrlDraft.trim(), webhookEventDraft);
-    toast({
-      title: "Webhook endpoint added",
-      description: `Events will now be sent to ${webhookUrlDraft.trim()}.`,
+  const handleDeleteWebhook = async (id: string, url: string) => {
+    try {
+      await deleteWebhook.mutateAsync(id);
+      toast({
+        title: "Webhook endpoint removed",
+        description: `Events will no longer be sent to ${url}.`,
+      });
+    } catch (err) {
+      reportError("Could not remove webhook endpoint", err);
+    }
+  };
+
+  const handleCopySecret = () => {
+    if (!revealedSecret) return;
+    copyToClipboard(revealedSecret.value).then((success) => {
+      if (success) toast({ title: "Copied to clipboard" });
+      else toast({ title: "Failed to copy", variant: "destructive" });
     });
-    setWebhookUrlDraft("");
-    setWebhookDialogOpen(false);
   };
 
   const handleCopyCode = () => {
@@ -230,17 +448,6 @@ export default function Settings() {
       else toast({ title: "Failed to copy", variant: "destructive" });
     });
   };
-
-  // Role-scoped tab visibility: derived from the current user's real capabilities
-  // (fixed per-role in DEFAULT_PERMISSION_SCHEME), not a hardcoded role list.
-  // Notifications is a personal preference, so it's always visible to anyone who reaches this page
-  // (see App.tsx's route-level LeadershipGuard, which must not wrap /settings or
-  // non-leadership members can never reach this tab at all).
-  const canManageRoles = useCapability("manage_roles");
-  const canManageMembers = useCapability("manage_members");
-  const canManagePipeline = useCapability("manage_pipeline");
-  const canManageLicenses = useCapability("manage_licenses");
-  const canManageIntegrations = useCapability("manage_integrations");
 
   type TabId =
     | "profile"
@@ -292,6 +499,9 @@ export default function Settings() {
             <TabsTrigger value="security">Security & SSO</TabsTrigger>
           )}
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
+          {/* Ungated on purpose: every role, including an artist who sees no
+              other tab here, needs a way back to the walkthrough. */}
+          <TabsTrigger value="help">Help</TabsTrigger>
           {canManageIntegrations && (
             <TabsTrigger value="developer">API & Developer</TabsTrigger>
           )}
@@ -333,8 +543,12 @@ export default function Settings() {
                         <Label>Studio Name</Label>
                         <Input
                           value={profile.studioName}
+                          placeholder="Your studio's name"
                           onChange={(e) =>
-                            setProfile({ studioName: e.target.value })
+                            setProfileDraft({
+                              ...profile,
+                              studioName: e.target.value,
+                            })
                           }
                           className="max-w-md"
                         />
@@ -344,11 +558,11 @@ export default function Settings() {
                         <Select
                           value={profile.industry}
                           onValueChange={(value) =>
-                            setProfile({ industry: value })
+                            setProfileDraft({ ...profile, industry: value })
                           }
                         >
                           <SelectTrigger className="max-w-md">
-                            <SelectValue />
+                            <SelectValue placeholder="Select an industry" />
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="vfx">Visual Effects</SelectItem>
@@ -371,10 +585,12 @@ export default function Settings() {
                     <Label>Timezone</Label>
                     <Select
                       value={profile.timezone}
-                      onValueChange={(value) => setProfile({ timezone: value })}
+                      onValueChange={(value) =>
+                        setProfileDraft({ ...profile, timezone: value })
+                      }
                     >
                       <SelectTrigger className="max-w-md">
-                        <SelectValue />
+                        <SelectValue placeholder="Select a timezone" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="pst">
@@ -388,9 +604,14 @@ export default function Settings() {
                     </Select>
                   </div>
 
-                  <p className="text-xs text-muted-foreground pt-2 border-t border-border">
-                    Changes save automatically.
-                  </p>
+                  <div className="pt-4 border-t border-border">
+                    <Button
+                      onClick={handleSaveProfile}
+                      disabled={saveProfile.isPending}
+                    >
+                      {saveProfile.isPending ? "Saving…" : "Save Changes"}
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>
@@ -448,7 +669,7 @@ export default function Settings() {
                       <Switch
                         checked={security.enforce2FA}
                         onCheckedChange={(checked) =>
-                          setSecurity({ enforce2FA: checked })
+                          setSecurityDraft({ ...security, enforce2FA: checked })
                         }
                         aria-label="Enforce two-factor authentication"
                       />
@@ -461,7 +682,10 @@ export default function Settings() {
                       className="max-w-xl"
                       value={security.ipAllowlist}
                       onChange={(e) =>
-                        setSecurity({ ipAllowlist: e.target.value })
+                        setSecurityDraft({
+                          ...security,
+                          ipAllowlist: e.target.value,
+                        })
                       }
                     />
                     <p className="text-xs text-muted-foreground">
@@ -469,14 +693,59 @@ export default function Settings() {
                       ranges.
                     </p>
                   </div>
-                  <p className="text-xs text-muted-foreground pt-2 border-t border-border">
-                    Changes save automatically.
-                  </p>
+                  <div className="pt-4 border-t border-border">
+                    <Button
+                      onClick={handleSaveSecurity}
+                      disabled={saveSecurity.isPending}
+                    >
+                      {saveSecurity.isPending ? "Saving…" : "Save Changes"}
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>
           </>
         )}
+
+        <TabsContent value="help" className="space-y-6 animate-in fade-in">
+          <Card>
+            <CardHeader>
+              <CardTitle>Getting started walkthrough</CardTitle>
+              <CardDescription>
+                A short guided tour of the pages your role uses. It runs
+                automatically the first time you sign in.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between gap-4">
+                <p className="text-sm text-muted-foreground max-w-lg">
+                  {currentUser?.onboardedAt
+                    ? "You have already been through the walkthrough. Run it again whenever you want a refresher — it is tailored to what your role can actually do."
+                    : "You have not been through the walkthrough yet. It takes about a minute."}
+                </p>
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    try {
+                      await apiFetch("/auth/onboarding", {
+                        method: "POST",
+                        body: JSON.stringify({ replay: true }),
+                      });
+                      updateCurrentUser({ onboardedAt: null });
+                    } catch {
+                      toast({
+                        title: "Could not start the walkthrough",
+                        variant: "destructive",
+                      });
+                    }
+                  }}
+                >
+                  Run walkthrough
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         <TabsContent
           value="notifications"
@@ -608,25 +877,6 @@ export default function Settings() {
                 </Button>
               </CardHeader>
               <CardContent className="p-0">
-                {pendingInvites.length > 0 && (
-                  <div className="px-4 py-3 border-b border-border bg-muted/10 space-y-1.5">
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                      Pending Invites
-                    </p>
-                    {pendingInvites.map((invite) => (
-                      <div
-                        key={invite.id}
-                        className="flex items-center justify-between text-sm"
-                      >
-                        <span>{invite.email}</span>
-                        <Badge variant="outline" className="text-[10px]">
-                          Invited{" "}
-                          {new Date(invite.invitedAt).toLocaleDateString()}
-                        </Badge>
-                      </div>
-                    ))}
-                  </div>
-                )}
                 <table className="w-full text-sm">
                   <thead className="bg-muted/30 border-b border-border">
                     <tr>
@@ -666,7 +916,7 @@ export default function Settings() {
                             whileTap={{ scale: 0.92 }}
                           >
                             <Switch
-                              checked={admins[user.id] ?? false}
+                              checked={user.role === "admin"}
                               disabled
                               title="Admin access is managed from the Admin Panel"
                               aria-label={`Admin access for ${user.name} (managed in Admin Panel)`}
@@ -752,9 +1002,8 @@ export default function Settings() {
                                   </td>
                                   {ROLES_ORDER.map((role) => {
                                     const granted =
-                                      DEFAULT_PERMISSION_SCHEME[role]?.[
-                                        cap.id
-                                      ] ?? false;
+                                      grantsByRoleName[role]?.has(cap.id) ??
+                                      false;
                                     return (
                                       <td
                                         key={role}
@@ -814,7 +1063,7 @@ export default function Settings() {
                         Software
                       </th>
                       <th className="p-4 text-left font-medium text-muted-foreground">
-                        Type
+                        Vendor
                       </th>
                       <th className="p-4 text-center font-medium text-muted-foreground">
                         Seats Used
@@ -828,8 +1077,20 @@ export default function Settings() {
                     </tr>
                   </thead>
                   <tbody>
+                    {licenseServers.length === 0 && (
+                      <tr>
+                        <td
+                          colSpan={5}
+                          className="p-4 text-center text-muted-foreground text-sm"
+                        >
+                          No license servers tracked yet. Add one to start
+                          monitoring seat usage.
+                        </td>
+                      </tr>
+                    )}
                     {licenseServers.map((lic) => {
-                      const ratio = lic.owned > 0 ? lic.used / lic.owned : 0;
+                      const ratio =
+                        lic.seatsTotal > 0 ? lic.seatsInUse / lic.seatsTotal : 0;
                       const status =
                         ratio >= 1
                           ? "critical"
@@ -843,10 +1104,10 @@ export default function Settings() {
                         >
                           <td className="p-4 font-medium">{lic.name}</td>
                           <td className="p-4 text-muted-foreground">
-                            {lic.type}
+                            {lic.vendor || "—"}
                           </td>
-                          <td className="p-4 text-center">{lic.used}</td>
-                          <td className="p-4 text-center">{lic.owned}</td>
+                          <td className="p-4 text-center">{lic.seatsInUse}</td>
+                          <td className="p-4 text-center">{lic.seatsTotal}</td>
                           <td className="p-4 text-center">
                             <Badge
                               variant="outline"
@@ -964,10 +1225,13 @@ export default function Settings() {
                         Token Name
                       </th>
                       <th className="p-4 text-left font-medium text-muted-foreground">
+                        Key
+                      </th>
+                      <th className="p-4 text-left font-medium text-muted-foreground">
                         Last Used
                       </th>
                       <th className="p-4 text-left font-medium text-muted-foreground">
-                        Expires
+                        Created
                       </th>
                       <th className="p-4 text-center font-medium text-muted-foreground">
                         Actions
@@ -978,7 +1242,7 @@ export default function Settings() {
                     {apiKeys.length === 0 && (
                       <tr>
                         <td
-                          colSpan={4}
+                          colSpan={5}
                           className="p-4 text-center text-muted-foreground text-sm"
                         >
                           No API keys. Generate one to get started.
@@ -994,21 +1258,37 @@ export default function Settings() {
                           <Key className="w-4 h-4 text-muted-foreground" />{" "}
                           {key.name}
                         </td>
-                        <td className="p-4 text-muted-foreground">
-                          {key.lastUsed}
+                        <td className="p-4 font-mono text-xs text-muted-foreground">
+                          {key.tokenPrefix}…
                         </td>
                         <td className="p-4 text-muted-foreground">
-                          {key.expires}
+                          {formatTimestamp(key.lastUsedAt) ?? "Never used"}
+                        </td>
+                        <td className="p-4 text-muted-foreground">
+                          {new Date(key.createdAt).toLocaleDateString()}
                         </td>
                         <td className="p-4 text-center">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-red-500 hover:text-red-600 hover:bg-red-500/10"
-                            onClick={() => handleRevokeApiKey(key.id, key.name)}
-                          >
-                            Revoke
-                          </Button>
+                          {key.revokedAt ? (
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] text-muted-foreground"
+                            >
+                              Revoked{" "}
+                              {new Date(key.revokedAt).toLocaleDateString()}
+                            </Badge>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-500 hover:text-red-600 hover:bg-red-500/10"
+                              disabled={revokeApiKey.isPending}
+                              onClick={() =>
+                                handleRevokeApiKey(key.id, key.name)
+                              }
+                            >
+                              Revoke
+                            </Button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -1103,7 +1383,7 @@ export default function Settings() {
                     {webhookEndpoints.map((ep) => (
                       <div
                         key={ep.id}
-                        className="flex items-center justify-between p-3 border border-border rounded-lg"
+                        className="flex items-center justify-between p-3 border border-border rounded-lg gap-3"
                       >
                         <div className="flex items-center gap-3 min-w-0">
                           <Terminal className="w-4 h-4 text-muted-foreground shrink-0" />
@@ -1111,12 +1391,26 @@ export default function Settings() {
                             {ep.url}
                           </span>
                         </div>
-                        <Badge
-                          variant="secondary"
-                          className="text-[10px] shrink-0"
-                        >
-                          {ep.event}
-                        </Badge>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {ep.events.map((event) => (
+                            <Badge
+                              key={event}
+                              variant="secondary"
+                              className="text-[10px]"
+                            >
+                              {event}
+                            </Badge>
+                          ))}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-500 hover:text-red-600 hover:bg-red-500/10"
+                            disabled={deleteWebhook.isPending}
+                            onClick={() => handleDeleteWebhook(ep.id, ep.url)}
+                          >
+                            Remove
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1184,44 +1478,11 @@ export default function Settings() {
             <Button variant="outline" onClick={() => setStageDialogDept(null)}>
               Cancel
             </Button>
-            <Button onClick={handleSubmitStage} disabled={!newStageName.trim()}>
+            <Button
+              onClick={handleSubmitStage}
+              disabled={!newStageName.trim() || saveStages.isPending}
+            >
               Add Stage
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
-        <DialogContent className="sm:max-w-[420px]">
-          <DialogHeader>
-            <DialogTitle>Invite Member</DialogTitle>
-            <DialogDescription>
-              Send an invitation to join your studio in Forge.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2 py-2">
-            <Label htmlFor="invite-email">Email Address</Label>
-            <Input
-              id="invite-email"
-              type="email"
-              placeholder="artist@studio.com"
-              value={inviteEmailDraft}
-              onChange={(e) => setInviteEmailDraft(e.target.value)}
-              autoFocus
-            />
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setInviteDialogOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSubmitInvite}
-              disabled={!inviteEmailDraft.trim()}
-            >
-              Send Invite
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1248,21 +1509,13 @@ export default function Settings() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>License Type</Label>
-                <Select
-                  value={licenseTypeDraft}
-                  onValueChange={setLicenseTypeDraft}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Floating">Floating</SelectItem>
-                    <SelectItem value="Node-locked">Node-locked</SelectItem>
-                    <SelectItem value="Render Node">Render Node</SelectItem>
-                    <SelectItem value="Enterprise">Enterprise</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="license-vendor">Vendor</Label>
+                <Input
+                  id="license-vendor"
+                  placeholder="e.g. Autodesk"
+                  value={licenseVendorDraft}
+                  onChange={(e) => setLicenseVendorDraft(e.target.value)}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="license-seats">Seats Owned</Label>
@@ -1285,7 +1538,9 @@ export default function Settings() {
             </Button>
             <Button
               onClick={handleSubmitLicense}
-              disabled={!licenseNameDraft.trim()}
+              disabled={
+                !licenseNameDraft.trim() || createLicenseServer.isPending
+              }
             >
               Add Server
             </Button>
@@ -1310,12 +1565,21 @@ export default function Settings() {
               onChange={(e) => setTokenNameDraft(e.target.value)}
               autoFocus
             />
+            <p className="text-xs text-muted-foreground">
+              The token is shown once, immediately after it's created, and
+              cannot be retrieved afterwards.
+            </p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setTokenDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSubmitToken}>Generate Token</Button>
+            <Button
+              onClick={handleSubmitToken}
+              disabled={!tokenNameDraft.trim() || createApiKey.isPending}
+            >
+              Generate Token
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1374,11 +1638,47 @@ export default function Settings() {
             </Button>
             <Button
               onClick={handleSubmitWebhook}
-              disabled={!webhookUrlDraft.trim()}
+              disabled={!webhookUrlDraft.trim() || createWebhook.isPending}
             >
               Add Endpoint
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={revealedSecret !== null}
+        onOpenChange={(open) => !open && setRevealedSecret(null)}
+      >
+        <DialogContent className="sm:max-w-[520px]">
+          {revealedSecret && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{revealedSecret.title}</DialogTitle>
+                <DialogDescription>
+                  {revealedSecret.description}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex items-center gap-2 py-2">
+                <code className="flex-1 min-w-0 break-all rounded-md border border-border bg-muted/40 p-3 font-mono text-xs">
+                  {revealedSecret.value}
+                </code>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={handleCopySecret}
+                  aria-label="Copy to clipboard"
+                >
+                  <Copy className="w-4 h-4" />
+                </Button>
+              </div>
+              <DialogFooter>
+                <Button onClick={() => setRevealedSecret(null)}>
+                  I've saved it
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>

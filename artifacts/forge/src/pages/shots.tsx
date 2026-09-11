@@ -26,6 +26,7 @@ import { Search, Film, Grid3X3, List, X, ChevronDown } from "lucide-react";
 import { Link, useSearchParams } from "wouter";
 import { useAuthStore } from "@/store/auth";
 import { useShots, ShotDTO } from "@/hooks/useShots";
+import { useAllSequences } from "@/hooks/useSequences";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 
 // Full Shot.status vocabulary — matches the values the shots API stores and
@@ -82,6 +83,12 @@ export default function Shots() {
   }, [filtered]);
 
   const sequenceKeys = Object.keys(grouped);
+
+  // Groups are keyed by sequenceId; without this lookup the headers rendered
+  // the raw UUID instead of the sequence's name ("sc001").
+  const { data: allSequences = [] } = useAllSequences();
+  const sequenceName = (id: string) =>
+    allSequences.find((s) => s.id === id)?.name ?? "Other";
 
   const [visibleSequences, setVisibleSequences] = useState(SEQUENCE_PAGE_SIZE);
   const [groupVisible, setGroupVisible] = useState<Record<string, number>>({});
@@ -184,7 +191,7 @@ export default function Shots() {
               return (
                 <div key={seq}>
                   <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-                    {seq} · {shots.length} shots
+                    {sequenceName(seq)} · {shots.length} shots
                     {shownInGroup < shots.length && (
                       <span className="normal-case font-normal tracking-normal text-muted-foreground/70">
                         {" "}
@@ -326,7 +333,7 @@ export default function Shots() {
                         </Link>
                       </td>
                       <td className="p-4 text-muted-foreground">
-                        {shot.sequenceId || "Other"}
+                        {sequenceName(shot.sequenceId || "")}
                       </td>
                       <td className="p-4">
                         <StatusBadge status={shot.status} className="text-[10px]" />

@@ -8,6 +8,7 @@
     "seed": "tsx ./src/seed.ts",
     "reset-and-bootstrap-admin": "tsx ./src/reset-and-bootstrap-admin.ts",
     "import-roster": "tsx ./src/import-roster.ts",
+    "seed-pipelines": "tsx ./src/seed-pipelines.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {

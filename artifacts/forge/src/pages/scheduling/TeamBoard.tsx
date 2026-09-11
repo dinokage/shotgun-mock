@@ -1,3 +1,4 @@
+import { isOverdue, formatDueDate } from "@/lib/taskDates";
 import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -74,7 +75,7 @@ function BoardTaskCard({ task }: { task: Task }) {
     opacity: isDragging ? 0.4 : 1,
   };
 
-  const isOverdue = new Date(task.dueDate) < REFERENCE_DATE;
+  const overdue = isOverdue(task.dueDate, REFERENCE_DATE);
 
   return (
     <div
@@ -111,14 +112,11 @@ function BoardTaskCard({ task }: { task: Task }) {
           <div
             className={cn(
               "flex items-center gap-1 text-[10px]",
-              isOverdue ? "text-red-500 font-medium" : "text-muted-foreground",
+              overdue ? "text-red-500 font-medium" : "text-muted-foreground",
             )}
           >
             <Clock className="w-2.5 h-2.5" />
-            {new Date(task.dueDate).toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-            })}
+            {formatDueDate(task.dueDate, { month: "short", day: "numeric" }, "No date")}
           </div>
         </div>
       </Card>

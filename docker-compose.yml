@@ -69,17 +69,45 @@ services:
       timeout: 3s
       retries: 10
 
+  # Schema migrations, run exactly once per deploy and then exits.
+  #
+  # Previously every API container ran migrations itself at startup. With one
+  # container that was fine; with several replicas they would all race to
+  # apply the same migration on boot. Prisma takes an advisory lock so the
+  # race is survivable, but the losers sit blocked on the database before
+  # serving anything, and a genuine migration failure would be reported N
+  # times from N containers. Doing it once, in its own service the API waits
+  # on, makes the outcome unambiguous.
+  migrate:
+    build:
+      context: .
+      dockerfile: artifacts/api-server/Dockerfile
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env to a real random value}@db:5432/${POSTGRES_DB:-forge}
+    command: >
+      sh -c "cd /app/prod/db && ./node_modules/.bin/tsx src/migrate.ts"
+
   api:
     build:
       context: .
       dockerfile: artifacts/api-server/Dockerfile
-    container_name: forge-api
+    # No container_name and no host port mapping: both are single-instance
+    # constraints. Compose refuses to scale a service with a fixed container
+    # name, and replicas cannot all bind the same host port. The API is
+    # reached through nginx over the compose network, so neither was needed.
+    # Address a specific replica with `docker compose ps api` when debugging.
     restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       # PORT is deliberately NOT set here: the container's internal listening
       # port is fixed at 3001 by the Dockerfile's `ENV PORT=3001`, which is what
@@ -115,11 +143,10 @@ services:
       # Outside /app/prod so uploaded files survive a rebuild/redeploy --
       # /app/prod is entirely replaced by each image build.
       - UPLOAD_DIR=/app/uploads
+    # Shared named volume, not a per-container one: whichever replica accepts
+    # an upload must write where every other replica can later serve it from.
     volumes:
       - forge-uploads-data:/app/uploads
-    ports:
-      # <configurable host port>:<fixed container port>
-      - "${API_PORT:-3001}:3001"
     # The runner image is a pruned `pnpm deploy` output, not a pnpm workspace,
     # so `pnpm --filter "@workspace/db" ...` has no workspace root to resolve
     # against here. Even `pnpm run migrate` (via `--filter`-free `pnpm run`
@@ -129,8 +156,10 @@ services:
     # dependency check fails with ERR_PNPM_CATALOG_ENTRY_NOT_FOUND_FOR_SPEC —
     # even though node_modules was already correctly installed at build time.
     # Invoke the already-installed tsx binary directly to skip pnpm entirely.
+    # Serves only. Migrations belong to the `migrate` service above, which
+    # this one waits for.
     command: >
-      sh -c "cd /app/prod/db && ./node_modules/.bin/tsx src/migrate.ts && cd /app/prod/api-server && node --enable-source-maps ./dist/index.mjs"
+      sh -c "cd /app/prod/api-server && node --enable-source-maps ./dist/index.mjs"
 
   web:
     build:

@@ -8,6 +8,8 @@ import { apiFetch } from "@/lib/apiClient";
 export interface TenantRoleDTO {
   id: string;
   name: string;
+  /** The role's real grants, as enforced by requireCapability server-side. */
+  capabilities: string[];
 }
 
 export function useRoles() {

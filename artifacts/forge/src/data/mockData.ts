@@ -32,6 +32,16 @@ export const ROLE_LABELS: Record<Role, string> = {
   client: "Client",
 };
 
+/**
+ * Display label for a role name that arrived as a plain string — from the
+ * registration options endpoint or a pending role request — where the value
+ * has not been narrowed to `Role`. Falls back to the raw name so an unknown
+ * role renders as itself rather than as "undefined".
+ */
+export function roleLabel(name: string): string {
+  return (ROLE_LABELS as Record<string, string>)[name] ?? name;
+}
+
 export function canAssignTo(assignerRole: Role, assigneeRole: Role): boolean {
   return ROLE_HIERARCHY[assignerRole] > ROLE_HIERARCHY[assigneeRole];
 }
@@ -64,6 +74,9 @@ export interface User {
   password: string; // For login simulation
   capabilities?: string[]; // Array of RBAC capability IDs
   punchedInAt?: string | null; // Real backend punch-clock state (users.punched_in_at); undefined for generated mock rows
+  lastSeenAt?: string | null; // Real backend presence heartbeat (users.last_seen_at); undefined for generated mock rows
+  onboardedAt?: string | null; // When the first-run walkthrough was completed or skipped; null means never shown
+  requestedRole?: string | null; // Role asked for at registration, pending an administrator's decision
 }
 
 export interface Department {
@@ -211,6 +224,7 @@ export interface ApprovalEvent {
   action:
     | "submitted-for-lead-review"
     | "submitted-for-manager-review"
+    | "submitted-for-producer-review"
     | "approved"
     | "changes-requested"
     | "rejected"
@@ -229,6 +243,10 @@ export type TaskStatus =
   | "review"
   | "lead-review"
   | "pm-review"
+  // The main producer is the studio-wide final gate, sitting above the
+  // production manager: artist -> lead -> production head -> producer ->
+  // client.
+  | "producer-review"
   | "approved"
   | "complete"
   | "cancelled"
@@ -343,23 +361,6 @@ export interface PublishLog {
   log: string[];
 }
 
-export interface WorkflowRun {
-  id: string;
-  workflowId: string;
-  triggeredBy: string;
-  startedAt: string;
-  completedAt?: string;
-  status: "running" | "completed" | "failed" | "paused";
-  currentNode: string;
-  entityId: string;
-  logs: {
-    timestamp: string;
-    node: string;
-    message: string;
-    status: "success" | "info" | "error" | "warning";
-  }[];
-}
-
 export interface Notification {
   id: string;
   title: string;
@@ -418,28 +419,8 @@ export interface Plugin {
   id: string;
   name: string;
   category: string;
-  rating: number;
-  installs: string;
-  verified: boolean;
   icon: string;
-  pipeline?: string;
   description: string;
-  author: string;
-  version: string;
-  compatibility: string;
-  lastUpdated: string;
-}
-
-export interface Workflow {
-  id: string;
-  name: string;
-  description: string;
-  nodes: number;
-  lastEdited: string;
-  trigger: string;
-  runs: number;
-  successRate: number;
-  status: "active" | "draft" | "paused";
 }
 
 export interface ChatMessage {
@@ -2290,148 +2271,10 @@ for (let i = 0; i < 80; i++) {
 export const PUBLISH_LOGS: PublishLog[] = [];
 
 // --- Workflows & Runs -------------------------------------------------------
-
-export const WORKFLOWS: Workflow[] = [
-  {
-    id: "wf1",
-    name: "Review → Approve → Publish",
-    description: "Standard review loop with auto-publish on approval",
-    nodes: 4,
-    lastEdited: "2 days ago",
-    trigger: "New Version",
-    runs: 342,
-    successRate: 94,
-    status: "active",
-  },
-  {
-    id: "wf2",
-    name: "Shot Delivery Pipeline",
-    description: "Export, transcode, and upload to client",
-    nodes: 6,
-    lastEdited: "1 week ago",
-    trigger: "Status Change",
-    runs: 128,
-    successRate: 89,
-    status: "active",
-  },
-  {
-    id: "wf3",
-    name: "Asset QC Check",
-    description: "Automated geometry and texture validation",
-    nodes: 3,
-    lastEdited: "3 weeks ago",
-    trigger: "Publish",
-    runs: 567,
-    successRate: 97,
-    status: "active",
-  },
-  {
-    id: "wf4",
-    name: "Client Preview Loop",
-    description: "Watermark and send to client portal",
-    nodes: 5,
-    lastEdited: "1 month ago",
-    trigger: "Manual",
-    runs: 45,
-    successRate: 100,
-    status: "active",
-  },
-  {
-    id: "wf5",
-    name: "Emergency Hotfix",
-    description: "Bypass standard gates for critical fixes",
-    nodes: 2,
-    lastEdited: "2 months ago",
-    trigger: "Manual",
-    runs: 12,
-    successRate: 83,
-    status: "draft",
-  },
-  {
-    id: "wf6",
-    name: "New Project Onboarding",
-    description: "Create folders, set permissions, invite team",
-    nodes: 8,
-    lastEdited: "3 months ago",
-    trigger: "New Project",
-    runs: 10,
-    successRate: 100,
-    status: "active",
-  },
-  {
-    id: "wf7",
-    name: "Nightly Render Farm Submit",
-    description: "Batch submit all pending renders at midnight",
-    nodes: 5,
-    lastEdited: "5 days ago",
-    trigger: "Schedule",
-    runs: 89,
-    successRate: 91,
-    status: "active",
-  },
-  {
-    id: "wf8",
-    name: "Dept Handoff Pipeline",
-    description: "Auto-notify next department when work completes",
-    nodes: 4,
-    lastEdited: "2 weeks ago",
-    trigger: "Status Change",
-    runs: 234,
-    successRate: 96,
-    status: "active",
-  },
-];
-
-export const WORKFLOW_RUNS: WorkflowRun[] = [];
-for (let i = 0; i < 25; i++) {
-  const wf = WORKFLOWS[i % WORKFLOWS.length];
-  WORKFLOW_RUNS.push({
-    id: `wr${i + 1}`,
-    workflowId: wf.id,
-    triggeredBy: `u${(i % 20) + 1}`,
-    startedAt: `2024-09-${String((i % 28) + 1).padStart(2, "0")}T${String(8 + (i % 14)).padStart(2, "0")}:00:00Z`,
-    completedAt:
-      i % 3 !== 0
-        ? `2024-09-${String((i % 28) + 1).padStart(2, "0")}T${String(9 + (i % 14)).padStart(2, "0")}:00:00Z`
-        : undefined,
-    status: (
-      ["running", "completed", "failed", "completed", "completed"] as const
-    )[i % 5],
-    currentNode: i % 3 === 0 ? "Review Gate" : "Done",
-    entityId: `asset${(i % 40) + 1}`,
-    logs: [
-      {
-        timestamp: "09:00:00",
-        node: "Trigger",
-        message: `Workflow started by ${USERS[i % 20].name}`,
-        status: "info" as const,
-      },
-      {
-        timestamp: "09:00:05",
-        node: "Action",
-        message: "Notified reviewers",
-        status: "success" as const,
-      },
-      {
-        timestamp: "09:02:30",
-        node: "Review Gate",
-        message:
-          i % 5 === 2 ? "Review rejected by reviewer" : "Review approved",
-        status: i % 5 === 2 ? ("error" as const) : ("success" as const),
-      },
-      ...(i % 5 !== 2
-        ? [
-            {
-              timestamp: "09:03:00",
-              node: "Publish",
-              message: "Asset published to production",
-              status: "success" as const,
-            },
-          ]
-        : []),
-    ],
-  });
-}
+//
+// Workflows and their runs are real, tenant-scoped rows (Workflow /
+// WorkflowRun) served from /workflows -- see hooks/useWorkflows.ts. Nothing
+// is seeded here: a studio that has never built one sees an empty list.
 
 // --- Audit Events -----------------------------------------------------------
 
@@ -2555,7 +2398,7 @@ const notifTemplates: {
   },
   {
     title: "Workflow Failed",
-    desc: 'Workflow "{workflow}" failed at step 3',
+    desc: "A workflow run failed at step 3",
     cat: "workflow",
     pri: "high",
   },
@@ -2594,7 +2437,6 @@ for (let i = 0; i < 50; i++) {
       .replace("{asset}", asset.name)
       .replace("{entity}", asset.name)
       .replace("{version}", `v${String((i % 12) + 1).padStart(3, "0")}`)
-      .replace("{workflow}", WORKFLOWS[i % WORKFLOWS.length].name)
       .replace("{dept}", DEPARTMENTS[i % DEPARTMENTS.length].name),
     timestamp: [
       "2 mins ago",
@@ -2869,184 +2711,106 @@ PROJECTS.forEach((proj, pi) => {
 });
 
 // --- Plugins ---------------------------------------------------------------
-
+//
+// The catalogue of plugins Forge lists in its marketplace. This is a product
+// fact, so it stays static -- but nothing here says whether a studio has
+// installed any of them: that comes entirely from the tenant_plugins table
+// (see hooks/usePlugins.ts). Ratings, install counts, verified badges,
+// authors, versions and "last updated" dates were invented numbers and have
+// been removed rather than shown as fact.
 export const PLUGINS: Plugin[] = [
   {
     id: "pl1",
     name: "AI Auto-Layout",
     category: "Pipeline",
-    rating: 4.8,
-    installs: "2.3k",
-    verified: true,
     icon: "Zap",
     description:
       "Automatically arranges shots in optimal sequence based on camera flow analysis.",
-    author: "Forge Labs",
-    version: "2.1.0",
-    compatibility: "Forge 3.0+",
-    lastUpdated: "2 weeks ago",
   },
   {
     id: "pl2",
     name: "BulkRender Submit",
     category: "Render",
-    rating: 4.5,
-    installs: "8.1k",
-    verified: true,
     icon: "Package",
     description: "Batch submit render jobs across multiple farm providers.",
-    author: "RenderStack",
-    version: "5.3.1",
-    compatibility: "Forge 2.5+",
-    lastUpdated: "1 month ago",
   },
   {
     id: "pl3",
     name: "ShotGrid Sync",
     category: "Integration",
-    rating: 4.2,
-    installs: "5.9k",
-    verified: true,
     icon: "Link",
     description:
       "Bidirectional sync with Autodesk ShotGrid for hybrid pipelines.",
-    author: "PipelineBridge",
-    version: "3.0.0",
-    compatibility: "Forge 3.0+",
-    lastUpdated: "3 weeks ago",
   },
   {
     id: "pl4",
     name: "Deadline Monitor",
     category: "Monitoring",
-    rating: 4.7,
-    installs: "3.4k",
-    verified: true,
     icon: "Activity",
     description:
       "Real-time monitoring dashboard for Thinkbox Deadline render farm.",
-    author: "FarmWatch",
-    version: "1.8.2",
-    compatibility: "Forge 2.0+",
-    lastUpdated: "1 week ago",
   },
   {
     id: "pl5",
     name: "QuickNote Overlay",
     category: "Annotation",
-    rating: 4.0,
-    installs: "1.2k",
-    verified: true,
     icon: "PenTool",
     description:
       "Quick annotation overlay for review sessions with Apple Pencil support.",
-    author: "SketchTools",
-    version: "2.0.0",
-    compatibility: "Forge 3.0+",
-    lastUpdated: "2 months ago",
   },
   {
     id: "pl6",
     name: "BetaColorProfile",
     category: "Color",
-    rating: 3.1,
-    installs: "421",
-    verified: false,
     icon: "Palette",
     description:
       "ACES and OCIO color profile management. Beta — use at own risk.",
-    author: "ColorLab",
-    version: "0.9.3",
-    compatibility: "Forge 2.5+",
-    lastUpdated: "3 months ago",
   },
   {
     id: "pl7",
     name: "KitsuBridge",
     category: "Integration",
-    rating: 4.6,
-    installs: "6.7k",
-    verified: true,
     icon: "Link2",
     description:
       "Sync with Kitsu production tracking for teams using both tools.",
-    author: "CGWire",
-    version: "4.1.0",
-    compatibility: "Forge 2.0+",
-    lastUpdated: "2 weeks ago",
   },
   {
     id: "pl8",
     name: "TimelapseCapture",
     category: "Tools",
-    rating: 3.8,
-    installs: "987",
-    verified: false,
     icon: "Camera",
     description:
       "Capture work-in-progress timelapses for social media and presentations.",
-    author: "ArtDoc",
-    version: "1.2.0",
-    compatibility: "Forge 2.5+",
-    lastUpdated: "6 weeks ago",
   },
   {
     id: "pl9",
     name: "Smart Dependencies",
     category: "Pipeline",
-    rating: 4.9,
-    installs: "4.2k",
-    verified: true,
     icon: "GitFork",
     description:
       "AI-powered dependency detection and management across your pipeline.",
-    author: "Forge Labs",
-    version: "1.5.0",
-    compatibility: "Forge 3.0+",
-    lastUpdated: "1 week ago",
   },
   {
     id: "pl10",
     name: "Client Portal",
     category: "Integration",
-    rating: 4.4,
-    installs: "3.1k",
-    verified: true,
     icon: "Globe",
     description:
       "White-label client review portal with watermarking and approval workflows.",
-    author: "ClientView",
-    version: "3.2.0",
-    compatibility: "Forge 2.5+",
-    lastUpdated: "3 weeks ago",
   },
   {
     id: "pl11",
     name: "Nuke Connector",
     category: "Integration",
-    rating: 4.7,
-    installs: "7.8k",
-    verified: true,
     icon: "Plug",
     description: "Direct integration with Foundry Nuke for comp workflows.",
-    author: "NukeTools",
-    version: "6.0.1",
-    compatibility: "Forge 2.0+",
-    lastUpdated: "2 weeks ago",
   },
   {
     id: "pl12",
     name: "Budget Tracker",
     category: "Production",
-    rating: 4.3,
-    installs: "1.8k",
-    verified: true,
     icon: "DollarSign",
     description: "Track project budgets, burn rates, and financial forecasts.",
-    author: "ProdFinance",
-    version: "2.4.0",
-    compatibility: "Forge 3.0+",
-    lastUpdated: "1 month ago",
   },
 ];
 

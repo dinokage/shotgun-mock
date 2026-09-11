@@ -36,7 +36,7 @@ import { useUIStore } from "@/store/ui";
 import { useAuthStore } from "@/store/auth";
 import { useTasksStore } from "@/store/tasks";
 import { useReviewStore } from "@/store/reviews";
-import { useChatGroupsStore } from "@/store/chatGroups";
+import { useChatChannels } from "@/hooks/useChat";
 import { useCapability, useIsLeadership } from "@/hooks/use-capability";
 import type { CapabilityId } from "@/store/permissions";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -165,7 +165,7 @@ export function Sidebar() {
   const tasks = useTasksStore((s) => s.tasks);
   const reviews = useReviewStore((s) => s.reviews);
   const departments = useDepartmentStore((s) => s.departments);
-  const chatGroups = useChatGroupsStore((s) => s.groups);
+  const { data: chatChannels = [] } = useChatChannels();
 
   // The drawer's open/closed flag lives in the global UI store, not local
   // state, so it survives a viewport resize. Without this, opening the
@@ -182,9 +182,10 @@ export function Sidebar() {
 
   // Real, store-derived counts — computed the same way the notifications
   // badge in TopBar is: filter live state, don't hand-write a number.
-  const teamChatBadge = chatGroups.filter((g) =>
-    g.memberIds.includes(currentUser.id),
-  ).length;
+  const teamChatBadge = chatChannels.reduce(
+    (sum, channel) => sum + channel.unreadCount,
+    0,
+  );
   const reviewsBadge =
     currentUser.role === "production_head"
       ? // Production Manager's own queue: the final sign-off stage, not the
@@ -298,6 +299,11 @@ export function Sidebar() {
             return (
               <Link key={item.label} href={item.href} onClick={onNavigate}>
                 <div
+                  // Anchor for the first-run walkthrough, which spotlights the
+                  // nav entry for whichever page it has just navigated to.
+                  // Keyed on the path rather than the label so renaming an
+                  // item in the UI cannot silently break the tour.
+                  data-tour={itemPath}
                   className={cn(
                     "flex items-center gap-3 px-3 py-2 rounded-md transition-colors cursor-pointer relative group",
                     isActive

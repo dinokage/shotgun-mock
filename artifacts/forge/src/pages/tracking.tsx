@@ -41,6 +41,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Tooltip,
   TooltipContent,
@@ -62,10 +63,12 @@ import { useAllSequences } from "@/hooks/useSequences";
 import { useTasksStore } from "@/store/tasks";
 import { getProjectId, useEntityProjectMap } from "@/lib/taskShape";
 import {
-  useTrackingViewsStore,
+  useTrackingViews,
+  useCreateTrackingView,
+  useDeleteTrackingView,
   TrackingGroupKey,
   TrackingSortKey,
-} from "@/store/trackingViews";
+} from "@/hooks/useTrackingViews";
 
 // ----------------------------------------------------------------------------
 // Static config
@@ -495,6 +498,7 @@ export default function TrackingGrid() {
   const [localOverrides, setLocalOverrides] = useState<Record<string, any>>({});
   const [saveViewOpen, setSaveViewOpen] = useState(false);
   const [newViewName, setNewViewName] = useState("");
+  const [newViewShared, setNewViewShared] = useState(false);
   // Toggles visibility of the grouping/sorting/saved-views filter controls (row 2 below).
   const [showFilterControls, setShowFilterControls] = useState(true);
 
@@ -503,13 +507,12 @@ export default function TrackingGrid() {
   const liveTasks = useTasksStore((state) => state.tasks);
   const entityProjectMap = useEntityProjectMap();
 
-  const savedViews = useTrackingViewsStore((state) => state.views);
-  const activeViewId = useTrackingViewsStore((state) => state.activeViewId);
-  const addView = useTrackingViewsStore((state) => state.addView);
-  const removeView = useTrackingViewsStore((state) => state.removeView);
-  const setActiveViewId = useTrackingViewsStore(
-    (state) => state.setActiveViewId,
-  );
+  const { data: savedViews = [] } = useTrackingViews();
+  const createViewMutation = useCreateTrackingView();
+  const deleteViewMutation = useDeleteTrackingView();
+  // Which saved view is currently applied is per-device UI state -- it says
+  // nothing about the view itself, so it stays local rather than syncing.
+  const [activeViewId, setActiveViewId] = useState<string | null>(null);
 
   // Guards against clearing "active view" while we are programmatically applying one.
   const applyingRef = useRef(false);
@@ -850,32 +853,62 @@ export default function TrackingGrid() {
   const handleSaveView = () => {
     const name = newViewName.trim();
     if (!name) return;
-    addView(name, {
-      search,
-      projectFilter,
-      episodeFilter,
-      sequenceFilter,
-      assigneeFilter,
-      positionFilter,
-      departmentFilter,
-      groupBy1,
-      groupBy2,
-      sortBy,
-      view,
-    });
-    setNewViewName("");
-    setSaveViewOpen(false);
-    toast({
-      title: "View Saved",
-      description: `"${name}" added to Saved Views.`,
-    });
+    createViewMutation.mutate(
+      {
+        name,
+        isShared: newViewShared,
+        filters: {
+          search,
+          projectFilter,
+          episodeFilter,
+          sequenceFilter,
+          assigneeFilter,
+          positionFilter,
+          departmentFilter,
+          groupBy1,
+          groupBy2,
+          sortBy,
+          view,
+        },
+      },
+      {
+        onSuccess: (created) => {
+          setActiveViewId(created.id);
+          setNewViewName("");
+          setNewViewShared(false);
+          setSaveViewOpen(false);
+          toast({
+            title: "View Saved",
+            description: `"${name}" added to Saved Views.`,
+          });
+        },
+        onError: (err: unknown) => {
+          toast({
+            title: "Could not save view",
+            description: err instanceof Error ? err.message : "Please try again.",
+            variant: "destructive",
+          });
+        },
+      },
+    );
   };
 
   const handleDeleteView = (id: string, name: string) => {
-    removeView(id);
-    toast({
-      title: "View Deleted",
-      description: `"${name}" removed from Saved Views.`,
+    deleteViewMutation.mutate(id, {
+      onSuccess: () => {
+        if (activeViewId === id) setActiveViewId(null);
+        toast({
+          title: "View Deleted",
+          description: `"${name}" removed from Saved Views.`,
+        });
+      },
+      onError: (err: unknown) => {
+        toast({
+          title: "Could not delete view",
+          description: err instanceof Error ? err.message : "Please try again.",
+          variant: "destructive",
+        });
+      },
     });
   };
 
@@ -1554,16 +1587,26 @@ export default function TrackingGrid() {
                       className={`flex items-center justify-between gap-2 cursor-pointer ${activeViewId === v.id ? "bg-accent text-accent-foreground" : ""}`}
                     >
                       <span className="truncate">{v.name}</span>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteView(v.id, v.name);
-                        }}
-                        className="text-muted-foreground/70 hover:text-red-400 shrink-0 transition-colors"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
+                      <span className="flex items-center gap-2 shrink-0">
+                        {!v.isOwner && (
+                          <span className="text-[10px] text-muted-foreground/70">
+                            {v.ownerName ?? "Shared"}
+                          </span>
+                        )}
+                        {/* Deleting is owner-only, and the server enforces it too. */}
+                        {v.isOwner && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteView(v.id, v.name);
+                            }}
+                            className="text-muted-foreground/70 hover:text-red-400 shrink-0 transition-colors"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        )}
+                      </span>
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
@@ -1601,12 +1644,22 @@ export default function TrackingGrid() {
                         if (e.key === "Enter") handleSaveView();
                       }}
                     />
+                    <label className="flex items-center gap-2 text-[11px] text-muted-foreground cursor-pointer">
+                      <Checkbox
+                        checked={newViewShared}
+                        onCheckedChange={(c) => setNewViewShared(c === true)}
+                      />
+                      Share with the studio
+                    </label>
                     <div className="flex justify-end gap-2 pt-1">
                       <Button
                         size="sm"
                         variant="ghost"
                         className="h-7 text-muted-foreground"
-                        onClick={() => setSaveViewOpen(false)}
+                        onClick={() => {
+                          setNewViewShared(false);
+                          setSaveViewOpen(false);
+                        }}
                       >
                         Cancel
                       </Button>

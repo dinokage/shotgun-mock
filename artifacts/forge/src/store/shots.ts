@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { SHOTS, Shot } from "@/data/mockData";
+import { Shot } from "@/data/mockData";
 
 interface ShotState {
   shots: Shot[];
@@ -44,7 +44,7 @@ const syncClientReviewDecision = async (id: string, status: string) => {
 export const useShotStore = create<ShotState>()(
   persist(
     (set) => ({
-      shots: SHOTS,
+      shots: [],
       setShots: (shots) => set({ shots }),
       updateShot: (id, updates) => {
         set((state) => ({
@@ -74,6 +74,10 @@ export const useShotStore = create<ShotState>()(
     }),
     {
       name: "forge-shot-storage",
+      // See assets.ts's identical comment: discards any pre-existing
+      // localStorage state seeded from mockData.ts's generated SHOTS array.
+      version: 1,
+      migrate: () => ({ shots: [] }),
     },
   ),
 );

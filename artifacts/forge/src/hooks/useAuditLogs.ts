@@ -31,3 +31,22 @@ export function useAuditLogs(entityId: string | undefined) {
     staleTime: 10000,
   });
 }
+
+/**
+ * Tenant-wide recent activity, for dashboards that want "what happened
+ * lately" rather than one entity's history.
+ */
+export function useRecentAuditLogs(limit = 10) {
+  return useQuery<AuditLogDTO[]>({
+    queryKey: ["audit-logs", "recent"],
+    queryFn: () => apiFetch<AuditLogDTO[]>("/audit-logs"),
+    select: (rows) =>
+      [...rows]
+        .sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        )
+        .slice(0, limit),
+    staleTime: 10000,
+  });
+}

@@ -52,16 +52,17 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { copyToClipboard, cn } from "@/lib/utils";
-import { useAuthStore } from "@/store/auth";
 import { useProjectStore } from "@/store/projects";
-import { useShotStore } from "@/store/shots";
+import { useShots } from "@/hooks/useShots";
 import {
-  useDeliveryStore,
+  useDeliveries,
+  useCreateDelivery,
+  useRevokeDelivery,
+  useReactivateDelivery,
   isDeliveryActive,
   isDeliveryExpired,
   DELIVERY_ELIGIBLE_STATUSES,
-  type DeliveryItem,
-} from "@/store/deliveries";
+} from "@/hooks/useDeliveries";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 const EXPIRY_OPTIONS = [
@@ -71,9 +72,7 @@ const EXPIRY_OPTIONS = [
   { label: "No expiry", days: null as number | null },
 ];
 
-function statusBadge(
-  delivery: { status: string } & Parameters<typeof isDeliveryActive>[0],
-) {
+function statusBadge(delivery: { status: string; expiresAt: string | null }) {
   if (isDeliveryActive(delivery)) {
     return (
       <Badge className="bg-green-500/10 text-green-500 border-green-500/20">
@@ -96,46 +95,42 @@ function statusBadge(
 }
 
 export default function Deliveries() {
-  const { currentUser } = useAuthStore();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const isMobile = useIsMobile();
 
   const projects = useProjectStore((s) => s.projects);
-  const shots = useShotStore((s) => s.shots);
-  const deliveries = useDeliveryStore((s) => s.deliveries);
-  const createDelivery = useDeliveryStore((s) => s.createDelivery);
-  const revokeDelivery = useDeliveryStore((s) => s.revokeDelivery);
-  const reactivateDelivery = useDeliveryStore((s) => s.reactivateDelivery);
+  const { data: deliveries = [] } = useDeliveries();
+  const createDelivery = useCreateDelivery();
+  const revokeDelivery = useRevokeDelivery();
+  const reactivateDelivery = useReactivateDelivery();
 
   const [createOpen, setCreateOpen] = useState(false);
   const [projectId, setProjectId] = useState("");
   const [title, setTitle] = useState("");
-  const [clientName, setClientName] = useState("");
   const [selectedShotIds, setSelectedShotIds] = useState<Set<string>>(
     new Set(),
   );
   const [expiryDays, setExpiryDays] = useState<number | null>(14);
   const [notes, setNotes] = useState("");
 
-  const selectedProject = projects.find((p) => p.id === projectId);
+  const { data: projectShots = [] } = useShots(projectId || undefined);
 
   // Only finished work is eligible to go into a delivery — this is a
   // final-handoff package, not a review queue (that's Client Review).
   const eligibleShots = useMemo(
     () =>
-      shots.filter(
+      projectShots.filter(
         (s) =>
           s.projectId === projectId &&
           (DELIVERY_ELIGIBLE_STATUSES as readonly string[]).includes(s.status),
       ),
-    [shots, projectId],
+    [projectShots, projectId],
   );
 
   const resetForm = () => {
     setProjectId("");
     setTitle("");
-    setClientName("");
     setSelectedShotIds(new Set());
     setExpiryDays(14);
     setNotes("");
@@ -145,10 +140,7 @@ export default function Deliveries() {
     setProjectId(id);
     setSelectedShotIds(new Set());
     const project = projects.find((p) => p.id === id);
-    if (project) {
-      setClientName(project.client);
-      if (!title) setTitle(`${project.name} — Delivery`);
-    }
+    if (project && !title) setTitle(`${project.name} — Delivery`);
   };
 
   const toggleShot = (id: string) => {
@@ -161,41 +153,38 @@ export default function Deliveries() {
   };
 
   const handleCreate = () => {
-    if (
-      !currentUser ||
-      !selectedProject ||
-      selectedShotIds.size === 0 ||
-      !title.trim()
-    )
-      return;
+    if (!projectId || selectedShotIds.size === 0 || !title.trim()) return;
 
-    const items: DeliveryItem[] = eligibleShots
-      .filter((s) => selectedShotIds.has(s.id))
-      .map((s) => ({
-        shotId: s.id,
-        name: s.name,
-        thumbnailSeed: s.thumbnailSeed,
-      }));
-
-    const delivery = createDelivery({
-      projectId: selectedProject.id,
-      title: title.trim(),
-      clientName: clientName.trim() || selectedProject.client,
-      items,
-      createdById: currentUser.id,
-      createdByName: currentUser.name,
-      expiresAt: expiryDays
-        ? new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000).toISOString()
-        : null,
-      notes: notes.trim(),
-    });
-
-    toast({
-      title: "Delivery Created",
-      description: `"${delivery.title}" is ready to share — access code ${delivery.accessCode}.`,
-    });
-    setCreateOpen(false);
-    resetForm();
+    createDelivery.mutate(
+      {
+        projectId,
+        name: title.trim(),
+        notes: notes.trim(),
+        shotIds: Array.from(selectedShotIds),
+        expiresAt: expiryDays
+          ? new Date(
+              Date.now() + expiryDays * 24 * 60 * 60 * 1000,
+            ).toISOString()
+          : null,
+      },
+      {
+        onSuccess: (delivery) => {
+          toast({
+            title: "Delivery Created",
+            description: `"${delivery.name}" is ready to share — access code ${delivery.accessCode}.`,
+          });
+          setCreateOpen(false);
+          resetForm();
+        },
+        onError: (err: Error) => {
+          toast({
+            title: "Could not create delivery",
+            description: err.message,
+            variant: "destructive",
+          });
+        },
+      },
+    );
   };
 
   const handleCopyLink = async (id: string, accessCode: string) => {
@@ -272,13 +261,6 @@ export default function Deliveries() {
                       value={title}
                       onChange={(e) => setTitle(e.target.value)}
                       placeholder="e.g. Trailer Cut — Final Delivery"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Client name</Label>
-                    <Input
-                      value={clientName}
-                      onChange={(e) => setClientName(e.target.value)}
                     />
                   </div>
                   <div className="space-y-2">
@@ -375,7 +357,6 @@ export default function Deliveries() {
       ) : (
         <div className="grid gap-3">
           {deliveries.map((d) => {
-            const project = projects.find((p) => p.id === d.projectId);
             const active = isDeliveryActive(d);
             const revokeDialog = (
               <AlertDialog>
@@ -404,7 +385,7 @@ export default function Deliveries() {
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => revokeDelivery(d.id)}>
+                    <AlertDialogAction onClick={() => revokeDelivery.mutate(d.id)}>
                       Revoke
                     </AlertDialogAction>
                   </AlertDialogFooter>
@@ -423,13 +404,13 @@ export default function Deliveries() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-semibold truncate">
-                            {d.title}
+                            {d.name}
                           </span>
                           {statusBadge(d)}
                         </div>
                         <div className="text-xs text-muted-foreground mt-0.5">
-                          {project?.name ?? "Unknown project"} • {d.clientName}{" "}
-                          • {d.items.length} shot
+                          {d.projectName ?? "Unknown project"} •{" "}
+                          {d.clientName ?? "Client"} • {d.items.length} shot
                           {d.items.length === 1 ? "" : "s"}
                         </div>
                       </div>
@@ -471,7 +452,7 @@ export default function Deliveries() {
                           size="sm"
                           variant="outline"
                           className="col-span-2 gap-1.5 touch-target"
-                          onClick={() => reactivateDelivery(d.id)}
+                          onClick={() => reactivateDelivery.mutate(d.id)}
                         >
                           <RotateCcw className="w-3.5 h-3.5" /> Reactivate
                         </Button>
@@ -486,12 +467,12 @@ export default function Deliveries() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="font-semibold truncate">
-                          {d.title}
+                          {d.name}
                         </span>
                         {statusBadge(d)}
                       </div>
                       <div className="text-xs text-muted-foreground mt-0.5 truncate">
-                        {project?.name ?? "Unknown project"} • {d.clientName} •{" "}
+                        {d.projectName ?? "Unknown project"} • {d.clientName ?? "Client"} •{" "}
                         {d.items.length} shot{d.items.length === 1 ? "" : "s"}
                       </div>
                       <div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-1.5 font-mono">
@@ -532,7 +513,7 @@ export default function Deliveries() {
                           size="sm"
                           variant="outline"
                           className="gap-1.5"
-                          onClick={() => reactivateDelivery(d.id)}
+                          onClick={() => reactivateDelivery.mutate(d.id)}
                         >
                           <RotateCcw className="w-3.5 h-3.5" /> Reactivate
                         </Button>

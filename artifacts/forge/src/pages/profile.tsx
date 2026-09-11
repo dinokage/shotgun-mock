@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { useParams, Link } from "wouter";
+import { useParams, Link, useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -29,14 +29,13 @@ import { PriorityChip } from "@/components/shared/PriorityChip";
 import { useUIStore } from "@/store/ui";
 import { useAuthStore } from "@/store/auth";
 import { useCapability } from "@/hooks/use-capability";
-import {
-  useUpdateProfile,
-  useChangePassword,
-  useUploadAvatar,
-} from "@/hooks/useUsers";
+import { useUpdateProfile, useUploadAvatar } from "@/hooks/useUsers";
+import { useChangePassword } from "@/hooks/usePassword";
 import { ApiError } from "@/lib/apiClient";
 import { useToast } from "@/hooks/use-toast";
 import { getAssigneeId, getProjectId, useEntityProjectMap } from "@/lib/taskShape";
+import { normalizeTaskStatus } from "@/lib/trackingStatus";
+import { formatDueDate } from "@/lib/taskDates";
 import {
   STUDIO_LEADERSHIP_ROLES,
   LEADERSHIP_ROLES,
@@ -46,6 +45,7 @@ import {
 export default function Profile() {
   const { id } = useParams<{ id?: string }>();
   const { currentUser } = useAuthStore();
+  const [, setLocation] = useLocation();
   const {
     setActiveTaskDrawer,
     setCreateTaskModalOpen,
@@ -149,7 +149,7 @@ export default function Profile() {
   // Shared isTaskActive classification (see data/mockData.ts) so this stat and the
   // "Active Tasks" list below always agree with each other and with every other
   // page's active/done rollups for the same underlying task data.
-  const activeTasks = myTasks.filter((t) => isTaskActive(t.status));
+  const activeTasks = myTasks.filter((t) => isTaskActive(normalizeTaskStatus(t.status)));
 
   const handleStartEdit = () => {
     setEditName(user.name);
@@ -209,11 +209,25 @@ export default function Profile() {
     }
     try {
       await changePassword.mutateAsync({ currentPassword, newPassword });
-      toast({ title: "Password changed" });
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
       setIsChangingPassword(false);
+      toast({
+        title: "Password changed",
+        description:
+          "You've been signed out on every device. Sign in again with your new password.",
+      });
+      // The change revoked every session including this tab's, so the cookie
+      // is already dead -- drop the local auth state before leaving rather
+      // than letting the next background /auth/me poll 401 behind the shell.
+      useAuthStore.setState({
+        currentUser: null,
+        tenantName: null,
+        isAuthenticated: false,
+        loginError: null,
+      });
+      setLocation("/login");
     } catch (err: any) {
       toast({
         title: "Failed to change password",
@@ -625,7 +639,7 @@ export default function Profile() {
                         </div>
                         <div className="flex items-center gap-4 text-xs text-muted-foreground ml-[92px]">
                           <span>
-                            Due {new Date(task.dueDate).toLocaleDateString()}
+                            {formatDueDate(task.dueDate, undefined, "No due date")}
                           </span>
                           <span>•</span>
                           <span style={{ color: dept?.color }}>

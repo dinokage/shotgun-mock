@@ -93,6 +93,17 @@ export default function Login() {
           </CardContent>
         </Card>
         <p className="mt-6 text-center text-sm text-muted-foreground">
+          <a href="/forgot-password" className="text-primary hover:underline">
+            Forgot your password?
+          </a>
+        </p>
+        <p className="mt-2 text-center text-sm text-muted-foreground">
+          New to the studio?{" "}
+          <a href="/register" className="text-primary hover:underline">
+            Create an account
+          </a>
+        </p>
+        <p className="mt-2 text-center text-sm text-muted-foreground">
           Reviewing as a client?{" "}
           <a href="/client-review" className="text-primary hover:underline">
             Use your access link instead

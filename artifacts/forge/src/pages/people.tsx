@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { ROLE_LABELS } from "@/data/mockData";
+import { ROLE_LABELS, roleLabel } from "@/data/mockData";
 import { useUserStore } from "@/store/users";
 import { useDepartmentStore } from "@/store/departments";
 import {
@@ -37,6 +37,33 @@ import {
   LEADERSHIP_ROLES,
   DEPARTMENT_LEADERSHIP_ROLES,
 } from "@/store/permissions";
+
+// Roles the studio auto clock-in/out on login/logout (see routes/auth.ts's
+// AUTO_CLOCK_IN_ROLES) -- admin keeps no timesheet, so it never gets a live
+// presence claim below, only its account status.
+const PRESENCE_ROLES = ["artist", "lead", "production_head", "producer"];
+
+// Mirrors PRESENCE_ONLINE_WINDOW_MS in the API's tenant middleware -- must
+// stay a few multiples of that middleware's write-throttle window so normal
+// usage (which heartbeats at most once per throttle window) never drifts
+// stale between writes and flickers to Offline while still in use.
+const PRESENCE_ONLINE_WINDOW_MS = 90_000;
+
+// Mirrors the server's attendance-visibility rule exactly (routes/users.ts):
+// studio-wide roles see everyone, a lead sees their own department, everyone
+// else sees only themselves. GET /users already nulls punchedInAt for rows
+// outside this, so without this check "no data" and "actually offline" are
+// indistinguishable and a viewer without visibility would see every
+// colleague as falsely Offline instead of an honest "no data" state.
+const STUDIO_WIDE_ATTENDANCE_ROLES = ["admin", "production_head", "producer"];
+function canSeePresence(
+  viewer: { id: string; role: string; departmentId: string | null },
+  target: { id: string; departmentId: string | null },
+): boolean {
+  if (target.id === viewer.id) return true;
+  if (STUDIO_WIDE_ATTENDANCE_ROLES.includes(viewer.role)) return true;
+  return viewer.role === "lead" && target.departmentId === viewer.departmentId;
+}
 
 export default function People() {
   const prefersReducedMotion = useReducedMotion();
@@ -158,18 +185,75 @@ export default function People() {
                         <AvatarImage src={user.avatar} />
                         <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
                       </Avatar>
-                      <Badge
-                        variant={
-                          user.status === "active" ? "default" : "secondary"
+                      {/* A role this person asked for at registration and has
+                          not been granted. Shown next to the status badge
+                          because it is an action waiting on whoever is
+                          reading the roster, not a property of the person. */}
+                      {user.requestedRole && (
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] px-1.5 py-0 border-amber-500/40 text-amber-600 bg-amber-500/10 mr-1"
+                        >
+                          Requested: {roleLabel(user.requestedRole)}
+                        </Badge>
+                      )}
+                      {(() => {
+                        // Live clocked-in status, not the account's static
+                        // status field -- every card used to show "active"
+                        // regardless of whether that person was actually
+                        // signed in, which is what this replaces. Re-derives
+                        // on every users refetch (App.tsx's ~10s poll), so it
+                        // tracks real logins/logouts without a page reload.
+                        if (!PRESENCE_ROLES.includes(user.role)) {
+                          return (
+                            <Badge
+                              variant={
+                                user.status === "active" ? "default" : "secondary"
+                              }
+                              className={
+                                user.status === "active"
+                                  ? "bg-green-500/10 text-green-500 hover:bg-green-500/20 shadow-none text-[10px] px-1.5 py-0"
+                                  : "text-[10px] px-1.5 py-0"
+                              }
+                            >
+                              {user.status}
+                            </Badge>
+                          );
                         }
-                        className={
-                          user.status === "active"
-                            ? "bg-green-500/10 text-green-500 hover:bg-green-500/20 shadow-none text-[10px] px-1.5 py-0"
-                            : "text-[10px] px-1.5 py-0"
+                        if (!currentUser || !canSeePresence(currentUser, user)) {
+                          return (
+                            <Badge
+                              variant="secondary"
+                              className="text-[10px] px-1.5 py-0"
+                            >
+                              Member
+                            </Badge>
+                          );
                         }
-                      >
-                        {user.status}
-                      </Badge>
+                        // lastSeenAt is a heartbeat written by every
+                        // authenticated request (see touchPresence in the
+                        // API's tenant middleware), not the clock-in time --
+                        // punchedInAt stays true all day even after someone
+                        // closes their laptop without logging out, which is
+                        // exactly the stale "always online" bug this badge
+                        // used to have.
+                        const online =
+                          !!user.lastSeenAt &&
+                          Date.now() - new Date(user.lastSeenAt).getTime() <
+                            PRESENCE_ONLINE_WINDOW_MS;
+                        return (
+                          <Badge
+                            variant={online ? "default" : "secondary"}
+                            className={
+                              online
+                                ? "bg-green-500/10 text-green-500 hover:bg-green-500/20 shadow-none text-[10px] px-1.5 py-0"
+                                : "text-[10px] px-1.5 py-0"
+                            }
+                          >
+                            {online ? "Online" : "Offline"}
+                          </Badge>
+                        );
+                      })()}
                     </div>
 
                     <div className="mb-4">

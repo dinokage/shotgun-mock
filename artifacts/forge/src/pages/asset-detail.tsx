@@ -32,11 +32,14 @@ import {
 import { PipelineVisualizer } from "@/components/shared/PipelineVisualizer";
 import { useToast } from "@/hooks/use-toast";
 import { useReviewStore } from "@/store/reviews";
-import { useAssetActivityStore } from "@/store/assetActivity";
+import {
+  latestActivity,
+  useAssetActivity,
+  useRecordAssetActivity,
+} from "@/hooks/useAssetActivity";
 import { useAssets, useUpdateAsset } from "@/hooks/useAssets";
 import { useAuditLogs } from "@/hooks/useAuditLogs";
 import { getAssigneeId, getAssetId, getShotId } from "@/lib/taskShape";
-import { useAuthStore } from "@/store/auth";
 import { useUIStore } from "@/store/ui";
 import { useProjectStore } from "@/store/projects";
 import { useUserStore } from "@/store/users";
@@ -124,11 +127,7 @@ export default function AssetDetail() {
   const rollbackToVersion = useReviewStore((s) => s.rollbackToVersion);
   const { data: assets = [], isLoading } = useAssets();
   const updateAssetMutation = useUpdateAsset();
-  const lastOpenedInDCC = useAssetActivityStore((s) => s.lastOpenedInDCC);
-  const recordDccOpen = useAssetActivityStore((s) => s.recordDccOpen);
-  const publishOverrides = useAssetActivityStore((s) => s.publishOverrides);
-  const publishAsset = useAssetActivityStore((s) => s.publishAsset);
-  const currentUser = useAuthStore((s) => s.currentUser);
+  const recordActivity = useRecordAssetActivity();
   const setActiveTaskDrawer = useUIStore((s) => s.setActiveTaskDrawer);
   const projects = useProjectStore((s) => s.projects);
   const users = useUserStore((s) => s.users);
@@ -137,6 +136,7 @@ export default function AssetDetail() {
 
   const asset = assets.find((a) => a.id === params?.id);
   const { data: auditLogs = [] } = useAuditLogs(asset?.id);
+  const { data: activity = [] } = useAssetActivity(asset?.id);
 
   // In-page links (e.g. a Dependency card below) can route from one asset's
   // detail page straight to another's without unmounting this component, so
@@ -183,18 +183,14 @@ export default function AssetDetail() {
   const currentVersionId = currentVersionOverrides[asset.id];
   const currentVersion = versions.find((v) => v.id === currentVersionId);
   const displayVersionNumber = currentVersion?.versionNumber ?? asset.version;
-  const dccOpen = lastOpenedInDCC[asset.id];
+  const dccOpen = latestActivity(activity, "dcc_open");
   const isUsdAsset = USD_ASSET_TYPES.has(asset.type);
-  const publishRecord = publishOverrides[asset.id];
+  const publishRecord = latestActivity(activity, "publish");
   const isPublished = asset.publishStatus === "published";
 
   const handleOpenInDCC = () => {
     const app = dccAppForAssetType(asset.type);
-    recordDccOpen(asset.id, {
-      app,
-      userName: currentUser?.name ?? "You",
-      timestamp: new Date().toISOString(),
-    });
+    recordActivity.mutate({ assetId: asset.id, kind: "dcc_open", app });
     toast({
       title: `Launching ${app}`,
       description: `Opening ${asset.name} (${displayVersionNumber}) in ${app}...`,
@@ -222,10 +218,7 @@ export default function AssetDetail() {
 
   const handlePublish = () => {
     updateAssetMutation.mutate({ id: asset.id, publishStatus: "published" });
-    publishAsset(asset.id, {
-      userName: currentUser?.name ?? "You",
-      timestamp: new Date().toISOString(),
-    });
+    recordActivity.mutate({ assetId: asset.id, kind: "publish" });
     toast({
       title: "Asset Published",
       description: `${asset.name} (${displayVersionNumber}) is now published.`,
@@ -297,22 +290,23 @@ export default function AssetDetail() {
           </div>
           {dccOpen && (
             <motion.p
-              key={dccOpen.timestamp}
+              key={dccOpen.id}
               {...fadeInUp}
               className="text-xs text-muted-foreground mt-2"
             >
-              Last opened in {dccOpen.app} by {dccOpen.userName} ·{" "}
-              {new Date(dccOpen.timestamp).toLocaleString()}
+              Last opened in {dccOpen.app ?? "a DCC"} by{" "}
+              {dccOpen.userName ?? "an unknown user"} ·{" "}
+              {new Date(dccOpen.createdAt).toLocaleString()}
             </motion.p>
           )}
           {publishRecord && (
             <motion.p
-              key={publishRecord.timestamp}
+              key={publishRecord.id}
               {...fadeInUp}
               className="text-xs text-muted-foreground mt-1"
             >
-              Published by {publishRecord.userName} ·{" "}
-              {new Date(publishRecord.timestamp).toLocaleString()}
+              Published by {publishRecord.userName ?? "an unknown user"} ·{" "}
+              {new Date(publishRecord.createdAt).toLocaleString()}
             </motion.p>
           )}
         </div>

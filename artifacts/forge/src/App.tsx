@@ -18,6 +18,7 @@ import Projects from "@/pages/projects";
 import Tasks from "@/pages/tasks";
 import ProjectDetail from "@/pages/project-detail/index";
 import Review from "@/pages/review";
+import ReviewQueue from "@/pages/review-queue";
 import Scheduling from "@/pages/scheduling";
 import WorkflowEditor from "@/pages/workflow-editor";
 import Workflows from "@/pages/workflows";
@@ -36,6 +37,9 @@ import ProductionDashboard from "@/pages/production";
 import Timesheets from "@/pages/timesheets";
 import ClientReview from "@/pages/client-review";
 import AcceptInvite from "@/pages/accept-invite";
+import Register from "@/pages/register";
+import ForgotPassword from "@/pages/forgot-password";
+import ResetPassword from "@/pages/reset-password";
 
 import Audit from "@/pages/audit";
 import NotFound from "@/pages/not-found";
@@ -127,6 +131,9 @@ function Router() {
       <Route path="/login" component={Login} />
       <Route path="/client-review" component={ClientReview} />
       <Route path="/accept-invite" component={AcceptInvite} />
+      <Route path="/register" component={Register} />
+      <Route path="/forgot-password" component={ForgotPassword} />
+      <Route path="/reset-password" component={ResetPassword} />
       {/* Public, outside AuthGuard — external recipients reach a specific
           delivery via its access code, with no Forge login at all. */}
       <Route path="/delivery/:id" component={DeliveryDetail} />
@@ -166,7 +173,7 @@ function Router() {
                 <Route path="/people" component={People} />
                 <Route path="/people/:id" component={Profile} />
                 <Route path="/daily-standup" component={DailyStandup} />
-                <Route path="/review" component={Review} />
+                <Route path="/review" component={ReviewQueue} />
                 {/* key={params.taskId} forces a full remount when navigating
                     between two different tasks' reviews -- Review carries a
                     lot of local editor state (video clips, frame, tool
@@ -243,11 +250,13 @@ function Router() {
                     <Audit />
                   </LeadershipGuard>
                 </Route>
-                <Route path="/settings">
-                  <LeadershipGuard>
-                    <Settings />
-                  </LeadershipGuard>
-                </Route>
+                {/* Not LeadershipGuard-wrapped: settings.tsx gates every
+                    tab on its own capability and falls back to the
+                    Notifications tab, so an artist reaching it sees only
+                    what they may change. Guarding the whole route instead
+                    bounced 43 of 65 users out with an error toast, even
+                    though /settings is a BASE route for every role. */}
+                <Route path="/settings" component={Settings} />
                 <Route path="/delivery">
                   <LeadershipGuard>
                     <Deliveries />

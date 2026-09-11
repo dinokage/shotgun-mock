@@ -9,6 +9,9 @@ const STUDIO_LEADERSHIP_ROLES = ["admin", "production_head"];
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability } from "../middleware/rbac";
 import { hashPassword, verifyPassword } from "../lib/auth";
+import { getVisibilityScope } from "../lib/visibilityScope";
+import { getClientScope } from "../lib/clientScope";
+import { revokeSessions } from "./auth";
 import { cacheDel, cacheKeys } from "../lib/cache";
 import * as crypto from "crypto";
 import * as fs from "fs";
@@ -77,6 +80,12 @@ router.get("/", async (req, res) => {
     });
     const isClient = callerRole?.name === "client";
 
+    // Revoking a link must actually cut it off here too. This route keyed
+    // only off the role name, so a revoked client kept reading the roster
+    // until its 7-day JWT expired, while every getClientScope-based route
+    // had already gone empty.
+    if (req.clientAccessLinkId && !(await getClientScope(req))) return res.json([]);
+
     const rows = await prisma.user.findMany({
       where: {
         tenantId,
@@ -94,10 +103,47 @@ router.get("/", async (req, res) => {
         avatar: true,
         status: true,
         punchedInAt: true,
+        lastSeenAt: true,
+        requestedRole: true,
         createdAt: true,
       },
     });
-    const users = rows.map((u) => ({ ...u, role: u.role?.name ?? null }));
+    // The roster itself stays whole for every internal role -- names,
+    // avatars, titles and departments are what assignee pickers, chat and
+    // the standup board are built on, and hiding rows would break them.
+    // What a non-studio-wide role must not get in bulk is the personal data
+    // hanging off those rows:
+    //   * email -- direct contact PII; only the caller's own is returned.
+    //     Blanked to "" rather than dropped so the UserDTO's `email: string`
+    //     shape (and callers that .toLowerCase() it) still holds.
+    //   * punchedInAt / lastSeenAt -- attendance and live-activity data. Not
+    //     blanked outright, because the payroll & attendance views leads
+    //     legitimately use are built on them; they instead follow the
+    //     caller's normal visibility scope (own row for an artist, own
+    //     department for a lead).
+    // A client's row set is narrowed to STUDIO_LEADERSHIP_ROLES above so it
+    // can see who its studio contacts are -- names and titles, nothing more.
+    // Treating a client as studio-wide here handed an external party every
+    // leadership email address and live punch-in time, i.e. a ready-made
+    // phishing list plus staff working hours.
+    const scope = isClient ? null : await getVisibilityScope(req);
+    const users = rows.map((u) => {
+      const isSelf = !!req.userId && u.id === req.userId;
+      const seesAttendance =
+        !!scope &&
+        (scope.kind === "all" ||
+          isSelf ||
+          (scope.kind === "department" && u.departmentId === scope.departmentId));
+      return {
+        ...u,
+        role: u.role?.name ?? null,
+        email: scope && (scope.kind === "all" || isSelf) ? u.email : "",
+        punchedInAt: seesAttendance ? u.punchedInAt : null,
+        lastSeenAt: seesAttendance ? u.lastSeenAt : null,
+        // Only those who can act on a role request should see one pending.
+        requestedRole: scope?.kind === "all" ? u.requestedRole : null,
+      };
+    });
     return res.json(users);
   } catch (err) {
     req.log.error(err, "Failed to fetch users");
@@ -258,50 +304,6 @@ router.post("/me/punch-out", async (req, res) => {
   }
 });
 
-// Every imported-roster/newly-invited account starts on a shared studio
-// default password (the admin hands it out) with no way to change it -- this
-// is that missing self-service change. Deliberately its own route rather
-// than a field on PATCH /me: it requires proving the current password,
-// which the general profile-fields route has no business checking.
-router.put("/me/password", async (req, res) => {
-  try {
-    const tenantId = req.tenantId!;
-    const userId = req.userId;
-    if (!userId) return res.status(401).json({ error: "Unauthorized" });
-
-    const { currentPassword, newPassword } = req.body;
-    if (!currentPassword || !newPassword) {
-      return res
-        .status(400)
-        .json({ error: "Missing currentPassword or newPassword" });
-    }
-    if (typeof newPassword !== "string" || newPassword.length < 8) {
-      return res
-        .status(400)
-        .json({ error: "New password must be at least 8 characters" });
-    }
-
-    const user = await prisma.user.findFirst({ where: { id: userId, tenantId } });
-    if (!user) return res.status(404).json({ error: "Not found" });
-
-    const isValid = await verifyPassword(currentPassword, user.hashedPassword);
-    if (!isValid) {
-      return res.status(401).json({ error: "Current password is incorrect" });
-    }
-
-    const hashedPassword = await hashPassword(newPassword);
-    await prisma.user.updateMany({
-      where: { id: userId, tenantId },
-      data: { hashedPassword },
-    });
-
-    return res.json({ ok: true });
-  } catch (err) {
-    req.log.error(err, "Failed to change password");
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
-
 router.post("/me/avatar", (req, res) => {
   avatarUpload.single("file")(req, res, async (err) => {
     if (err) return res.status(400).json({ error: err.message });
@@ -361,7 +363,7 @@ router.patch("/:id", requireCapability("manage_members"), async (req, res) => {
     // resolution purposes, even though a plain ":id" segment is always a
     // single string at runtime.
     const userId = req.params.id as string;
-    const { roleId, departmentId } = req.body;
+    const { roleId, departmentId, status } = req.body;
 
     const existing = await prisma.user.findFirst({ where: { tenantId, id: userId } });
     if (!existing) return res.status(404).json({ error: "Not found" });
@@ -374,6 +376,11 @@ router.patch("/:id", requireCapability("manage_members"), async (req, res) => {
       });
       if (!role) return res.status(400).json({ error: "Invalid roleId" });
       data.roleId = roleId;
+      // An administrator setting the role IS the decision on any role this
+      // person requested at registration, whether they granted it or chose
+      // something else. Leaving the request pending afterwards would keep
+      // showing them in the roster as awaiting a decision that was made.
+      data.requestedRole = null;
     }
 
     if (departmentId !== undefined) {
@@ -384,6 +391,15 @@ router.patch("/:id", requireCapability("manage_members"), async (req, res) => {
         if (!dept) return res.status(400).json({ error: "Invalid departmentId" });
       }
       data.departmentId = departmentId;
+    }
+
+    // Deliberately a fixed two-value enum, not a free string -- login's own
+    // gate only recognizes "active", so any other value the caller invented
+    // would deactivate the account anyway but read as a typo in the roster.
+    if (status !== undefined) {
+      if (status !== "active" && status !== "inactive")
+        return res.status(400).json({ error: "status must be 'active' or 'inactive'" });
+      data.status = status;
     }
 
     if (Object.keys(data).length === 0) {
@@ -401,6 +417,21 @@ router.patch("/:id", requireCapability("manage_members"), async (req, res) => {
     // just promoted/reassigned would keep seeing their old capabilities
     // until the 15s cache entry happened to expire.
     await cacheDel(cacheKeys.userMe(tenantId, userId));
+    // A role change must also end that user's existing sessions. The role is
+    // baked into the session token itself, so a demoted user would otherwise
+    // keep acting with their old capabilities for the rest of the token's
+    // 7-day life -- which makes demotion and offboarding cosmetic.
+    if (
+      (data.roleId !== undefined && data.roleId !== existing.roleId) ||
+      data.status === "inactive"
+    ) {
+      // Same reasoning as the role-change case above, applied to
+      // deactivation: the middleware check catches it within 5 minutes via
+      // the cache TTL regardless, but revoking immediately means a
+      // deactivated account's existing session dies on its very next
+      // request rather than whenever that cache entry happens to expire.
+      await revokeSessions(userId, tenantId);
+    }
     const { hashedPassword: _omit, ...user } = updated;
     return res.json(user);
   } catch (err) {

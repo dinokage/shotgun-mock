@@ -67,6 +67,31 @@ export async function sendInviteEmail(params: {
   });
 }
 
+export async function sendPasswordResetEmail(params: {
+  to: string;
+  name: string;
+  resetUrl: string;
+  expiresInMinutes: number;
+}) {
+  const { to, name, resetUrl, expiresInMinutes } = params;
+  const fromName = process.env.SMTP_FROM_NAME || "Forge";
+  const fromAddress = process.env.SMTP_USER;
+  const transport = getTransport();
+  await transport.sendMail({
+    from: `"${fromName}" <${fromAddress}>`,
+    to,
+    subject: sanitizeHeaderValue("Reset your Forge password"),
+    text: `Hi ${name},\n\nSomeone asked to reset the password on your Forge account.\n\nReset it here: ${resetUrl}\n\nThis link works once and expires in ${expiresInMinutes} minutes. If you didn't ask for this, you can ignore this email -- your password stays as it is.`,
+    html: `
+      <p>Hi ${escapeHtml(name)},</p>
+      <p>Someone asked to reset the password on your Forge account.</p>
+      <p><a href="${resetUrl}">Reset your password</a></p>
+      <p style="color:#666;font-size:12px">This link works once and expires in ${expiresInMinutes} minutes. If the button doesn't work, copy this link: ${resetUrl}</p>
+      <p style="color:#666;font-size:12px">If you didn't ask for this, you can ignore this email — your password stays as it is.</p>
+    `,
+  });
+}
+
 export async function sendClientAccessEmail(params: {
   to: string;
   reviewUrl: string;

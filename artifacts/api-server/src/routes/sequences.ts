@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "@workspace/db";
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability, denyClientAccess } from "../middleware/rbac";
+import { getVisibilityScope, visibleSequenceIds } from "../lib/visibilityScope";
 import * as crypto from "crypto";
 
 // See the identical comment in routes/episodes.ts — the FK constraint alone
@@ -31,11 +32,15 @@ sequencesRouter.get("/", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const { projectId, episodeId } = req.query;
+    // A sequence holds no tasks itself -- it is visible to a scoped role
+    // when it contains a shot or asset that role has work on.
+    const visibleIds = await visibleSequenceIds(tenantId, await getVisibilityScope(req));
     const rows = await prisma.sequence.findMany({
       where: {
         tenantId,
         ...(typeof projectId === "string" ? { projectId } : {}),
         ...(typeof episodeId === "string" ? { episodeId } : {}),
+        ...(visibleIds ? { id: { in: visibleIds } } : {}),
       },
     });
     return res.json(rows);

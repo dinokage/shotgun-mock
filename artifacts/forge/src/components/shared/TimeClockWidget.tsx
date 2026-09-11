@@ -23,15 +23,17 @@ import { getAssigneeId } from "@/lib/taskShape";
 import { useToast } from "@/hooks/use-toast";
 import { useAddDailyLog } from "@/hooks/useTasks";
 import { usePunchIn, usePunchOut } from "@/hooks/useUsers";
+import { normalizeTaskStatus } from "@/lib/trackingStatus";
 
 /**
  * Real punch clock, backed by users.punched_in_at (not a per-browser
- * localStorage timer, and not auto-started on login) -- so punch state
- * survives a reload, is visible on any device, and only ever shows
- * "punched in" after someone has actually clicked Punch In. This used to
- * auto-open a session on every single login, which is exactly why
- * daily-standup.tsx's Payroll table (and everyone else) saw every employee
- * as permanently punched in.
+ * localStorage timer) -- so punch state survives a reload and is visible on
+ * any device. Signing in opens the session server-side for the roles that
+ * keep a timesheet (POST /auth/login; admin and client never are), and
+ * signing out closes it, so the state this widget shows is the same one
+ * daily-standup.tsx's Payroll table reads. The button below stays for the
+ * cases the login/logout pair can't cover: clocking back in after a
+ * punch-out, or clocking out with time logged against a specific task.
  *
  * Punching in only starts the real timestamp (no time is "logged" yet);
  * punching out posts one real daily log via useAddDailyLog (hooks/
@@ -59,7 +61,7 @@ export function TimeClockWidget() {
     : null;
   const myTasks = currentUser
     ? tasks.filter(
-        (t) => getAssigneeId(t) === currentUser.id && isTaskActive(t.status),
+        (t) => getAssigneeId(t) === currentUser.id && isTaskActive(normalizeTaskStatus(t.status)),
       )
     : [];
 

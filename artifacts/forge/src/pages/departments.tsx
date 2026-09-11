@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { stagger } from "@/lib/motion";
 import { Link } from "wouter";
@@ -22,10 +22,15 @@ import {
 } from "lucide-react";
 
 import { useAuthStore } from "@/store/auth";
-import { useDepartmentPipelineStore } from "@/store/departments";
 import { useCapability } from "@/hooks/use-capability";
 import { useDepartments } from "@/hooks/useDepartments";
+import {
+  pipelineDepartmentOrder,
+  useReorderDepartments,
+} from "@/hooks/useDepartmentPipeline";
 import { useDepartmentScope } from "@/hooks/useDepartmentScope";
+import { useToast } from "@/hooks/use-toast";
+import { normalizeTaskStatus } from "@/lib/trackingStatus";
 
 export default function Departments() {
   const prefersReducedMotion = useReducedMotion();
@@ -38,42 +43,36 @@ export default function Departments() {
   const { data: DEPARTMENTS = [], isLoading } = useDepartments();
 
   const [isEditing, setIsEditing] = useState(false);
-  const pipelineOrder = useDepartmentPipelineStore((s) => s.pipelineOrder);
-  const moveInPipeline = useDepartmentPipelineStore((s) => s.moveInPipeline);
-  const setPipelineOrder = useDepartmentPipelineStore((s) => s.setPipelineOrder);
+  const reorderMutation = useReorderDepartments();
+  const { toast } = useToast();
 
-  // The persisted pipeline order was seeded (at module load, before this
-  // department list had ever loaded) from mockData's placeholder ids
-  // ("dept1"...), which never match the real backend's UUID department ids.
-  // Once real departments arrive, self-heal the persisted order so both the
-  // strip and the "Customize Here" reorder (which mutates this same order by
-  // id) work against ids that actually resolve.
-  useEffect(() => {
-    if (DEPARTMENTS.length === 0) return;
-    const resolvedCount = pipelineOrder.filter((id) =>
-      DEPARTMENTS.some((d) => d.id === id),
-    ).length;
-    if (resolvedCount === 0) {
-      // Match store/departments.ts's own DEFAULT_PIPELINE_ORDER: Production
-      // Management (pipelineOrder 0) is studio overhead, not a pipeline
-      // stage, and was never meant to appear in this strip.
-      const liveOrder = [...DEPARTMENTS]
-        .filter((d) => d.pipelineOrder > 0)
-        .sort((a, b) => a.pipelineOrder - b.pipelineOrder)
-        .map((d) => d.id);
-      if (liveOrder.length > 0) setPipelineOrder(liveOrder);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [DEPARTMENTS]);
+  // The strip's order is the studio-wide Department.pipelineOrder, so a
+  // reorder has to move a department relative to the *whole* pipeline, not
+  // just the slice this viewer is scoped to see.
+  const fullPipeline = pipelineDepartmentOrder(DEPARTMENTS);
+
+  const moveInPipeline = (deptId: string, direction: "left" | "right") => {
+    const idx = fullPipeline.findIndex((d) => d.id === deptId);
+    if (idx === -1) return;
+    const swapWith = direction === "left" ? idx - 1 : idx + 1;
+    if (swapWith < 0 || swapWith >= fullPipeline.length) return;
+    const next = fullPipeline.map((d) => d.id);
+    [next[idx], next[swapWith]] = [next[swapWith], next[idx]];
+    reorderMutation.mutate(next, {
+      onError: (err: unknown) =>
+        toast({
+          title: "Could not save pipeline order",
+          description: err instanceof Error ? err.message : "Please try again.",
+          variant: "destructive",
+        }),
+    });
+  };
 
   if (isLoading) return <div className="p-6">Loading departments...</div>;
 
-  // Resolve the persisted id order back to department records, scoped to what
-  // this user is allowed to see, same as before.
-  const pipelineDepts = pipelineOrder
-    .map((id) => DEPARTMENTS.find((d) => d.id === id))
-    .filter((d): d is (typeof DEPARTMENTS)[number] => !!d)
-    .filter((d) => isGlobalManager || d.id === currentUser?.departmentId);
+  const pipelineDepts = fullPipeline.filter(
+    (d) => isGlobalManager || d.id === currentUser?.departmentId,
+  );
 
   return (
     <div className="p-6 max-w-[1400px] mx-auto space-y-6">
@@ -204,10 +203,10 @@ export default function Departments() {
                   // Use the shared isTaskDone/isTaskActive classification so this "active"/"done"
                   // count matches the Department Detail and Tracking Grid pages for the same dept.
                   const completedTasks = deptTasks.filter((t) =>
-                    isTaskDone(t.status),
+                    isTaskDone(normalizeTaskStatus(t.status)),
                   ).length;
                   const activeTasks = deptTasks.filter((t) =>
-                    isTaskActive(t.status),
+                    isTaskActive(normalizeTaskStatus(t.status)),
                   ).length;
                   const completionRate =
                     deptTasks.length > 0

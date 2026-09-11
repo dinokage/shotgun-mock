@@ -39,6 +39,13 @@ interface RowOutcome {
 // imported as shot data.
 const EPISODE_SHEET_PATTERN = /ep\s*0*(\d+)/i;
 
+// Candidate headers for the one column every real shot row must have.
+// Kept in one place because it's checked twice: once to decide whether an
+// unrecognized sheet name is actually shot data worth importing (see
+// hasShotRows below) rather than a reference tab, and again per-row to
+// pull the value out.
+const SHOT_CODE_FIELDS = ["SC#", "SHOT_CODE", "Shot Code", "Shot", "Shot Name"];
+
 export function TracksheetImportDialog({
   open,
   onOpenChange,
@@ -86,8 +93,21 @@ export function TracksheetImportDialog({
       const sheets = await parseWorkbook(file);
       for (const [sheetName, rows] of Object.entries(sheets)) {
         const episodeMatch = sheetName.match(EPISODE_SHEET_PATTERN);
-        if (!episodeMatch) continue; // reference sheet (Test/Duration/etc.), not shot data
-        const episodeName = `Ep${episodeMatch[1].padStart(3, "0")}`;
+        let episodeName: string;
+        if (episodeMatch) {
+          episodeName = `Ep${episodeMatch[1].padStart(3, "0")}`;
+        } else {
+          // Not a recognized "EpNNN" tab name. Rather than assuming every
+          // unrecognized sheet is a reference tab (Test/Duration/etc.) and
+          // silently importing nothing -- which is indistinguishable from a
+          // crash to whoever's watching -- check whether it actually
+          // contains real shot rows first. A studio that keeps everything
+          // on one flat sheet (no per-episode split at all) still gets a
+          // real import instead of a confusing "0 rows" result.
+          const hasShotRows = rows.some((row) => getField(row, SHOT_CODE_FIELDS));
+          if (!hasShotRows) continue; // genuinely a reference sheet
+          episodeName = "General";
+        }
 
         let episodeId = episodeCache.get(episodeName.toLowerCase());
         if (!episodeId) {
@@ -106,7 +126,7 @@ export function TracksheetImportDialog({
           // holds the full unique shot code (e.g. "pes1_ep003_sc001_sh001"),
           // not just a scene number -- confirmed against the real files.
           // "SHOT_CODE" covers the one sheet (Test) that names it directly.
-          const shotCode = getField(row, ["SC#", "SHOT_CODE", "Shot Code"]);
+          const shotCode = getField(row, SHOT_CODE_FIELDS);
           if (!shotCode) continue; // blank/subtotal row
           const seqName = getField(row, ["SEQ#", "Sequence"]) || "Unassigned";
 
@@ -188,7 +208,7 @@ export function TracksheetImportDialog({
           const endDate = parseLooseDate(getField(row, ["End Date"]));
 
           const consumedKeys = new Set(
-            ["SC#", "SHOT_CODE", "Shot Code", "SEQ#", "Sequence", "FR", "Frames",
+            [...SHOT_CODE_FIELDS, "SEQ#", "Sequence", "FR", "Frames",
              "Frame Range", "Sec", "Duration", "Anim_status", "Layout_status",
              "Status", "Artist Name", "Artist", "Start Date", "End Date", "SL#"]
               .map((c) => c.toLowerCase().replace(/[\s_-]+/g, "")),
@@ -228,10 +248,23 @@ export function TracksheetImportDialog({
 
       setResults(outcomes);
       const created = outcomes.filter((o) => o.status === "created").length;
-      toast({
-        title: "Tracksheet import finished",
-        description: `${created} of ${outcomes.length} shot row${outcomes.length === 1 ? "" : "s"} imported.`,
-      });
+      if (outcomes.length === 0) {
+        // Every sheet was skipped as non-shot data. Silently reporting
+        // "0 of 0 imported" here reads as a success message for a file that
+        // did nothing -- tell the user what's actually needed instead.
+        toast({
+          title: "No shot rows found",
+          description:
+            "None of the sheets in this file had a recognizable shot column (e.g. \"Shot Code\", \"SC#\", or \"Shot\"). Check the file and try again.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Tracksheet import finished",
+          description: `${created} of ${outcomes.length} shot row${outcomes.length === 1 ? "" : "s"} imported.`,
+          variant: created === 0 ? "destructive" : undefined,
+        });
+      }
     } catch (err: any) {
       toast({
         title: "Import failed",
@@ -258,11 +291,13 @@ export function TracksheetImportDialog({
         <DialogHeader>
           <DialogTitle>Import Tracksheet</DialogTitle>
           <DialogDescription>
-            Import a multi-episode production tracksheet (one sheet per
-            episode, e.g. "Ep002"). Each row creates or reuses an Episode,
-            Sequence, and Shot, plus one task carrying that row's status,
-            artist, and dates. Non-episode reference sheets are skipped
-            automatically.
+            Import a tracksheet in whatever layout your studio already keeps
+            it in -- one sheet per episode (e.g. "Ep002"), or a single flat
+            sheet with everything on it. Each row creates or reuses an
+            Episode, Sequence, and Shot, plus one task carrying that row's
+            status, artist, and dates. Column names don't need to match
+            exactly (e.g. "Shot", "Shot Name", "Shot Code" all work); sheets
+            with no recognizable shot column are skipped as reference tabs.
           </DialogDescription>
         </DialogHeader>
 

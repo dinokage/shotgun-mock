@@ -1,4 +1,3 @@
-import { WORKFLOWS } from "@/data/mockData";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -7,17 +6,21 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+  EmptyDescription,
+  EmptyContent,
+} from "@/components/ui/empty";
 import { Workflow, Plus, Play, Edit3 } from "lucide-react";
 import { Link } from "wouter";
-import { useWorkflowsStore } from "@/store/workflows";
+import { useWorkflows } from "@/hooks/useWorkflows";
 import { useCapability } from "@/hooks/use-capability";
 
 export default function Workflows() {
-  // Node counts must reflect whatever's actually saved for each workflow,
-  // not the static mockData snapshot - the graph store is the source of
-  // truth once a workflow has been opened/edited. mockData's count is only
-  // a fallback for a workflow that has no persisted graph yet.
-  const graphs = useWorkflowsStore((s) => s.graphs);
+  const { data: workflows = [], isLoading } = useWorkflows();
   // Editing the pipeline graph (creating a workflow, or opening one in the
   // node editor) is gated on manage_pipeline, not just being on this
   // (already leadership-only) page - e.g. a coordinator can view this page
@@ -52,10 +55,34 @@ export default function Workflows() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {WORKFLOWS.map((wf) => {
-          const nodeCount = graphs[wf.id]?.nodes.length ?? wf.nodes;
-          return (
+      {isLoading ? (
+        <div className="text-muted-foreground">Loading workflows...</div>
+      ) : workflows.length === 0 ? (
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <Workflow className="w-6 h-6" />
+            </EmptyMedia>
+            <EmptyTitle>No workflows yet</EmptyTitle>
+            <EmptyDescription>
+              {canManagePipeline
+                ? "Build your first automation to wire triggers, conditions and actions together."
+                : "Nobody has built a workflow for this studio yet."}
+            </EmptyDescription>
+          </EmptyHeader>
+          {canManagePipeline && (
+            <EmptyContent>
+              <Button className="gap-2" asChild>
+                <Link href="/workflows/new">
+                  <Plus className="w-4 h-4" /> New Workflow
+                </Link>
+              </Button>
+            </EmptyContent>
+          )}
+        </Empty>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {workflows.map((wf) => (
             <Card
               key={wf.id}
               className="hover-elevate hover:border-primary/50 transition-colors group"
@@ -70,10 +97,14 @@ export default function Workflows() {
                 </p>
 
                 <div className="flex items-center gap-4 text-xs text-muted-foreground mb-4">
-                  <div className="bg-muted px-2 py-1 rounded">
-                    Trigger: {wf.trigger}
+                  {wf.trigger && (
+                    <div className="bg-muted px-2 py-1 rounded">
+                      Trigger: {wf.trigger}
+                    </div>
+                  )}
+                  <div>
+                    {wf.nodeCount} {wf.nodeCount === 1 ? "node" : "nodes"}
                   </div>
-                  <div>{nodeCount} nodes</div>
                 </div>
 
                 <div className="flex gap-2 pt-4 border-t border-border opacity-80 group-hover:opacity-100 transition-opacity">
@@ -120,9 +151,9 @@ export default function Workflows() {
                 </div>
               </CardContent>
             </Card>
-          );
-        })}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

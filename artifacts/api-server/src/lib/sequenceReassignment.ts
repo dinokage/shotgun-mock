@@ -1,6 +1,6 @@
 import { prisma } from "@workspace/db";
 import { createNotification } from "../routes/notifications";
-import { cacheDel, cacheKeys } from "./cache";
+import { cacheDelPattern, cacheKeys } from "./cache";
 
 // Fires whenever a task's status is set to "approved". If that's the LAST
 // task tied to any shot in its sequence still needing work, and it lands
@@ -103,7 +103,7 @@ export async function maybeReassignOnSequenceCompletion(
       });
     }
 
-    if (reassignedAny) await cacheDel(cacheKeys.tasksList(tenantId));
+    if (reassignedAny) await cacheDelPattern(cacheKeys.tasksListAllScopes(tenantId));
   } catch (err) {
     console.error(
       "[sequence-reassignment] failed:",

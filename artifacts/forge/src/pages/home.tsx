@@ -1,3 +1,4 @@
+import { byDueDate, formatDueDate, parseDueDate } from "@/lib/taskDates";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +21,13 @@ import {
   DailyLog,
 } from "@/data/mockData";
 import { getAssigneeId, getShotId, useEntityProjectMap } from "@/lib/taskShape";
-import { generateProducerInsights, type AIInsight } from "@/lib/aiInsights";
+import { normalizeTaskStatus } from "@/lib/trackingStatus";
+import {
+  computeProjectProgress,
+  useProjectProgress,
+  NO_PROJECT_PROGRESS,
+} from "@/lib/projectProgress";
+import { generateInsights, type AIInsight } from "@/lib/aiInsights";
 import { useDailyLogsByUser, useAddDailyLog } from "@/hooks/useTasks";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -28,8 +35,8 @@ import { useMemo, useState } from "react";
 import { motion, AnimatePresence, MotionConfig } from "framer-motion";
 import { formatDistanceToNowStrict } from "date-fns";
 import { stagger } from "@/lib/motion";
-import { ScopeTrace } from "@/components/shared/ScopeTrace";
-import { useBroadcastsStore, type Broadcast } from "@/store/broadcasts";
+import type { Broadcast } from "@/store/broadcasts";
+import { useBroadcasts } from "@/hooks/useBroadcasts";
 import {
   FolderOpen,
   Users,
@@ -125,13 +132,13 @@ const BROADCAST_SEVERITY_STYLES: Record<Broadcast["severity"], string> = {
  * Compact "Latest Update" banner surfaced near the top of every dashboard
  * (producer, supervisor, artist) per the Mobile Status Broadcast product
  * spec — shows only the single most recent broadcast, not the full feed
- * (that lives in the Daily Standup "Broadcasts" tab). store/broadcasts.ts
- * always prepends new posts, so broadcasts[0] is the latest without any
- * extra sort here. Renders nothing until the first broadcast exists.
+ * (that lives in the Daily Standup "Broadcasts" tab). GET /broadcasts
+ * returns newest-first, so rows[0] is the latest without any extra sort
+ * here. Renders nothing until the first broadcast exists.
  */
 function LatestBroadcastBanner() {
-  const broadcasts = useBroadcastsStore((s) => s.broadcasts);
-  const latest = broadcasts[0];
+  const { data: rows = [] } = useBroadcasts();
+  const latest = rows[0];
   if (!latest) return null;
 
   return (
@@ -143,14 +150,14 @@ function LatestBroadcastBanner() {
           <Radio className="w-4 h-4 shrink-0" />
           <div className="min-w-0 flex-1 flex items-baseline gap-2">
             <span className="font-semibold text-sm shrink-0">
-              {latest.authorName}
+              {latest.authorName ?? "Studio"}
             </span>
             <span className="text-sm text-foreground/80 truncate">
               {latest.text}
             </span>
           </div>
           <span className="text-xs text-muted-foreground shrink-0">
-            {formatDistanceToNowStrict(new Date(latest.timestamp), {
+            {formatDistanceToNowStrict(new Date(latest.createdAt), {
               addSuffix: true,
             })}
           </span>
@@ -161,36 +168,23 @@ function LatestBroadcastBanner() {
 }
 
 // ============================================================================
-// Planner vs Actual — deterministic schedule-variance model
+// Planner vs Actual — schedule variance from the project's own dates
 //
-// Same hash-seeded approach as src/pages/financials.tsx's mock financial
-// model: schedule drift is a pure function of a project's real progress and
-// riskScore fields (plus a stable per-project seed), not a hand-written
-// static list. Riskier projects that are further from done drift later;
-// low-risk, near-complete projects land on time or ahead.
+// The only real inputs are the project's start/end dates and the share of its
+// tasks that are done (see lib/projectProgress.ts). Expected progress is the
+// fraction of the schedule already elapsed; the gap between that and actual
+// progress, spread back over the project's own duration, is the day count.
+// A project with no dates set has no plan to compare against, so it reports
+// that rather than a number.
 // ============================================================================
 
-/** Stable string hash - mirrors the algorithm used in financials.tsx. */
-function hashString(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++)
-    hash = (Math.imul(31, hash) + str.charCodeAt(i)) | 0;
-  return Math.abs(hash);
-}
-
-/** Deterministic pseudo-random float in [0, 1), seeded by a hash + a salt. */
-function seededFraction(seed: number, salt: number): number {
-  const x = Math.sin(seed * 12.9898 + salt * 78.233) * 43758.5453;
-  return x - Math.floor(x);
-}
-
-const SCHEDULE_HISTORY_POINTS = 8;
+const DAY_MS = 1000 * 60 * 60 * 24;
 
 interface ScheduleVariance {
-  varianceDays: number; // negative = ahead, positive = delayed
-  status: "Delayed" | "Ahead" | "On Track";
+  /** negative = ahead, positive = behind; null when the project has no plan to measure against. */
+  varianceDays: number | null;
+  status: "Behind" | "Ahead" | "On Track" | "No dates set" | "No tasks yet";
   color: string;
-  history: number[]; // drift trend leading up to varianceDays, for the ScopeTrace
 }
 
 // `dueDate` is a legacy mock-only field the real backend never populates
@@ -204,46 +198,66 @@ function getEffectiveDueDate(project: Project): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function formatDueDate(date: Date | null): string {
+function parseProjectDate(raw: string | undefined): Date | null {
+  if (!raw) return null;
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function formatProjectDate(date: Date | null): string {
   return date
     ? date.toLocaleDateString("en-US", { month: "short", day: "numeric" })
     : "TBD";
 }
 
-function getScheduleVariance(project: Project): ScheduleVariance {
-  const seed = hashString(project.id);
-  const jitter = seededFraction(seed, 11);
-
-  // Riskier projects drift later; well past halfway with low risk lands early.
-  const riskFactor = (project.riskScore - 50) / 50; // -1..1
-  const varianceDays = Math.round(riskFactor * 6 + (jitter - 0.5) * 4);
-
-  const history: number[] = [];
-  for (let i = 0; i < SCHEDULE_HISTORY_POINTS; i++) {
-    const frac = i / (SCHEDULE_HISTORY_POINTS - 1);
-    // Drift ramps in step with the project's own reported progress, not a flat line.
-    const progressFrac = Math.min(1, frac * (project.progress / 100 + 0.15));
-    const stepJitter = (seededFraction(seed, 200 + i) - 0.5) * 1.5;
-    history.push(varianceDays * progressFrac + stepJitter);
+function getScheduleVariance(
+  project: Project,
+  percentDone: number | null,
+): ScheduleVariance {
+  const start = parseProjectDate(project.startDate);
+  const end = getEffectiveDueDate(project);
+  if (!start || !end || end.getTime() <= start.getTime()) {
+    return {
+      varianceDays: null,
+      status: "No dates set",
+      color: "text-muted-foreground",
+    };
   }
-  history[history.length - 1] = varianceDays; // anchor the trace on the authoritative current value
+  if (percentDone === null) {
+    return {
+      varianceDays: null,
+      status: "No tasks yet",
+      color: "text-muted-foreground",
+    };
+  }
+
+  const totalDays = (end.getTime() - start.getTime()) / DAY_MS;
+  const elapsedDays = Math.min(
+    totalDays,
+    Math.max(0, (Date.now() - start.getTime()) / DAY_MS),
+  );
+  const expectedPercent = (elapsedDays / totalDays) * 100;
+  const varianceDays = Math.round(
+    ((expectedPercent - percentDone) / 100) * totalDays,
+  );
 
   const status =
-    varianceDays > 1 ? "Delayed" : varianceDays < -1 ? "Ahead" : "On Track";
+    varianceDays > 1 ? "Behind" : varianceDays < -1 ? "Ahead" : "On Track";
   const color =
-    status === "Delayed"
+    status === "Behind"
       ? "text-red-500"
       : status === "Ahead"
         ? "text-green-500"
         : "text-blue-500";
 
-  return { varianceDays, status, color, history };
+  return { varianceDays, status, color };
 }
 
 // --- Producer Dashboard (Studio-Wide Overview) ---
 function ProducerDashboard() {
   const [, setLocation] = useLocation();
   const { setCreateProjectModalOpen } = useUIStore();
+  const currentUser = useAuthStore((state) => state.currentUser);
   // Store-backed, not the static mock array — so a project created via the
   // "New Project" modal (or a task added elsewhere) shows up here immediately,
   // for every user, with no reload. Same pattern as projects.tsx.
@@ -255,20 +269,51 @@ function ProducerDashboard() {
   const tasks = useTasksStore((state) => state.tasks);
   const activeProjects = projects.filter((p) => p.status !== "COMPLETE");
   const entityProjectMap = useEntityProjectMap();
+  // Real per-project completion, since Project has no `progress` column.
+  const progressByProject = useMemo(
+    () => computeProjectProgress(tasks, entityProjectMap),
+    [tasks, entityProjectMap],
+  );
   // Recomputed from real reactive store data -- not hand-written copy, and
   // not the raw mock arrays read directly (see aiInsights.ts's top comment
   // for why that went stale after login).
+  // Role-aware rather than producer-only. A lead opening this dashboard used
+  // to get the studio-wide producer feed -- correct numbers, but answering a
+  // question that was not theirs, and drawn from rows the API had already
+  // scoped away, so half the findings silently had nothing behind them.
   const insights = useMemo(
     () =>
-      generateProducerInsights(
+      generateInsights({
+        audience:
+          currentUser?.role === "producer" ||
+          currentUser?.role === "production_head" ||
+          currentUser?.role === "admin"
+            ? "studio"
+            : currentUser?.role === "lead"
+              ? "department"
+              : "own",
+        currentUserId: currentUser?.id,
+        departmentName:
+          departments.find((d) => d.id === currentUser?.departmentId)?.name ??
+          null,
         assets,
         projects,
         shots,
         tasks,
+        users,
         departments,
         entityProjectMap,
-      ),
-    [assets, projects, shots, tasks, departments, entityProjectMap],
+      }),
+    [
+      currentUser,
+      assets,
+      projects,
+      shots,
+      tasks,
+      users,
+      departments,
+      entityProjectMap,
+    ],
   );
 
   // Review queue — real shots currently sitting in internal or client review.
@@ -297,7 +342,7 @@ function ProducerDashboard() {
       const task = tasks.find(
         (t) =>
           getShotId(t) === shot.id &&
-          (t.status === "review" || t.status === "lead-review"),
+          ["review", "lead-review"].includes(normalizeTaskStatus(t.status)),
       );
       if (task) return task.id;
     }
@@ -333,8 +378,8 @@ function ProducerDashboard() {
     [shots],
   );
 
-  // Planner vs Actual — real active projects, nearest-due first, each with a
-  // deterministic schedule-variance trend (see getScheduleVariance above).
+  // Planner vs Actual — real active projects, nearest-due first, each measured
+  // against its own dates and task completion (see getScheduleVariance above).
   // `dueDate` is a legacy mock-only field the real backend never populates
   // (see the Project interface comment) -- `endDate` is the real one, and a
   // project can legitimately have neither set yet, which getEffectiveDueDate
@@ -351,13 +396,16 @@ function ProducerDashboard() {
       })
       .slice(0, 4)
       .map((project) => {
-        const variance = getScheduleVariance(project);
+        const progress = progressByProject.get(project.id) ?? NO_PROJECT_PROGRESS;
+        const variance = getScheduleVariance(project, progress.percent);
         const dueDate = getEffectiveDueDate(project);
-        const actualDate = dueDate ? new Date(dueDate) : null;
-        actualDate?.setDate(actualDate.getDate() + variance.varianceDays);
-        return { project, variance, dueDate, actualDate };
+        const actualDate =
+          dueDate && variance.varianceDays !== null
+            ? new Date(dueDate.getTime() + variance.varianceDays * DAY_MS)
+            : null;
+        return { project, progress, variance, dueDate, actualDate };
       });
-  }, [activeProjects]);
+  }, [activeProjects, progressByProject]);
 
   return (
     <MotionConfig reducedMotion="user">
@@ -408,7 +456,11 @@ function ProducerDashboard() {
               value: pendingClientReviews,
               icon: Activity,
             },
-            { label: "Total Artists", value: users.length, icon: Users },
+            {
+              label: "Total Artists",
+              value: users.filter((u) => u.role === "artist").length,
+              icon: Users,
+            },
           ].map((s, i) => (
             <motion.div key={i} {...stagger(i)}>
               <Card className={STAT_TILE_CARD_CLASS}>
@@ -458,15 +510,22 @@ function ProducerDashboard() {
                   </Empty>
                 ) : (
                   <div className="space-y-4">
-                    {activeProjects.slice(0, 4).map((project, i) => (
+                    {activeProjects.slice(0, 4).map((project, i) => {
+                      const progress =
+                        progressByProject.get(project.id) ?? NO_PROJECT_PROGRESS;
+                      return (
                       <motion.div key={project.id} {...stagger(i)}>
                         <Link href={`/projects/${project.id}`}>
                           <div className="group p-4 rounded-xl border border-border bg-card hover:bg-muted/30 hover:shadow-md transition-all cursor-pointer">
                             <div className="flex items-center justify-between mb-3">
                               <div className="flex items-center gap-3">
                                 <div
-                                  className="w-10 h-10 rounded-lg shrink-0 shadow-sm"
-                                  style={{ background: project.thumbnail }}
+                                  className="w-10 h-10 rounded-lg shrink-0 shadow-sm bg-muted"
+                                  style={
+                                    project.thumbnail
+                                      ? { background: project.thumbnail }
+                                      : undefined
+                                  }
                                 />
                                 <div>
                                   <div className="font-semibold group-hover:text-primary transition-colors">
@@ -484,7 +543,11 @@ function ProducerDashboard() {
                                     ? "text-green-500 border-green-500/20 bg-green-500/5"
                                     : project.status === "AT_RISK"
                                       ? "text-orange-500 border-orange-500/20 bg-orange-500/5"
-                                      : "text-red-500 border-red-500/20 bg-red-500/5"
+                                      : project.status === "BOTTLENECK"
+                                        ? "text-red-500 border-red-500/20 bg-red-500/5"
+                                        : // Real projects carry their own status vocabulary
+                                          // ("active"), which no health color applies to.
+                                          "text-muted-foreground border-border bg-muted/40"
                                 }
                               >
                                 {project.status.replace("_", " ")}
@@ -496,18 +559,23 @@ function ProducerDashboard() {
                                   Progress
                                 </span>
                                 <span className="font-semibold">
-                                  {project.progress}%
+                                  {progress.percent === null
+                                    ? "No tasks yet"
+                                    : `${progress.percent}% · ${progress.done}/${progress.total} tasks`}
                                 </span>
                               </div>
-                              <Progress
-                                value={project.progress}
-                                className="h-2 bg-muted"
-                              />
+                              {progress.percent !== null && (
+                                <Progress
+                                  value={progress.percent}
+                                  className="h-2 bg-muted"
+                                />
+                              )}
                             </div>
                           </div>
                         </Link>
                       </motion.div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </CardContent>
@@ -569,41 +637,46 @@ function ProducerDashboard() {
               </CardContent>
             </Card>
 
-            {/* Planner vs Actual (Deadlines vs Status) — derived from real active
-              projects' progress/riskScore, see getScheduleVariance above. */}
+            {/* Planner vs Actual (Deadlines vs Status) — each active project's
+              own start/end dates against its real task completion, see
+              getScheduleVariance above. */}
             <Card className="border-border/50">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg">Planner vs Actual</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {plannerRows.map(({ project, variance, dueDate, actualDate }) => (
-                  <div
-                    key={project.id}
-                    className="flex justify-between items-center gap-3 border-b border-border/50 pb-3 last:border-0 last:pb-0"
-                  >
-                    <div className="min-w-0">
-                      <div className="font-medium text-sm truncate">
-                        {project.name}
+                {plannerRows.map(
+                  ({ project, progress, variance, dueDate, actualDate }) => (
+                    <div
+                      key={project.id}
+                      className="flex justify-between items-center gap-3 border-b border-border/50 pb-3 last:border-0 last:pb-0"
+                    >
+                      <div className="min-w-0">
+                        <div className="font-medium text-sm truncate">
+                          {project.name}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Deadline: {formatProjectDate(dueDate)}
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          {progress.percent === null
+                            ? "No tasks yet"
+                            : `${progress.done} of ${progress.total} tasks done`}
+                        </div>
                       </div>
-                      <div className="text-xs text-muted-foreground">
-                        Deadline: {formatDueDate(dueDate)}
-                      </div>
-                      <div className="h-5 w-24 mt-1.5">
-                        <ScopeTrace data={variance.history} strokeWidth={2.5} />
+                      <div className="text-right shrink-0">
+                        <div className={`font-semibold text-sm ${variance.color}`}>
+                          {variance.status}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {actualDate
+                            ? `Est: ${formatProjectDate(actualDate)}`
+                            : "Est: —"}
+                        </div>
                       </div>
                     </div>
-                    <div className="text-right shrink-0">
-                      <div
-                        className={`font-semibold text-sm ${variance.color}`}
-                      >
-                        {dueDate ? variance.status : "—"}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        Est: {formatDueDate(actualDate)}
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  ),
+                )}
                 {plannerRows.length === 0 && (
                   <div className="text-sm text-muted-foreground text-center py-4">
                     No active projects to track.
@@ -712,8 +785,12 @@ function SupervisorDashboard({ currentUser }: { currentUser: User }) {
   const deptTasks = isStudioWide
     ? tasks
     : tasks.filter((t) => t.department === dept?.name);
-  const activeTasks = deptTasks.filter((t) => t.status === "in-progress");
-  const reviewTasks = deptTasks.filter((t) => t.status === "lead-review");
+  const activeTasks = deptTasks.filter(
+    (t) => normalizeTaskStatus(t.status) === "in-progress",
+  );
+  const reviewTasks = deptTasks.filter(
+    (t) => normalizeTaskStatus(t.status) === "lead-review",
+  );
   const { setActiveTaskDrawer, setCreateTaskModalOpen } = useUIStore();
 
   // Avg Velocity — real throughput: completed dept tasks divided by the
@@ -726,7 +803,7 @@ function SupervisorDashboard({ currentUser }: { currentUser: User }) {
   // reading the (always-empty, since real TaskDTO has no inline `dailyLogs`
   // array) `t.dailyLogs` field and showing a misleading "0.0".
   const completedDeptTasks = deptTasks.filter(
-    (t) => t.status === "complete" || t.status === "approved",
+    (t) => isTaskDone(normalizeTaskStatus(t.status)),
   ).length;
   const deptWorkDays = new Set(
     deptTasks.flatMap((t: any) =>
@@ -954,15 +1031,15 @@ function ArtistDashboard({ currentUser }: { currentUser: User }) {
     return myTasks
       .filter(
         (t) =>
-          t.status === "in-progress" ||
-          t.status === "todo" ||
-          t.status === "bottleneck",
+          ["in-progress", "todo", "not-started", "bottleneck"].includes(
+            normalizeTaskStatus(t.status),
+          ),
       )
       .sort((a, b) => {
         const aFlagged = ARTIST_ATTENTION_STATUSES.includes(a.status) ? 1 : 0;
         const bFlagged = ARTIST_ATTENTION_STATUSES.includes(b.status) ? 1 : 0;
         if (aFlagged !== bFlagged) return bFlagged - aFlagged;
-        return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+        return byDueDate(a.dueDate, b.dueDate);
       });
   }, [myTasks]);
 
@@ -970,11 +1047,15 @@ function ArtistDashboard({ currentUser }: { currentUser: User }) {
   // callout only when it actually falls within the near-term window.
   const nextDeadline = useMemo(() => {
     if (activeTasks.length === 0) return null;
-    const soonest = [...activeTasks].sort(
-      (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime(),
-    )[0];
+    // Most imported tasks carry no due date; byDueDate sorts those last, so
+    // take the first one that actually has a date rather than treating a
+    // missing date as the epoch and calling it the most urgent deadline.
+    const soonest = [...activeTasks]
+      .sort((a, b) => byDueDate(a.dueDate, b.dueDate))
+      .find((t) => parseDueDate(t.dueDate));
+    if (!soonest) return null;
     const daysUntil = Math.ceil(
-      (new Date(soonest.dueDate).getTime() - Date.now()) /
+      (parseDueDate(soonest.dueDate)!.getTime() - Date.now()) /
         (1000 * 60 * 60 * 24),
     );
     return daysUntil <= NEAR_TERM_DEADLINE_DAYS
@@ -985,7 +1066,9 @@ function ArtistDashboard({ currentUser }: { currentUser: User }) {
   // The in-progress task this artist most recently touched — the target of
   // the inline quick-log-time affordance below.
   const mostRecentInProgressTask = useMemo(() => {
-    const inProgress = myTasks.filter((t) => t.status === "in-progress");
+    const inProgress = myTasks.filter(
+      (t) => normalizeTaskStatus(t.status) === "in-progress",
+    );
     if (inProgress.length === 0) return null;
     return inProgress.reduce((latest, t) =>
       new Date(t.lastStatusUpdate).getTime() >
@@ -1003,9 +1086,9 @@ function ArtistDashboard({ currentUser }: { currentUser: User }) {
       myTasks
         .filter(
           (t) =>
-            t.status === "review" ||
-            t.status === "lead-review" ||
-            t.status === "pm-review",
+            ["review", "lead-review", "pm-review", "producer-review"].includes(
+              normalizeTaskStatus(t.status),
+            ),
         )
         .sort(
           (a, b) =>
@@ -1120,7 +1203,9 @@ function ArtistDashboard({ currentUser }: { currentUser: User }) {
             },
             {
               label: "Completed (This Week)",
-              value: myTasks.filter((t) => isTaskDone(t.status)).length,
+              value: myTasks.filter((t) =>
+                isTaskDone(normalizeTaskStatus(t.status)),
+              ).length,
               icon: CheckCircle2,
             },
             {
@@ -1175,10 +1260,7 @@ function ArtistDashboard({ currentUser }: { currentUser: User }) {
                     {nextDeadline.task.title}
                   </div>
                   <div className="text-xs text-muted-foreground timecode">
-                    {new Date(nextDeadline.task.dueDate).toLocaleDateString(
-                      "en-US",
-                      { month: "short", day: "numeric", year: "numeric" },
-                    )}
+                    {formatDueDate(nextDeadline.task.dueDate, { month: "short", day: "numeric" })}
                   </div>
                 </div>
               </div>
@@ -1285,7 +1367,7 @@ function ArtistDashboard({ currentUser }: { currentUser: User }) {
                       role="button"
                       tabIndex={0}
                       className={`py-4 flex items-center justify-between hover:bg-muted/30 -mx-4 px-4 transition-colors cursor-pointer touch-target hover-elevate active-elevate-2 ${
-                        task.status === "bottleneck"
+                        normalizeTaskStatus(task.status) === "bottleneck"
                           ? "bg-orange-500/5 border-l-2 border-orange-500"
                           : ""
                       }`}
@@ -1304,10 +1386,17 @@ function ArtistDashboard({ currentUser }: { currentUser: User }) {
                             {task.title}
                           </div>
                           <div className="text-xs text-muted-foreground mt-1 flex items-center gap-2">
-                            <Clock className="w-3 h-3" /> Due{" "}
-                            <span className="timecode">
-                              {new Date(task.dueDate).toLocaleDateString()}
-                            </span>
+                            <Clock className="w-3 h-3" />
+                            {parseDueDate(task.dueDate) ? (
+                              <>
+                                Due{" "}
+                                <span className="timecode">
+                                  {formatDueDate(task.dueDate)}
+                                </span>
+                              </>
+                            ) : (
+                              "No due date"
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1413,6 +1502,7 @@ function ClientDashboard({ currentUser }: { currentUser: User }) {
   const projects = useProjectStore((state) => state.projects);
   const shots = useShotStore((state) => state.shots);
   const activeProjects = projects.filter((p) => p.status !== "COMPLETE");
+  const progressByProject = useProjectProgress();
 
   // Deliveries awaiting this client's sign-off — same source of truth as the
   // producer dashboard's review queue, not a hand-written placeholder list.
@@ -1562,17 +1652,25 @@ function ClientDashboard({ currentUser }: { currentUser: User }) {
                 </Empty>
               ) : (
                 <div className="space-y-4">
-                  {activeProjects.slice(0, 5).map((project) => (
-                    <div key={project.id} className="space-y-1.5">
-                      <div className="flex justify-between text-xs">
-                        <span className="font-medium">{project.name}</span>
-                        <span className="text-muted-foreground">
-                          {project.progress}%
-                        </span>
+                  {activeProjects.slice(0, 5).map((project) => {
+                    const progress =
+                      progressByProject.get(project.id) ?? NO_PROJECT_PROGRESS;
+                    return (
+                      <div key={project.id} className="space-y-1.5">
+                        <div className="flex justify-between text-xs">
+                          <span className="font-medium">{project.name}</span>
+                          <span className="text-muted-foreground">
+                            {progress.percent === null
+                              ? "No tasks yet"
+                              : `${progress.percent}%`}
+                          </span>
+                        </div>
+                        {progress.percent !== null && (
+                          <Progress value={progress.percent} className="h-1.5" />
+                        )}
                       </div>
-                      <Progress value={project.progress} className="h-1.5" />
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>

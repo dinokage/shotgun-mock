@@ -22,14 +22,20 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
-import { type Task } from "@/data/mockData";
-import { useDepartmentStore } from "@/store/departments";
-import type { TaskTemplateItem } from "@/store/schema";
+import type { DepartmentDTO } from "@/hooks/useDepartments";
+import type { TaskTemplateItem, TemplateTaskPriority } from "@/store/schema";
+import type { TaskTemplateItemInput } from "@/hooks/useSchemaBuilder";
+import { useDebouncedDraft } from "./editing";
 import { DURATION, EASE_DISSOLVE } from "@/lib/motion";
 
-const PRIORITIES: Task["priority"][] = ["low", "medium", "high", "critical"];
+const PRIORITIES: TemplateTaskPriority[] = [
+  "low",
+  "medium",
+  "high",
+  "critical",
+];
 
-const PRIORITY_DOT: Record<Task["priority"], string> = {
+const PRIORITY_DOT: Record<TemplateTaskPriority, string> = {
   low: "bg-green-500",
   medium: "bg-blue-500",
   high: "bg-orange-500",
@@ -38,11 +44,13 @@ const PRIORITY_DOT: Record<Task["priority"], string> = {
 
 export function TemplateTaskRow({
   task,
+  departments,
   onUpdate,
   onRemove,
 }: {
   task: TaskTemplateItem;
-  onUpdate: (updates: Partial<TaskTemplateItem>) => void;
+  departments: DepartmentDTO[];
+  onUpdate: (updates: TaskTemplateItemInput) => void;
   onRemove: () => void;
 }) {
   const {
@@ -53,7 +61,11 @@ export function TemplateTaskRow({
     transition,
     isDragging,
   } = useSortable({ id: task.id });
-  const departments = useDepartmentStore((s) => s.departments);
+
+  const [draft, updateDraft] = useDebouncedDraft(
+    { title: task.title, estimatedHours: task.estimatedHours },
+    onUpdate,
+  );
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -88,18 +100,18 @@ export function TemplateTaskRow({
       </button>
 
       <Input
-        value={task.title}
-        onChange={(e) => onUpdate({ title: e.target.value })}
+        value={draft.title}
+        onChange={(e) => updateDraft({ title: e.target.value })}
         className="h-8 text-sm font-medium flex-1 min-w-[140px]"
         placeholder="Task title"
       />
 
       <Select
-        value={task.department}
-        onValueChange={(v) => onUpdate({ department: v })}
+        value={task.departmentId ?? undefined}
+        onValueChange={(v) => onUpdate({ departmentId: v })}
       >
         <SelectTrigger className="h-8 text-xs w-[168px] shrink-0">
-          <SelectValue />
+          <SelectValue placeholder="Department…" />
         </SelectTrigger>
         <SelectContent>
           {departments.map((d) => (
@@ -107,7 +119,7 @@ export function TemplateTaskRow({
               <span className="inline-flex items-center gap-1.5">
                 <span
                   className="w-2 h-2 rounded-full shrink-0"
-                  style={{ backgroundColor: d.color }}
+                  style={{ backgroundColor: d.color ?? undefined }}
                 />
                 {d.name}
               </span>
@@ -121,10 +133,10 @@ export function TemplateTaskRow({
         <Input
           type="number"
           min={0}
-          value={task.estimatedHours}
+          value={draft.estimatedHours}
           onChange={(e) =>
-            onUpdate({
-              estimatedHours: Math.max(0, Number(e.target.value) || 0),
+            updateDraft({
+              estimatedHours: Math.max(0, Math.trunc(Number(e.target.value)) || 0),
             })
           }
           className="h-8 text-xs px-2"
@@ -133,7 +145,7 @@ export function TemplateTaskRow({
 
       <Select
         value={task.priority}
-        onValueChange={(v) => onUpdate({ priority: v as Task["priority"] })}
+        onValueChange={(v) => onUpdate({ priority: v as TemplateTaskPriority })}
       >
         <SelectTrigger className="h-8 text-xs w-[112px] shrink-0">
           <SelectValue />

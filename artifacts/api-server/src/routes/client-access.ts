@@ -5,6 +5,12 @@ import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability, denyClientAccess } from "../middleware/rbac";
 import { sendClientAccessEmail } from "../lib/mailer";
 import * as crypto from "crypto";
+import { rateLimitByIp } from "../lib/rateLimit";
+
+// Codes are 8 chars from a 30-symbol alphabet (~6.5e11), so guessing is
+// already impractical -- this caps the attempt rate anyway so a redeem flood
+// can't be used as a cheap availability drain against an unauthenticated route.
+const REDEEM_RULE = { name: "client-redeem:ip", limit: 15, windowSeconds: 600 };
 
 export const clientAccessRouter = Router();
 
@@ -23,7 +29,7 @@ function generateAccessCode(length = 8): string {
 // code. Declared before the tenantAuthMiddleware below so it's matched
 // first and never runs through it (router middleware only applies to
 // routes registered after it).
-clientAccessRouter.post("/redeem", async (req, res) => {
+clientAccessRouter.post("/redeem", rateLimitByIp(REDEEM_RULE), async (req, res) => {
   try {
     const { code } = req.body;
     if (!code || typeof code !== "string")

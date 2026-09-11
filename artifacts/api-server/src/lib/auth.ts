@@ -20,6 +20,13 @@ export interface SessionPayload {
   roleId: string;
   departmentId: string | null;
   clientAccessLinkId?: string; // present only for client-access sessions; Task 4's redeem route sets this, Task 6's client-review routes use it to scope queries
+  /**
+   * The user's tokenVersion at sign-in. Every request re-checks it against
+   * the column; bumping the column invalidates every token issued before the
+   * bump. Absent on client-access sessions, which are revoked by marking
+   * their link instead.
+   */
+  tv?: number;
 }
 
 export async function hashPassword(password: string): Promise<string> {

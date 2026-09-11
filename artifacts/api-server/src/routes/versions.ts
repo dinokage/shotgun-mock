@@ -3,6 +3,11 @@ import { prisma } from "@workspace/db";
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability, denyClientAccess } from "../middleware/rbac";
 import { getClientScope } from "../lib/clientScope";
+import {
+  getVisibilityScope,
+  entityRefScopeWhere,
+  canSeeEntity,
+} from "../lib/visibilityScope";
 import * as crypto from "crypto";
 
 // Confirms taskId actually belongs to the caller's tenant before it's
@@ -49,6 +54,15 @@ versionsRouter.get("/", async (req, res) => {
       }
     }
 
+    // An employee session is additionally narrowed to versions of the
+    // shots/assets their role may see -- a version's media, notes and status
+    // are as sensitive as the shot they hang off, and this list was
+    // tenant-wide for every role. Skipped for a client-access session, which
+    // is already bounded by clientScope above and has no employee role.
+    const employeeScopeWhere = req.clientAccessLinkId
+      ? null
+      : await entityRefScopeWhere(tenantId, await getVisibilityScope(req));
+
     const rows = await prisma.version.findMany({
       where: {
         tenantId,
@@ -56,6 +70,7 @@ versionsRouter.get("/", async (req, res) => {
         ...(typeof entityType === "string" ? { entityType } : {}),
         ...(clientScope?.versionId ? { id: clientScope.versionId } : {}),
         ...(clientEntityIdFilter ? { entityId: clientEntityIdFilter } : {}),
+        ...(employeeScopeWhere ?? {}),
       },
     });
     return res.json(rows);
@@ -122,6 +137,19 @@ versionsRouter.put("/:id", denyClientAccess, requireCapability("submit_reviews")
 
     const existing = await prisma.version.findFirst({ where: { tenantId, id: versionId } });
     if (!existing) return res.status(404).json({ error: "Not found" });
+
+    // submit_reviews says what you may change, not which versions. Without
+    // this an artist could rewrite the status, notes or mediaUrl of any
+    // version in the tenant -- including client-facing review media.
+    if (
+      !(await canSeeEntity(
+        tenantId,
+        await getVisibilityScope(req),
+        existing.entityType === "asset" ? "asset" : "shot",
+        existing.entityId,
+      ))
+    )
+      return res.status(404).json({ error: "Not found" });
 
     const updates: Record<string, unknown> = {};
     for (const field of PATCHABLE_FIELDS) {

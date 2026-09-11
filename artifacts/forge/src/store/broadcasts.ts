@@ -1,28 +1,30 @@
-import { create } from "zustand";
-import { persist } from "zustand/middleware";
 import type { Role } from "@/data/mockData";
 
 /**
  * A studio-wide or project-scoped status update, posted by a producer or
- * production manager (gated by the 'broadcast_updates' capability in
- * store/permissions.ts) and visible to internal teams, optionally also the
- * client portal. This is the data layer for the "Mobile Status Broadcast"
- * feature scoped in the 2026-08-19 product review — the natural extension of
- * the existing Daily Standup feed (store/standups.ts) rather than a
- * parallel concept, so it lives alongside that store's conventions.
+ * production manager (gated by the 'broadcast_updates' capability) and
+ * visible to internal teams, optionally also the client portal.
+ *
+ * This is the shape the broadcast UI renders. The rows themselves live in
+ * the `broadcasts` table behind /api/broadcasts (hooks/useBroadcasts.ts) —
+ * a per-browser localStorage copy meant a studio-wide announcement reached
+ * nobody but the person who posted it, and never reached the client portal
+ * at all.
  */
 export interface Broadcast {
   id: string;
-  authorId: string;
+  authorId: string | null;
   authorName: string;
-  authorRole: Role;
+  /** Null when the author's account is gone, or when the viewer is a client
+   *  (the portal is shown these as coming from the studio, not a person). */
+  authorRole: Role | null;
   text: string;
   timestamp: string;
   /**
    * 'internal' stays inside the studio (Daily Standup / dashboards).
    * 'internal_and_client' also surfaces on the external client portal
    * (client-review.tsx) for the given projectId — the only bridge this
-   * feature has to that external, unauthenticated-by-Forge-login surface.
+   * feature has to that external surface.
    */
   audience: "internal" | "internal_and_client";
   /** Required when audience is 'internal_and_client' — scopes which
@@ -33,21 +35,3 @@ export interface Broadcast {
    *  rather than inventing a new color vocabulary for this one feed. */
   severity: "info" | "success" | "warning";
 }
-
-interface BroadcastsState {
-  broadcasts: Broadcast[];
-  addBroadcast: (broadcast: Broadcast) => void;
-}
-
-export const useBroadcastsStore = create<BroadcastsState>()(
-  persist(
-    (set) => ({
-      broadcasts: [],
-      addBroadcast: (broadcast) =>
-        set((state) => ({ broadcasts: [broadcast, ...state.broadcasts] })),
-    }),
-    {
-      name: "forge-broadcasts-storage",
-    },
-  ),
-);

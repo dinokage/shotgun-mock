@@ -11,7 +11,8 @@ import {
 } from "@/components/ui/select";
 import { useCapability } from "@/hooks/use-capability";
 import { useAuthStore } from "@/store/auth";
-import { useBroadcastsStore, type Broadcast } from "@/store/broadcasts";
+import type { Broadcast } from "@/store/broadcasts";
+import { useCreateBroadcast } from "@/hooks/useBroadcasts";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
@@ -39,7 +40,7 @@ export function BroadcastComposer({
   // 'broadcast_updates' capability (store/permissions.ts).
   const canBroadcast = useCapability("broadcast_updates");
   const currentUser = useAuthStore((s) => s.currentUser);
-  const addBroadcast = useBroadcastsStore((s) => s.addBroadcast);
+  const createBroadcast = useCreateBroadcast();
   const { toast } = useToast();
 
   const [text, setText] = useState("");
@@ -58,28 +59,34 @@ export function BroadcastComposer({
   const handlePost = () => {
     if (!canPost || !currentUser) return;
 
-    addBroadcast({
-      id: `bc-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      authorId: currentUser.id,
-      authorName: currentUser.name,
-      authorRole: currentUser.role,
-      text: text.trim(),
-      timestamp: new Date().toISOString(),
-      audience,
-      projectId: needsProject ? (projectId ?? null) : null,
-      severity,
-    });
-
-    toast({
-      title: "Update Posted",
-      description: "Your status update has been shared.",
-    });
-
-    setText("");
-    setAudience("internal");
-    setProjectId(defaultProjectId);
-    setSeverity("info");
-    onPosted?.();
+    createBroadcast.mutate(
+      {
+        text: text.trim(),
+        audience,
+        projectId: needsProject ? (projectId ?? null) : null,
+        severity,
+      },
+      {
+        onSuccess: () => {
+          toast({
+            title: "Update Posted",
+            description: "Your status update has been shared.",
+          });
+          setText("");
+          setAudience("internal");
+          setProjectId(defaultProjectId);
+          setSeverity("info");
+          onPosted?.();
+        },
+        onError: () => {
+          toast({
+            title: "Couldn't post update",
+            description: "Something went wrong — try again.",
+            variant: "destructive",
+          });
+        },
+      },
+    );
   };
 
   return (
@@ -152,7 +159,7 @@ export function BroadcastComposer({
         <Button
           type="button"
           className="touch-target ml-auto gap-1.5"
-          disabled={!canPost}
+          disabled={!canPost || createBroadcast.isPending}
           onClick={handlePost}
         >
           <Send className="w-3.5 h-3.5" />

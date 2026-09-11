@@ -1,21 +1,30 @@
 import { Mic, MessageSquareOff, Play } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useUserStore } from "@/store/users";
-import { useReviewStore, type ReviewComment } from "@/store/reviews";
+import { type ReviewCommentDTO } from "@/hooks/useReviewSession";
 import { cn } from "@/lib/utils";
 
-type WorkflowStatus = "wip" | "lead-review" | "pm-review" | "approved";
+type WorkflowStatus =
+  | "wip"
+  | "lead-review"
+  | "pm-review"
+  | "producer-review"
+  | "approved";
 
 const WORKFLOW_STATUS_LABEL: Record<WorkflowStatus, string> = {
   wip: "Work in progress",
   "lead-review": "Awaiting Lead review",
   "pm-review": "Awaiting Production Manager review",
+  "producer-review": "Awaiting Main Producer review",
   approved: "Approved",
 };
 
 interface FeedbackListProps {
   /** Shot/version label shown in the header, e.g. "SEQ_020_SH_040 v003". */
   versionLabel: string;
+  /** The same server-backed stream the full Player's "Comments" tab renders,
+   * passed in by the parent page rather than fetched again here. */
+  comments: ReviewCommentDTO[];
   workflowStatus: WorkflowStatus;
   /**
    * Jump back to the full Player at a specific frame. Optional — omitted
@@ -29,21 +38,18 @@ interface FeedbackListProps {
 
 /**
  * Lightweight, read-first rendering of the same comment stream the full
- * Player's "Comments" tab shows (`useReviewStore().comments`) — no scrubber,
- * canvas, or waveform mounted. Built for anyone (most often an artist)
- * who just wants to read feedback on their submission, including on a small
- * screen where the full annotation tool doesn't fit.
+ * Player's "Comments" tab shows — no scrubber, canvas, or waveform mounted.
+ * Built for anyone (most often an artist) who just wants to read feedback on
+ * their submission, including on a small screen where the full annotation
+ * tool doesn't fit.
  */
 export function FeedbackList({
   versionLabel,
+  comments,
   workflowStatus,
   onJumpToFrame,
   className,
 }: FeedbackListProps) {
-  // Same store the full Player reads from — this is a second render of the
-  // existing data, not a separate/duplicated source of truth.
-  const comments = useReviewStore((s) => s.comments);
-
   return (
     <div className={cn("flex-1 overflow-y-auto bg-background", className)}>
       <div className="max-w-2xl mx-auto p-4 sm:p-6">
@@ -88,11 +94,13 @@ function FeedbackListItem({
   comment,
   onJumpToFrame,
 }: {
-  comment: ReviewComment;
+  comment: ReviewCommentDTO;
   onJumpToFrame?: (frame: number) => void;
 }) {
   const users = useUserStore((s) => s.users);
-  const user = comment.fromClient ? null : users[comment.userIndex];
+  const user = comment.authorId
+    ? users.find((u) => u.id === comment.authorId)
+    : null;
   const displayName = comment.fromClient
     ? comment.fromClient.authorName
     : (user?.name ?? "Unknown");
@@ -134,10 +142,9 @@ function FeedbackListItem({
           <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
             <Mic className="w-3.5 h-3.5 shrink-0" />
             {/* Native controls, not the full canvas-adjacent VoiceNotePlayer —
-                Feedback mode intentionally mounts no waveform. Playback can
-                fail silently here if the recording's blob: URL is dead (a
-                different browser session) — that's an existing limitation of
-                session-scoped blob URLs, not something this view can fix. */}
+                Feedback mode intentionally mounts no waveform. The src is a
+                real uploaded file served by the API, so it plays back after a
+                reload and on any reviewer's machine. */}
             <audio
               controls
               preload="metadata"

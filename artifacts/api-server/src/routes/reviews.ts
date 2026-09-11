@@ -1,8 +1,13 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { prisma } from "@workspace/db";
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability } from "../middleware/rbac";
 import { getClientScope, ClientScope } from "../lib/clientScope";
+import {
+  getVisibilityScope,
+  entityRefScopeWhere,
+  canSeeEntity,
+} from "../lib/visibilityScope";
 import * as crypto from "crypto";
 
 // Confirms versionId actually belongs to the caller's tenant before it's
@@ -13,6 +18,30 @@ import * as crypto from "crypto";
 async function versionInTenant(id: string, tenantId: string) {
   const row = await prisma.version.findFirst({ where: { id, tenantId }, select: { id: true } });
   return !!row;
+}
+
+// An EMPLOYEE session needs the same narrowing the client path already got:
+// tenant membership alone let any artist attach a review verdict or an
+// annotation to any version in the studio, including work in other
+// departments and versions already sitting in client review. Holding
+// submit_reviews says you may leave feedback, not that you may leave it
+// anywhere.
+async function versionInEmployeeScope(
+  req: Request,
+  tenantId: string,
+  versionId: string,
+): Promise<boolean> {
+  const version = await prisma.version.findFirst({
+    where: { id: versionId, tenantId },
+    select: { entityId: true, entityType: true },
+  });
+  if (!version) return false;
+  return canSeeEntity(
+    tenantId,
+    await getVisibilityScope(req),
+    version.entityType === "asset" ? "asset" : "shot",
+    version.entityId,
+  );
 }
 
 // A client-access session may only create a review/annotation on a version
@@ -69,6 +98,13 @@ reviewsRouter.get("/", async (req, res) => {
       clientEntityIdFilter = { in: shots.map((s) => s.id) };
     }
 
+    // Same employee-role narrowing as versions.ts's GET / -- review notes
+    // ("needs changes", client feedback) belong to the shot/asset they were
+    // left on, so they follow that row's visibility.
+    const employeeScopeWhere = req.clientAccessLinkId
+      ? null
+      : await entityRefScopeWhere(tenantId, await getVisibilityScope(req));
+
     const rows = await prisma.review.findMany({
       where: {
         tenantId,
@@ -77,6 +113,14 @@ reviewsRouter.get("/", async (req, res) => {
         ...(typeof versionId === "string" ? { versionId } : {}),
         ...(clientScope?.versionId ? { versionId: clientScope.versionId } : {}),
         ...(clientEntityIdFilter ? { entityId: clientEntityIdFilter } : {}),
+        // Scoping a client to the right project is not enough: internal
+        // reviewers write candid notes here ("needs changes", quality/cost
+        // remarks) on the same versions a client can see. A client reads
+        // back only its own feedback, never the studio's.
+        ...(req.clientAccessLinkId
+          ? { reviewerClientAccessLinkId: req.clientAccessLinkId }
+          : {}),
+        ...(employeeScopeWhere ?? {}),
       },
     });
     return res.json(rows);
@@ -110,6 +154,8 @@ reviewsRouter.post("/", requireCapability("submit_reviews"), async (req, res) =>
       }
       reviewerClientAccessLinkId = req.clientAccessLinkId;
     } else {
+      if (!(await versionInEmployeeScope(req, tenantId, versionId)))
+        return res.status(404).json({ error: "Not found" });
       reviewerId = req.userId!;
     }
 
@@ -155,10 +201,33 @@ reviewsRouter.get("/:versionId/annotations", async (req, res) => {
         });
         if (!shot) return res.json([]);
       }
+    } else {
+      // Employee session: annotations are drawn ON a version, so they
+      // inherit that version's entity visibility. Without this an artist
+      // could read every note and drawing left on any version in the studio
+      // just by knowing a version id.
+      const scopeWhere = await entityRefScopeWhere(tenantId, await getVisibilityScope(req));
+      if (scopeWhere) {
+        const visible = await prisma.version.findFirst({
+          where: { id: requestedVersionId, tenantId, ...scopeWhere },
+          select: { id: true },
+        });
+        if (!visible) return res.json([]);
+      }
     }
 
     const rows = await prisma.annotation.findMany({
-      where: { tenantId, versionId: requestedVersionId },
+      where: {
+        tenantId,
+        versionId: requestedVersionId,
+        // Confirming the version is inside the client's grant says the
+        // client may see the SHOT, not that it may see the studio's private
+        // markup on it. Internal notes and drawings stay internal; a client
+        // reads back only the annotations it drew itself.
+        ...(req.clientAccessLinkId
+          ? { createdByClientAccessLinkId: req.clientAccessLinkId }
+          : {}),
+      },
     });
     return res.json(rows);
   } catch (err) {
@@ -186,6 +255,8 @@ reviewsRouter.post("/:versionId/annotations", requireCapability("submit_reviews"
       }
       createdByClientAccessLinkId = req.clientAccessLinkId;
     } else {
+      if (!(await versionInEmployeeScope(req, tenantId, versionId)))
+        return res.status(404).json({ error: "Not found" });
       createdById = req.userId!;
     }
 

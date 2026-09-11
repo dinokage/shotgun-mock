@@ -26,7 +26,7 @@ import { ROLE_LABELS } from "@/data/mockData";
 import { useUIStore } from "@/store/ui";
 import { useAuthStore } from "@/store/auth";
 import { useDepartmentStore } from "@/store/departments";
-import { useNotificationStore } from "@/store/notifications";
+import { useNotificationPreferences } from "@/hooks/useNotificationPreferences";
 import {
   useNotifications,
   useMarkNotificationRead,
@@ -59,7 +59,7 @@ export function TopBar() {
   // store/notifications.ts, a per-browser-only localStorage store that
   // never talked to the server.
   const { data: notifications = [] } = useNotifications();
-  const notificationPreferences = useNotificationStore((s) => s.preferences);
+  const { preferences: notificationPreferences } = useNotificationPreferences();
   const markReadMutation = useMarkNotificationRead();
   const markAllReadMutation = useMarkAllNotificationsRead();
   // Muted categories (see Settings > Notifications) are hidden here too, same as the full notifications page.

@@ -56,32 +56,41 @@ function defaultRawValue(field: EntityField): string {
   }
 }
 
-function randomRawValue(field: EntityField): string {
+// FNV-1a over the field's key: the sample values have to be a pure function
+// of the field definition. Rolling them randomly re-rolled on every render,
+// which both flickered and made an invented placeholder read like a real
+// record the studio already has.
+function hashKey(seed: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < seed.length; i++) {
+    hash ^= seed.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash;
+}
+
+function sampleRawValue(field: EntityField): string {
+  const hash = hashKey(field.key || field.id);
   switch (field.type) {
     case "text":
-      return SAMPLE_TEXT_POOL[
-        Math.floor(Math.random() * SAMPLE_TEXT_POOL.length)
-      ];
+      return SAMPLE_TEXT_POOL[hash % SAMPLE_TEXT_POOL.length];
     case "number":
-      return String(Math.floor(Math.random() * 40) + 1);
+      return String((hash % 40) + 1);
     case "date": {
-      const d = new Date(
-        Date.now() + Math.floor(Math.random() * 60) * 86400000,
-      );
+      const d = new Date(Date.now() + (hash % 60) * 86400000);
       return d.toISOString().slice(0, 10);
     }
     case "boolean":
-      return Math.random() > 0.5 ? "true" : "false";
+      return hash % 2 === 0 ? "true" : "false";
     case "single_select":
-      return (
-        field.options?.[
-          Math.floor(Math.random() * (field.options?.length || 1))
-        ] ?? ""
-      );
+      return field.options.length > 0
+        ? field.options[hash % field.options.length]
+        : "";
     case "multi_select": {
-      const opts = field.options ?? [];
-      const picked = opts.filter(() => Math.random() > 0.5);
-      return (picked.length > 0 ? picked : opts.slice(0, 1)).join(",");
+      const picked = field.options.filter(
+        (_, i) => ((hash >>> i) & 1) === 1,
+      );
+      return (picked.length > 0 ? picked : field.options.slice(0, 1)).join(",");
     }
     default:
       return "";
@@ -152,12 +161,12 @@ export function LivePreview({ entityType }: { entityType: EntityTypeDef }) {
     setValue(field.id, next.join(","));
   };
 
-  const randomize = () => {
+  const fillSample = () => {
     const next: Record<string, string> = {};
     const nextTouched: Record<string, boolean> = {};
     entityType.fields.forEach((f) => {
       if (f.type === "computed") return;
-      next[f.id] = randomRawValue(f);
+      next[f.id] = sampleRawValue(f);
       nextTouched[f.id] = true;
     });
     setValues((prev) => ({ ...prev, ...next }));
@@ -195,9 +204,9 @@ export function LivePreview({ entityType }: { entityType: EntityTypeDef }) {
               variant="outline"
               size="sm"
               className="h-7 text-xs gap-1.5"
-              onClick={randomize}
+              onClick={fillSample}
             >
-              <Wand2 className="w-3 h-3" /> Randomize
+              <Wand2 className="w-3 h-3" /> Fill Sample
             </Button>
           </motion.div>
         </div>

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { PROJECTS, Project } from "@/data/mockData";
+import { Project } from "@/data/mockData";
 
 // Gradients cycle through the same palette mockData.ts uses for seeded
 // projects, so a freshly-created project's card doesn't stand out as
@@ -32,7 +32,7 @@ interface ProjectState {
 export const useProjectStore = create<ProjectState>()(
   persist(
     (set, get) => ({
-      projects: PROJECTS,
+      projects: [],
       setProjects: (projects) => set({ projects }),
       addProject: async (input) => {
         const today = new Date().toISOString().split("T")[0];
@@ -86,6 +86,10 @@ export const useProjectStore = create<ProjectState>()(
     }),
     {
       name: "forge-project-storage",
+      // See store/assets.ts's identical comment: discards any pre-existing
+      // localStorage state seeded from mockData.ts's generated PROJECTS array.
+      version: 1,
+      migrate: () => ({ projects: [] }),
     },
   ),
 );

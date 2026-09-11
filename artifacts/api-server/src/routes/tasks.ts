@@ -4,7 +4,8 @@ import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability, denyClientAccess } from "../middleware/rbac";
 import * as crypto from "crypto";
 import { createNotification, findProductionManagers } from "./notifications";
-import { cacheGet, cacheSet, cacheDel, cacheKeys } from "../lib/cache";
+import { cacheGet, cacheSet, cacheDelPattern, cacheKeys } from "../lib/cache";
+import { getVisibilityScope, taskScopeWhere, scopeCacheKey, canSeeTask } from "../lib/visibilityScope";
 import { maybeReassignOnSequenceCompletion } from "../lib/sequenceReassignment";
 
 // A DB foreign key only verifies a referenced row exists, not who owns it,
@@ -39,6 +40,21 @@ async function assignedToIsArtist(id: string, tenantId: string) {
 async function taskInTenant(id: string, tenantId: string) {
   const row = await prisma.task.findFirst({ where: { id, tenantId }, select: { id: true } });
   return !!row;
+}
+
+// Tenant ownership is necessary but not sufficient for the sub-resources
+// below: GET /:id/comments (and checklist/dependencies/attachments/
+// approval-events) used to hand any authenticated tenant member the full
+// discussion and approval history of ANY task id they knew or guessed, even
+// though GET / no longer lists that task to them. This narrows every
+// sub-resource read AND write to the caller's own visibility scope, so the
+// list filter is a real boundary rather than a display convenience.
+//
+// Returns 404 (not 403) at the call sites on purpose -- a task outside the
+// caller's scope should be indistinguishable from one that doesn't exist,
+// which is also what taskInTenant's callers already returned.
+async function callerCanSeeTask(req: import("express").Request, taskId: string) {
+  return canSeeTask(req.tenantId!, await getVisibilityScope(req), taskId);
 }
 
 // The review workflow's stage gates (submit -> lead-review -> pm-review ->
@@ -120,6 +136,7 @@ async function roleNameForCaller(roleId: string, tenantId: string) {
 const APPROVAL_EVENT_ACTIONS = [
   "submitted-for-lead-review",
   "submitted-for-manager-review",
+  "submitted-for-producer-review",
   "approved",
   "changes-requested",
   "rejected",
@@ -136,19 +153,24 @@ tasksRouter.use(denyClientAccess);
 tasksRouter.get("/", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
-    // Every role reads this same unfiltered per-tenant list (RBAC visibility
-    // is applied client-side -- see this route's original comment history);
-    // an artist's task page, a lead's Team Board, a PM's oversight view, and
-    // the admin's monitoring view all hit this endpoint. Short TTL cache cuts
-    // DB load from that shared traffic; every write path below that touches
-    // a task's row calls cacheDel so a status change or reassignment is
-    // visible immediately rather than waiting out the TTL.
-    const cacheKey = cacheKeys.tasksList(tenantId);
+    // An artist's task page, a lead's Team Board, a PM's oversight view and
+    // the admin's monitoring view all hit this endpoint, but they no longer
+    // get the same rows: the list is filtered server-side to the caller's
+    // visibility scope. The cache is therefore keyed per scope as well as
+    // per tenant -- one shared key would hand whichever role warmed it its
+    // full row set to every other role. Every write path below that touches
+    // a task's row invalidates all of this tenant's scope variants, so a
+    // status change or reassignment is visible immediately rather than
+    // waiting out the TTL.
+    const scope = await getVisibilityScope(req);
+    const cacheKey = cacheKeys.tasksList(tenantId, scopeCacheKey(scope));
     const cached = await cacheGet<unknown[]>(cacheKey);
     if (cached) return res.json(cached);
 
     // Note: In real logic, projectId filtering would join with entity (asset/shot).
-    const tasksList = await prisma.task.findMany({ where: { tenantId } });
+    const tasksList = await prisma.task.findMany({
+      where: { tenantId, ...taskScopeWhere(scope) },
+    });
     await cacheSet(cacheKey, tasksList, 10);
     return res.json(tasksList);
   } catch (err) {
@@ -205,7 +227,7 @@ tasksRouter.post("/", requireCapability("create_tasks"), async (req, res) => {
         assignedTo: assignedTo || null,
       },
     });
-    await cacheDel(cacheKeys.tasksList(tenantId));
+    await cacheDelPattern(cacheKeys.tasksListAllScopes(tenantId));
     return res.status(201).json(created);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -257,6 +279,15 @@ tasksRouter.put("/:id", async (req, res) => {
       });
       if (!grant)
         return res.status(403).json({ error: "Forbidden: Missing capability" });
+
+      // Holding edit_tasks says what kind of change you may make, not which
+      // tasks you may make it to. Without this an artist could PUT a status
+      // or title onto any task id in the tenant, including work in other
+      // departments they can't even list. The claim path above is exempt by
+      // definition: an unassigned task isn't yet visible to the claimant.
+      const scope = await getVisibilityScope(req);
+      if (!(await canSeeTask(tenantId, scope, taskId)))
+        return res.status(404).json({ error: "Not found" });
     }
 
     if (
@@ -288,18 +319,46 @@ tasksRouter.put("/:id", async (req, res) => {
       if (!(await canApproveAsDeptLead(tenantId, req.userId!, req.roleId!, existing.department)))
         return res.status(403).json({
           error:
-            "Forbidden: only the assigned department's Lead/Producer can advance this task to Production Manager review",
+            "Forbidden: only the assigned department's Lead can advance this task to Production Manager review",
+        });
+    } else if (updates.status === "producer-review") {
+      // Reachable two ways: the Production Manager passing the task up the
+      // chain, or the artist sending it straight to the producer when the
+      // department has no lead available. Both are legitimate; anyone else
+      // moving a task into the final queue is not.
+      const isProdManager = await canApproveAsProdManager(
+        tenantId,
+        req.userId!,
+        req.roleId!,
+        existing.department,
+      );
+      const isOwnArtist = existing.assignedTo === req.userId;
+      if (!isProdManager && !isOwnArtist)
+        return res.status(403).json({
+          error:
+            "Forbidden: only the Production Manager, or the artist who holds this task, can send it to the Main Producer",
         });
     } else if (updates.status === "approved") {
-      if (!(await canApproveAsProdManager(tenantId, req.userId!, req.roleId!, existing.department)))
+      // The main producer is the final gate. The production head keeps the
+      // ability to approve as cover, since a single studio-wide producer
+      // would otherwise block the whole studio whenever they're away.
+      const actorRole = await prisma.tenantRole.findFirst({
+        where: { id: req.roleId!, tenantId },
+        select: { name: true },
+      });
+      const isProducer = actorRole?.name === "producer";
+      if (
+        !isProducer &&
+        !(await canApproveAsProdManager(tenantId, req.userId!, req.roleId!, existing.department))
+      )
         return res.status(403).json({
-          error: "Forbidden: only the eligible Production Manager can approve this task",
+          error: "Forbidden: only the Main Producer can give final approval",
         });
     }
 
     await prisma.task.updateMany({ where: { tenantId, id: taskId }, data: updates });
     const updated = await prisma.task.findFirstOrThrow({ where: { tenantId, id: taskId } });
-    await cacheDel(cacheKeys.tasksList(tenantId));
+    await cacheDelPattern(cacheKeys.tasksListAllScopes(tenantId));
 
     // Fire-and-forget: a task reaching "approved" is the one authoritative
     // moment to check whether its whole sequence just wrapped early. Hooked
@@ -321,6 +380,8 @@ tasksRouter.put("/:id", async (req, res) => {
 tasksRouter.get("/:id/checklist", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
+    if (!(await callerCanSeeTask(req, req.params.id)))
+      return res.status(404).json({ error: "Not found" });
     const rows = await prisma.taskChecklistItem.findMany({
       where: { tenantId, taskId: req.params.id },
     });
@@ -339,7 +400,7 @@ tasksRouter.post("/:id/checklist", requireCapability("edit_tasks"), async (req, 
     const taskId = req.params.id as string;
     const { text, position } = req.body;
     if (!text) return res.status(400).json({ error: "Missing text" });
-    if (!(await taskInTenant(taskId, tenantId)))
+    if (!(await callerCanSeeTask(req, taskId)))
       return res.status(404).json({ error: "Not found" });
     const created = await prisma.taskChecklistItem.create({
       data: {
@@ -368,6 +429,12 @@ tasksRouter.put("/:id/checklist/:itemId", requireCapability("edit_tasks"), async
       where: { tenantId, id: itemId },
     });
     if (!existing) return res.status(404).json({ error: "Not found" });
+    // This route never looked at its own ":id" segment -- the item was found
+    // by item id alone, so any tenant member could tick off a checklist item
+    // on a task they can't even see. Authorize against the item's real
+    // parent task rather than the (spoofable, and previously ignored) path.
+    if (!(await callerCanSeeTask(req, existing.taskId)))
+      return res.status(404).json({ error: "Not found" });
     const updates: Record<string, unknown> = {};
     if (typeof done === "boolean") updates.done = done;
     if (typeof text === "string") updates.text = text;
@@ -387,6 +454,8 @@ tasksRouter.put("/:id/checklist/:itemId", requireCapability("edit_tasks"), async
 tasksRouter.get("/:id/comments", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
+    if (!(await callerCanSeeTask(req, req.params.id)))
+      return res.status(404).json({ error: "Not found" });
     const rows = await prisma.taskComment.findMany({
       where: { tenantId, taskId: req.params.id },
     });
@@ -396,16 +465,21 @@ tasksRouter.get("/:id/comments", async (req, res) => {
   }
 });
 
-tasksRouter.post("/:id/comments", requireCapability("edit_tasks"), async (req, res) => {
+// Deliberately not gated by requireCapability("edit_tasks"): commenting is
+// an oversight/monitoring action, not production work on the task itself.
+// The admin role holds no task capabilities at all (see
+// scripts/src/roleCapabilities.ts -- "no day-to-day production work"), but
+// still needs to be able to ask "why is this late?" on anything it can see.
+// callerCanSeeTask below is the real gate, identical to GET's.
+tasksRouter.post("/:id/comments", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
-    const userId = req.userId!;
-    // Cast needed: requireCapability() + this route's "/:id" typing widens
-    // req.params.id to `string | string[]` for overload resolution.
-    const taskId = req.params.id as string;
+    const userId = req.userId;
+    const taskId = req.params.id;
+    if (!userId) return res.status(403).json({ error: "Forbidden" });
     const { text } = req.body;
     if (!text) return res.status(400).json({ error: "Missing text" });
-    if (!(await taskInTenant(taskId, tenantId)))
+    if (!(await callerCanSeeTask(req, taskId)))
       return res.status(404).json({ error: "Not found" });
     const created = await prisma.taskComment.create({
       data: {
@@ -425,6 +499,8 @@ tasksRouter.post("/:id/comments", requireCapability("edit_tasks"), async (req, r
 tasksRouter.get("/:id/dependencies", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
+    if (!(await callerCanSeeTask(req, req.params.id)))
+      return res.status(404).json({ error: "Not found" });
     const rows = await prisma.taskDependency.findMany({
       where: { tenantId, taskId: req.params.id },
     });
@@ -443,8 +519,12 @@ tasksRouter.post("/:id/dependencies", requireCapability("edit_tasks"), async (re
     const { dependsOnTaskId, type, lagDays } = req.body;
     if (!dependsOnTaskId)
       return res.status(400).json({ error: "Missing dependsOnTaskId" });
-    if (!(await taskInTenant(taskId, tenantId)))
+    if (!(await callerCanSeeTask(req, taskId)))
       return res.status(404).json({ error: "Not found" });
+    // Deliberately only a tenant check for the *upstream* task: pipeline
+    // dependencies legitimately cross departments (a comp task waits on an
+    // animation task the compositor can't see), and the row stores nothing
+    // but an id the caller already supplied.
     if (!(await taskInTenant(dependsOnTaskId, tenantId)))
       return res.status(400).json({ error: "Invalid dependsOnTaskId" });
     const created = await prisma.taskDependency.create({
@@ -466,6 +546,8 @@ tasksRouter.post("/:id/dependencies", requireCapability("edit_tasks"), async (re
 tasksRouter.get("/:id/attachments", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
+    if (!(await callerCanSeeTask(req, req.params.id)))
+      return res.status(404).json({ error: "Not found" });
     const rows = await prisma.taskAttachment.findMany({
       where: { tenantId, taskId: req.params.id },
     });
@@ -484,7 +566,7 @@ tasksRouter.post("/:id/attachments", requireCapability("edit_tasks"), async (req
     const taskId = req.params.id as string;
     const { url } = req.body;
     if (!url) return res.status(400).json({ error: "Missing url" });
-    if (!(await taskInTenant(taskId, tenantId)))
+    if (!(await callerCanSeeTask(req, taskId)))
       return res.status(404).json({ error: "Not found" });
     const created = await prisma.taskAttachment.create({
       data: {
@@ -504,6 +586,8 @@ tasksRouter.post("/:id/attachments", requireCapability("edit_tasks"), async (req
 tasksRouter.get("/:id/approval-events", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
+    if (!(await callerCanSeeTask(req, req.params.id)))
+      return res.status(404).json({ error: "Not found" });
     const rows = await prisma.taskApprovalEvent.findMany({
       where: { tenantId, taskId: req.params.id },
     });
@@ -522,9 +606,16 @@ tasksRouter.post("/:id/approval-events", async (req, res) => {
     if (!action || !(APPROVAL_EVENT_ACTIONS as readonly string[]).includes(action))
       return res.status(400).json({ error: "Missing or invalid action" });
 
+    // Scoped, not merely tenant-filtered: writing an approval event onto a
+    // task the caller can't see is the same boundary crossing as reading its
+    // history, and the row is permanent (append-only audit trail).
     const approvalTask = await prisma.task.findFirst({
-      where: { tenantId, id: req.params.id },
-      select: { department: true },
+      where: {
+        tenantId,
+        id: req.params.id,
+        ...taskScopeWhere(await getVisibilityScope(req)),
+      },
+      select: { department: true, assignedTo: true },
     });
     if (!approvalTask) return res.status(404).json({ error: "Not found" });
 
@@ -537,9 +628,24 @@ tasksRouter.post("/:id/approval-events", async (req, res) => {
     if (action === "submitted-for-manager-review") {
       if (!(await canApproveAsDeptLead(tenantId, userId, roleId, approvalTask.department)))
         return res.status(403).json({ error: "Forbidden: missing lead-approval authority" });
+    } else if (action === "submitted-for-producer-review") {
+      const isProdManager = await canApproveAsProdManager(
+        tenantId,
+        userId,
+        roleId,
+        approvalTask.department,
+      );
+      if (!isProdManager && approvalTask.assignedTo !== userId)
+        return res.status(403).json({
+          error: "Forbidden: missing authority to send this to the Main Producer",
+        });
     } else if (action === "approved" || action === "published") {
-      if (!(await canApproveAsProdManager(tenantId, userId, roleId, approvalTask.department)))
-        return res.status(403).json({ error: "Forbidden: missing production-manager approval authority" });
+      const actorRole = await roleNameForCaller(roleId, tenantId);
+      if (
+        actorRole !== "producer" &&
+        !(await canApproveAsProdManager(tenantId, userId, roleId, approvalTask.department))
+      )
+        return res.status(403).json({ error: "Forbidden: missing final approval authority" });
     }
 
     const byRole = await roleNameForCaller(roleId, tenantId);
@@ -572,13 +678,15 @@ tasksRouter.post("/:id/approval-events", async (req, res) => {
           });
 
         if (action === "submitted-for-lead-review") {
-          // NOTE (preserved from the Drizzle version): this query filters
-          // only by department name, not by role -- it does NOT actually
-          // check that the recipient is a lead. That's a pre-existing
-          // imprecision in the original code, not something to "fix" here;
-          // the migration must reproduce behavior verbatim.
+          // Filters on role as well as department. Without the role filter
+          // this notified every member of the department -- 26 people in
+          // Animation -- for a submission only the lead needs to act on.
           const leads = await prisma.user.findMany({
-            where: { tenantId, department: { name: task.department || "" } },
+            where: {
+              tenantId,
+              department: { name: task.department || "" },
+              role: { name: "lead" },
+            },
             select: { id: true },
           });
           for (const l of leads) {
@@ -593,8 +701,20 @@ tasksRouter.post("/:id/approval-events", async (req, res) => {
           for (const pm of pms) {
             await notify(
               pm.id,
-              `"${task.title}" needs final sign-off`,
+              `"${task.title}" needs your sign-off`,
               `${actorName} approved "${task.title}" — awaiting Production Manager sign-off.`,
+            );
+          }
+        } else if (action === "submitted-for-producer-review") {
+          const producers = await prisma.user.findMany({
+            where: { tenantId, role: { name: "producer" }, deletedAt: null },
+            select: { id: true },
+          });
+          for (const p of producers) {
+            await notify(
+              p.id,
+              `"${task.title}" needs final sign-off`,
+              `${actorName} sent "${task.title}" for Main Producer approval.`,
             );
           }
         } else if (

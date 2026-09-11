@@ -1,7 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import { useLocation } from "wouter";
-import { addDays, format } from "date-fns";
 import {
   DndContext,
   closestCenter,
@@ -65,51 +64,131 @@ import {
   Rocket,
   Check,
   ArrowRight,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useSchemaStore } from "@/store/schema";
-import { useTasksStore } from "@/store/tasks";
-import { useAuthStore } from "@/store/auth";
-import { useProjectStore } from "@/store/projects";
-import { useDepartmentStore } from "@/store/departments";
-import { type Task } from "@/data/mockData";
+import type { TaskTemplateDef } from "@/store/schema";
+import {
+  useApplyTaskTemplate,
+  useCreateTaskTemplate,
+  useCreateTemplateItem,
+  useDeleteTaskTemplate,
+  useDeleteTemplateItem,
+  useDuplicateTaskTemplate,
+  useReorderTemplateItems,
+  useTaskTemplates,
+  useUpdateTaskTemplate,
+  useUpdateTemplateItem,
+} from "@/hooks/useSchemaBuilder";
+import { useDepartments } from "@/hooks/useDepartments";
+import { useProjects } from "@/hooks/useProjects";
+import { useShots } from "@/hooks/useShots";
+import { useAssets } from "@/hooks/useAssets";
 import { TemplateTaskRow } from "./TemplateTaskRow";
+import { describeError, useDebouncedDraft } from "./editing";
 import { useToast } from "@/hooks/use-toast";
 import { stagger, DURATION, EASE_DISSOLVE } from "@/lib/motion";
 
-export function TaskTemplatesTab() {
-  const templates = useSchemaStore((s) => s.templates);
-  const addTemplate = useSchemaStore((s) => s.addTemplate);
-  const updateTemplate = useSchemaStore((s) => s.updateTemplate);
-  const deleteTemplate = useSchemaStore((s) => s.deleteTemplate);
-  const duplicateTemplate = useSchemaStore((s) => s.duplicateTemplate);
-  const addTemplateTask = useSchemaStore((s) => s.addTemplateTask);
-  const updateTemplateTask = useSchemaStore((s) => s.updateTemplateTask);
-  const removeTemplateTask = useSchemaStore((s) => s.removeTemplateTask);
-  const reorderTemplateTasks = useSchemaStore((s) => s.reorderTemplateTasks);
+function TemplateMetaCard({
+  template,
+  totalHours,
+  onUpdate,
+  onApply,
+}: {
+  template: TaskTemplateDef;
+  totalHours: number;
+  onUpdate: (
+    updates: Partial<Pick<TaskTemplateDef, "name" | "description">>,
+  ) => void;
+  onApply: () => void;
+}) {
+  const [draft, updateDraft] = useDebouncedDraft(
+    { name: template.name, description: template.description },
+    onUpdate,
+  );
 
-  const addTask = useTasksStore((s) => s.addTask);
-  const currentUser = useAuthStore((s) => s.currentUser);
-  const projects = useProjectStore((s) => s.projects);
-  const departments = useDepartmentStore((s) => s.departments);
+  return (
+    <Card>
+      <CardContent className="pt-6 space-y-4">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="flex-1 min-w-[240px] space-y-2">
+            <Input
+              value={draft.name}
+              onChange={(e) => updateDraft({ name: e.target.value })}
+              className="text-lg font-bold h-9 border-transparent bg-transparent px-1.5 -ml-1.5 hover:border-input focus-visible:border-input focus-visible:bg-background"
+              placeholder="Template name (e.g. Standard Shot Pipeline)"
+            />
+            <Textarea
+              value={draft.description}
+              onChange={(e) => updateDraft({ description: e.target.value })}
+              placeholder="When should this bundle be applied?"
+              className="text-xs min-h-[40px] resize-none border-transparent bg-transparent px-1.5 -ml-1.5 hover:border-input focus-visible:border-input focus-visible:bg-background"
+            />
+          </div>
+          <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+            <Button
+              className="gap-2"
+              disabled={template.items.length === 0}
+              onClick={onApply}
+            >
+              <Rocket className="w-4 h-4" /> Apply to Project
+            </Button>
+          </motion.div>
+        </div>
+
+        <div className="flex items-center gap-2 text-xs text-muted-foreground border-t border-border pt-3">
+          <Badge variant="secondary" className="gap-1 font-normal">
+            <ListChecks className="w-3 h-3" /> {template.items.length} tasks
+          </Badge>
+          <Badge variant="secondary" className="gap-1 font-normal">
+            <Clock className="w-3 h-3" /> {totalHours}h estimated total
+          </Badge>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+export function TaskTemplatesTab() {
+  const { data: templates = [], isLoading } = useTaskTemplates();
+  const { data: departments = [] } = useDepartments();
+  const { data: projects = [] } = useProjects();
+
+  const createTemplate = useCreateTaskTemplate();
+  const updateTemplate = useUpdateTaskTemplate();
+  const deleteTemplate = useDeleteTaskTemplate();
+  const duplicateTemplate = useDuplicateTaskTemplate();
+  const createItem = useCreateTemplateItem();
+  const updateItem = useUpdateTemplateItem();
+  const deleteItem = useDeleteTemplateItem();
+  const reorderItems = useReorderTemplateItems();
+  const applyTemplate = useApplyTaskTemplate();
+
   const { toast } = useToast();
   const [, navigate] = useLocation();
 
-  const [selectedId, setSelectedId] = useState<string | null>(
-    templates[0]?.id ?? null,
-  );
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{
     id: string;
     name: string;
   } | null>(null);
   const [applyOpen, setApplyOpen] = useState(false);
   const [applyProjectId, setApplyProjectId] = useState("");
+  const [applyEntity, setApplyEntity] = useState("");
   const [justApplied, setJustApplied] = useState(false);
 
-  const selected = useMemo(
-    () => templates.find((t) => t.id === selectedId) ?? null,
-    [templates, selectedId],
-  );
+  const { data: shots = [] } = useShots(applyProjectId || undefined);
+  const { data: assets = [] } = useAssets(applyProjectId || undefined);
+
+  const selected = templates.find((t) => t.id === selectedId) ?? null;
+
+  useEffect(() => {
+    if (templates.length === 0) {
+      if (selectedId !== null) setSelectedId(null);
+    } else if (!templates.some((t) => t.id === selectedId)) {
+      setSelectedId(templates[0].id);
+    }
+  }, [templates, selectedId]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -118,87 +197,84 @@ export function TaskTemplatesTab() {
     }),
   );
 
-  const handleCreate = () => {
-    const id = addTemplate({ name: "New Template" });
-    setSelectedId(id);
-  };
+  const fail = (title: string) => (err: unknown) =>
+    toast({ title, description: describeError(err), variant: "destructive" });
 
-  const handleDelete = (id: string) => {
-    const wasSelected = id === selectedId;
-    deleteTemplate(id);
-    if (wasSelected) {
-      const remaining = templates.filter((t) => t.id !== id);
-      setSelectedId(remaining[0]?.id ?? null);
+  const handleCreate = async () => {
+    try {
+      const created = await createTemplate.mutateAsync({ name: "New Template" });
+      setSelectedId(created.id);
+    } catch (err) {
+      fail("Could not create template")(err);
     }
-    toast({ title: "Template deleted" });
   };
 
-  const handleDuplicate = (id: string) => {
-    const newId = duplicateTemplate(id);
-    if (newId) setSelectedId(newId);
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteTemplate.mutateAsync(id);
+      toast({ title: "Template deleted" });
+    } catch (err) {
+      fail("Could not delete template")(err);
+    }
+  };
+
+  const handleDuplicate = async (id: string) => {
+    try {
+      const clone = await duplicateTemplate.mutateAsync(id);
+      setSelectedId(clone.id);
+    } catch (err) {
+      fail("Could not duplicate template")(err);
+    }
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     if (!selected) return;
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    const ids = selected.tasks.map((t) => t.id);
+    const ids = selected.items.map((t) => t.id);
     const oldIndex = ids.indexOf(String(active.id));
     const newIndex = ids.indexOf(String(over.id));
     if (oldIndex === -1 || newIndex === -1) return;
-    reorderTemplateTasks(selected.id, arrayMove(ids, oldIndex, newIndex));
+    reorderItems
+      .mutateAsync({
+        templateId: selected.id,
+        itemIds: arrayMove(ids, oldIndex, newIndex),
+      })
+      .catch(fail("Could not reorder tasks"));
   };
 
   const totalHours =
-    selected?.tasks.reduce((sum, t) => sum + t.estimatedHours, 0) ?? 0;
+    selected?.items.reduce((sum, t) => sum + t.estimatedHours, 0) ?? 0;
 
   const openApplyDialog = () => {
     setApplyProjectId("");
+    setApplyEntity("");
     setJustApplied(false);
     setApplyOpen(true);
   };
 
-  const handleApply = () => {
-    if (!selected || !applyProjectId || !currentUser) return;
+  const handleApply = async () => {
+    if (!selected || !applyEntity) return;
+    const [entityType, entityId] = applyEntity.split(":");
     const project = projects.find((p) => p.id === applyProjectId);
-    if (!project) return;
 
-    const sortedTasks = [...selected.tasks].sort((a, b) => a.order - b.order);
-    sortedTasks.forEach((tt, i) => {
-      const dept = departments.find((d) => d.id === tt.department);
-      const assigneeId = dept?.leadId || dept?.supervisorId || currentUser.id;
-      const newTask: Task = {
-        id: `tmpl-${Date.now().toString(36)}-${i}-${Math.random().toString(36).slice(2, 6)}`,
-        title: tt.title,
-        description: `Generated from the "${selected.name}" task template.`,
-        projectId: applyProjectId,
-        assigneeId,
-        assignedById: currentUser.id,
-        status: "todo",
-        priority: tt.priority,
-        dueDate: format(addDays(new Date(), (i + 1) * 7), "yyyy-MM-dd"),
-        estimatedHours: tt.estimatedHours,
-        actualHours: 0,
-        tags: ["template"],
-        dependencies: [],
-        checklist: [],
-        comments: [],
-        attachments: [],
-        department: dept?.name || "General",
-        createdAt: new Date().toISOString(),
-        lastStatusUpdate: new Date().toISOString(),
-        dailyLogs: [],
-        pipelinePhase: "MAIN",
-        approvalHistory: [],
-      };
-      addTask(newTask);
-    });
-
-    setJustApplied(true);
-    toast({
-      title: "Template applied",
-      description: `Added ${sortedTasks.length} tasks from "${selected.name}" to ${project.name}.`,
-    });
+    try {
+      await applyTemplate.mutateAsync({
+        template: selected,
+        entityId,
+        entityType: entityType as "shot" | "asset",
+        departmentNameById: Object.fromEntries(
+          departments.map((d) => [d.id, d.name]),
+        ),
+      });
+      setJustApplied(true);
+      toast({
+        title: "Template applied",
+        description: `Added ${selected.items.length} tasks from "${selected.name}" to ${project?.name ?? "the project"}.`,
+      });
+    } catch (err) {
+      fail("Could not apply template")(err);
+    }
   };
 
   return (
@@ -208,6 +284,7 @@ export function TaskTemplatesTab() {
         <motion.div whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}>
           <Button
             onClick={handleCreate}
+            disabled={createTemplate.isPending}
             className="w-full gap-2 justify-start"
             variant="outline"
           >
@@ -219,7 +296,7 @@ export function TaskTemplatesTab() {
           <div className="space-y-2">
             <AnimatePresence initial={false}>
               {templates.map((tmpl, i) => {
-                const hours = tmpl.tasks.reduce(
+                const hours = tmpl.items.reduce(
                   (sum, t) => sum + t.estimatedHours,
                   0,
                 );
@@ -258,7 +335,7 @@ export function TaskTemplatesTab() {
                           <div className="text-[11px] text-muted-foreground flex items-center gap-2">
                             <span className="flex items-center gap-1">
                               <ListChecks className="w-3 h-3" />
-                              {tmpl.tasks.length} tasks
+                              {tmpl.items.length} tasks
                             </span>
                             <span className="flex items-center gap-1">
                               <Clock className="w-3 h-3" />
@@ -308,7 +385,13 @@ export function TaskTemplatesTab() {
           </div>
         </LayoutGroup>
 
-        {templates.length === 0 && (
+        {isLoading && (
+          <div className="flex items-center justify-center py-10 text-xs text-muted-foreground gap-2">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading templates…
+          </div>
+        )}
+
+        {!isLoading && templates.length === 0 && (
           <div className="text-center py-10 text-xs text-muted-foreground border-2 border-dashed border-border rounded-lg">
             No templates yet. Create your first task bundle.
           </div>
@@ -332,54 +415,16 @@ export function TaskTemplatesTab() {
             transition={{ duration: DURATION.base, ease: EASE_DISSOLVE }}
             className="space-y-4"
           >
-            <Card>
-              <CardContent className="pt-6 space-y-4">
-                <div className="flex items-start justify-between gap-4 flex-wrap">
-                  <div className="flex-1 min-w-[240px] space-y-2">
-                    <Input
-                      value={selected.name}
-                      onChange={(e) =>
-                        updateTemplate(selected.id, { name: e.target.value })
-                      }
-                      className="text-lg font-bold h-9 border-transparent bg-transparent px-1.5 -ml-1.5 hover:border-input focus-visible:border-input focus-visible:bg-background"
-                      placeholder="Template name (e.g. Standard Shot Pipeline)"
-                    />
-                    <Textarea
-                      value={selected.description}
-                      onChange={(e) =>
-                        updateTemplate(selected.id, {
-                          description: e.target.value,
-                        })
-                      }
-                      placeholder="When should this bundle be applied?"
-                      className="text-xs min-h-[40px] resize-none border-transparent bg-transparent px-1.5 -ml-1.5 hover:border-input focus-visible:border-input focus-visible:bg-background"
-                    />
-                  </div>
-                  <motion.div
-                    whileHover={{ scale: 1.03 }}
-                    whileTap={{ scale: 0.97 }}
-                  >
-                    <Button
-                      className="gap-2"
-                      disabled={selected.tasks.length === 0}
-                      onClick={openApplyDialog}
-                    >
-                      <Rocket className="w-4 h-4" /> Apply to Project
-                    </Button>
-                  </motion.div>
-                </div>
-
-                <div className="flex items-center gap-2 text-xs text-muted-foreground border-t border-border pt-3">
-                  <Badge variant="secondary" className="gap-1 font-normal">
-                    <ListChecks className="w-3 h-3" /> {selected.tasks.length}{" "}
-                    tasks
-                  </Badge>
-                  <Badge variant="secondary" className="gap-1 font-normal">
-                    <Clock className="w-3 h-3" /> {totalHours}h estimated total
-                  </Badge>
-                </div>
-              </CardContent>
-            </Card>
+            <TemplateMetaCard
+              template={selected}
+              totalHours={totalHours}
+              onUpdate={(updates) =>
+                updateTemplate
+                  .mutateAsync({ id: selected.id, ...updates })
+                  .catch(fail("Could not save template"))
+              }
+              onApply={openApplyDialog}
+            />
 
             <Card>
               <CardContent className="pt-6 space-y-3">
@@ -393,8 +438,14 @@ export function TaskTemplatesTab() {
                       size="sm"
                       variant="outline"
                       className="h-7 text-xs gap-1.5"
+                      disabled={createItem.isPending}
                       onClick={() =>
-                        addTemplateTask(selected.id, { title: "New Task" })
+                        createItem
+                          .mutateAsync({
+                            templateId: selected.id,
+                            title: "New Task",
+                          })
+                          .catch(fail("Could not add task"))
                       }
                     >
                       <Plus className="w-3 h-3" /> Add Task
@@ -402,7 +453,7 @@ export function TaskTemplatesTab() {
                   </motion.div>
                 </div>
 
-                {selected.tasks.length === 0 ? (
+                {selected.items.length === 0 ? (
                   <div className="text-center py-10 text-xs text-muted-foreground border-2 border-dashed border-border rounded-lg">
                     No tasks yet — add the pipeline steps that make up this
                     bundle.
@@ -414,24 +465,32 @@ export function TaskTemplatesTab() {
                     onDragEnd={handleDragEnd}
                   >
                     <SortableContext
-                      items={selected.tasks.map((t) => t.id)}
+                      items={selected.items.map((t) => t.id)}
                       strategy={verticalListSortingStrategy}
                     >
                       <div className="space-y-2">
                         <AnimatePresence initial={false}>
-                          {selected.tasks.map((task) => (
+                          {selected.items.map((task) => (
                             <TemplateTaskRow
                               key={task.id}
                               task={task}
+                              departments={departments}
                               onUpdate={(updates) =>
-                                updateTemplateTask(
-                                  selected.id,
-                                  task.id,
-                                  updates,
-                                )
+                                updateItem
+                                  .mutateAsync({
+                                    templateId: selected.id,
+                                    itemId: task.id,
+                                    ...updates,
+                                  })
+                                  .catch(fail("Could not save task"))
                               }
                               onRemove={() =>
-                                removeTemplateTask(selected.id, task.id)
+                                deleteItem
+                                  .mutateAsync({
+                                    templateId: selected.id,
+                                    itemId: task.id,
+                                  })
+                                  .catch(fail("Could not remove task"))
                               }
                             />
                           ))}
@@ -452,9 +511,10 @@ export function TaskTemplatesTab() {
           <DialogHeader>
             <DialogTitle>Apply "{selected?.name}" to a Project</DialogTitle>
             <DialogDescription>
-              This creates {selected?.tasks.length ?? 0} new tasks in the
-              selected project, pre-filled with each task's department,
-              estimated hours, and priority from this template.
+              This creates {selected?.items.length ?? 0} new tasks, pre-filled
+              with each task's department, estimated hours, and priority from
+              this template. Tasks belong to a shot or an asset, so pick the one
+              the bundle should land on.
             </DialogDescription>
           </DialogHeader>
 
@@ -473,7 +533,10 @@ export function TaskTemplatesTab() {
                   </span>
                   <Select
                     value={applyProjectId}
-                    onValueChange={setApplyProjectId}
+                    onValueChange={(v) => {
+                      setApplyProjectId(v);
+                      setApplyEntity("");
+                    }}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select a project…" />
@@ -487,6 +550,40 @@ export function TaskTemplatesTab() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                <div className="space-y-2">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    Shot or asset
+                  </span>
+                  <Select
+                    value={applyEntity}
+                    onValueChange={setApplyEntity}
+                    disabled={!applyProjectId}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a shot or asset…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {shots.map((s) => (
+                        <SelectItem key={s.id} value={`shot:${s.id}`}>
+                          Shot · {s.name}
+                        </SelectItem>
+                      ))}
+                      {assets.map((a) => (
+                        <SelectItem key={a.id} value={`asset:${a.id}`}>
+                          Asset · {a.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {applyProjectId &&
+                    shots.length === 0 &&
+                    assets.length === 0 && (
+                      <p className="text-[11px] text-muted-foreground">
+                        This project has no shots or assets yet.
+                      </p>
+                    )}
+                </div>
               </motion.div>
             ) : (
               <motion.div
@@ -499,7 +596,7 @@ export function TaskTemplatesTab() {
                   <Check className="w-5 h-5" />
                 </div>
                 <p className="text-sm font-medium">
-                  {selected?.tasks.length ?? 0} tasks added to{" "}
+                  {selected?.items.length ?? 0} tasks added to{" "}
                   {projects.find((p) => p.id === applyProjectId)?.name}
                 </p>
               </motion.div>
@@ -513,7 +610,7 @@ export function TaskTemplatesTab() {
                   Cancel
                 </Button>
                 <Button
-                  disabled={!applyProjectId}
+                  disabled={!applyEntity || applyTemplate.isPending}
                   onClick={handleApply}
                   className="gap-2"
                 >

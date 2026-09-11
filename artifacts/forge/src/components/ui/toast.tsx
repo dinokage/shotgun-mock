@@ -13,7 +13,11 @@ const ToastViewport = React.forwardRef<
   <ToastPrimitives.Viewport
     ref={ref}
     className={cn(
-      "fixed top-0 z-[100] flex max-h-screen w-full flex-col-reverse p-4 sm:bottom-0 sm:right-0 sm:top-auto sm:flex-col md:max-w-[420px]",
+      // `sm:bottom-16` rather than `bottom-0`: the AI assistant's launcher is
+      // pinned to this same corner, and a toast landing on top of it both hid
+      // the button and swallowed the click meant for it. Toasts now stack
+      // above the launcher instead of over it.
+      "fixed top-0 z-[100] flex max-h-screen w-full flex-col-reverse p-4 sm:bottom-16 sm:right-0 sm:top-auto sm:flex-col md:max-w-[420px]",
       className,
     )}
     {...props}

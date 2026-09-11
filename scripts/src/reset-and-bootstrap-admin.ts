@@ -15,6 +15,7 @@
 import { prisma } from "@workspace/db";
 import * as argon2 from "argon2";
 import * as crypto from "crypto";
+import { ROLE_CAPABILITIES } from "./roleCapabilities";
 
 // Matches artifacts/api-server/src/lib/auth.ts's hashPassword() exactly
 // (argon2.hash with library defaults) — duplicated inline here rather than
@@ -38,55 +39,6 @@ const TENANT_SLUG = "symbiosys";
 // admin with no other role to invite or create a user into. All six roles
 // must exist from the start; zero USERS in them is what "blank slate" means
 // here, not "the role system itself is missing."
-const ROLE_CAPABILITIES: Record<string, readonly string[]> = {
-  // The admin doesn't do production work -- no tasks, no reviews, no
-  // broadcasts, no pipeline/financials edits. Their job is standing the
-  // studio up and watching it run: add people, assign roles, manage
-  // licenses/integrations (the Marketplace is admin-only elsewhere in the
-  // app for the same reason), and view financials read-only.
-  admin: [
-    "manage_members",
-    "manage_roles",
-    "view_financials",
-    "manage_licenses",
-    "manage_integrations",
-  ],
-  production_head: [
-    "create_tasks",
-    "edit_tasks",
-    "delete_tasks",
-    "assign_tasks",
-    "submit_reviews",
-    "approve_reviews",
-    "view_financials",
-    "edit_financials",
-    "manage_pipeline",
-    "broadcast_updates",
-  ],
-  producer: [
-    "create_tasks",
-    "edit_tasks",
-    "assign_tasks",
-    "submit_reviews",
-    "approve_reviews",
-    "manage_pipeline",
-    "broadcast_updates",
-  ],
-  lead: [
-    "create_tasks",
-    "edit_tasks",
-    "assign_tasks",
-    "submit_reviews",
-    "approve_reviews",
-  ],
-  artist: ["edit_tasks", "submit_reviews"],
-  // submit_reviews is what actually lets a client-access session create a
-  // review/annotation (reviews.ts) -- approve_reviews alone gates nothing
-  // reachable by the client role once client-access.ts's own link-management
-  // routes are correctly locked to internal sessions (denyClientAccess).
-  client: ["approve_reviews", "submit_reviews"],
-};
-
 async function main() {
   if (process.env.NODE_ENV !== "development") {
     console.error(

@@ -32,8 +32,13 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useReviewStore, PRESENTED_VERSION_ID } from "@/store/reviews";
+import {
+  usePresentationValue,
+  useClientNotes,
+  useCreateClientNote,
+} from "@/hooks/useReviewSession";
 import { useShotStore } from "@/store/shots";
-import { useBroadcastsStore } from "@/store/broadcasts";
+import { useBroadcasts, toBroadcast } from "@/hooks/useBroadcasts";
 import { cn } from "@/lib/utils";
 import { getPlaceholderThumbnail } from "@/lib/placeholderArt";
 import { usePlaceholderVideoSrc } from "@/hooks/usePlaceholderVideo";
@@ -164,17 +169,8 @@ export default function ClientReview() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const maxFrames = 240;
 
-  // Presentation Mode: when an internal reviewer is presenting the version
-  // the client is looking at, this viewer's playhead is locked to theirs and
-  // the only actions available collapse down to Approve / Request Changes —
-  // which is already the entirety of this portal's decision actions.
-  const presentation = useReviewStore((s) => s.presentation);
   const versions = useReviewStore((s) => s.versions);
   const projects = useProjectStore((s) => s.projects);
-  const isLockedViewer =
-    presentation.isActive &&
-    presentation.versionId === PRESENTED_VERSION_ID &&
-    presentation.presenterId !== currentUser?.id;
 
   // Pending client reviews — sourced from the persisted shot store (not the
   // static SHOTS import) so an Approve/Request Changes decision below is
@@ -207,16 +203,42 @@ export default function ClientReview() {
     ? projects.find((p) => p.id === activeShot.projectId)
     : null;
 
+  // The real Version row behind the shot on screen. Presentation Mode and
+  // client notes are both keyed to it server-side, so the lock follows
+  // whatever version the presenter actually has the floor on.
+  const activeVersionId = useMemo(() => {
+    if (!activeShot) return undefined;
+    const forShot = versions.filter(
+      (v) => v.entityType === "shot" && v.entityId === activeShot.id,
+    );
+    return (
+      forShot.find((v) => v.versionNumber === activeShot.currentVersion)?.id ??
+      forShot[0]?.id
+    );
+  }, [activeShot, versions]);
+
+  // Presentation Mode: when an internal reviewer is presenting the version
+  // the client is looking at, this viewer's playhead is locked to theirs and
+  // the only actions available collapse down to Approve / Request Changes —
+  // which is already the entirety of this portal's decision actions.
+  const presentation = usePresentationValue(activeVersionId);
+  const isLockedViewer =
+    presentation.isActive && presentation.presenterId !== currentUser?.id;
+
   // Studio Updates: the one bridge from the internal status-broadcast
   // feature into this external, unauthenticated portal — a producer/manager
   // marks a broadcast 'internal_and_client' and scopes it to this project.
-  // Filtered + sorted defensively (store already prepends newest-first) and
-  // capped at 3; renders nothing when empty so a client is never shown an
-  // empty state for an internal feature they don't otherwise know exists.
-  const broadcasts = useBroadcastsStore((s) => s.broadcasts);
+  // GET /broadcasts already applies both filters server-side for a
+  // client-access session (audience + the project its link is scoped to);
+  // they are repeated here as defence in depth and because an internal
+  // session hitting this page gets the unfiltered studio feed. Capped at 3;
+  // renders nothing when empty so a client is never shown an empty state for
+  // an internal feature they don't otherwise know exists.
+  const { data: broadcastRows = [] } = useBroadcasts(activeProject?.id);
   const studioUpdates = useMemo(
     () =>
-      broadcasts
+      broadcastRows
+        .map(toBroadcast)
         .filter(
           (b) =>
             b.audience === "internal_and_client" &&
@@ -227,7 +249,7 @@ export default function ClientReview() {
             new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
         )
         .slice(0, 3),
-    [broadcasts, activeProject],
+    [broadcastRows, activeProject],
   );
 
   // Deterministic render-preview art for the player's video area, so there's
@@ -249,11 +271,8 @@ export default function ClientReview() {
   // Client feedback moderation: notes submitted here are held pending until
   // an internal reviewer explicitly transfers them into the team comment
   // stream — they never become visible internally by default.
-  const clientNotes = useReviewStore((s) => s.clientNotes);
-  const addClientNote = useReviewStore((s) => s.addClientNote);
-  const shotNotes = activeShot
-    ? clientNotes.filter((n) => n.shotId === activeShot.id)
-    : [];
+  const { data: shotNotes = [] } = useClientNotes(activeShot?.id);
+  const createClientNote = useCreateClientNote(activeShot?.id);
 
   useEffect(() => {
     let animationFrameId: number;
@@ -822,28 +841,46 @@ export default function ClientReview() {
                 disabled={!feedback.trim()}
                 onClick={() => {
                   if (!activeShot || !feedback.trim()) return;
-                  addClientNote({
-                    shotId: activeShot.id,
-                    shotName: activeShot.name,
-                    frame,
-                    text: feedback.trim(),
-                    authorName: currentUser?.name || "Client Reviewer",
-                    // Persist whatever markup is currently drawn on the frame
-                    // alongside the note — otherwise the drawing vanishes and
-                    // only the typed text survives into the review pipeline.
-                    annotations:
-                      annotations.length > 0 ? annotations : undefined,
-                  });
-                  // Clear the canvas now that this markup has been captured
-                  // with the note, so the next note starts from a blank frame.
-                  applyAnnotationsUpdate([]);
-                  setSelectedAnnotationId(null);
-                  setFeedback("");
-                  toast({
-                    title: "Note Added",
-                    description:
-                      "Sent to the studio for review — they’ll transfer it to the team once seen.",
-                  });
+                  // The author is stamped server-side from the redeemed
+                  // access link (or the signed-in client account), never from
+                  // anything sent here.
+                  createClientNote.mutate(
+                    {
+                      versionId: activeVersionId ?? null,
+                      frame,
+                      text: feedback.trim(),
+                      // Persist whatever markup is currently drawn on the
+                      // frame alongside the note — otherwise the drawing
+                      // vanishes and only the typed text survives into the
+                      // review pipeline.
+                      annotations:
+                        annotations.length > 0 ? annotations : undefined,
+                    },
+                    {
+                      onSuccess: () => {
+                        // Clear the canvas now that this markup has been
+                        // captured with the note, so the next note starts
+                        // from a blank frame.
+                        applyAnnotationsUpdate([]);
+                        setSelectedAnnotationId(null);
+                        setFeedback("");
+                        toast({
+                          title: "Note Added",
+                          description:
+                            "Sent to the studio for review — they’ll transfer it to the team once seen.",
+                        });
+                      },
+                      onError: (err) =>
+                        toast({
+                          title: "Couldn't add note",
+                          description:
+                            err instanceof Error
+                              ? err.message
+                              : "Please try again.",
+                          variant: "destructive",
+                        }),
+                    },
+                  );
                 }}
               >
                 <MessageSquare className="w-4 h-4 mr-2" />
@@ -857,7 +894,7 @@ export default function ClientReview() {
                   YOUR NOTES
                 </div>
                 <AnimatePresence initial={false}>
-                  {shotNotes.map((note) => (
+                  {[...shotNotes].reverse().map((note) => (
                     <motion.div
                       key={note.id}
                       layout

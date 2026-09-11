@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import {
   DndContext,
@@ -58,11 +58,25 @@ import {
   Gem,
   Shield,
   Wand2,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useSchemaStore, type FieldType } from "@/store/schema";
+import { type EntityTypeDef, type FieldType } from "@/store/schema";
+import {
+  useCreateEntityField,
+  useCreateEntityType,
+  useDeleteEntityField,
+  useDeleteEntityType,
+  useDuplicateEntityType,
+  useEntityTypes,
+  useReorderEntityFields,
+  useUpdateEntityField,
+  useUpdateEntityType,
+  type EntityFieldInput,
+} from "@/hooks/useSchemaBuilder";
 import { FieldRow } from "./FieldRow";
 import { LivePreview } from "./LivePreview";
+import { describeError, useDebouncedDraft } from "./editing";
 import { useToast } from "@/hooks/use-toast";
 import { stagger, DURATION, EASE_DISSOLVE } from "@/lib/motion";
 
@@ -101,30 +115,138 @@ function EntityIcon({ name, className }: { name: string; className?: string }) {
   return <Icon className={className} />;
 }
 
+function EntityMetaCard({
+  entityType,
+  onUpdate,
+}: {
+  entityType: EntityTypeDef;
+  onUpdate: (
+    updates: Partial<
+      Pick<EntityTypeDef, "name" | "icon" | "color" | "description">
+    >,
+  ) => void;
+}) {
+  const [draft, updateDraft] = useDebouncedDraft(
+    { name: entityType.name, description: entityType.description },
+    onUpdate,
+  );
+
+  return (
+    <Card>
+      <CardContent className="pt-6 space-y-4">
+        <div className="flex items-start gap-3">
+          <Popover>
+            <PopoverTrigger asChild>
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className="w-12 h-12 rounded-lg flex items-center justify-center shrink-0 border border-border"
+                style={{
+                  backgroundColor: `${entityType.color}22`,
+                  color: entityType.color,
+                }}
+              >
+                <EntityIcon name={entityType.icon} className="w-5 h-5" />
+              </motion.button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64 space-y-3" align="start">
+              <div>
+                <div className="text-[11px] font-medium text-muted-foreground mb-1.5">
+                  Icon
+                </div>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {ICON_OPTIONS.map(({ name, Icon }) => (
+                    <motion.button
+                      key={name}
+                      whileHover={{ scale: 1.1 }}
+                      whileTap={{ scale: 0.9 }}
+                      onClick={() => onUpdate({ icon: name })}
+                      className={cn(
+                        "aspect-square rounded-md flex items-center justify-center border",
+                        entityType.icon === name
+                          ? "border-primary bg-primary/10"
+                          : "border-border hover:bg-muted",
+                      )}
+                    >
+                      <Icon className="w-4 h-4" />
+                    </motion.button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] font-medium text-muted-foreground mb-1.5">
+                  Color
+                </div>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {COLOR_OPTIONS.map((c) => (
+                    <motion.button
+                      key={c}
+                      whileHover={{ scale: 1.15 }}
+                      whileTap={{ scale: 0.9 }}
+                      onClick={() => onUpdate({ color: c })}
+                      className={cn(
+                        "aspect-square rounded-md border-2",
+                        entityType.color === c
+                          ? "border-foreground"
+                          : "border-transparent",
+                      )}
+                      style={{ backgroundColor: c }}
+                    />
+                  ))}
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          <div className="flex-1 space-y-2">
+            <Input
+              value={draft.name}
+              onChange={(e) => updateDraft({ name: e.target.value })}
+              className="text-lg font-bold h-9 border-transparent bg-transparent px-1.5 -ml-1.5 hover:border-input focus-visible:border-input focus-visible:bg-background"
+              placeholder="Entity type name (e.g. Creature, Prop Vehicle)"
+            />
+            <Textarea
+              value={draft.description}
+              onChange={(e) => updateDraft({ description: e.target.value })}
+              placeholder="What is this entity type used for?"
+              className="text-xs min-h-[44px] resize-none border-transparent bg-transparent px-1.5 -ml-1.5 hover:border-input focus-visible:border-input focus-visible:bg-background"
+            />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function EntitySchemasTab() {
-  const entityTypes = useSchemaStore((s) => s.entityTypes);
-  const addEntityType = useSchemaStore((s) => s.addEntityType);
-  const updateEntityType = useSchemaStore((s) => s.updateEntityType);
-  const deleteEntityType = useSchemaStore((s) => s.deleteEntityType);
-  const duplicateEntityType = useSchemaStore((s) => s.duplicateEntityType);
-  const addField = useSchemaStore((s) => s.addField);
-  const updateField = useSchemaStore((s) => s.updateField);
-  const removeField = useSchemaStore((s) => s.removeField);
-  const reorderFields = useSchemaStore((s) => s.reorderFields);
+  const { data: entityTypes = [], isLoading } = useEntityTypes();
+  const createEntityType = useCreateEntityType();
+  const updateEntityType = useUpdateEntityType();
+  const deleteEntityType = useDeleteEntityType();
+  const duplicateEntityType = useDuplicateEntityType();
+  const createField = useCreateEntityField();
+  const updateField = useUpdateEntityField();
+  const deleteField = useDeleteEntityField();
+  const reorderFields = useReorderEntityFields();
 
   const { toast } = useToast();
-  const [selectedId, setSelectedId] = useState<string | null>(
-    entityTypes[0]?.id ?? null,
-  );
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{
     id: string;
     name: string;
   } | null>(null);
 
-  const selected = useMemo(
-    () => entityTypes.find((e) => e.id === selectedId) ?? null,
-    [entityTypes, selectedId],
-  );
+  const selected = entityTypes.find((e) => e.id === selectedId) ?? null;
+
+  // Selection follows the server list: nothing is selected before the first
+  // load, and deleting the selected type falls through to whatever remains.
+  useEffect(() => {
+    if (entityTypes.length === 0) {
+      if (selectedId !== null) setSelectedId(null);
+    } else if (!entityTypes.some((e) => e.id === selectedId)) {
+      setSelectedId(entityTypes[0].id);
+    }
+  }, [entityTypes, selectedId]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -133,24 +255,36 @@ export function EntitySchemasTab() {
     }),
   );
 
-  const handleCreate = () => {
-    const id = addEntityType({ name: "New Entity Type" });
-    setSelectedId(id);
-  };
+  const fail = (title: string) => (err: unknown) =>
+    toast({ title, description: describeError(err), variant: "destructive" });
 
-  const handleDelete = (id: string) => {
-    const wasSelected = id === selectedId;
-    deleteEntityType(id);
-    if (wasSelected) {
-      const remaining = entityTypes.filter((e) => e.id !== id);
-      setSelectedId(remaining[0]?.id ?? null);
+  const handleCreate = async () => {
+    try {
+      const created = await createEntityType.mutateAsync({
+        name: "New Entity Type",
+      });
+      setSelectedId(created.id);
+    } catch (err) {
+      fail("Could not create entity type")(err);
     }
-    toast({ title: "Entity type deleted" });
   };
 
-  const handleDuplicate = (id: string) => {
-    const newId = duplicateEntityType(id);
-    if (newId) setSelectedId(newId);
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteEntityType.mutateAsync(id);
+      toast({ title: "Entity type deleted" });
+    } catch (err) {
+      fail("Could not delete entity type")(err);
+    }
+  };
+
+  const handleDuplicate = async (id: string) => {
+    try {
+      const clone = await duplicateEntityType.mutateAsync(id);
+      setSelectedId(clone.id);
+    } catch (err) {
+      fail("Could not duplicate entity type")(err);
+    }
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -161,12 +295,26 @@ export function EntitySchemasTab() {
     const oldIndex = ids.indexOf(String(active.id));
     const newIndex = ids.indexOf(String(over.id));
     if (oldIndex === -1 || newIndex === -1) return;
-    reorderFields(selected.id, arrayMove(ids, oldIndex, newIndex));
+    reorderFields
+      .mutateAsync({
+        entityTypeId: selected.id,
+        fieldIds: arrayMove(ids, oldIndex, newIndex),
+      })
+      .catch(fail("Could not reorder fields"));
   };
 
   const handleAddField = (type: FieldType = "text") => {
     if (!selected) return;
-    addField(selected.id, { label: "New Field", type });
+    createField
+      .mutateAsync({ entityTypeId: selected.id, label: "New Field", type })
+      .catch(fail("Could not add field"));
+  };
+
+  const handleUpdateField = (fieldId: string, updates: EntityFieldInput) => {
+    if (!selected) return;
+    updateField
+      .mutateAsync({ entityTypeId: selected.id, fieldId, ...updates })
+      .catch(fail("Could not save field"));
   };
 
   return (
@@ -176,6 +324,7 @@ export function EntitySchemasTab() {
         <motion.div whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}>
           <Button
             onClick={handleCreate}
+            disabled={createEntityType.isPending}
             className="w-full gap-2 justify-start"
             variant="outline"
           >
@@ -270,7 +419,14 @@ export function EntitySchemasTab() {
           </div>
         </LayoutGroup>
 
-        {entityTypes.length === 0 && (
+        {isLoading && (
+          <div className="flex items-center justify-center py-10 text-xs text-muted-foreground gap-2">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading entity
+            types…
+          </div>
+        )}
+
+        {!isLoading && entityTypes.length === 0 && (
           <div className="text-center py-10 text-xs text-muted-foreground border-2 border-dashed border-border rounded-lg">
             No entity types yet. Create your first one.
           </div>
@@ -295,105 +451,14 @@ export function EntitySchemasTab() {
             className="grid grid-cols-1 xl:grid-cols-[1fr_340px] gap-6 items-start"
           >
             <div className="space-y-4">
-              {/* Meta card */}
-              <Card>
-                <CardContent className="pt-6 space-y-4">
-                  <div className="flex items-start gap-3">
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <motion.button
-                          whileHover={{ scale: 1.05 }}
-                          whileTap={{ scale: 0.95 }}
-                          className="w-12 h-12 rounded-lg flex items-center justify-center shrink-0 border border-border"
-                          style={{
-                            backgroundColor: `${selected.color}22`,
-                            color: selected.color,
-                          }}
-                        >
-                          <EntityIcon
-                            name={selected.icon}
-                            className="w-5 h-5"
-                          />
-                        </motion.button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-64 space-y-3" align="start">
-                        <div>
-                          <div className="text-[11px] font-medium text-muted-foreground mb-1.5">
-                            Icon
-                          </div>
-                          <div className="grid grid-cols-5 gap-1.5">
-                            {ICON_OPTIONS.map(({ name, Icon }) => (
-                              <motion.button
-                                key={name}
-                                whileHover={{ scale: 1.1 }}
-                                whileTap={{ scale: 0.9 }}
-                                onClick={() =>
-                                  updateEntityType(selected.id, { icon: name })
-                                }
-                                className={cn(
-                                  "aspect-square rounded-md flex items-center justify-center border",
-                                  selected.icon === name
-                                    ? "border-primary bg-primary/10"
-                                    : "border-border hover:bg-muted",
-                                )}
-                              >
-                                <Icon className="w-4 h-4" />
-                              </motion.button>
-                            ))}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-[11px] font-medium text-muted-foreground mb-1.5">
-                            Color
-                          </div>
-                          <div className="grid grid-cols-5 gap-1.5">
-                            {COLOR_OPTIONS.map((c) => (
-                              <motion.button
-                                key={c}
-                                whileHover={{ scale: 1.15 }}
-                                whileTap={{ scale: 0.9 }}
-                                onClick={() =>
-                                  updateEntityType(selected.id, { color: c })
-                                }
-                                className={cn(
-                                  "aspect-square rounded-md border-2",
-                                  selected.color === c
-                                    ? "border-foreground"
-                                    : "border-transparent",
-                                )}
-                                style={{ backgroundColor: c }}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-
-                    <div className="flex-1 space-y-2">
-                      <Input
-                        value={selected.name}
-                        onChange={(e) =>
-                          updateEntityType(selected.id, {
-                            name: e.target.value,
-                          })
-                        }
-                        className="text-lg font-bold h-9 border-transparent bg-transparent px-1.5 -ml-1.5 hover:border-input focus-visible:border-input focus-visible:bg-background"
-                        placeholder="Entity type name (e.g. Creature, Prop Vehicle)"
-                      />
-                      <Textarea
-                        value={selected.description}
-                        onChange={(e) =>
-                          updateEntityType(selected.id, {
-                            description: e.target.value,
-                          })
-                        }
-                        placeholder="What is this entity type used for?"
-                        className="text-xs min-h-[44px] resize-none border-transparent bg-transparent px-1.5 -ml-1.5 hover:border-input focus-visible:border-input focus-visible:bg-background"
-                      />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+              <EntityMetaCard
+                entityType={selected}
+                onUpdate={(updates) =>
+                  updateEntityType
+                    .mutateAsync({ id: selected.id, ...updates })
+                    .catch(fail("Could not save entity type"))
+                }
+              />
 
               {/* Fields */}
               <Card>
@@ -417,6 +482,7 @@ export function EntitySchemasTab() {
                           size="sm"
                           variant="outline"
                           className="h-7 text-xs gap-1.5"
+                          disabled={createField.isPending}
                           onClick={() => handleAddField("text")}
                         >
                           <Plus className="w-3 h-3" /> Add Field
@@ -448,10 +514,15 @@ export function EntitySchemasTab() {
                                 field={field}
                                 siblingFields={selected.fields}
                                 onUpdate={(updates) =>
-                                  updateField(selected.id, field.id, updates)
+                                  handleUpdateField(field.id, updates)
                                 }
                                 onRemove={() =>
-                                  removeField(selected.id, field.id)
+                                  deleteField
+                                    .mutateAsync({
+                                      entityTypeId: selected.id,
+                                      fieldId: field.id,
+                                    })
+                                    .catch(fail("Could not delete field"))
                                 }
                               />
                             ))}

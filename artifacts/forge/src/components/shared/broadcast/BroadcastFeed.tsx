@@ -70,9 +70,11 @@ function BroadcastCard({ broadcast }: { broadcast: Broadcast }) {
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline gap-2 mb-1 flex-wrap">
           <span className="font-medium text-sm">{broadcast.authorName}</span>
-          <span className="text-xs text-muted-foreground">
-            {ROLE_LABELS[broadcast.authorRole]}
-          </span>
+          {broadcast.authorRole && (
+            <span className="text-xs text-muted-foreground">
+              {ROLE_LABELS[broadcast.authorRole]}
+            </span>
+          )}
           <span className="text-xs text-muted-foreground ml-auto">
             {new Date(broadcast.timestamp).toLocaleString()}
           </span>

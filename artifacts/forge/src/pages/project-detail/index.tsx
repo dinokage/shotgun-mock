@@ -10,6 +10,7 @@ import AssetsTab from "./AssetsTab";
 import TasksTab from "./TasksTab";
 import VersionsTab from "./VersionsTab";
 import DailiesTab from "./DailiesTab";
+import PipelineTab from "./PipelineTab";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 
 export default function ProjectDetail() {
@@ -92,6 +93,12 @@ export default function ProjectDetail() {
               Versions & Publishes
             </TabsTrigger>
             <TabsTrigger
+              value="pipeline"
+              className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-2"
+            >
+              Pipeline
+            </TabsTrigger>
+            <TabsTrigger
               value="dailies"
               className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-2"
             >
@@ -123,6 +130,12 @@ export default function ProjectDetail() {
               className="h-full m-0 data-[state=active]:flex flex-col"
             >
               <VersionsTab project={project as any} />
+            </TabsContent>
+            <TabsContent
+              value="pipeline"
+              className="h-full m-0 data-[state=active]:flex flex-col"
+            >
+              <PipelineTab project={project as any} />
             </TabsContent>
             <TabsContent
               value="dailies"

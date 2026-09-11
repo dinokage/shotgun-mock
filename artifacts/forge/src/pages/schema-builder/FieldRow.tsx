@@ -32,12 +32,14 @@ import {
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { FieldTypePicker } from "./FieldTypePicker";
+import { useDebouncedDraft } from "./editing";
 import {
   slugifyKey,
   RESERVED_KEYS,
   type EntityField,
   type FieldType,
 } from "@/store/schema";
+import type { EntityFieldInput } from "@/hooks/useSchemaBuilder";
 import { evaluateExpression, formatExprValue } from "@/lib/expressionEvaluator";
 import { EASE_DISSOLVE, DURATION } from "@/lib/motion";
 
@@ -48,7 +50,7 @@ function sampleScopeValue(field: EntityField): string | number | boolean {
     case "boolean":
       return field.defaultValue === "true";
     case "single_select":
-      return field.defaultValue || field.options?.[0] || "";
+      return field.defaultValue || field.options[0] || "";
     case "text":
       return field.defaultValue || "Sample";
     default:
@@ -64,7 +66,7 @@ export function FieldRow({
 }: {
   field: EntityField;
   siblingFields: EntityField[];
-  onUpdate: (updates: Partial<EntityField>) => void;
+  onUpdate: (updates: EntityFieldInput) => void;
   onRemove: () => void;
 }) {
   const {
@@ -76,6 +78,32 @@ export function FieldRow({
     isDragging,
   } = useSortable({ id: field.id });
   const [optionDraft, setOptionDraft] = useState("");
+  const [showDescription, setShowDescription] = useState(
+    field.description !== "",
+  );
+
+  const takenKeys = siblingFields
+    .filter((f) => f.id !== field.id)
+    .map((f) => f.key);
+
+  // The stored key is the only evidence of whether it was hand-written: if it
+  // is still exactly what the current label slugifies to, it is label-derived
+  // and safe to keep in sync; anything else the user chose deliberately, and
+  // re-slugifying it on the next rename would break every expression that
+  // references it.
+  const [keyManuallyEdited, setKeyManuallyEdited] = useState(
+    () => field.key !== slugifyKey(field.label, takenKeys),
+  );
+
+  const [draft, updateDraft] = useDebouncedDraft(
+    {
+      label: field.label,
+      key: field.key,
+      expression: field.expression ?? "",
+      description: field.description,
+    },
+    onUpdate,
+  );
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -84,9 +112,6 @@ export function FieldRow({
     zIndex: isDragging ? 10 : undefined,
   };
 
-  const takenKeys = siblingFields
-    .filter((f) => f.id !== field.id)
-    .map((f) => f.key);
   const usableFields = siblingFields.filter(
     (f) =>
       f.id !== field.id &&
@@ -100,29 +125,30 @@ export function FieldRow({
     // customized the key themselves — otherwise "Insert:" chips and typed
     // expression references stay frozen on whatever the placeholder label
     // was when the field was created.
-    if (field.keyManuallyEdited) {
-      onUpdate({ label });
+    if (keyManuallyEdited) {
+      updateDraft({ label });
     } else {
-      onUpdate({ label, key: slugifyKey(label, takenKeys) });
+      updateDraft({ label, key: slugifyKey(label, takenKeys) });
     }
   };
 
   const handleKeyChange = (rawKey: string) => {
     const cleaned = rawKey.toLowerCase().replace(/[^a-z0-9_]/g, "");
-    onUpdate({ key: cleaned || "field", keyManuallyEdited: true });
+    setKeyManuallyEdited(true);
+    updateDraft({ key: cleaned || "field" });
   };
 
   const handleTypeChange = (type: FieldType) => {
-    const updates: Partial<EntityField> = { type };
+    const updates: EntityFieldInput = { type };
     if (
       (type === "single_select" || type === "multi_select") &&
-      !field.options
+      field.options.length === 0
     ) {
       updates.options = ["Option A", "Option B"];
     }
     if (type === "computed") {
       updates.expression = field.expression ?? "";
-      updates.defaultValue = undefined;
+      updates.defaultValue = null;
     } else if (type !== field.type) {
       // Default values are type-specific (e.g. 'true'/'false' for boolean,
       // an option string for single_select) — clear a stale default instead
@@ -130,7 +156,7 @@ export function FieldRow({
       // Left alone, this silently broke computed-field previews elsewhere
       // (e.g. Number('true') => NaN) and left invalid values sitting in the
       // new type's control.
-      updates.defaultValue = undefined;
+      updates.defaultValue = null;
     }
     onUpdate(updates);
   };
@@ -138,18 +164,18 @@ export function FieldRow({
   const addOption = () => {
     const val = optionDraft.trim();
     if (!val) return;
-    onUpdate({ options: [...(field.options ?? []), val] });
+    onUpdate({ options: [...field.options, val] });
     setOptionDraft("");
   };
 
   const removeOption = (index: number) => {
-    onUpdate({ options: (field.options ?? []).filter((_, i) => i !== index) });
+    onUpdate({ options: field.options.filter((_, i) => i !== index) });
   };
 
   const insertRef = (key: string) => {
-    const current = field.expression ?? "";
+    const current = draft.expression;
     const needsSpace = current.length > 0 && !current.endsWith(" ");
-    onUpdate({ expression: `${current}${needsSpace ? " " : ""}${key} ` });
+    updateDraft({ expression: `${current}${needsSpace ? " " : ""}${key} ` });
   };
 
   const scope = Object.fromEntries(
@@ -157,7 +183,7 @@ export function FieldRow({
   );
   const evalResult =
     field.type === "computed"
-      ? evaluateExpression(field.expression ?? "", scope)
+      ? evaluateExpression(draft.expression, scope)
       : null;
 
   return (
@@ -194,7 +220,7 @@ export function FieldRow({
         <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 items-start">
           <div className="space-y-1 min-w-0">
             <Input
-              value={field.label}
+              value={draft.label}
               onChange={(e) => handleLabelChange(e.target.value)}
               className="h-8 text-sm font-semibold border-transparent bg-transparent px-1.5 hover:border-input focus-visible:border-input focus-visible:bg-background"
               placeholder="Field label"
@@ -202,18 +228,18 @@ export function FieldRow({
             <div className="flex items-center gap-1 px-1.5">
               <span className="text-[10px] text-muted-foreground/70">key:</span>
               <input
-                value={field.key}
+                value={draft.key}
                 onChange={(e) => handleKeyChange(e.target.value)}
                 spellCheck={false}
                 className="text-[10px] font-mono bg-transparent border-none outline-none text-muted-foreground focus:text-foreground w-32"
               />
-              {takenKeys.includes(field.key) && (
+              {takenKeys.includes(draft.key) && (
                 <span className="text-[10px] text-red-500 flex items-center gap-0.5">
                   <AlertCircle className="w-2.5 h-2.5" /> duplicate key
                 </span>
               )}
-              {!takenKeys.includes(field.key) &&
-                RESERVED_KEYS.includes(field.key) && (
+              {!takenKeys.includes(draft.key) &&
+                RESERVED_KEYS.includes(draft.key) && (
                   <span className="text-[10px] text-red-500 flex items-center gap-0.5">
                     <AlertCircle className="w-2.5 h-2.5" /> reserved word —
                     unusable in expressions
@@ -318,7 +344,7 @@ export function FieldRow({
         {(field.type === "single_select" || field.type === "multi_select") && (
           <div className="space-y-1.5">
             <div className="flex items-center gap-2 flex-wrap">
-              {(field.options ?? []).map((opt, i) => (
+              {field.options.map((opt, i) => (
                 <Badge
                   key={i}
                   variant="secondary"
@@ -367,8 +393,8 @@ export function FieldRow({
               Expression
             </span>
             <Textarea
-              value={field.expression ?? ""}
-              onChange={(e) => onUpdate({ expression: e.target.value })}
+              value={draft.expression}
+              onChange={(e) => updateDraft({ expression: e.target.value })}
               placeholder="e.g. complexity_score * screen_time_minutes * 12"
               className="font-mono text-xs min-h-[52px]"
               spellCheck={false}
@@ -392,7 +418,7 @@ export function FieldRow({
                 ))}
               </div>
             )}
-            {field.expression?.trim() && (
+            {draft.expression.trim() && (
               <div
                 className={cn(
                   "flex items-center gap-1.5 text-[11px] rounded-md px-2 py-1 w-fit",
@@ -416,18 +442,17 @@ export function FieldRow({
           </div>
         )}
 
-        {field.description !== undefined && (
+        {showDescription ? (
           <Input
-            value={field.description}
-            onChange={(e) => onUpdate({ description: e.target.value })}
+            value={draft.description}
+            onChange={(e) => updateDraft({ description: e.target.value })}
             placeholder="Helper text shown to artists filling this out (optional)"
             className="h-7 text-[11px] text-muted-foreground border-dashed max-w-md"
           />
-        )}
-        {field.description === undefined && (
+        ) : (
           <button
             type="button"
-            onClick={() => onUpdate({ description: "" })}
+            onClick={() => setShowDescription(true)}
             className="text-[10px] text-muted-foreground/60 hover:text-primary transition-colors"
           >
             + add helper text

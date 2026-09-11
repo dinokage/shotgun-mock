@@ -71,3 +71,9 @@ cookie.txt
 # Generated Prisma Client (regenerated via `prisma generate`, not committed --
 # same convention as dist/, node_modules)
 lib/db/generated/
+
+# The real staff roster, used only as the substitution list that keeps real
+# names out of the documentation screenshots. It is personal data about real
+# employees and must never be committed -- the whole point of the file is that
+# those names do not leave the studio.
+docs-build/realnames.txt

@@ -33,23 +33,42 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/store/auth";
 import {
-  useDeliveryStore,
+  useDelivery,
+  useRedeemDelivery,
+  useRecordDeliveryDownload,
   isDeliveryActive,
   isDeliveryExpired,
-  type Delivery,
-} from "@/store/deliveries";
-import { useProjectStore } from "@/store/projects";
-import { useShotStore } from "@/store/shots";
+  type DeliveryItemDTO,
+} from "@/hooks/useDeliveries";
 import { getPlaceholderThumbnail } from "@/lib/placeholderArt";
 import { usePlaceholderVideoSrc } from "@/hooks/usePlaceholderVideo";
+import { hashString } from "@/lib/seededMock";
+import { ApiError } from "@/lib/apiClient";
 import { cn } from "@/lib/utils";
+
+/** The subset of a delivery this page renders. Both the internal read
+ * (GET /deliveries/:id, for staff already signed in) and the public redeem
+ * (POST /deliveries/redeem, for an external recipient holding only a code)
+ * satisfy it — the public one deliberately carries no tenant, project, or
+ * access-code fields. */
+interface ViewDelivery {
+  id: string;
+  name: string;
+  notes: string;
+  status: string;
+  createdAt: string;
+  expiresAt: string | null;
+  projectName: string | null;
+  clientName: string | null;
+  createdByName: string | null;
+  items: DeliveryItemDTO[];
+}
 
 /**
  * Presentational-only countdown label derived from the delivery's existing
  * `expiresAt` field. This is purely a friendlier rendering of a value that's
- * already there — it does not affect `isDeliveryActive`/`isDeliveryExpired`
- * (store/deliveries.ts), which remain the sole source of truth for whether
- * the link still actually works.
+ * already there — the server's own redeem check remains the sole source of
+ * truth for whether the link still actually works.
  */
 function formatExpiryCountdown(expiresAt: string): {
   label: string;
@@ -81,23 +100,18 @@ function ForgeMark({ className }: { className?: string }) {
   );
 }
 
-/** Shared identity strip (title / project / client) shown above the access
- * gate and the expired/revoked states so a client always knows what they're
- * unlocking (or what they've lost access to) before anything else on screen. */
-function DeliveryMasthead({
-  delivery,
-  projectName,
-}: {
-  delivery: Delivery;
-  projectName: string | undefined;
-}) {
+/** Shared identity strip (title / project / client) shown above the
+ * expired/revoked states so a viewer always knows what they've lost access
+ * to. Only rendered on the internal path — the public gate can't name a
+ * delivery before its code has been redeemed. */
+function DeliveryMasthead({ delivery }: { delivery: ViewDelivery }) {
   return (
     <div className="flex items-center gap-2.5 text-center flex-col">
       <ForgeMark className="w-8 h-8" />
       <div>
-        <div className="font-semibold text-white">{delivery.title}</div>
+        <div className="font-semibold text-white">{delivery.name}</div>
         <div className="text-xs text-zinc-500">
-          {projectName ?? delivery.projectId} • {delivery.clientName}
+          {delivery.projectName ?? "Project"} • {delivery.clientName ?? "Client"}
         </div>
       </div>
     </div>
@@ -107,82 +121,87 @@ function DeliveryMasthead({
 export default function DeliveryDetail() {
   const [, params] = useRoute("/delivery/:id");
   const [, setLocation] = useLocation();
-  const { currentUser } = useAuthStore();
+  const { currentUser, isInitializing } = useAuthStore();
   const { toast } = useToast();
 
-  const deliveries = useDeliveryStore((s) => s.deliveries);
-  const recordAccess = useDeliveryStore((s) => s.recordAccess);
-  const projects = useProjectStore((s) => s.projects);
-  const shots = useShotStore((s) => s.shots);
+  const deliveryId = params?.id ?? null;
 
-  const delivery = deliveries.find((d) => d.id === params?.id);
-  const project = delivery
-    ? projects.find((p) => p.id === delivery.projectId)
-    : undefined;
+  // Staff already signed in read the delivery through the internal,
+  // session-authenticated route; the access-code gate exists for external
+  // recipients who have no Forge login at all, not to re-authenticate people
+  // already inside the studio.
+  const internal = useDelivery(currentUser ? deliveryId : null);
+  const redeem = useRedeemDelivery();
+  const recordDownload = useRecordDeliveryDownload();
 
   const [accessCode, setAccessCode] = useState("");
-  // Any authenticated internal user (staff already inside Forge) skips the
-  // access-code gate — the gate exists for external recipients who have no
-  // Forge login at all, not to re-authenticate people already signed in.
-  const [unlocked, setUnlocked] = useState(!!currentUser);
-  const [activeShotId, setActiveShotId] = useState<string | null>(null);
-  const activeShot = activeShotId
-    ? shots.find((s) => s.id === activeShotId)
-    : null;
+  // Held only in component state: it's the credential for every subsequent
+  // public call (download recording), and it is never persisted anywhere.
+  const [redeemedCode, setRedeemedCode] = useState<string | null>(null);
+  const [redeemed, setRedeemed] = useState<ViewDelivery | null>(null);
+  const [gateError, setGateError] = useState("");
+  const [activeItemId, setActiveItemId] = useState<string | null>(null);
+
+  // Staff without delivery-management capability get the same access-code
+  // gate an external recipient does, rather than a dead end: the internal
+  // read is capability-gated (it carries the access code), the public redeem
+  // is not.
+  const internalDenied =
+    internal.error instanceof ApiError && internal.error.status === 403;
+  const delivery: ViewDelivery | null =
+    currentUser && !internalDenied ? (internal.data ?? null) : redeemed;
+  const activeItem = delivery?.items.find((i) => i.id === activeItemId) ?? null;
+
   // Called unconditionally, ahead of this component's early returns below,
   // per rules of hooks -- seed 0 is an inert placeholder while nothing is
   // active, the video element that would use it is never rendered then.
-  const activeShotVideoSrc = usePlaceholderVideoSrc(activeShot?.thumbnailSeed ?? 0);
-
-  if (!delivery) {
-    return (
-      <div className="h-screen w-full flex flex-col items-center justify-center bg-zinc-950 gap-4 p-4">
-        <ForgeMark className="w-8 h-8" />
-        <div className="flex flex-col items-center gap-3 text-center max-w-sm">
-          <PackageX className="w-10 h-10 text-muted-foreground" />
-          <div>
-            <h1 className="text-white font-semibold">
-              This delivery link doesn't exist
-            </h1>
-            <p className="text-zinc-500 text-sm mt-1">
-              It may have been mistyped, or the delivery it pointed to was
-              removed. Contact the studio if you believe this is a mistake.
-            </p>
-          </div>
-        </div>
-        <Button
-          variant="outline"
-          onClick={() => setLocation(currentUser ? "/delivery" : "/login")}
-        >
-          <ArrowLeft className="w-4 h-4 mr-2" />{" "}
-          {currentUser ? "Back to Deliveries" : "Back to Login"}
-        </Button>
-      </div>
-    );
-  }
-
-  const active = isDeliveryActive(delivery);
+  const activeItemVideoSrc = usePlaceholderVideoSrc(
+    activeItem ? hashString(activeItem.entityId ?? activeItem.id) : 0,
+  );
 
   const handleUnlock = () => {
-    if (accessCode.trim().toLowerCase() === delivery.accessCode.toLowerCase()) {
-      setUnlocked(true);
-    } else {
-      toast({
-        title: "Invalid Code",
-        description: "Check the access code you were sent.",
-        variant: "destructive",
-      });
-    }
+    if (!deliveryId || !accessCode.trim()) return;
+    redeem.mutate(
+      { id: deliveryId, code: accessCode.trim() },
+      {
+        onSuccess: (data) => {
+          setRedeemed(data);
+          setRedeemedCode(accessCode.trim());
+          setGateError("");
+        },
+        // The API deliberately returns one generic failure whether the code
+        // is unknown, revoked, expired, or for a different delivery -- it
+        // must not confirm which delivery ids or tenants exist.
+        onError: () =>
+          setGateError(
+            "That code is invalid, expired, or has been revoked. Contact the studio for a new link.",
+          ),
+      },
+    );
   };
 
-  if (!unlocked) {
-    const expiryHint =
-      delivery.expiresAt && isDeliveryActive(delivery)
-        ? formatExpiryCountdown(delivery.expiresAt)
-        : null;
+  const openItem = (item: DeliveryItemDTO) => {
+    setActiveItemId(item.id);
+    // Opening an item is the recipient fetching it -- recorded server-side so
+    // the studio's download count is real rather than a per-browser tally.
+    if (redeemedCode)
+      recordDownload.mutate({ code: redeemedCode, itemId: item.id });
+  };
+
+  // This route sits outside AuthGuard, so nothing else has waited for the
+  // session probe -- showing the access-code gate before it lands would flash
+  // a code prompt at staff who are already signed in.
+  if (isInitializing) return null;
+
+  if ((!currentUser || internalDenied) && !delivery) {
     return (
       <div className="h-screen w-full flex flex-col items-center justify-center bg-zinc-950 p-4 gap-6">
-        <DeliveryMasthead delivery={delivery} projectName={project?.name} />
+        <div className="flex items-center gap-2.5">
+          <ForgeMark className="w-7 h-7" />
+          <span className="font-bold text-lg tracking-tight text-white">
+            Forge
+          </span>
+        </div>
         <Card className="w-full max-w-md border-border/50 shadow-2xl">
           <CardHeader className="space-y-2 text-center pb-6">
             <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-2">
@@ -207,40 +226,54 @@ export default function DeliveryDetail() {
             <Button
               className="w-full h-12 text-md font-semibold"
               onClick={handleUnlock}
+              disabled={redeem.isPending || !accessCode.trim()}
             >
               Unlock Delivery
             </Button>
-            {expiryHint && (
-              <p
-                className={cn(
-                  "text-xs text-center flex items-center justify-center gap-1.5 pt-2",
-                  expiryHint.urgent
-                    ? "text-status-orange"
-                    : "text-muted-foreground",
-                )}
-              >
-                <Clock className="w-3.5 h-3.5" />
-                {expiryHint.label} —{" "}
-                <span className="timecode">
-                  {new Date(delivery.expiresAt!).toLocaleDateString(undefined, {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  })}
-                </span>
-              </p>
+            {gateError && (
+              <p className="text-xs text-center text-status-red">{gateError}</p>
             )}
+            <p className="text-xs text-center text-muted-foreground mt-4">
+              Protected by Forge Secure Share
+            </p>
           </CardContent>
         </Card>
       </div>
     );
   }
 
-  if (!active) {
+  if (!delivery) {
+    if (internal.isLoading) return null;
+    return (
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-zinc-950 gap-4 p-4">
+        <ForgeMark className="w-8 h-8" />
+        <div className="flex flex-col items-center gap-3 text-center max-w-sm">
+          <PackageX className="w-10 h-10 text-muted-foreground" />
+          <div>
+            <h1 className="text-white font-semibold">
+              This delivery link doesn't exist
+            </h1>
+            <p className="text-zinc-500 text-sm mt-1">
+              It may have been mistyped, or the delivery it pointed to was
+              removed. Contact the studio if you believe this is a mistake.
+            </p>
+          </div>
+        </div>
+        <Button variant="outline" onClick={() => setLocation("/delivery")}>
+          <ArrowLeft className="w-4 h-4 mr-2" /> Back to Deliveries
+        </Button>
+      </div>
+    );
+  }
+
+  // Only reachable on the internal path: a public recipient's redeem already
+  // failed at the gate for a revoked or expired package, since the API never
+  // hands one back.
+  if (!isDeliveryActive(delivery)) {
     const expired = isDeliveryExpired(delivery);
     return (
       <div className="h-screen w-full flex flex-col items-center justify-center bg-zinc-950 text-white gap-6 p-4">
-        <DeliveryMasthead delivery={delivery} projectName={project?.name} />
+        <DeliveryMasthead delivery={delivery} />
         <Card className="w-full max-w-md border-border/50 shadow-2xl">
           <CardHeader className="space-y-2 text-center pb-6">
             <div
@@ -287,9 +320,9 @@ export default function DeliveryDetail() {
             <p className="text-sm text-center text-muted-foreground">
               Contact{" "}
               <span className="text-foreground font-medium">
-                {delivery.createdByName}
+                {delivery.createdByName ?? "the studio"}
               </span>{" "}
-              at the studio for a new link.
+              for a new link.
             </p>
           </CardContent>
         </Card>
@@ -302,25 +335,21 @@ export default function DeliveryDetail() {
     );
   }
 
-  const activeItem = activeShotId
-    ? delivery.items.find((i) => i.shotId === activeShotId)
-    : null;
-
   const handleDownloadManifest = () => {
     const lines = [
       "FORGE DELIVERY MANIFEST",
       "========================",
-      `Delivery: ${delivery.title}`,
-      `Project: ${project?.name ?? delivery.projectId}`,
-      `Client: ${delivery.clientName}`,
-      `Delivered by: ${delivery.createdByName}`,
+      `Delivery: ${delivery.name}`,
+      `Project: ${delivery.projectName ?? "—"}`,
+      `Client: ${delivery.clientName ?? "—"}`,
+      `Delivered by: ${delivery.createdByName ?? "—"}`,
       `Created: ${new Date(delivery.createdAt).toLocaleString()}`,
       `Expires: ${delivery.expiresAt ? new Date(delivery.expiresAt).toLocaleString() : "No expiry"}`,
       delivery.notes ? `Notes: ${delivery.notes}` : "",
       "",
       `Contents (${delivery.items.length} shot${delivery.items.length === 1 ? "" : "s"}):`,
       ...delivery.items.map(
-        (item, i) => `  ${i + 1}. ${item.name} (${item.shotId})`,
+        (item, i) => `  ${i + 1}. ${item.fileName} (${item.entityId ?? item.id})`,
       ),
       "",
       "This manifest documents the package contents. Individual shots are",
@@ -335,16 +364,16 @@ export default function DeliveryDetail() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${delivery.title.replace(/[^a-z0-9]+/gi, "_").toLowerCase()}_manifest.txt`;
+    a.download = `${delivery.name.replace(/[^a-z0-9]+/gi, "_").toLowerCase()}_manifest.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    recordAccess(delivery.id);
+    if (redeemedCode) recordDownload.mutate({ code: redeemedCode });
     toast({
       title: "Manifest Downloaded",
-      description: `Package contents for "${delivery.title}" saved.`,
+      description: `Package contents for "${delivery.name}" saved.`,
     });
   };
 
@@ -364,11 +393,11 @@ export default function DeliveryDetail() {
           )}
           <ForgeMark className="w-8 h-8 shrink-0" />
           <div className="min-w-0">
-            <div className="font-semibold truncate">{delivery.title}</div>
+            <div className="font-semibold truncate">{delivery.name}</div>
             <div className="text-xs text-zinc-400 truncate flex items-center gap-1.5">
               <Building2 className="w-3 h-3 shrink-0 text-zinc-500" />
-              {project?.name} • Delivered to {delivery.clientName} by{" "}
-              {delivery.createdByName}
+              {delivery.projectName} • Delivered to{" "}
+              {delivery.clientName ?? "client"} by {delivery.createdByName}
             </div>
           </div>
         </div>
@@ -421,22 +450,22 @@ export default function DeliveryDetail() {
           </div>
         )}
 
-        {activeShot ? (
+        {activeItem ? (
           <div className="space-y-3">
             <Button
               variant="ghost"
               size="sm"
               className="text-zinc-400 hover:text-white -ml-2"
-              onClick={() => setActiveShotId(null)}
+              onClick={() => setActiveItemId(null)}
             >
               <ArrowLeft className="w-3.5 h-3.5 mr-1.5" /> Back to package
             </Button>
             <div className="aspect-video bg-black rounded-lg overflow-hidden border border-white/10 relative">
               <video
-                key={activeShot.id}
-                src={activeShotVideoSrc}
+                key={activeItem.id}
+                src={activeItemVideoSrc}
                 poster={getPlaceholderThumbnail(
-                  activeShot.thumbnailSeed,
+                  hashString(activeItem.entityId ?? activeItem.id),
                   1280,
                   720,
                 )}
@@ -451,16 +480,14 @@ export default function DeliveryDetail() {
                   link was shared with, it doesn't prevent redistribution. */}
               <div className="absolute inset-0 pointer-events-none z-10 overflow-hidden opacity-30 mix-blend-overlay">
                 <div className="absolute top-1/4 left-1/4 -rotate-12 whitespace-nowrap text-white font-mono text-3xl font-bold tracking-widest drop-shadow-[0_2px_2px_rgba(0,0,0,1)]">
-                  {delivery.clientName}
+                  {delivery.clientName ?? "CONFIDENTIAL"}
                 </div>
                 <div className="absolute bottom-1/4 right-1/4 -rotate-12 whitespace-nowrap text-white font-mono text-3xl font-bold tracking-widest drop-shadow-[0_2px_2px_rgba(0,0,0,1)]">
                   DO NOT DISTRIBUTE
                 </div>
               </div>
             </div>
-            <div className="text-sm font-medium">
-              {activeItem?.name ?? activeShot.name}
-            </div>
+            <div className="text-sm font-medium">{activeItem.fileName}</div>
           </div>
         ) : delivery.items.length === 0 ? (
           <Empty>
@@ -479,14 +506,16 @@ export default function DeliveryDetail() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {delivery.items.map((item) => (
               <div
-                key={item.shotId}
+                key={item.id}
                 className="group bg-zinc-900 border border-white/10 rounded-lg overflow-hidden hover:border-primary/50 transition-all cursor-pointer"
-                onClick={() => setActiveShotId(item.shotId)}
+                onClick={() => openItem(item)}
               >
                 <div
                   className="relative aspect-video bg-zinc-800 bg-cover bg-center"
                   style={{
-                    backgroundImage: `url(${getPlaceholderThumbnail(item.thumbnailSeed)})`,
+                    backgroundImage: `url(${getPlaceholderThumbnail(
+                      hashString(item.entityId ?? item.id),
+                    )})`,
                   }}
                 >
                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
@@ -494,7 +523,7 @@ export default function DeliveryDetail() {
                   </div>
                 </div>
                 <div className="p-3 text-sm font-medium truncate">
-                  {item.name}
+                  {item.fileName}
                 </div>
               </div>
             ))}

@@ -3,6 +3,7 @@ import { prisma } from "@workspace/db";
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability } from "../middleware/rbac";
 import { getClientScope } from "../lib/clientScope";
+import { getVisibilityScope, visibleEpisodeIds } from "../lib/visibilityScope";
 import * as crypto from "crypto";
 
 // Confirms projectId actually belongs to the caller's tenant before it's
@@ -30,10 +31,21 @@ episodesRouter.get("/", async (req, res) => {
     // narrowed further to a single episode if that's the exact grant.
     const clientScope = await getClientScope(req);
     if (req.clientAccessLinkId && !clientScope) return res.json([]);
+
+    // An employee session sees the episodes that actually hold work it can
+    // see -- derived from the same visible shot/asset sets the shots/assets
+    // endpoints return, so every shot a caller can list still has its
+    // episode present here (tracking.tsx groups shots by episode and would
+    // otherwise lose the grouping label). `null` = studio-wide, no filter.
+    const scopedEpisodeIds = req.clientAccessLinkId
+      ? null
+      : await visibleEpisodeIds(tenantId, await getVisibilityScope(req));
+
     const rows = await prisma.episode.findMany({
       where: {
         tenantId,
         ...(typeof projectId === "string" ? { projectId } : {}),
+        ...(scopedEpisodeIds ? { id: { in: scopedEpisodeIds } } : {}),
         ...(clientScope
           ? {
               projectId: clientScope.projectId,

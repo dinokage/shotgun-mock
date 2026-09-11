@@ -1,7 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import {
-  TASKS,
   Task,
   TaskStatus,
   ApprovalEvent,
@@ -11,7 +10,6 @@ import {
 interface TaskState {
   tasks: Task[];
   setTasks: (tasks: Task[]) => void;
-  addTask: (task: Task) => void;
   updateTask: (id: string, updates: Partial<Task>) => void;
   updateTaskDates: (id: string, newDate: string) => void;
   updateTaskStatus: (id: string, status: TaskStatus) => void;
@@ -62,29 +60,8 @@ const syncBackend = async (id: string, updates: any) => {
 export const useTasksStore = create<TaskState>()(
   persist(
     (set) => ({
-      tasks: TASKS,
+      tasks: [],
       setTasks: (tasks) => set({ tasks }),
-      addTask: (task) => {
-        set((state) => ({ tasks: [task, ...state.tasks] }));
-        import("@/lib/apiClient").then(({ apiFetch }) => {
-          apiFetch("/tasks", {
-            method: "POST",
-            body: JSON.stringify({
-              entityId: task.assetId || task.shotId,
-              entityType: task.assetId ? "asset" : "shot",
-              status: task.status,
-              title: task.title,
-              description: task.description,
-              priority: task.priority,
-              department: task.department,
-              pipelinePhase: task.pipelinePhase,
-              dueDate: task.dueDate,
-              estimatedHours: task.estimatedHours,
-              assignedTo: task.assigneeId || null,
-            }),
-          }).catch(console.error);
-        });
-      },
       updateTaskDates: (id, newDate) => {
         set((state) => ({
           tasks: state.tasks.map((t) =>
@@ -220,29 +197,14 @@ export const useTasksStore = create<TaskState>()(
     }),
     {
       name: "forge-task-storage",
-      version: 3,
-      // Migrate tasks persisted before approvalHistory / checklist / comments /
-      // dailyLogs were added — those fields will be undefined on old records,
-      // causing .length/.map crashes everywhere they're accessed. Bumped to 3
-      // because some browsers had version-2-tagged state that still had gaps
-      // (added via a path that predated the v2 migration's own introduction),
-      // so a version check alone isn't sufficient — every consumption site
-      // was also hardened with `?? []` as defense-in-depth.
-      migrate(persistedState: unknown, fromVersion: number) {
-        if (fromVersion < 3) {
-          const state = persistedState as { tasks?: Task[] };
-          if (Array.isArray(state?.tasks)) {
-            state.tasks = state.tasks.map((t) => ({
-              ...t,
-              approvalHistory: t.approvalHistory ?? [],
-              checklist: t.checklist ?? [],
-              comments: t.comments ?? [],
-              dailyLogs: t.dailyLogs ?? [],
-            }));
-          }
-        }
-        return persistedState as TaskState;
-      },
+      // v4 discards whatever was persisted before it outright rather than
+      // patching it forward: the store's default seed used to be mockData.ts's
+      // generated TASKS array, so any pre-v4 browser could still be holding
+      // that fake data in localStorage. Every real task is re-fetched and
+      // overwritten via setTasks() on the very next login anyway, so nothing
+      // genuine is lost by wiping first.
+      version: 4,
+      migrate: () => ({ tasks: [] }),
     },
   ),
 );

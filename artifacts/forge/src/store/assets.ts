@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { ASSETS, Asset } from "@/data/mockData";
+import { Asset } from "@/data/mockData";
 
 interface AssetState {
   assets: Asset[];
@@ -24,7 +24,7 @@ const syncBackend = async (id: string, updates: any) => {
 export const useAssetStore = create<AssetState>()(
   persist(
     (set) => ({
-      assets: ASSETS,
+      assets: [],
       setAssets: (assets) => set({ assets }),
       updateAsset: (id, updates) => {
         set((state) => ({
@@ -37,6 +37,14 @@ export const useAssetStore = create<AssetState>()(
     }),
     {
       name: "forge-asset-storage",
+      // Bumped from the unversioned default (0): older persisted state was
+      // seeded from mockData.ts's generated ASSETS array, and localStorage
+      // survives across deploys -- without a version bump, an existing
+      // browser would keep rendering that fake seed until the next real
+      // fetch happened to overwrite it. Discard rather than migrate: there's
+      // nothing real to carry forward from a mock seed.
+      version: 1,
+      migrate: () => ({ assets: [] }),
     },
   ),
 );

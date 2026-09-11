@@ -15,6 +15,8 @@ export interface UserDTO {
   avatar: string | null;
   status: string | null;
   punchedInAt: string | null;
+  lastSeenAt: string | null;
+  requestedRole: string | null;
   createdAt: string;
 }
 
@@ -23,6 +25,11 @@ export function useUsers() {
     queryKey: ["users"],
     queryFn: async () => apiFetch<UserDTO[]>("/users"),
     staleTime: 60000,
+    // lastSeenAt-based presence goes stale (see PRESENCE_ONLINE_WINDOW_MS on
+    // the API) after 90s of no requests from that user, so refetching only
+    // while this query has an active observer keeps roster/assignee-picker
+    // "Online" dots roughly accurate without polling from every closed tab.
+    refetchInterval: 30000,
   });
 }
 export function useSendInvite() {
@@ -66,19 +73,6 @@ export function useUpdateProfile() {
         avatar: updated.avatar ?? undefined,
       });
     },
-  });
-}
-
-// Self-service password change -- every imported-roster/newly-invited
-// account starts on a shared studio default password with no prior way to
-// change it. Requires the current password (PUT /users/me/password verifies
-// it server-side); ApiError's message here is server-authored ("Current
-// password is incorrect", "New password must be at least 8 characters") so
-// callers can surface it directly rather than a generic failure toast.
-export function useChangePassword() {
-  return useMutation({
-    mutationFn: (body: { currentPassword: string; newPassword: string }) =>
-      apiClient.put<{ ok: true }>("/users/me/password", body),
   });
 }
 

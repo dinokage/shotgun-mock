@@ -6,6 +6,8 @@ import { KeyboardShortcutsDialog } from "@/components/shared/KeyboardShortcutsDi
 import { CreateTaskModal } from "@/components/shared/CreateTaskModal";
 import { CreateProjectModal } from "@/components/shared/CreateProjectModal";
 import { TaskDrawer } from "@/components/shared/TaskDrawer";
+import { OnboardingTour } from "@/components/shared/OnboardingTour";
+import { AiAssistant } from "@/components/shared/AiAssistant";
 import { useUIStore } from "@/store/ui";
 import { useEffect } from "react";
 
@@ -61,6 +63,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <TaskDrawer />
       <CreateTaskModal />
       <CreateProjectModal />
+      <OnboardingTour />
+      <AiAssistant />
     </div>
   );
 }

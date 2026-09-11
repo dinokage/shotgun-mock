@@ -14,6 +14,7 @@ import {
   MessageSquare,
   XCircle,
   ChevronLeft,
+  ChevronRight,
   Circle,
   Upload,
   Camera,
@@ -72,8 +73,10 @@ import {
 } from "@/components/ui/dialog";
 import { cn, copyToClipboard } from "@/lib/utils";
 import { cut } from "@/lib/motion";
-import { hashString } from "@/lib/seededMock";
-import { getPlaceholderThumbnail, getPlaceholderVideoSrc } from "@/lib/placeholderArt";
+// The seeded-placeholder imports that used to live here are gone with the
+// last of this page's invented content: the fake v001/v002/v003 compare list,
+// the two hardcoded "Previous/Next Shot" cards, and the generated poster
+// frames. Everything the player shows now comes from a real uploaded version.
 import { useAuthStore } from "@/store/auth";
 import { useTasksStore } from "@/store/tasks";
 import { useUserStore } from "@/store/users";
@@ -91,9 +94,17 @@ import {
   useTaskApprovalEvents,
 } from "@/hooks/useTasks";
 import {
-  useReviewStore,
-  type ReviewComment,
-} from "@/store/reviews";
+  usePresentationValue,
+  useStartPresentation,
+  useStopPresentation,
+  usePushPresenterFrame,
+  useReviewComments,
+  usePostReviewComment,
+  useUploadReviewAudio,
+  useClientNotes,
+  useTransferClientNote,
+  type ReviewCommentDTO,
+} from "@/hooks/useReviewSession";
 import {
   AnnotationToolbar,
   AnnotationCanvas,
@@ -113,6 +124,7 @@ import {
   useCreateAnnotation,
   useUpdateAnnotation,
   useDeleteAnnotation,
+  isTempAnnotationId,
 } from "@/hooks/useReviews";
 import { useVersions, useCreateVersion, useUpdateVersion } from "@/hooks/useVersions";
 import { useUploadVideo } from "@/hooks/useUploads";
@@ -132,6 +144,17 @@ interface MediaClip {
   scale: number;
 }
 
+/**
+ * The project's frame rate.
+ *
+ * Named rather than left as the literal 24 it was scattered across the
+ * playback engine, the scrub-sync effect and the frame/seconds conversions --
+ * three places that have to agree, and silently produced drift when they
+ * did not. 24 is the studio's delivery rate; a per-project rate would live on
+ * the project record, and this is the single place that would read it.
+ */
+const PROJECT_FPS = 24;
+
 const COLORS = [
   "#ef4444",
   "#3b82f6",
@@ -144,6 +167,7 @@ const COLORS = [
 const APPROVAL_ACTION_LABEL: Record<ApprovalEvent["action"], string> = {
   "submitted-for-lead-review": "submitted for Lead review",
   "submitted-for-manager-review": "submitted for Production Manager review",
+  "submitted-for-producer-review": "submitted for Main Producer review",
   approved: "approved",
   "changes-requested": "requested changes",
   rejected: "rejected",
@@ -167,12 +191,12 @@ function ApprovalActionIcon({ action }: { action: ApprovalEvent["action"] }) {
 /**
  * Plays back a recorded voice-note comment and draws its waveform from the
  * real amplitude samples captured during recording (see `toggleRecording`
- * below) — not a decorative placeholder. `audioUrl` is a `blob:` object URL,
- * so it only survives for this browser tab's session; if the page was
- * reloaded (or the note is from a different session) the URL is dead and the
- * `<audio>` element fires `onError` — handled below rather than left to crash.
+ * below) — not a decorative placeholder. `audioUrl` points at a real uploaded
+ * file served by the API, so playback survives a reload and works on every
+ * reviewer's machine; `onError` still degrades gracefully if the file itself
+ * can't be fetched.
  */
-function VoiceNotePlayer({ comment }: { comment: ReviewComment }) {
+function VoiceNotePlayer({ comment }: { comment: ReviewCommentDTO }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -185,7 +209,7 @@ function VoiceNotePlayer({ comment }: { comment: ReviewComment }) {
     return (
       <div className="mt-2 bg-muted/50 rounded-full h-8 flex items-center px-3 gap-2 w-56 text-xs text-muted-foreground">
         <MicOff className="w-3.5 h-3.5 shrink-0" />
-        Voice note unavailable (session ended)
+        Voice note unavailable
       </div>
     );
   }
@@ -359,10 +383,13 @@ export default function Review() {
   const reviewedDept = departments.find(
     (d) => d.name === reviewedTask?.department,
   );
+  // Only the department's own lead holds the first gate. The producer is a
+  // single studio-wide role with its own final gate below, so it no longer
+  // doubles as department leadership here.
   const canApproveAsLead = Boolean(
     currentUser &&
       canApproveReview &&
-      DEPARTMENT_LEADERSHIP_ROLES.includes(currentUser.role) &&
+      currentUser.role === "lead" &&
       currentUser.departmentId === reviewedDept?.id,
   );
   const canApproveAsPM = Boolean(
@@ -375,24 +402,20 @@ export default function Review() {
         departments,
       ),
   );
-  // Index into the live user roster for the logged-in user, used to
-  // attribute anything this page writes into the shared comment stream
-  // (comments, stamps) to whoever is actually signed in — not a hardcoded
-  // seed user. -1 (renders as "Unknown") if somehow nobody is logged in.
-  const currentUserIndex = currentUser
-    ? users.findIndex((u) => u.id === currentUser.id)
-    : -1;
-
-  // Presentation Mode: a Lead/Producer can broadcast their playhead to every
-  // other tab open to this version (this internal page, and the client
-  // portal). Sync is real but transport-limited to this mock's zustand
-  // `persist` + storage-event bridge (see src/store/reviews.ts) — it only
-  // reaches other tabs/windows in the same browser, not another reviewer's
-  // own machine, so copy shown to the user must say "tabs", not "viewers".
-  const presentation = useReviewStore((s) => s.presentation);
-  const startPresentation = useReviewStore((s) => s.startPresentation);
-  const stopPresentation = useReviewStore((s) => s.stopPresentation);
-  const setPresenterFrame = useReviewStore((s) => s.setPresenterFrame);
+  // The main producer is studio-wide, so unlike the Lead and Production
+  // Manager gates above this one carries no department check — they are the
+  // single final sign-off before a shot reaches the client.
+  const canApproveAsProducer = Boolean(
+    currentUser && canApproveReview && currentUser.role === "producer",
+  );
+  // Presentation Mode: a Lead/Producer broadcasts their playhead to everyone
+  // else viewing this version — the internal page and the client portal, on
+  // their own machines. The presentation row lives server-side and is polled
+  // fast only while a session is actually running (see usePresentation).
+  const presentation = usePresentationValue(versionId);
+  const startPresentation = useStartPresentation(versionId);
+  const stopPresentation = useStopPresentation(versionId);
+  const pushPresenterFrame = usePushPresenterFrame(versionId);
   const isPresenting =
     presentation.isActive && presentation.presenterId === currentUser?.id;
   const isLockedViewer =
@@ -401,7 +424,49 @@ export default function Review() {
     presentation.presenterId !== currentUser?.id;
 
   const [isPlaying, setIsPlaying] = useState(false);
+  // Signed shuttle speed, as J/K/L behave in every editing application:
+  // negative reverses, magnitude is the multiplier, and repeated presses step
+  // through the speeds rather than toggling. Kept separate from isPlaying so
+  // that pausing and resuming does not lose the speed you were shuttling at.
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const SHUTTLE_SPEEDS = [1, 2, 4, 8];
+
+  // L: forward, faster each press. J: reverse, faster each press.
+  const shuttle = (direction: 1 | -1) => {
+    setPlaybackRate((rate) => {
+      const goingSameWay = isPlaying && Math.sign(rate) === direction;
+      const current = Math.abs(rate);
+      const next = goingSameWay
+        ? SHUTTLE_SPEEDS[
+            Math.min(SHUTTLE_SPEEDS.indexOf(current) + 1, SHUTTLE_SPEEDS.length - 1)
+          ]
+        : 1;
+      return next * direction;
+    });
+    setIsPlaying(true);
+  };
+
   const [frame, setFrame] = useState(1);
+
+  // The clip's real length, in frames.
+  //
+  // This was hardcoded to 240 -- exactly ten seconds at 24fps. Any footage
+  // longer than that was simply unreachable: the scrubber ended, playback
+  // looped, and stepping frame by frame stopped, all in the middle of the
+  // shot. Anything shorter left the last stretch of the timeline scrubbing
+  // past the end of the video. Now it follows the media, with 240 kept only
+  // as the pre-load default so the timeline has a sane width before the
+  // metadata arrives.
+  const [mediaDurationSec, setMediaDurationSec] = useState<number | null>(null);
+  const maxFrames = mediaDurationSec
+    ? Math.max(1, Math.round(mediaDurationSec * PROJECT_FPS))
+    : 240;
+
+  // In/out points. Null means "no range set"; when both are set, playback
+  // loops between them, which is how anyone actually studies a few frames of
+  // an animation rather than rewinding the whole shot each pass.
+  const [inPoint, setInPoint] = useState<number | null>(null);
+  const [outPoint, setOutPoint] = useState<number | null>(null);
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<
     string | null
   >(null);
@@ -445,12 +510,17 @@ export default function Review() {
   // clip-drag handles below, the timeline resize handles, and the Properties
   // panel are separate mutation paths on this page and need the same guard —
   // otherwise "Read-only Reviewer" isn't actually read-only.
-  const canEdit = !viewerMode && !isLockedViewer;
-  // Comments (including voice notes) live in the review store so they persist
-  // across reloads/tabs like presentation state does, rather than being lost
-  // local-only state.
-  const comments = useReviewStore((s) => s.comments);
-  const addComment = useReviewStore((s) => s.addComment);
+  // Drawing is a write, and the server enforces `submit_reviews` on every
+  // annotation route. Leaving that out of `canEdit` meant the whole drawing
+  // toolbar was offered to roles whose every stroke came back 403 -- the
+  // admin above all, who is the account most likely to be exploring. The
+  // tools now read as unavailable rather than broken.
+  const canEdit = !viewerMode && !isLockedViewer && canSubmitReview;
+  // Comments (including voice notes) are server-backed and keyed to this
+  // version, so every reviewer on the same version sees the same stream.
+  const { data: comments = [] } = useReviewComments(versionId);
+  const postComment = usePostReviewComment(versionId);
+  const uploadReviewAudio = useUploadReviewAudio();
   const [commentDraft, setCommentDraft] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
@@ -465,9 +535,30 @@ export default function Review() {
   // being reviewed (versionId, resolved above from this task's real Version
   // row — the same id already used above for Presentation Mode syncing).
   const { data: annotations = [] } = useAnnotations(versionId);
-  const createAnnotation = useCreateAnnotation(versionId);
-  const updateAnnotation = useUpdateAnnotation(versionId);
-  const deleteAnnotation = useDeleteAnnotation(versionId);
+  // A failed annotation write used to be completely silent: the mark was
+  // pushed up, the server refused it, and the drawing simply disappeared with
+  // no explanation at all. Both real refusals have a specific cause worth
+  // naming -- the role has no submit_reviews capability (403), or the shot is
+  // not in this person's visibility scope (404) -- and guessing between them
+  // is not something a reviewer should have to do.
+  const reportAnnotationFailure = (message: string) => {
+    const lower = message.toLowerCase();
+    const isForbidden =
+      lower.includes("forbidden") || lower.includes("permission") || lower.includes("403");
+    const isNotFound = lower.includes("not found") || lower.includes("404");
+    toast({
+      title: "Annotation not saved",
+      description: isForbidden
+        ? "Your role can view this review but not draw on it. Annotating needs the Submit Reviews permission — a lead or producer can grant it."
+        : isNotFound
+          ? "This shot isn't assigned to you, so you can't annotate it. Ask your lead to assign the task to you first."
+          : `Couldn't save that mark: ${message}`,
+      variant: "destructive",
+    });
+  };
+  const createAnnotation = useCreateAnnotation(versionId, reportAnnotationFailure);
+  const updateAnnotation = useUpdateAnnotation(versionId, reportAnnotationFailure);
+  const deleteAnnotation = useDeleteAnnotation(versionId, reportAnnotationFailure);
   // Bridges the shared AnnotationCanvas's raw dispatch-style API (and this
   // page's own resize/drag handlers, which were all written against a local
   // useState<Annotation[]>) onto the server-backed list above. Ids added by
@@ -490,14 +581,49 @@ export default function Review() {
         const { id, ...rest } = a;
         createAnnotation.mutate(rest);
       } else if (JSON.stringify(prev) !== JSON.stringify(a)) {
+        // A row still carrying its optimistic placeholder id has no server
+        // row to address yet, so a PUT against it would 404 and roll the
+        // edit back. The create still in flight will land the current state;
+        // skipping here is what makes "draw, then immediately nudge it"
+        // behave instead of appearing to undo itself.
+        if (isTempAnnotationId(a.id)) return;
         const { id, ...rest } = a;
         updateAnnotation.mutate({ id, ...rest });
       }
     });
     prevList
       .filter((a) => !nextIds.has(a.id))
+      // Same reasoning in reverse: there is nothing on the server to delete.
+      .filter((a) => !isTempAnnotationId(a.id))
       .forEach((a) => deleteAnnotation.mutate(a.id));
   };
+  // Save feedback for the annotation layer. There is no Save button here by
+  // design -- marks persist as they are drawn -- but "it saved itself" is a
+  // claim the interface has to actually make, or the artist has no way to
+  // know their notes will still be there when the lead opens the shot.
+  const annotationWriteInFlight =
+    createAnnotation.isPending ||
+    updateAnnotation.isPending ||
+    deleteAnnotation.isPending;
+  const [annotationSaveState, setAnnotationSaveState] = useState<
+    "idle" | "saving" | "saved"
+  >("idle");
+  useEffect(() => {
+    if (annotationWriteInFlight) {
+      setAnnotationSaveState("saving");
+      return;
+    }
+    // Only advance to "saved" from "saving": this effect also runs on mount,
+    // and flashing "Saved" at someone who has not drawn anything is a claim
+    // about work that does not exist.
+    setAnnotationSaveState((prev) => (prev === "saving" ? "saved" : prev));
+  }, [annotationWriteInFlight]);
+  useEffect(() => {
+    if (annotationSaveState !== "saved") return;
+    const timer = window.setTimeout(() => setAnnotationSaveState("idle"), 2000);
+    return () => window.clearTimeout(timer);
+  }, [annotationSaveState]);
+
   const [resizing, setResizing] = useState<{
     id: string;
     type: "video" | "annotation";
@@ -538,45 +664,56 @@ export default function Review() {
   const [compareMode, setCompareMode] = useState<
     "off" | "side-by-side" | "overlay"
   >("off");
-  const [compareVersionA, setCompareVersionA] = useState("v003");
-  const [compareVersionB, setCompareVersionB] = useState("v001");
+  const [compareVersionA, setCompareVersionA] = useState("");
+  const [compareVersionB, setCompareVersionB] = useState("");
   const [overlayOpacity, setOverlayOpacity] = useState(50);
   const compareVideoRefA = useRef<HTMLVideoElement>(null);
   const compareVideoRefB = useRef<HTMLVideoElement>(null);
 
-  // Mock version list for the compare dropdown. `src` starts empty and is
-  // resolved below (self-hosted, generated client-side) rather than
-  // hardcoded to a CDN URL -- this office network has no internet access.
-  const [VERSIONS, setVERSIONS] = useState([
-    { id: "v001", label: "v001 — Initial Layout", src: "" },
-    { id: "v002", label: "v002 — Lighting Pass", src: "" },
-    { id: "v003", label: "v003 — Final Comp", src: "" },
-  ]);
+  // The versions this shot actually has, for the compare dropdowns. This used
+  // to be a hardcoded list of three invented versions ("v001 — Initial
+  // Layout", ...) with generated placeholder footage behind them, so Compare
+  // always looked functional and never once compared the studio's real work.
+  // Only versions with uploaded media appear: comparing against a row that
+  // has no file is a blank pane, not a comparison.
+  const VERSIONS = useMemo(
+    () =>
+      taskVersions
+        .filter((v) => v.mediaUrl)
+        .map((v) => ({
+          id: v.id,
+          label: v.notes ? `${v.versionNumber} — ${v.notes}` : v.versionNumber,
+          src: v.mediaUrl,
+        })),
+    [taskVersions],
+  );
 
+  // The base clip spans the whole timeline, so its end has to follow the real
+  // frame count. Without this it stayed at whatever maxFrames was when the
+  // clip was created (240), and every frame past that fell outside the clip's
+  // active span -- the video vanished partway through its own shot.
   useEffect(() => {
-    let cancelled = false;
-    getPlaceholderVideoSrc(hashString("base-v1")).then((src) => {
-      if (cancelled || !src) return;
-      setVideoClips((prev) =>
-        prev.map((c) => (c.id === "base-v1" && !c.src ? { ...c, src } : c)),
-      );
-    });
-    Promise.all(
-      ["v001", "v002", "v003"].map((id) => getPlaceholderVideoSrc(hashString(id))),
-    ).then(([srcA, srcB, srcC]) => {
-      if (cancelled) return;
-      setVERSIONS((prev) =>
-        prev.map((v, i) => {
-          const src = [srcA, srcB, srcC][i];
-          return src ? { ...v, src } : v;
-        }),
-      );
-    });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount, this is one-time placeholder generation, not a reaction to changing props/state
-  }, []);
+    setVideoClips((prev) =>
+      prev.map((c) =>
+        c.id === "base-v1" && c.endFrame !== maxFrames
+          ? { ...c, endFrame: maxFrames }
+          : c,
+      ),
+    );
+  }, [maxFrames]);
+
+  // Default the two sides to the newest pair once real versions arrive.
+  // Seeded rather than left empty so opening Compare shows a comparison
+  // immediately instead of two empty selects.
+  useEffect(() => {
+    if (VERSIONS.length === 0) return;
+    setCompareVersionA((cur) =>
+      VERSIONS.some((v) => v.id === cur) ? cur : VERSIONS[VERSIONS.length - 1].id,
+    );
+    setCompareVersionB((cur) =>
+      VERSIONS.some((v) => v.id === cur) ? cur : VERSIONS[0].id,
+    );
+  }, [VERSIONS]);
 
   // Loads the version's real, persisted footage (uploaded via /uploads/video
   // and saved to the version's mediaUrl) into the player -- without this,
@@ -605,14 +742,26 @@ export default function Review() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [existingVersion?.mediaUrl]);
 
-  const reviewWorkflowStatus: "wip" | "lead-review" | "pm-review" | "approved" =
+  const reviewWorkflowStatus:
+    | "wip"
+    | "lead-review"
+    | "pm-review"
+    | "producer-review"
+    | "approved" =
     reviewedTask?.status === "review" || reviewedTask?.status === "lead-review"
       ? "lead-review"
-      : reviewedTask?.status === "pm-review" || reviewedTask?.status === "approved"
+      : reviewedTask?.status === "pm-review" ||
+          reviewedTask?.status === "producer-review" ||
+          reviewedTask?.status === "approved"
         ? reviewedTask.status
         : "wip";
   const submitApproval = (
-    status: "in-progress" | "lead-review" | "pm-review" | "approved",
+    status:
+      | "in-progress"
+      | "lead-review"
+      | "pm-review"
+      | "producer-review"
+      | "approved",
     action: ApprovalEvent["action"],
   ) => {
     if (!currentUser || !taskId) return;
@@ -643,12 +792,37 @@ export default function Review() {
   // land in a holding area here rather than the shared comment stream — an
   // internal reviewer has to explicitly "transfer" a note before it becomes
   // visible team-wide.
-  const clientNotes = useReviewStore((s) => s.clientNotes);
-  const transferClientNote = useReviewStore((s) => s.transferClientNote);
+  const { data: clientNotes = [] } = useClientNotes(reviewedTaskShotId);
+  const transferClientNote = useTransferClientNote(reviewedTaskShotId, versionId);
   const pendingClientNotes = clientNotes.filter((n) => !n.transferred);
 
   const { toast } = useToast();
-  const maxFrames = 240;
+
+  // Remembered per browser, same reasoning as the sidebar's collapse: how
+  // much of the screen you want given to the image rather than the notes
+  // about it depends on the monitor you are sitting at, not on who you are.
+  const [commentsCollapsed, setCommentsCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem("forge-review-comments-collapsed") === "1";
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "forge-review-comments-collapsed",
+        commentsCollapsed ? "1" : "0",
+      );
+    } catch {
+      // Private window or blocked storage: the preference simply won't stick.
+    }
+  }, [commentsCollapsed]);
+
+  // Set when the browser cannot decode the loaded file. Surfaced rather than
+  // logged, because the failure is invisible otherwise: the upload succeeded,
+  // the player is there, and the frame is simply black forever.
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
   const timelineRef = useRef<HTMLDivElement>(null);
@@ -669,7 +843,24 @@ export default function Review() {
   // else before Read-only mode was switched on.
   useHotkeys(
     {
-      Space: () => !isLockedViewer && setIsPlaying((p) => !p),
+      Space: () => {
+        if (isLockedViewer) return;
+        // Space resumes at normal speed rather than whatever shuttle rate was
+        // last used -- pressing play after shuttling at 8x and getting 8x is
+        // never what anyone means.
+        setIsPlaying((p) => {
+          if (!p) setPlaybackRate(1);
+          return !p;
+        });
+      },
+      // J / K / L: the transport every editor and review tool shares.
+      j: () => !isLockedViewer && shuttle(-1),
+      k: () => {
+        if (isLockedViewer) return;
+        setIsPlaying(false);
+        setPlaybackRate(1);
+      },
+      l: () => !isLockedViewer && shuttle(1),
       ArrowLeft: () => {
         if (isLockedViewer) return;
         setIsPlaying(false);
@@ -680,22 +871,48 @@ export default function Review() {
         setIsPlaying(false);
         setFrame((f) => Math.min(maxFrames, f + 1));
       },
-      j: () => {
+      // Comma and full stop step one frame on any keyboard layout where the
+      // arrow keys are awkward to reach from the annotation tools.
+      ",": () => {
         if (isLockedViewer) return;
         setIsPlaying(false);
-        setFrame((f) => Math.max(1, f - 5));
+        setFrame((f) => Math.max(1, f - 1));
       },
-      k: () => !isLockedViewer && setIsPlaying((p) => !p),
-      l: () => {
+      ".": () => {
         if (isLockedViewer) return;
         setIsPlaying(false);
-        setFrame((f) => Math.min(maxFrames, f + 5));
+        setFrame((f) => Math.min(maxFrames, f + 1));
       },
-      "[": () => {
-        /* trim in point placeholder */
+      Home: () => {
+        if (isLockedViewer) return;
+        setIsPlaying(false);
+        setFrame(1);
       },
-      "]": () => {
-        /* trim out point placeholder */
+      End: () => {
+        if (isLockedViewer) return;
+        setIsPlaying(false);
+        setFrame(maxFrames);
+      },
+      // In and out points. `i`/`o` are the bindings every editor uses; `[`
+      // and `]` are kept as the aliases some colourists reach for. These were
+      // empty placeholder functions -- the keys were bound and did nothing,
+      // which is worse than being unbound, because the player looked like it
+      // had ignored the press.
+      i: () => !isLockedViewer && setInPoint(frame),
+      o: () => !isLockedViewer && setOutPoint(frame),
+      "[": () => !isLockedViewer && setInPoint(frame),
+      "]": () => !isLockedViewer && setOutPoint(frame),
+      // Clears the range, as in most players.
+      x: () => {
+        if (isLockedViewer) return;
+        setInPoint(null);
+        setOutPoint(null);
+      },
+      f: () => {
+        const el = videoCanvasContainerRef.current;
+        if (!el) return;
+        if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+        else el.requestFullscreen().catch(() => {});
       },
       Escape: () => {
         setSelectedAnnotationId(null);
@@ -741,12 +958,17 @@ export default function Review() {
         if (!viewerMode && !isLockedViewer) setTool("text");
       },
     },
-    [selectedAnnotationId, maxFrames, isLockedViewer, viewerMode],
+    [selectedAnnotationId, maxFrames, isLockedViewer, viewerMode, isPlaying, frame],
   );
 
   // Push our playhead out to locked viewers whenever we're presenting.
+  // Coalesced on a short timer: dragging the scrubber changes `frame` on
+  // every pixel, and one POST per pixel would both flood the API and let
+  // out-of-order responses land a stale frame on every viewer.
   useEffect(() => {
-    if (isPresenting) setPresenterFrame(frame);
+    if (!isPresenting) return;
+    const timer = window.setTimeout(() => pushPresenterFrame.mutate(frame), 200);
+    return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [frame, isPresenting]);
 
@@ -757,14 +979,17 @@ export default function Review() {
     setFrame(presentation.frame);
   }, [isLockedViewer, presentation.frame]);
 
-  // Don't leave the room "presenting" after navigating away.
+  // Don't leave the room "presenting" after navigating away. Both the flag
+  // and the mutation are read through refs: the effect must run exactly once
+  // (its cleanup is the unmount), but at first render `versionId` is still
+  // resolving, so a mutation captured then would post at "undefined".
+  const isPresentingRef = useRef(false);
+  isPresentingRef.current = isPresenting;
+  const stopPresentationRef = useRef(stopPresentation);
+  stopPresentationRef.current = stopPresentation;
   useEffect(() => {
     return () => {
-      if (
-        useReviewStore.getState().presentation.presenterId === currentUser?.id
-      ) {
-        stopPresentation();
-      }
+      if (isPresentingRef.current) stopPresentationRef.current.mutate();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1015,24 +1240,51 @@ export default function Review() {
     let lastTime = Date.now();
 
     if (isPlaying) {
-      // Start playing all active videos, synced to current frame
+      // Reverse is driven entirely by seeking, because HTML video cannot play
+      // backwards: setting a negative playbackRate is ignored by every
+      // browser. Forward playback lets the element play itself (smoother, and
+      // it keeps audio) with the frame counter following along.
+      const reverse = playbackRate < 0;
+      const speed = Math.abs(playbackRate);
+
       videoRefs.current.forEach((v, id) => {
         const clip = videoClips.find((c) => c.id === id);
         if (clip && frame >= clip.startFrame && frame <= clip.endFrame) {
-          v.currentTime = (frame - clip.startFrame) / 24;
-          v.play().catch((e) => console.log("Playback error:", e));
+          v.currentTime = (frame - clip.startFrame) / PROJECT_FPS;
+          if (reverse) {
+            v.pause();
+          } else {
+            v.playbackRate = speed;
+            v.play().catch((e) => console.log("Playback error:", e));
+          }
         }
       });
 
       const updateFrame = () => {
         const now = Date.now();
         const dt = now - lastTime;
-        if (dt >= 1000 / 24) {
-          // 24 fps
+        // One frame every 1/24s at 1x, proportionally sooner as speed rises.
+        if (dt >= 1000 / (PROJECT_FPS * speed)) {
           setFrame((f) => {
-            let nextF = f + 1;
-            if (nextF > maxFrames) {
-              nextF = 1; // loop back
+            // Play bounds. With an in/out range set, playback loops inside it
+            // rather than over the whole shot -- the point of marking a range
+            // is to watch those frames repeatedly.
+            const loopStart = inPoint ?? 1;
+            const loopEnd = outPoint ?? maxFrames;
+            let nextF = reverse ? f - 1 : f + 1;
+            if (reverse) {
+              if (nextF < loopStart) nextF = loopEnd;
+              videoRefs.current.forEach((v, id) => {
+                const clip = videoClips.find((c) => c.id === id);
+                if (clip && nextF >= clip.startFrame && nextF <= clip.endFrame) {
+                  v.currentTime = (nextF - clip.startFrame) / PROJECT_FPS;
+                }
+              });
+              lastTime = now;
+              return nextF;
+            }
+            if (nextF > loopEnd) {
+              nextF = loopStart; // loop back
               // Force seek on all videos
               videoRefs.current.forEach((v, id) => {
                 const clip = videoClips.find((c) => c.id === id);
@@ -1041,7 +1293,7 @@ export default function Review() {
                   nextF >= clip.startFrame &&
                   nextF <= clip.endFrame
                 ) {
-                  v.currentTime = (nextF - clip.startFrame) / 24;
+                  v.currentTime = (nextF - clip.startFrame) / PROJECT_FPS;
                   v.play().catch(() => {});
                 }
               });
@@ -1073,7 +1325,10 @@ export default function Review() {
     return () => {
       if (animationFrameId) cancelAnimationFrame(animationFrameId);
     };
-  }, [isPlaying, videoClips]); // Don't add frame, it relies on functional state updates to avoid restarting loop
+    // Deliberately excludes `frame`: the loop drives it through functional
+    // state updates, and depending on it here would tear the loop down and
+    // rebuild it on every single frame.
+  }, [isPlaying, playbackRate, videoClips, inPoint, outPoint, maxFrames]);
 
   // Sync videos to frame when scrubbing (paused)
   useEffect(() => {
@@ -1081,7 +1336,7 @@ export default function Review() {
       videoRefs.current.forEach((v, id) => {
         const clip = videoClips.find((c) => c.id === id);
         if (clip && frame >= clip.startFrame && frame <= clip.endFrame) {
-          v.currentTime = (frame - clip.startFrame) / 24;
+          v.currentTime = (frame - clip.startFrame) / PROJECT_FPS;
         }
       });
     }
@@ -1090,19 +1345,26 @@ export default function Review() {
   const handleSubmitComment = (audioUrl?: string, waveform?: number[]) => {
     const text = commentDraft.trim();
     if (!text && !audioUrl) return;
-    addComment({
-      userIndex: currentUserIndex,
-      frame,
-      text,
-      audioUrl,
-      waveform,
-    });
-    setCommentDraft("");
-    toast({
-      description: audioUrl
-        ? `Voice note added at frame ${frame}.`
-        : `Comment added at frame ${frame}.`,
-    });
+    postComment.mutate(
+      { frame, text, audioUrl, waveform },
+      {
+        onSuccess: () => {
+          setCommentDraft("");
+          toast({
+            description: audioUrl
+              ? `Voice note added at frame ${frame}.`
+              : `Comment added at frame ${frame}.`,
+          });
+        },
+        onError: (err) => {
+          toast({
+            title: "Couldn't post comment",
+            description: err instanceof Error ? err.message : "Please try again.",
+            variant: "destructive",
+          });
+        },
+      },
+    );
   };
 
   const stopMicStream = () => {
@@ -1198,8 +1460,21 @@ export default function Review() {
           });
           return;
         }
-        const audioUrl = URL.createObjectURL(blob);
-        handleSubmitComment(audioUrl, waveform.length ? waveform : undefined);
+        // Upload first: a MediaRecorder blob: URL is scoped to this tab and
+        // is dead after a reload, so a comment carrying one would play back
+        // for nobody but the person who recorded it — and only until they
+        // refreshed.
+        uploadReviewAudio.mutate(blob, {
+          onSuccess: ({ url }) =>
+            handleSubmitComment(url, waveform.length ? waveform : undefined),
+          onError: (err) =>
+            toast({
+              title: "Voice note upload failed",
+              description:
+                err instanceof Error ? err.message : "Please try again.",
+              variant: "destructive",
+            }),
+        });
       };
 
       recorder.start();
@@ -1238,21 +1513,21 @@ export default function Review() {
   // of the component body.
   if (!taskId) {
     return (
-      <div className="h-screen flex items-center justify-center text-muted-foreground text-sm">
+      <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
         Select a task to open its review.
       </div>
     );
   }
   if (!reviewedTask) {
     return (
-      <div className="h-screen flex items-center justify-center text-muted-foreground text-sm">
+      <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
         Task not found.
       </div>
     );
   }
   if (reviewedTaskAssetId && !reviewedShot) {
     return (
-      <div className="h-screen flex flex-col items-center justify-center gap-1 text-muted-foreground text-sm">
+      <div className="h-full flex flex-col items-center justify-center gap-1 text-muted-foreground text-sm">
         <div>Asset review isn't supported in this player yet.</div>
         <div className="text-xs">Only shot-based tasks can be opened here.</div>
       </div>
@@ -1260,14 +1535,19 @@ export default function Review() {
   }
   if (!reviewedShot) {
     return (
-      <div className="h-screen flex items-center justify-center text-muted-foreground text-sm">
+      <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
         This task's shot could not be found.
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-screen bg-background relative overflow-hidden">
+    // `h-full`, not `h-screen`. AppShell already spends 56px on the top bar
+    // before this page is rendered into it, so a 100vh child was 56px taller
+    // than its slot: the whole player scrolled, and the first thing to leave
+    // the viewport was its own header -- the shot name, the Queue link and the
+    // approval buttons. That is most of what made this page feel congested.
+    <div className="flex flex-col h-full bg-background relative overflow-hidden">
       <div className="h-14 border-b border-border bg-card flex items-center justify-between gap-4 px-4 shrink-0 overflow-hidden">
         <div className="flex items-center gap-4 min-w-0">
           <Button
@@ -1279,6 +1559,17 @@ export default function Review() {
             <Link href={`/shots/${reviewedShot.id}`}>
               <ChevronLeft className="w-5 h-5" />
             </Link>
+          </Button>
+          {/* The player now opens by default on /review, so the queue needs
+              its own way back. The query flag stops that landing from
+              redirecting straight into a shot again. */}
+          <Button
+            variant="ghost"
+            size="sm"
+            asChild
+            className="h-8 text-xs text-muted-foreground shrink-0"
+          >
+            <Link href="/review?queue=1">Queue</Link>
           </Button>
           <div className="font-medium truncate" title={`FORGE REVIEW — ${versionLabel}`}>
             FORGE REVIEW — {versionLabel}
@@ -1301,20 +1592,26 @@ export default function Review() {
             <PresentationToggle
               isPresenting={isPresenting}
               onStart={() => {
-                startPresentation({
-                  versionId: versionId!,
-                  presenterId: currentUser!.id,
-                  presenterName: currentUser!.name,
-                  frame,
-                });
-                toast({
-                  title: "Presenting",
-                  description:
-                    "Your playhead is now synced across your open browser tabs on this version.",
+                startPresentation.mutate(frame, {
+                  onSuccess: () =>
+                    toast({
+                      title: "Presenting",
+                      description:
+                        "Your playhead is now synced to everyone viewing this version.",
+                    }),
+                  onError: (err) =>
+                    toast({
+                      title: "Couldn't start presenting",
+                      description:
+                        err instanceof Error
+                          ? err.message
+                          : "Please try again.",
+                      variant: "destructive",
+                    }),
                 });
               }}
               onStop={() => {
-                stopPresentation();
+                stopPresentation.mutate();
                 toast({
                   title: "Presentation Ended",
                   description: "Viewers can scrub independently again.",
@@ -1510,23 +1807,45 @@ export default function Review() {
                 {canSubmitReview &&
                   reviewWorkflowStatus === "wip" &&
                   (existingVersion?.mediaUrl ? (
-                    <Button
-                      size="sm"
-                      className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
-                      onClick={() => {
-                        submitApproval(
-                          "lead-review",
-                          "submitted-for-lead-review",
-                        );
-                        toast({
-                          title: "Submitted",
-                          description: "Submitted for Lead Review",
-                        });
-                      }}
-                    >
-                      <Upload className="w-4 h-4 mr-2" /> Submit to
-                      Lead/Supervisor for Review
-                    </Button>
+                    <>
+                      <Button
+                        size="sm"
+                        className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
+                        onClick={() => {
+                          submitApproval(
+                            "lead-review",
+                            "submitted-for-lead-review",
+                          );
+                          toast({
+                            title: "Submitted",
+                            description: "Submitted for Lead Review",
+                          });
+                        }}
+                      >
+                        <Upload className="w-4 h-4 mr-2" /> Submit to
+                        Lead/Supervisor for Review
+                      </Button>
+                      {/* Straight to the main producer, skipping the lead
+                          gate — for work the producer asked for directly, or
+                          when the department has no lead available. */}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          submitApproval(
+                            "producer-review",
+                            "submitted-for-producer-review",
+                          );
+                          toast({
+                            title: "Submitted",
+                            description: "Submitted for Main Producer Review",
+                          });
+                        }}
+                      >
+                        <Send className="w-4 h-4 mr-2" /> Submit to Main
+                        Producer
+                      </Button>
+                    </>
                   ) : (
                     <span className="text-xs text-muted-foreground">
                       Insert your footage above to submit for review
@@ -1598,15 +1917,19 @@ export default function Review() {
                       size="sm"
                       className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
                       onClick={() => {
-                        submitApproval("approved", "published");
+                        submitApproval(
+                          "producer-review",
+                          "submitted-for-producer-review",
+                        );
                         toast({
-                          title: "Published",
-                          description: "Approved & Published to Production",
+                          title: "Sent to Main Producer",
+                          description:
+                            "Approved by Production — awaiting final sign-off",
                         });
                       }}
                     >
                       <CheckCircle2 className="w-4 h-4 mr-2" /> Approve &
-                      Send to Client
+                      Send to Producer
                     </Button>
                     <Button
                       size="sm"
@@ -1616,7 +1939,7 @@ export default function Review() {
                         toast({
                           title: "Sent Back to Lead",
                           description:
-                            "Needs another look before it can go to the client",
+                            "Needs another look before it can move on",
                         });
                       }}
                     >
@@ -1625,6 +1948,39 @@ export default function Review() {
                     </Button>
                   </>
                 )}
+
+                {/* The main producer's final gate. Publishing here is what
+                    forwards the shot into the client-facing review queue —
+                    client-review.tsx filters shots on exactly that status. */}
+                {canApproveAsProducer &&
+                  reviewWorkflowStatus === "producer-review" && (
+                    <>
+                      <Button
+                        size="sm"
+                        className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
+                        onClick={() => {
+                          submitApproval("approved", "published");
+                          toast({
+                            title: "Published",
+                            description: "Approved & sent to the client",
+                          });
+                        }}
+                      >
+                        <CheckCircle2 className="w-4 h-4 mr-2" /> Approve &
+                        Publish to Client
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white"
+                        onClick={() => {
+                          submitApproval("pm-review", "changes-requested");
+                          toast({ title: "Sent Back to Production" });
+                        }}
+                      >
+                        <MessageSquare className="w-4 h-4 mr-2" /> Send Back
+                      </Button>
+                    </>
+                  )}
               </div>
             ))}
         </div>
@@ -1653,6 +2009,7 @@ export default function Review() {
       {pageMode === "feedback" && (
         <FeedbackList
           versionLabel={versionLabel}
+          comments={comments}
           workflowStatus={reviewWorkflowStatus}
           // Presentation Mode already disables independent frame control for
           // locked viewers everywhere else on this page (see isLockedViewer
@@ -1670,9 +2027,9 @@ export default function Review() {
       )}
 
       {pageMode === "player" && (
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 min-h-0 overflow-hidden">
           {/* Left: Player */}
-          <div className="flex-1 flex flex-col bg-black relative">
+          <div className="flex-1 min-w-0 min-h-0 flex flex-col bg-black relative">
             {!viewerMode && (
               <motion.div
                 layout
@@ -1688,7 +2045,12 @@ export default function Review() {
                 <div className="flex gap-1 items-center">
                   <input
                     type="file"
-                    accept="video/*"
+                    // .mov is listed explicitly because Windows does not
+                    // always report a MIME type for it, so a bare "video/*"
+                    // filter greys out QuickTime files the browser could in
+                    // fact play. Whether it plays depends on the codec inside,
+                    // not the extension -- see the check in onChange.
+                    accept="video/*,.mov,.mp4,.webm,.m4v"
                     className="hidden"
                     ref={fileInputRef}
                     onChange={async (e) => {
@@ -1706,6 +2068,54 @@ export default function Review() {
                         });
                         return;
                       }
+
+                      // Formats no browser can decode, caught before the
+                      // upload rather than after. EXR is the important one:
+                      // it is what comes out of every renderer here, so it is
+                      // the file people will naturally reach for, and there is
+                      // no honest way to show it in a web player -- decoding
+                      // half-float scanline OpenEXR and tone-mapping it is a
+                      // transcode step, not a codec the browser has. Saying so
+                      // plainly beats accepting the file and showing black.
+                      const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+                      const UNPLAYABLE: Record<string, string> = {
+                        exr: "OpenEXR is a linear high-dynamic-range render format — browsers have no decoder for it, and showing it needs a tone-mapped transcode first.",
+                        dpx: "DPX is a film scan format with no browser decoder.",
+                        tif: "TIFF sequences can't be played back in a browser.",
+                        tiff: "TIFF sequences can't be played back in a browser.",
+                        ari: "ARRIRAW has no browser decoder.",
+                        r3d: "REDCODE RAW has no browser decoder.",
+                        braw: "Blackmagic RAW has no browser decoder.",
+                      };
+                      if (UNPLAYABLE[ext]) {
+                        toast({
+                          title: `Can't review a .${ext} here`,
+                          description: `${UNPLAYABLE[ext]} Export an H.264 MP4 review copy from your DCC and upload that — keep the ${ext.toUpperCase()} as the master.`,
+                          variant: "destructive",
+                        });
+                        return;
+                      }
+
+                      // A .mov may hold H.264 (plays) or ProRes/DNxHD (does
+                      // not). Only the browser can say, so ask it rather than
+                      // guessing from the extension in either direction.
+                      if (ext === "mov") {
+                        const probe = document.createElement("video");
+                        const verdict = probe.canPlayType("video/quicktime");
+                        if (verdict === "") {
+                          toast({
+                            title: "This .mov may not play",
+                            description:
+                              "QuickTime files carrying ProRes or DNxHD can't be decoded in a browser. It will upload, but if the frame stays black, export an H.264 MP4 review copy instead.",
+                          });
+                        }
+                      }
+
+                      // A new file is a new clip: the old duration must not
+                      // carry over, or the timeline keeps the previous shot's
+                      // length until the new metadata happens to load.
+                      setMediaDurationSec(null);
+                      setPlaybackError(null);
 
                       // Show the file immediately via a local blob URL so
                       // scrubbing/playback feels instant, then swap to the
@@ -1766,13 +2176,47 @@ export default function Review() {
                   </Button>
                 </div>
                 <div className="w-px h-5 bg-border mx-1" />
-                <AnnotationToolbar
-                  tool={isLockedViewer ? "select" : tool}
-                  onToolChange={setTool}
-                  color={color}
-                  onColorChange={setColor}
-                  colors={COLORS}
-                />
+                <div
+                  className={cn(
+                    "flex items-center gap-3",
+                    !canEdit && "opacity-40 pointer-events-none",
+                  )}
+                  title={
+                    canEdit
+                      ? undefined
+                      : "Drawing needs the Submit Reviews permission"
+                  }
+                >
+                  <AnnotationToolbar
+                    tool={canEdit ? tool : "select"}
+                    onToolChange={setTool}
+                    color={color}
+                    onColorChange={setColor}
+                    colors={COLORS}
+                  />
+                </div>
+                {/* Says so once, up front, rather than letting someone draw
+                    six marks and discover from six toasts that none of them
+                    could ever have been saved. */}
+                {!canEdit && !viewerMode && !isLockedViewer && (
+                  <span className="text-[10px] text-muted-foreground max-w-[9rem] leading-tight">
+                    View only — drawing needs the Submit Reviews permission.
+                  </span>
+                )}
+                {/* Annotations save themselves as you draw; without this the
+                    only way to find out whether that worked was to reload. */}
+                {canEdit && annotationSaveState !== "idle" && (
+                  <span
+                    className={cn(
+                      "text-[10px] font-medium whitespace-nowrap",
+                      annotationSaveState === "saving"
+                        ? "text-muted-foreground"
+                        : "text-emerald-500",
+                    )}
+                  >
+                    {annotationSaveState === "saving" ? "Saving…" : "Saved"}
+                  </span>
+                )}
                 <div className="w-px h-6 bg-border mx-2" />
                 <Button
                   variant="ghost"
@@ -1800,6 +2244,10 @@ export default function Review() {
                 <Button
                   variant="ghost"
                   size="icon"
+                  // Needs two versions with real media to compare anything.
+                  // Previously this always enabled because the version list
+                  // was invented; now it honestly reflects what this shot has.
+                  disabled={VERSIONS.length < 2}
                   onClick={() =>
                     setCompareMode((prev) =>
                       prev === "off"
@@ -1810,11 +2258,13 @@ export default function Review() {
                     )
                   }
                   title={
-                    compareMode === "off"
-                      ? "Compare Versions (Side-by-Side)"
-                      : compareMode === "side-by-side"
-                        ? "Compare (Overlay)"
-                        : "Exit Compare"
+                    VERSIONS.length < 2
+                      ? `Compare needs two uploaded versions — this shot has ${VERSIONS.length}`
+                      : compareMode === "off"
+                        ? "Compare Versions (Side-by-Side)"
+                        : compareMode === "side-by-side"
+                          ? "Compare (Overlay)"
+                          : "Exit Compare"
                   }
                   className={
                     compareMode !== "off" ? "text-primary bg-primary/10" : ""
@@ -1984,11 +2434,6 @@ export default function Review() {
                     <video
                       ref={compareVideoRefA}
                       src={VERSIONS.find((v) => v.id === compareVersionA)?.src}
-                      poster={getPlaceholderThumbnail(
-                        hashString(compareVersionA),
-                        1280,
-                        720,
-                      )}
                       className="w-full h-full object-contain"
                       muted
                       playsInline
@@ -2013,11 +2458,6 @@ export default function Review() {
                     <video
                       ref={compareVideoRefB}
                       src={VERSIONS.find((v) => v.id === compareVersionB)?.src}
-                      poster={getPlaceholderThumbnail(
-                        hashString(compareVersionB),
-                        1280,
-                        720,
-                      )}
                       className="w-full h-full object-contain"
                       muted
                       playsInline
@@ -2065,10 +2505,22 @@ export default function Review() {
               </div>
             )}
 
-            <div className="flex-1 relative flex items-center justify-center">
+            {/* `min-h-0` is load-bearing. A flex child defaults to
+                min-height:auto, meaning it refuses to shrink below its
+                content -- so the 16:9 box below could push this column taller
+                than the screen, and the page scrolled: the annotation toolbar
+                and the timeline both slid out of view, which is what made the
+                player feel cramped and half-missing. */}
+            <div className="flex-1 min-h-0 relative flex items-center justify-center p-2">
               <div
                 ref={videoCanvasContainerRef}
-                className="w-full aspect-video bg-muted/10 border border-border/20 shadow-2xl relative overflow-hidden"
+                // Letterboxed rather than width-driven. `w-full aspect-video`
+                // derived height from width alone, so on a wide window the
+                // frame grew taller than the space it had. Sizing from the
+                // height and capping the width keeps the whole 16:9 frame
+                // visible at any window shape, which is the behaviour every
+                // other review tool has.
+                className="h-full max-h-full max-w-full aspect-video bg-muted/10 border border-border/20 shadow-2xl relative overflow-hidden"
               >
                 {videoClips.map((clip) => {
                   const isActive =
@@ -2099,17 +2551,16 @@ export default function Review() {
                           const isDCC = !isLoading && !isVideo && !isImage;
 
                           if (isLoading) {
-                            // No real render/transcode pipeline exists yet
-                            // for this shot -- an honest "nothing to show"
-                            // state instead of a placeholder clip that
-                            // might not even play (see placeholderArt.ts).
+                            // Nothing has been uploaded for this version yet.
+                            // An empty frame, not a generated "preview" image:
+                            // a decorative gradient here reads as footage that
+                            // failed to load rather than as work that has not
+                            // been submitted, and the two call for opposite
+                            // responses from whoever is looking.
                             return (
                               <div
-                                className={`absolute inset-0 w-full h-full flex flex-col items-center justify-center gap-2 bg-cover bg-center text-white/80 ${isActive ? "opacity-100" : "opacity-0 hidden"}`}
-                                style={{
-                                  backgroundImage: `url(${getPlaceholderThumbnail(hashString(clip.id), 1280, 720)})`,
-                                  opacity: clip.opacity / 100,
-                                }}
+                                className={`absolute inset-0 w-full h-full flex flex-col items-center justify-center gap-2 bg-neutral-950 text-white/80 ${isActive ? "opacity-100" : "opacity-0 hidden"}`}
+                                style={{ opacity: clip.opacity / 100 }}
                               >
                                 <div className="bg-black/50 rounded-lg px-4 py-2 text-sm font-medium backdrop-blur-sm">
                                   No footage uploaded yet
@@ -2218,11 +2669,27 @@ export default function Review() {
                                 else videoRefs.current.delete(clip.id);
                               }}
                               src={clip.src}
-                              poster={getPlaceholderThumbnail(
-                                hashString(clip.id),
-                                1280,
-                                720,
-                              )}
+                              // The timeline follows the footage rather than a
+                              // fixed 240-frame guess, so the real length has
+                              // to be read off the element as soon as the
+                              // browser knows it. Only the base clip sets it:
+                              // overlay clips are composited on top of that
+                              // span, they do not define it.
+                              onLoadedMetadata={(e) => {
+                                if (clip.id !== "base-v1") return;
+                                const d = e.currentTarget.duration;
+                                if (Number.isFinite(d) && d > 0) {
+                                  setMediaDurationSec(d);
+                                }
+                              }}
+                              // A codec the browser cannot decode fails
+                              // silently as a black frame otherwise -- the
+                              // single most confusing thing a review player
+                              // can do, because the upload plainly succeeded.
+                              onError={() => {
+                                if (clip.id !== "base-v1") return;
+                                setPlaybackError(clip.name || "This file");
+                              }}
                               className={`absolute inset-0 w-full h-full object-contain ${isActive ? "opacity-100" : "opacity-0 hidden"} ${tool === "select" ? "cursor-move" : ""}`}
                               style={{
                                 opacity: clip.opacity / 100,
@@ -2291,6 +2758,34 @@ export default function Review() {
                   );
                 })}
 
+                {/* Decode failure. Shown over the frame because that is where
+                    the reviewer is looking, and because the alternative -- a
+                    black rectangle and a working scrubber -- reads as "the
+                    artist uploaded nothing" rather than "your browser cannot
+                    open this codec". */}
+                {playbackError && (
+                  <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-3 bg-black/85 text-center px-8">
+                    <AlertTriangle className="w-8 h-8 text-amber-500" />
+                    <div className="text-sm font-medium text-white">
+                      {playbackError} can't be decoded in this browser
+                    </div>
+                    <p className="text-xs text-white/70 max-w-md leading-relaxed">
+                      The file uploaded fine and is safe on the server — the
+                      browser just has no decoder for what is inside it. This is
+                      almost always ProRes or DNxHD in a .mov. Export an H.264
+                      MP4 review copy and upload that; the master stays where it
+                      is.
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setPlaybackError(null)}
+                    >
+                      Dismiss
+                    </Button>
+                  </div>
+                )}
+
                 {/* A/B Wipe Slider */}
                 {abWipe && (
                   <div
@@ -2312,7 +2807,7 @@ export default function Review() {
                   onAnnotationsChange={applyAnnotationsUpdate}
                   frame={frame}
                   maxFrames={maxFrames}
-                  tool={isLockedViewer || viewerMode ? "select" : tool}
+                  tool={canEdit ? tool : "select"}
                   color={color}
                   colors={COLORS}
                   selectedAnnotationId={selectedAnnotationId}
@@ -2321,7 +2816,7 @@ export default function Review() {
                   currentUserId={currentUser?.id}
                   onionSkin={onionSkin}
                   ghosting={ghosting}
-                  readOnly={viewerMode || isLockedViewer}
+                  readOnly={!canEdit}
                 />
 
               </div>
@@ -2336,50 +2831,17 @@ export default function Review() {
                 />
               </div>
 
-              {/* Contextual Cut Management Overlay. Scoped to this
-                  video-canvas-only container (not the outer player column,
-                  which also contains the h-48 timeline/scrubber below) so
-                  `bottom-*` positions it against the bottom of the video
-                  frame instead of the bottom of the whole pane — previously
-                  it was a sibling of the timeline section and `bottom-6`
-                  placed it on top of the frame scrubber. */}
-              {!viewerMode && (
-                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-6 z-30 pointer-events-none opacity-50 hover:opacity-100 transition-opacity">
-                  <div className="bg-card/90 backdrop-blur border border-border rounded-lg p-2 flex flex-col items-center gap-1 shadow-lg pointer-events-auto cursor-pointer hover:border-primary/50 transition-colors">
-                    <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
-                      Previous Shot
-                    </span>
-                    <div className="w-32 h-18 bg-muted rounded overflow-hidden relative">
-                      <img
-                        src={getPlaceholderThumbnail(hashString("prev-shot"), 400, 225)}
-                        className="w-full h-full object-cover"
-                        alt="prev-shot"
-                      />
-                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center font-mono text-xs font-bold text-white">
-                        S01_030
-                      </div>
-                    </div>
-                  </div>
-                  <div className="bg-card/90 backdrop-blur border border-border rounded-lg p-2 flex flex-col items-center gap-1 shadow-lg pointer-events-auto cursor-pointer hover:border-primary/50 transition-colors">
-                    <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
-                      Next Shot
-                    </span>
-                    <div className="w-32 h-18 bg-muted rounded overflow-hidden relative">
-                      <img
-                        src={getPlaceholderThumbnail(hashString("next-shot"), 400, 225)}
-                        className="w-full h-full object-cover"
-                        alt="next-shot"
-                      />
-                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center font-mono text-xs font-bold text-white">
-                        S01_050
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
+              {/* A "Previous Shot / Next Shot" pair of thumbnail cards used to
+                  float here. Both were invented -- two generated gradients
+                  labelled S01_030 and S01_050, hardcoded, belonging to no
+                  project and linking nowhere. They took up the bottom third of
+                  the frame on every review, which is a large part of why this
+                  page read as congested. Removed rather than rebuilt: shot
+                  context belongs in the queue and the shot page, and the frame
+                  belongs to the footage being reviewed. */}
             </div>
 
-            <div className="h-48 bg-card border-t border-border flex flex-col shrink-0">
+            <div className="h-40 bg-card border-t border-border flex flex-col shrink-0">
               {/* Timeline Tools */}
               <div className="h-10 border-b border-border flex items-center px-4 gap-4">
                 <PlaybackControls
@@ -2400,6 +2862,36 @@ export default function Review() {
                 />
                 <span className="text-xs font-mono">
                   {String(frame).padStart(3, "0")} / {maxFrames}
+                </span>
+                {/* Shuttling at anything but 1x is invisible otherwise --
+                    people press J or L twice and cannot tell whether it took. */}
+                {isPlaying && Math.abs(playbackRate) !== 1 && (
+                  <span className="text-xs font-mono font-semibold text-accent-tally">
+                    {playbackRate < 0 ? "◀" : "▶"} {Math.abs(playbackRate)}×
+                  </span>
+                )}
+                {isPlaying && playbackRate < 0 && Math.abs(playbackRate) === 1 && (
+                  <span className="text-xs font-mono font-semibold text-accent-tally">
+                    ◀ 1×
+                  </span>
+                )}
+                {(inPoint !== null || outPoint !== null) && (
+                  <span className="text-xs font-mono text-primary flex items-center gap-1.5">
+                    ⟦ {inPoint ?? 1} – {outPoint ?? maxFrames} ⟧
+                    <button
+                      className="text-muted-foreground hover:text-foreground"
+                      title="Clear in/out range (X)"
+                      onClick={() => {
+                        setInPoint(null);
+                        setOutPoint(null);
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </span>
+                )}
+                <span className="ml-auto text-[10px] text-muted-foreground font-mono hidden lg:inline">
+                  J K L shuttle · , . step · I O range · F fullscreen
                 </span>
               </div>
               {/* Timeline Tracks */}
@@ -2495,6 +2987,18 @@ export default function Review() {
                   })}
                 </div>
 
+                {/* In/out range. Drawn under the playhead so the playhead
+                    stays readable while scrubbing inside the range. */}
+                {(inPoint !== null || outPoint !== null) && (
+                  <div
+                    className="absolute top-0 bottom-0 bg-primary/15 border-x-2 border-primary z-[5] pointer-events-none"
+                    style={{
+                      left: `${(((inPoint ?? 1) - 1) / maxFrames) * 100}%`,
+                      width: `${(((outPoint ?? maxFrames) - (inPoint ?? 1)) / maxFrames) * 100}%`,
+                    }}
+                  />
+                )}
+
                 {/* Playhead */}
                 <div
                   className="absolute top-0 bottom-0 w-[2px] bg-red-500 z-10 pointer-events-none"
@@ -2506,13 +3010,52 @@ export default function Review() {
             </div>
           </div>
 
+          {/* Collapsed rail. The comments panel is 320px of permanent chrome
+              against a 16:9 frame, which on a laptop leaves the actual footage
+              smaller than the notes about it. Collapsing is remembered per
+              browser, like the sidebar, because how much room you want for the
+              image is a property of the screen you are sitting at. */}
+          {commentsCollapsed && (
+            <div className="w-10 bg-card border-l border-border flex flex-col items-center py-3 shrink-0">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                title="Show comments panel"
+                onClick={() => setCommentsCollapsed(false)}
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              <div
+                className="mt-3 text-[10px] uppercase tracking-widest text-muted-foreground"
+                style={{ writingMode: "vertical-rl" }}
+              >
+                Comments{comments.length > 0 ? ` · ${comments.length}` : ""}
+              </div>
+            </div>
+          )}
+
           {/* Right: Comments & Properties */}
-          <div className="w-80 bg-card border-l border-border flex flex-col shrink-0">
+          <div
+            className={cn(
+              "w-80 bg-card border-l border-border flex-col shrink-0",
+              commentsCollapsed ? "hidden" : "flex",
+            )}
+          >
             <Tabs
               defaultValue="comments"
               className="flex-1 flex flex-col h-full"
             >
-              <div className="p-4 border-b border-border bg-muted/10 shrink-0">
+              <div className="p-4 border-b border-border bg-muted/10 shrink-0 flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0 text-muted-foreground"
+                  title="Hide comments panel — widens the player"
+                  onClick={() => setCommentsCollapsed(true)}
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
                 <TabsList className="w-full">
                   <TabsTrigger value="comments" className="flex-1">
                     Comments
@@ -2584,16 +3127,35 @@ export default function Review() {
                         <div className="flex items-center gap-2 text-sm">
                           {reviewWorkflowStatus === "pm-review" ? (
                             <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/50 border-t-primary animate-spin" />
+                          ) : reviewWorkflowStatus === "producer-review" ||
+                            reviewWorkflowStatus === "approved" ? (
+                            <CheckCircle2 className="w-4 h-4 text-[#1E7A34]" />
+                          ) : (
+                            <Circle className="w-4 h-4 text-muted-foreground/40" />
+                          )}
+                          Production Head{" "}
+                          <span className="text-xs text-muted-foreground ml-auto">
+                            {reviewWorkflowStatus === "producer-review" ||
+                            reviewWorkflowStatus === "approved"
+                              ? "Approved"
+                              : reviewWorkflowStatus === "pm-review"
+                                ? "Pending"
+                                : "Waiting"}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm">
+                          {reviewWorkflowStatus === "producer-review" ? (
+                            <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/50 border-t-primary animate-spin" />
                           ) : reviewWorkflowStatus === "approved" ? (
                             <CheckCircle2 className="w-4 h-4 text-[#1E7A34]" />
                           ) : (
                             <Circle className="w-4 h-4 text-muted-foreground/40" />
                           )}
-                          Production Manager{" "}
+                          Main Producer{" "}
                           <span className="text-xs text-muted-foreground ml-auto">
                             {reviewWorkflowStatus === "approved"
                               ? "Approved"
-                              : reviewWorkflowStatus === "pm-review"
+                              : reviewWorkflowStatus === "producer-review"
                                 ? "Pending"
                                 : "Waiting"}
                           </span>
@@ -2640,10 +3202,15 @@ export default function Review() {
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                  {comments.length === 0 && (
+                    <div className="text-sm text-muted-foreground italic text-center mt-10">
+                      No comments on this version yet.
+                    </div>
+                  )}
                   {comments.map((comment) => {
-                    const user = comment.fromClient
-                      ? null
-                      : users[comment.userIndex];
+                    const user = comment.authorId
+                      ? users.find((u) => u.id === comment.authorId)
+                      : null;
                     const displayName = comment.fromClient
                       ? comment.fromClient.authorName
                       : (user?.name ?? "Unknown");
@@ -2696,7 +3263,15 @@ export default function Review() {
                   })}
                 </div>
 
-                {!viewerMode && (
+                {/* Gated on the capability the API enforces, not just on
+                    viewerMode: an admin holds no submit_reviews, so the
+                    composer used to render for them and every send 403'd. */}
+                {!viewerMode && !canSubmitReview && (
+                  <div className="p-4 border-t border-border bg-card shrink-0 text-xs text-muted-foreground">
+                    Your role can view this review but not post feedback on it.
+                  </div>
+                )}
+                {!viewerMode && canSubmitReview && (
                   <div className="p-4 border-t border-border bg-card shrink-0">
                     <textarea
                       className="w-full h-24 bg-muted/50 border border-border rounded-md p-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-primary mb-2"
@@ -2742,12 +3317,15 @@ export default function Review() {
                           // current frame — not just a toast — so it actually
                           // shows up in the Comments stream (and survives
                           // reload) like any other note left on the timeline.
-                          addComment({
-                            userIndex: currentUserIndex,
-                            frame,
-                            text: "Frame stamped for reference.",
-                          });
-                          toast({ description: `Frame ${frame} stamped.` });
+                          postComment.mutate(
+                            { frame, text: "Frame stamped for reference." },
+                            {
+                              onSuccess: () =>
+                                toast({
+                                  description: `Frame ${frame} stamped.`,
+                                }),
+                            },
+                          );
                         }}
                       >
                         Stamp F{frame}
@@ -2784,7 +3362,7 @@ export default function Review() {
                     </div>
                   ) : (
                     <AnimatePresence initial={false}>
-                      {[...clientNotes].reverse().map((note) => (
+                      {clientNotes.map((note) => (
                         <motion.div
                           layout
                           key={note.id}
@@ -2824,14 +3402,25 @@ export default function Review() {
                               size="sm"
                               variant="outline"
                               className="w-full h-7 text-xs border-amber-500/40 text-amber-500 hover:bg-amber-500/10"
-                              disabled={!currentUser}
+                              disabled={!currentUser || !versionId}
                               onClick={() => {
-                                if (!currentUser) return;
-                                transferClientNote(note.id, currentUser.name);
-                                toast({
-                                  title: "Feedback Transferred",
-                                  description:
-                                    "The client note is now visible in the team comment stream.",
+                                if (!currentUser || !versionId) return;
+                                transferClientNote.mutate(note.id, {
+                                  onSuccess: () =>
+                                    toast({
+                                      title: "Feedback Transferred",
+                                      description:
+                                        "The client note is now visible in the team comment stream.",
+                                    }),
+                                  onError: (err) =>
+                                    toast({
+                                      title: "Transfer failed",
+                                      description:
+                                        err instanceof Error
+                                          ? err.message
+                                          : "Please try again.",
+                                      variant: "destructive",
+                                    }),
                                 });
                               }}
                             >

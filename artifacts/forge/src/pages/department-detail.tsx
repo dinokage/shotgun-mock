@@ -36,6 +36,8 @@ import { useTasksStore } from "@/store/tasks";
 import { useCapability } from "@/hooks/use-capability";
 import { useDepartmentScope } from "@/hooks/useDepartmentScope";
 import { useToast } from "@/hooks/use-toast";
+import { normalizeTaskStatus } from "@/lib/trackingStatus";
+import { formatDueDate } from "@/lib/taskDates";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -109,8 +111,8 @@ export default function DepartmentDetail() {
   const deptTasks = tasks.filter((t) => t.department === dept.name);
   // Use the shared isTaskDone/isTaskActive classification (same as the Departments overview
   // and Tracking Grid pages) so a department's active/done counts agree everywhere it's shown.
-  const activeTasks = deptTasks.filter((t) => isTaskActive(t.status));
-  const completedTasks = deptTasks.filter((t) => isTaskDone(t.status));
+  const activeTasks = deptTasks.filter((t) => isTaskActive(normalizeTaskStatus(t.status)));
+  const completedTasks = deptTasks.filter((t) => isTaskDone(normalizeTaskStatus(t.status)));
 
   // Real "Avg Review Cycle" computed from the same underlying task data as the
   // other stat tiles: for every task that has entered or passed review, the
@@ -461,7 +463,7 @@ export default function DepartmentDetail() {
                               {task.title}
                             </div>
                             <div className="text-xs text-muted-foreground mt-0.5">
-                              Due {new Date(task.dueDate).toLocaleDateString()}
+                              {formatDueDate(task.dueDate, undefined, "No due date")}
                             </div>
                           </div>
                         </div>

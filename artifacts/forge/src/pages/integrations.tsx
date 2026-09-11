@@ -1,5 +1,7 @@
-import React, { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "wouter";
+import { useAuthStore } from "@/store/auth";
+import { ComingSoon } from "@/components/shared/ComingSoon";
 import {
   Card,
   CardContent,
@@ -30,7 +32,16 @@ import {
   Search,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useIntegrationsStore } from "@/store/integrations";
+import {
+  useIntegrations,
+  useSaveIntegration,
+  useSyncIntegration,
+  type IntegrationStatus,
+} from "@/hooks/useIntegrations";
+import {
+  useStudioSetting,
+  useSaveStudioSetting,
+} from "@/hooks/useStudioSettings";
 import { useCapability } from "@/hooks/use-capability";
 import {
   Tooltip,
@@ -46,82 +57,81 @@ import {
   EmptyDescription,
 } from "@/components/ui/empty";
 
-const INTEGRATIONS = [
-  {
-    id: "maya",
-    name: "Autodesk Maya",
-    category: "3D/Animation",
-    status: "connected",
-    version: "v2.4.1",
-    lastSync: "2 mins ago",
-    icon: "M",
-  },
-  {
-    id: "blender",
-    name: "Blender",
-    category: "3D/Animation",
-    status: "connected",
-    version: "v1.8.0",
-    lastSync: "1 hr ago",
-    icon: "B",
-  },
-  {
-    id: "nuke",
-    name: "Foundry Nuke",
-    category: "Compositing",
-    status: "warning",
-    version: "v3.0.2",
-    lastSync: "2 days ago",
-    icon: "N",
-  },
-  {
-    id: "houdini",
-    name: "SideFX Houdini",
-    category: "FX/Simulation",
-    status: "disconnected",
-    version: "Not Installed",
-    lastSync: "Never",
-    icon: "H",
-  },
-  {
-    id: "premiere",
-    name: "Adobe Premiere Pro",
-    category: "Editing",
-    status: "connected",
-    version: "v1.2.5",
-    lastSync: "10 mins ago",
-    icon: "Pr",
-  },
-  {
-    id: "photoshop",
-    name: "Adobe Photoshop",
-    category: "2D/Matte Painting",
-    status: "connected",
-    version: "v1.5.0",
-    lastSync: "5 mins ago",
-    icon: "Ps",
-  },
+// The catalogue of DCC tools Forge ships a plugin for. This is a product fact,
+// so it stays static -- but nothing here says whether a studio has connected
+// any of them: that comes entirely from the integrations table.
+const INTEGRATION_CATALOGUE = [
+  { provider: "maya", name: "Autodesk Maya", category: "3D/Animation", icon: "M" },
+  { provider: "blender", name: "Blender", category: "3D/Animation", icon: "B" },
+  { provider: "nuke", name: "Foundry Nuke", category: "Compositing", icon: "N" },
+  { provider: "houdini", name: "SideFX Houdini", category: "FX/Simulation", icon: "H" },
+  { provider: "premiere", name: "Adobe Premiere Pro", category: "Editing", icon: "Pr" },
+  { provider: "photoshop", name: "Adobe Photoshop", category: "2D/Matte Painting", icon: "Ps" },
 ];
 
+interface PathConfig {
+  winPath: string;
+  macPath: string;
+  pythonInterpreter: string;
+  apiUrl: string;
+}
+
+const EMPTY_PATH_CONFIG: PathConfig = {
+  winPath: "",
+  macPath: "",
+  pythonInterpreter: "",
+  apiUrl: "",
+};
+
+function formatLastSync(lastSyncAt: string | null) {
+  return lastSyncAt ? new Date(lastSyncAt).toLocaleString() : "Never";
+}
+
 export default function IntegrationsHub() {
+  const { currentUser } = useAuthStore();
   const { toast } = useToast();
-  const runtime = useIntegrationsStore((s) => s.runtime);
-  const autoSync = useIntegrationsStore((s) => s.autoSync);
-  const syncIntegration = useIntegrationsStore((s) => s.syncIntegration);
-  const toggleAutoSync = useIntegrationsStore((s) => s.toggleAutoSync);
-  const pathConfig = useIntegrationsStore((s) => s.pathConfig);
-  const savePathConfig = useIntegrationsStore((s) => s.savePathConfig);
+  const { data: connections = [] } = useIntegrations();
+  const saveIntegration = useSaveIntegration();
+  const syncIntegration = useSyncIntegration();
   const canManageIntegrations = useCapability("manage_integrations");
 
-  const [settingsId, setSettingsId] = useState<string | null>(null);
-  const [formConfig, setFormConfig] = useState(pathConfig);
-  const [search, setSearch] = useState("");
+  const pathSetting = useStudioSetting<PathConfig>("pipeline_paths");
+  const savePathConfig = useSaveStudioSetting<PathConfig>("pipeline_paths");
 
-  // Merge static seed data with any persisted runtime overrides (status/lastSync).
-  const allIntegrations = INTEGRATIONS.map((integration) => ({
-    ...integration,
-    ...runtime[integration.id],
-  }));
+  const [settingsProvider, setSettingsProvider] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [pathDraft, setPathDraft] = useState<PathConfig | null>(null);
+  const formConfig = pathDraft ?? pathSetting.data?.value ?? EMPTY_PATH_CONFIG;
+
+  // A catalogue entry with no row in the integrations table has never been
+  // connected, so it reads as disconnected with no sync history -- never as a
+  // fabricated "connected".
+  const allIntegrations = useMemo(() => {
+    const byProvider = new Map(connections.map((c) => [c.provider, c]));
+    return INTEGRATION_CATALOGUE.map((entry) => {
+      const connection = byProvider.get(entry.provider) ?? null;
+      return {
+        ...entry,
+        status: (connection?.status ?? "disconnected") as IntegrationStatus,
+        autoSync: connection?.autoSync ?? false,
+        lastSync: formatLastSync(connection?.lastSyncAt ?? null),
+      };
+    });
+  }, [connections]);
+
+  // No DCC hooks are wired up behind any of these yet -- "connecting" Maya
+  // or Nuke here would flip a status flag with nothing real behind it.
+  // Admin keeps the working page while that's built.
+  if (currentUser?.role !== "admin") {
+    return (
+      <ComingSoon
+        icon={LinkIcon}
+        title="DCC Integrations"
+        description="Direct integration with Maya, Nuke, Houdini and other DCC tools isn't built yet. This page will let you connect and manage them once it is."
+      />
+    );
+  }
+
   const integrations = allIntegrations.filter((integration) => {
     const q = search.trim().toLowerCase();
     if (q === "") return true;
@@ -131,30 +141,30 @@ export default function IntegrationsHub() {
     );
   });
   const settingsIntegration =
-    allIntegrations.find((i) => i.id === settingsId) ?? null;
+    allIntegrations.find((i) => i.provider === settingsProvider) ?? null;
 
-  const handleSync = (id: string, name: string) => {
+  const handleSync = async (provider: string, name: string) => {
     if (!canManageIntegrations) return;
-    const current = allIntegrations.find((i) => i.id === id);
+    const current = allIntegrations.find((i) => i.provider === provider);
     const wasDisconnected = current?.status === "disconnected";
-    // Syncing pipeline data only resolves a "disconnected" state (that's what
-    // "Connect" means here). A "warning" (plugin update required) status must
-    // survive a data sync — pulling data doesn't update the installed plugin.
-    syncIntegration(
-      id,
-      wasDisconnected
-        ? "connected"
-        : (current?.status as "connected" | "warning"),
-    );
-    toast({
-      title: wasDisconnected ? "Connected" : "Sync Initiated",
-      description: wasDisconnected
-        ? `${name} is now connected and synchronized.`
-        : `Synchronizing pipeline data with ${name}...`,
-    });
+    try {
+      await syncIntegration.mutateAsync({ provider, displayName: name });
+      toast({
+        title: wasDisconnected ? "Connected" : "Sync Initiated",
+        description: wasDisconnected
+          ? `${name} is now connected and synchronized.`
+          : `Synchronizing pipeline data with ${name}...`,
+      });
+    } catch (err) {
+      toast({
+        title: "Sync failed",
+        description: err instanceof Error ? err.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleSyncAll = () => {
+  const handleSyncAll = async () => {
     if (!canManageIntegrations) return;
     // Only re-sync integrations that are already connected (or need an
     // update) — this must not silently provision/connect anything that's
@@ -162,25 +172,72 @@ export default function IntegrationsHub() {
     const syncable = allIntegrations.filter(
       (integration) => integration.status !== "disconnected",
     );
-    syncable.forEach((integration) =>
-      syncIntegration(
-        integration.id,
-        integration.status as "connected" | "warning",
-      ),
-    );
-    toast({
-      title: "Sync All Initiated",
-      description: `Synchronizing pipeline data with ${syncable.length} connected integrations...`,
-    });
+    if (syncable.length === 0) {
+      toast({
+        title: "Nothing to sync",
+        description: "No integrations are connected yet.",
+      });
+      return;
+    }
+    try {
+      await Promise.all(
+        syncable.map((integration) =>
+          syncIntegration.mutateAsync({
+            provider: integration.provider,
+            displayName: integration.name,
+          }),
+        ),
+      );
+      toast({
+        title: "Sync All Initiated",
+        description: `Synchronizing pipeline data with ${syncable.length} connected integrations...`,
+      });
+    } catch (err) {
+      toast({
+        title: "Sync failed",
+        description: err instanceof Error ? err.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleSaveConfig = () => {
+  const handleToggleAutoSync = async (
+    provider: string,
+    name: string,
+    enabled: boolean,
+  ) => {
     if (!canManageIntegrations) return;
-    savePathConfig(formConfig);
-    toast({
-      title: "Configuration Saved",
-      description: "Path mapping and environment variables have been updated.",
-    });
+    try {
+      await saveIntegration.mutateAsync({
+        provider,
+        displayName: name,
+        autoSync: enabled,
+      });
+    } catch (err) {
+      toast({
+        title: "Could not update auto-sync",
+        description: err instanceof Error ? err.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSaveConfig = async () => {
+    if (!canManageIntegrations) return;
+    try {
+      await savePathConfig.mutateAsync(formConfig);
+      toast({
+        title: "Configuration Saved",
+        description:
+          "Path mapping and environment variables have been updated.",
+      });
+    } catch (err) {
+      toast({
+        title: "Could not save configuration",
+        description: err instanceof Error ? err.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -218,7 +275,11 @@ export default function IntegrationsHub() {
           </TooltipProvider>
         )}
         {canManageIntegrations && (
-          <Button variant="outline" onClick={handleSyncAll}>
+          <Button
+            variant="outline"
+            onClick={handleSyncAll}
+            disabled={syncIntegration.isPending}
+          >
             <RefreshCw className="w-4 h-4 mr-2" /> Sync All
           </Button>
         )}
@@ -245,7 +306,10 @@ export default function IntegrationsHub() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {integrations.map((integration) => (
-          <Card key={integration.id} className="relative overflow-hidden group">
+          <Card
+            key={integration.provider}
+            className="relative overflow-hidden group"
+          >
             {integration.status === "connected" && (
               <div className="absolute top-0 right-0 w-16 h-16 bg-green-500/10 rounded-bl-full -z-10 transition-transform group-hover:scale-110" />
             )}
@@ -285,8 +349,8 @@ export default function IntegrationsHub() {
             <CardContent>
               <div className="space-y-4">
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Plugin Version</span>
-                  <span className="font-mono">{integration.version}</span>
+                  <span className="text-muted-foreground">Auto-sync</span>
+                  <span>{integration.autoSync ? "On" : "Off"}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Last Sync</span>
@@ -300,8 +364,10 @@ export default function IntegrationsHub() {
                         : "outline"
                     }
                     className="flex-1"
-                    disabled={!canManageIntegrations}
-                    onClick={() => handleSync(integration.id, integration.name)}
+                    disabled={!canManageIntegrations || syncIntegration.isPending}
+                    onClick={() =>
+                      handleSync(integration.provider, integration.name)
+                    }
                   >
                     {integration.status === "disconnected"
                       ? "Connect"
@@ -311,7 +377,7 @@ export default function IntegrationsHub() {
                     variant="outline"
                     size="icon"
                     onClick={() => {
-                      setSettingsId(integration.id);
+                      setSettingsProvider(integration.provider);
                     }}
                     aria-label={`${integration.name} settings`}
                   >
@@ -341,9 +407,10 @@ export default function IntegrationsHub() {
                 Project Root Path (Windows)
               </label>
               <Input
+                placeholder="e.g. Z:\Projects\Forge"
                 value={formConfig.winPath}
                 onChange={(e) =>
-                  setFormConfig((c) => ({ ...c, winPath: e.target.value }))
+                  setPathDraft({ ...formConfig, winPath: e.target.value })
                 }
               />
             </div>
@@ -352,21 +419,23 @@ export default function IntegrationsHub() {
                 Project Root Path (macOS/Linux)
               </label>
               <Input
+                placeholder="e.g. /Volumes/Projects/Forge"
                 value={formConfig.macPath}
                 onChange={(e) =>
-                  setFormConfig((c) => ({ ...c, macPath: e.target.value }))
+                  setPathDraft({ ...formConfig, macPath: e.target.value })
                 }
               />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Python Interpreter</label>
               <Input
+                placeholder="e.g. /usr/local/bin/python3"
                 value={formConfig.pythonInterpreter}
                 onChange={(e) =>
-                  setFormConfig((c) => ({
-                    ...c,
+                  setPathDraft({
+                    ...formConfig,
                     pythonInterpreter: e.target.value,
-                  }))
+                  })
                 }
               />
             </div>
@@ -375,15 +444,20 @@ export default function IntegrationsHub() {
                 ShotGrid/Forge API URL
               </label>
               <Input
+                placeholder="e.g. https://api.yourstudio.local/v1"
                 value={formConfig.apiUrl}
                 onChange={(e) =>
-                  setFormConfig((c) => ({ ...c, apiUrl: e.target.value }))
+                  setPathDraft({ ...formConfig, apiUrl: e.target.value })
                 }
               />
             </div>
           </div>
           {canManageIntegrations ? (
-            <Button className="mt-4" onClick={handleSaveConfig}>
+            <Button
+              className="mt-4"
+              onClick={handleSaveConfig}
+              disabled={savePathConfig.isPending}
+            >
               <UploadCloud className="w-4 h-4 mr-2" /> Save Configuration
             </Button>
           ) : (
@@ -408,7 +482,7 @@ export default function IntegrationsHub() {
 
       <Dialog
         open={settingsIntegration !== null}
-        onOpenChange={(open) => !open && setSettingsId(null)}
+        onOpenChange={(open) => !open && setSettingsProvider(null)}
       >
         <DialogContent className="max-w-md">
           {settingsIntegration && (
@@ -445,12 +519,6 @@ export default function IntegrationsHub() {
                   </Badge>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Plugin Version</span>
-                  <span className="font-mono">
-                    {settingsIntegration.version}
-                  </span>
-                </div>
-                <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Last Sync</span>
                   <span>{settingsIntegration.lastSync}</span>
                 </div>
@@ -462,11 +530,14 @@ export default function IntegrationsHub() {
                     </div>
                   </div>
                   <Switch
-                    checked={autoSync[settingsIntegration.id] ?? false}
-                    disabled={!canManageIntegrations}
+                    checked={settingsIntegration.autoSync}
+                    disabled={!canManageIntegrations || saveIntegration.isPending}
                     onCheckedChange={(checked) =>
-                      canManageIntegrations &&
-                      toggleAutoSync(settingsIntegration.id, checked)
+                      handleToggleAutoSync(
+                        settingsIntegration.provider,
+                        settingsIntegration.name,
+                        checked,
+                      )
                     }
                   />
                 </div>
@@ -474,13 +545,13 @@ export default function IntegrationsHub() {
               <DialogFooter>
                 <Button
                   variant="outline"
-                  disabled={!canManageIntegrations}
+                  disabled={!canManageIntegrations || syncIntegration.isPending}
                   onClick={() => {
                     handleSync(
-                      settingsIntegration.id,
+                      settingsIntegration.provider,
                       settingsIntegration.name,
                     );
-                    setSettingsId(null);
+                    setSettingsProvider(null);
                   }}
                 >
                   <RefreshCw className="w-4 h-4 mr-2" /> Sync Now

@@ -46,10 +46,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
 import { useAuthStore } from "@/store/auth";
-import {
-  LEADERSHIP_ROLES,
-  DEPARTMENT_LEADERSHIP_ROLES,
-} from "@/store/permissions";
+import { useCapability } from "@/hooks/use-capability";
+import { DEPARTMENT_LEADERSHIP_ROLES } from "@/store/permissions";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "wouter";
@@ -132,6 +130,16 @@ export function TaskDrawer() {
   // deserves a look-before-you-leap step, not a single click. This just gates
   // the existing action behind an inline confirm; it changes no store logic.
   const [clientSendConfirmOpen, setClientSendConfirmOpen] = useState(false);
+
+  // Capability-gated rather than a LEADERSHIP_ROLES check: admin counts as
+  // studio leadership for coarse seniority checks elsewhere, but holds
+  // neither capability (see scripts/src/roleCapabilities.ts) since it does
+  // no production work. Gating the actual mutating actions below on these
+  // stops admin from seeing a Reassign/Handoff control that would just 403.
+  // Called unconditionally, above the early returns below -- hooks can't be
+  // called only on renders where activeTaskDrawer/task happen to be set.
+  const canAssignTasks = useCapability("assign_tasks");
+  const canEditTasksForHandoff = useCapability("edit_tasks");
 
   if (!activeTaskDrawer || !currentUser) return null;
 
@@ -227,8 +235,6 @@ export function TaskDrawer() {
     );
   const checklistDone = checklist.filter((c) => c.done).length;
   const checklistTotal = checklist.length;
-
-  const isLeadership = LEADERSHIP_ROLES.includes(currentUser.role);
   const isAssignee = currentUser.id === task.assignedTo;
   const currentDept = departments.find((d) => d.name === task.department);
   const nextDept = currentDept ? getNextDepartment(currentDept.id) : null;
@@ -267,7 +273,7 @@ export function TaskDrawer() {
                 {task.status.replace("-", " ").toUpperCase()}
               </Badge>
 
-              {task.status === "approved" && nextDept && isLeadership && (
+              {task.status === "approved" && nextDept && canEditTasksForHandoff && (
                 <Button
                   size="sm"
                   variant="outline"
@@ -318,7 +324,7 @@ export function TaskDrawer() {
               <div>
                 <div className="text-xs font-medium text-muted-foreground mb-1.5 flex justify-between items-center">
                   Assignee
-                  {isLeadership && (
+                  {canAssignTasks && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <span className="text-accent-scope text-[10px] cursor-pointer hover:underline bg-accent-scope/10 px-1.5 py-0.5 rounded">

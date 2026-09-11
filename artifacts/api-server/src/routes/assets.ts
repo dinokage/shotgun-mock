@@ -3,6 +3,7 @@ import { prisma } from "@workspace/db";
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability, denyClientAccess } from "../middleware/rbac";
 import { recordAuditLog } from "../lib/auditLog";
+import { getVisibilityScope, visibleEntityIds } from "../lib/visibilityScope";
 import * as crypto from "crypto";
 
 // Each check confirms a foreign-key id actually belongs to the caller's
@@ -39,8 +40,19 @@ assetsRouter.get("/", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const { projectId } = req.query;
+    // Assets have no assignee the pipeline actually fills in, so "my assets"
+    // means the assets the caller holds tasks on (Task.entityType "asset").
+    const visibleAssetIds = await visibleEntityIds(
+      tenantId,
+      await getVisibilityScope(req),
+      "asset",
+    );
     const rows = await prisma.asset.findMany({
-      where: { tenantId, ...(typeof projectId === "string" ? { projectId } : {}) },
+      where: {
+        tenantId,
+        ...(typeof projectId === "string" ? { projectId } : {}),
+        ...(visibleAssetIds ? { id: { in: visibleAssetIds } } : {}),
+      },
     });
     return res.json(rows);
   } catch (err) {

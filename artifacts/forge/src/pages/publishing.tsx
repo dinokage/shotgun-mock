@@ -1,11 +1,9 @@
-import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useMemo, useState } from "react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
-import { PublishLog } from "@/data/mockData";
 import {
   Upload,
   CheckCircle2,
@@ -14,11 +12,15 @@ import {
   Loader2,
   Package,
   ChevronRight,
-  ArrowRight,
-  Filter,
-  Search,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -29,10 +31,16 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { usePublishingStore } from "@/store/publishing";
-import { useAuthStore } from "@/store/auth";
-import { useAssetStore } from "@/store/assets";
-import { useUserStore } from "@/store/users";
+import { useCapability } from "@/hooks/use-capability";
+import {
+  usePublishLogs,
+  useCreatePublishLog,
+  type PublishKind,
+  type PublishStatus,
+  type PublishValidationEntry,
+} from "@/hooks/usePublishLogs";
+import { useShots } from "@/hooks/useShots";
+import { useAssets } from "@/hooks/useAssets";
 import {
   Empty,
   EmptyHeader,
@@ -41,7 +49,10 @@ import {
   EmptyDescription,
 } from "@/components/ui/empty";
 
-const STATUS_CONFIG = {
+const STATUS_CONFIG: Record<
+  PublishStatus,
+  { icon: typeof CheckCircle2; color: string; bg: string; label: string }
+> = {
   success: {
     icon: CheckCircle2,
     color: "text-green-500",
@@ -74,11 +85,22 @@ export default function Publishing() {
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
   const { toast } = useToast();
 
-  const publishLogs = usePublishingStore((s) => s.logs);
-  const addPublishLog = usePublishingStore((s) => s.addPublishLog);
-  const currentUser = useAuthStore((s) => s.currentUser);
-  const assets = useAssetStore((s) => s.assets);
-  const users = useUserStore((s) => s.users);
+  const { data: publishLogs = [] } = usePublishLogs();
+  const createPublishLog = useCreatePublishLog();
+  const { data: shots = [] } = useShots();
+  const { data: assets = [] } = useAssets();
+  const canPublish = useCapability("edit_tasks");
+
+  // The publish target has to be a shot or asset that actually exists in this
+  // tenant -- the server rejects anything else, so the dialog picks from the
+  // real entity list rather than accepting a typed-in name.
+  const entityOptions = useMemo(
+    () => [
+      ...shots.map((s) => ({ key: `shot:${s.id}`, id: s.id, name: s.name, kind: "shot" as PublishKind })),
+      ...assets.map((a) => ({ key: `asset:${a.id}`, id: a.id, name: a.name, kind: "asset" as PublishKind })),
+    ],
+    [shots, assets],
+  );
 
   const queue = publishLogs.filter(
     (p) => p.status === "queued" || p.status === "validating",
@@ -101,10 +123,8 @@ export default function Publishing() {
       Date.now() - new Date(p.publishedAt).getTime() <= oneDayMs,
   ).length;
 
-  const [assetIdInput, setAssetIdInput] = useState("S01_030_anim");
-  const [versionNoteInput, setVersionNoteInput] = useState(
-    "Addressed supervisor notes on jump timing.",
-  );
+  const [entityKey, setEntityKey] = useState("");
+  const [versionNoteInput, setVersionNoteInput] = useState("");
   const [isValidating, setIsValidating] = useState(false);
   const [validationResults, setValidationResults] = useState<
     {
@@ -114,19 +134,21 @@ export default function Publishing() {
     }[]
   >([]);
 
+  const selectedEntity = entityOptions.find((o) => o.key === entityKey) ?? null;
+
   const startValidation = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedEntity) return;
     setIsValidating(true);
 
-    const trimmedId = assetIdInput.trim();
     const trimmedNote = versionNoteInput.trim();
 
-    // Real checks against the actual form input, not hardcoded pass results.
-    const namingValid = /^[A-Za-z0-9]+_[A-Za-z0-9_]+$/.test(trimmedId);
+    // Real checks against the actual selection, not hardcoded pass results.
+    const namingValid = /^[A-Za-z0-9]+_[A-Za-z0-9_]+$/.test(selectedEntity.name);
     const noteValid = trimmedNote.length >= 10;
     const hasConflict = publishLogs.some(
       (p) =>
-        p.assetId === trimmedId &&
+        p.entityId === selectedEntity.id &&
         (p.status === "queued" || p.status === "validating"),
     );
 
@@ -135,8 +157,8 @@ export default function Publishing() {
         name: "Naming Convention",
         status: "running" as const,
         detail: namingValid
-          ? `"${trimmedId}" matches the required prefix_name pattern.`
-          : `"${trimmedId}" does not match the required prefix_name pattern (letters/numbers, underscore-separated, no spaces).`,
+          ? `"${selectedEntity.name}" matches the required prefix_name pattern.`
+          : `"${selectedEntity.name}" does not match the required prefix_name pattern (letters/numbers, underscore-separated, no spaces).`,
       },
       {
         name: "Version Note",
@@ -149,8 +171,8 @@ export default function Publishing() {
         name: "No Conflicting In-Flight Publish",
         status: "pending" as const,
         detail: hasConflict
-          ? `Another publish for "${trimmedId}" is already queued or validating.`
-          : `No conflicting publish currently in the queue for "${trimmedId}".`,
+          ? `Another publish for "${selectedEntity.name}" is already queued or validating.`
+          : `No conflicting publish currently in the queue for "${selectedEntity.name}".`,
       },
     ];
     setValidationResults(checks);
@@ -184,44 +206,43 @@ export default function Publishing() {
     }, 2400);
   };
 
-  const handlePublish = () => {
-    const trimmedId = assetIdInput.trim();
-    const priorForAsset = publishLogs.filter((p) => p.assetId === trimmedId);
-    const version = `v${String(priorForAsset.length + 1).padStart(3, "0")}`;
-    const now = new Date();
+  const handlePublish = async () => {
+    if (!selectedEntity) return;
+    const validationLog: PublishValidationEntry[] = validationResults.map((r) => ({
+      name: r.name,
+      passed: r.status === "passed",
+      detail: r.detail,
+    }));
 
-    const newLog: PublishLog = {
-      id: `pub-${now.getTime()}`,
-      assetId: trimmedId,
-      version,
-      publishedById: currentUser?.id ?? "unknown",
-      publishedAt: now.toISOString(),
-      status: "success",
-      target: "production",
-      duration: "—",
-      fileSize: "—",
-      checks: validationResults.map((r) => ({
-        name: r.name,
-        passed: r.status === "passed",
-      })),
-      log: [
-        `[${now.toISOString()}] Publish requested by ${currentUser?.name ?? "Unknown user"}.`,
-        `[${now.toISOString()}] Version note: ${versionNoteInput.trim()}`,
-        `[${now.toISOString()}] All pre-publish validators passed.`,
-      ],
-    };
-    addPublishLog(newLog);
-
-    setPublishDialogOpen(false);
-    toast({
-      title: "Publish Successful",
-      description: `${trimmedId} ${version} was published to the pipeline.`,
-    });
-    // reset state
-    setTimeout(() => {
+    try {
+      await createPublishLog.mutateAsync({
+        publishKind: selectedEntity.kind,
+        entityType: selectedEntity.kind,
+        entityId: selectedEntity.id,
+        status: "success",
+        fileName: selectedEntity.name,
+        // No file is uploaded through this dialog, so the size is genuinely
+        // unknown rather than a made-up figure.
+        fileSize: "unknown",
+        notes: versionNoteInput.trim(),
+        validationLog,
+      });
+      setPublishDialogOpen(false);
+      toast({
+        title: "Publish Successful",
+        description: `${selectedEntity.name} was published to the pipeline.`,
+      });
       setIsValidating(false);
       setValidationResults([]);
-    }, 500);
+      setVersionNoteInput("");
+      setEntityKey("");
+    } catch (err) {
+      toast({
+        title: "Publish failed",
+        description: err instanceof Error ? err.message : "Could not record the publish.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -254,7 +275,11 @@ export default function Publishing() {
           }}
         >
           <DialogTrigger asChild>
-            <Button className="gap-2 bg-purple-600 hover:bg-purple-700 text-white">
+            <Button
+              className="gap-2 bg-purple-600 hover:bg-purple-700 text-white"
+              disabled={!canPublish}
+              title={canPublish ? undefined : "You don't have permission to publish"}
+            >
               <Upload className="w-4 h-4" /> Publish New
             </Button>
           </DialogTrigger>
@@ -266,13 +291,24 @@ export default function Publishing() {
                 </DialogHeader>
                 <div className="space-y-4 py-4">
                   <div className="space-y-2">
-                    <Label>Asset ID / Shot Name</Label>
-                    <Input
-                      required
-                      placeholder="e.g. S01_030_anim"
-                      value={assetIdInput}
-                      onChange={(e) => setAssetIdInput(e.target.value)}
-                    />
+                    <Label>Shot / Asset</Label>
+                    <Select value={entityKey} onValueChange={setEntityKey}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a shot or asset" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {entityOptions.map((option) => (
+                          <SelectItem key={option.key} value={option.key}>
+                            {option.name} ({option.kind})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {entityOptions.length === 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        No shots or assets exist yet — create one before publishing.
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label>Version Note</Label>
@@ -285,7 +321,7 @@ export default function Publishing() {
                   </div>
                 </div>
                 <DialogFooter>
-                  <Button type="submit" className="w-full">
+                  <Button type="submit" className="w-full" disabled={!selectedEntity}>
                     Run Pre-Publish Validators
                   </Button>
                 </DialogFooter>
@@ -328,11 +364,12 @@ export default function Publishing() {
                   <Button
                     className="w-full bg-green-600 hover:bg-green-700 text-white"
                     disabled={
+                      createPublishLog.isPending ||
                       !validationResults.every((r) => r.status === "passed")
                     }
                     onClick={handlePublish}
                   >
-                    Confirm Publish
+                    {createPublishLog.isPending ? "Publishing…" : "Confirm Publish"}
                   </Button>
                 </DialogFooter>
               </div>
@@ -402,8 +439,6 @@ export default function Publishing() {
             </Empty>
           )}
           {queue.map((pub) => {
-            const asset = assets.find((a) => a.id === pub.assetId);
-            const publisher = users.find((u) => u.id === pub.publishedById);
             const config = STATUS_CONFIG[pub.status];
             return (
               <Card
@@ -421,10 +456,10 @@ export default function Publishing() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-medium">
-                        {asset?.name || pub.assetId}
+                        {pub.entityName || pub.fileName || pub.entityId}
                       </span>
                       <Badge variant="outline" className="text-[10px]">
-                        {pub.version}
+                        {pub.publishKind}
                       </Badge>
                       <Badge
                         className={`${config.bg} ${config.color} text-[10px]`}
@@ -433,8 +468,8 @@ export default function Publishing() {
                       </Badge>
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      Target: {pub.target} · By {publisher?.name} ·{" "}
-                      {pub.duration}
+                      By {pub.publishedBy?.name ?? "Unknown"} ·{" "}
+                      {new Date(pub.publishedAt).toLocaleString()}
                     </div>
                   </div>
                   {pub.status === "validating" && (
@@ -461,8 +496,6 @@ export default function Publishing() {
             </Empty>
           )}
           {recent.map((pub) => {
-            const asset = assets.find((a) => a.id === pub.assetId);
-            const publisher = users.find((u) => u.id === pub.publishedById);
             const config = STATUS_CONFIG[pub.status];
             const isExpanded = expandedLog === pub.id;
 
@@ -493,10 +526,10 @@ export default function Publishing() {
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="font-medium">
-                          {asset?.name || pub.assetId}
+                          {pub.entityName || pub.fileName || pub.entityId}
                         </span>
                         <Badge variant="outline" className="text-[10px]">
-                          {pub.version}
+                          {pub.publishKind}
                         </Badge>
                         <Badge
                           className={`${config.bg} ${config.color} text-[10px]`}
@@ -505,8 +538,8 @@ export default function Publishing() {
                         </Badge>
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        Target: {pub.target} · By {publisher?.name} · Duration:{" "}
-                        {pub.duration} · Size: {pub.fileSize}
+                        By {pub.publishedBy?.name ?? "Unknown"} · Size:{" "}
+                        {pub.fileSize} · {new Date(pub.publishedAt).toLocaleString()}
                       </div>
                     </div>
                     <ChevronRight
@@ -521,45 +554,42 @@ export default function Publishing() {
                         <div className="text-xs font-semibold text-muted-foreground mb-2">
                           VALIDATION CHECKS
                         </div>
-                        <div className="space-y-1.5">
-                          {pub.checks.map((check, i) => (
-                            <div
-                              key={i}
-                              className="flex items-center gap-2 text-sm"
-                            >
-                              {check.passed ? (
-                                <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
-                              ) : (
-                                <XCircle className="w-3.5 h-3.5 text-red-500" />
-                              )}
-                              <span
-                                className={check.passed ? "" : "text-red-500"}
-                              >
-                                {check.name}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
+                        {pub.validationLog.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">
+                            No validator output was recorded for this publish.
+                          </p>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {pub.validationLog.map((check, i) => (
+                              <div key={i} className="flex items-start gap-2 text-sm">
+                                {check.passed ? (
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-green-500 mt-0.5 shrink-0" />
+                                ) : (
+                                  <XCircle className="w-3.5 h-3.5 text-red-500 mt-0.5 shrink-0" />
+                                )}
+                                <div>
+                                  <div className={check.passed ? "" : "text-red-500"}>
+                                    {check.name}
+                                  </div>
+                                  {check.detail && (
+                                    <div className="text-xs text-muted-foreground">
+                                      {check.detail}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
 
-                      {/* Log */}
+                      {/* Notes */}
                       <div>
                         <div className="text-xs font-semibold text-muted-foreground mb-2">
-                          LOG
+                          NOTES
                         </div>
-                        <div className="bg-muted/50 rounded-md p-3 font-mono text-xs space-y-1">
-                          {pub.log.map((line, i) => (
-                            <div
-                              key={i}
-                              className={
-                                line.includes("ERROR")
-                                  ? "text-red-500"
-                                  : "text-muted-foreground"
-                              }
-                            >
-                              {line}
-                            </div>
-                          ))}
+                        <div className="bg-muted/50 rounded-md p-3 font-mono text-xs text-muted-foreground">
+                          {pub.notes || "No note was recorded for this publish."}
                         </div>
                       </div>
                     </div>
@@ -589,24 +619,17 @@ export default function Publishing() {
                 <thead>
                   <tr className="border-b bg-muted/50 text-muted-foreground">
                     <th className="h-10 px-4 text-left font-medium">Asset</th>
-                    <th className="h-10 px-4 text-left font-medium">Version</th>
+                    <th className="h-10 px-4 text-left font-medium">Kind</th>
                     <th className="h-10 px-4 text-left font-medium">Status</th>
-                    <th className="h-10 px-4 text-left font-medium">Target</th>
                     <th className="h-10 px-4 text-left font-medium">
                       Publisher
                     </th>
-                    <th className="h-10 px-4 text-left font-medium">
-                      Duration
-                    </th>
+                    <th className="h-10 px-4 text-left font-medium">Size</th>
                     <th className="h-10 px-4 text-left font-medium">Date</th>
                   </tr>
                 </thead>
                 <tbody>
                   {publishLogs.map((pub) => {
-                    const asset = assets.find((a) => a.id === pub.assetId);
-                    const publisher = users.find(
-                      (u) => u.id === pub.publishedById,
-                    );
                     const config = STATUS_CONFIG[pub.status];
                     return (
                       <tr
@@ -614,10 +637,10 @@ export default function Publishing() {
                         className="border-b last:border-0 hover:bg-muted/50 transition-colors"
                       >
                         <td className="p-4 font-medium">
-                          {asset?.name || pub.assetId}
+                          {pub.entityName || pub.fileName || pub.entityId}
                         </td>
                         <td className="p-4 font-mono text-muted-foreground">
-                          {pub.version}
+                          {pub.publishKind}
                         </td>
                         <td className="p-4">
                           <Badge
@@ -627,13 +650,10 @@ export default function Publishing() {
                           </Badge>
                         </td>
                         <td className="p-4 text-muted-foreground">
-                          {pub.target}
+                          {pub.publishedBy?.name ?? "Unknown"}
                         </td>
                         <td className="p-4 text-muted-foreground">
-                          {publisher?.name}
-                        </td>
-                        <td className="p-4 text-muted-foreground">
-                          {pub.duration}
+                          {pub.fileSize}
                         </td>
                         <td className="p-4 text-muted-foreground">
                           {new Date(pub.publishedAt).toLocaleDateString()}

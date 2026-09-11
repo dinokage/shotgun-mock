@@ -4,6 +4,11 @@ import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability } from "../middleware/rbac";
 import { recordAuditLog } from "../lib/auditLog";
 import { getClientScope } from "../lib/clientScope";
+import {
+  getVisibilityScope,
+  visibleEntityIds,
+  canSeeEntity,
+} from "../lib/visibilityScope";
 import * as crypto from "crypto";
 
 // Each check confirms a foreign-key id actually belongs to the caller's
@@ -42,10 +47,21 @@ shotsRouter.get("/", async (req, res) => {
     // version, when the link is scoped that tight).
     const clientScope = await getClientScope(req);
     if (req.clientAccessLinkId && !clientScope) return res.json([]);
+
+    // An employee session is additionally narrowed to the shots their role
+    // may see. A shot carries no assignee the pipeline actually fills in, so
+    // "my shots" means the shots the caller holds tasks on. Skipped for a
+    // client-access session, which is already bounded by clientScope above
+    // and has no employee role to scope by.
+    const visibleShotIds = req.clientAccessLinkId
+      ? null
+      : await visibleEntityIds(tenantId, await getVisibilityScope(req), "shot");
+
     const rows = await prisma.shot.findMany({
       where: {
         tenantId,
         ...(typeof projectId === "string" ? { projectId } : {}),
+        ...(visibleShotIds ? { id: { in: visibleShotIds } } : {}),
         ...(clientScope
           ? {
               projectId: clientScope.projectId,
@@ -134,6 +150,14 @@ shotsRouter.put("/:id", requireCapability("edit_tasks"), async (req, res) => {
 
     const existing = await prisma.shot.findFirst({ where: { tenantId, id: shotId } });
     if (!existing) return res.status(404).json({ error: "Not found" });
+
+    // edit_tasks says what you may change, not which shots. Without this an
+    // artist could PUT to any of the tenant's shots by id -- including
+    // rewriting a client's review sign-off on work in another department.
+    // 404 rather than 403 so an out-of-scope shot is indistinguishable from
+    // one that doesn't exist.
+    if (!(await canSeeEntity(tenantId, await getVisibilityScope(req), "shot", shotId)))
+      return res.status(404).json({ error: "Not found" });
 
     if (
       "assigneeId" in req.body &&

@@ -2,15 +2,13 @@ import { useRoute, Link } from "wouter";
 import { PLUGINS } from "@/data/mockData";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { ChevronLeft } from "lucide-react";
 import {
-  ChevronLeft,
-  Star,
-  ShieldCheck,
-  Download,
-  CheckCircle2,
-  ShieldAlert,
-} from "lucide-react";
-import { usePluginsStore } from "@/store/plugins";
+  useInstalledPlugins,
+  useInstallPlugin,
+  useUninstallPlugin,
+  useSetPluginEnabled,
+} from "@/hooks/usePlugins";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -24,34 +22,36 @@ import { useCapability } from "@/hooks/use-capability";
 export default function PluginDetail() {
   const [, params] = useRoute("/marketplace/:id");
   const plugin = PLUGINS.find((p) => p.id === params?.id);
-  const {
-    installedPlugins,
-    enabledPlugins,
-    installPlugin,
-    uninstallPlugin,
-    togglePlugin,
-  } = usePluginsStore();
+  const { data: installed = [] } = useInstalledPlugins();
+  const installPlugin = useInstallPlugin();
+  const uninstallPlugin = useUninstallPlugin();
+  const setPluginEnabled = useSetPluginEnabled();
   const { toast } = useToast();
   const canManageIntegrations = useCapability("manage_integrations");
 
   if (!plugin) return <div>Plugin not found</div>;
 
-  const isInstalled = installedPlugins[plugin.id];
-  const isEnabled = enabledPlugins[plugin.id];
+  // No row on the server means this studio has never installed it.
+  const state = installed.find((p) => p.pluginId === plugin.id);
+  const isInstalled = !!state;
+  const isEnabled = state?.enabled ?? false;
 
   const handleInstall = () => {
     if (!canManageIntegrations) return;
-    installPlugin(plugin.id);
-    toast({
-      title: "Plugin installed",
-      description: `${plugin.name} is now active.`,
+    installPlugin.mutate(plugin.id, {
+      onSuccess: () =>
+        toast({
+          title: "Plugin installed",
+          description: `${plugin.name} is now active.`,
+        }),
     });
   };
 
   const handleUninstall = () => {
     if (!canManageIntegrations) return;
-    uninstallPlugin(plugin.id);
-    toast({ description: `${plugin.name} removed.` });
+    uninstallPlugin.mutate(plugin.id, {
+      onSuccess: () => toast({ description: `${plugin.name} removed.` }),
+    });
   };
 
   return (
@@ -80,37 +80,8 @@ export default function PluginDetail() {
               <h1 className="text-4xl font-bold tracking-tight">
                 {plugin.name}
               </h1>
-              {plugin.verified ? (
-                <div className="bg-blue-500/10 text-blue-500 border border-blue-500/30 px-2 py-0.5 rounded text-xs flex items-center gap-1 font-medium">
-                  <ShieldCheck className="w-3.5 h-3.5" /> Verified
-                </div>
-              ) : (
-                <div className="bg-orange-500/10 text-orange-500 border border-orange-500/30 px-2 py-0.5 rounded text-xs flex items-center gap-1 font-medium">
-                  <ShieldAlert className="w-3.5 h-3.5" /> Unverified
-                </div>
-              )}
             </div>
-            <div className="text-muted-foreground mb-6">
-              By {plugin.author} • Version {plugin.version}
-            </div>
-
-            <div className="flex items-center gap-6 mb-8">
-              <div className="flex flex-col">
-                <div className="flex items-center gap-1 font-bold text-xl">
-                  {plugin.rating}{" "}
-                  <Star className="w-5 h-5 fill-yellow-500 text-yellow-500 mb-0.5" />
-                </div>
-                <span className="text-xs text-muted-foreground">Rating</span>
-              </div>
-              <div className="w-px h-10 bg-border" />
-              <div className="flex flex-col">
-                <div className="flex items-center gap-1 font-bold text-xl">
-                  {plugin.installs}{" "}
-                  <Download className="w-5 h-5 text-muted-foreground mb-0.5" />
-                </div>
-                <span className="text-xs text-muted-foreground">Installs</span>
-              </div>
-            </div>
+            <div className="text-muted-foreground mb-8">{plugin.category}</div>
 
             <div className="flex gap-4 p-4 border border-border rounded-lg bg-card max-w-md">
               {isInstalled ? (
@@ -122,8 +93,12 @@ export default function PluginDetail() {
                     <Switch
                       checked={isEnabled}
                       disabled={!canManageIntegrations}
-                      onCheckedChange={() =>
-                        canManageIntegrations && togglePlugin(plugin.id)
+                      onCheckedChange={(next) =>
+                        canManageIntegrations &&
+                        setPluginEnabled.mutate({
+                          pluginId: plugin.id,
+                          enabled: next,
+                        })
                       }
                     />
                   </div>
@@ -172,8 +147,7 @@ export default function PluginDetail() {
               Overview
             </h2>
             <p className="text-muted-foreground leading-relaxed">
-              {plugin.description} Compatible with {plugin.compatibility}. Last
-              updated {plugin.lastUpdated}.
+              {plugin.description}
             </p>
             <div className="flex gap-4 pt-4">
               <div className="w-1/2 aspect-video bg-muted rounded-lg border border-border flex items-center justify-center text-muted-foreground/30 font-medium">
@@ -188,25 +162,15 @@ export default function PluginDetail() {
           <div className="space-y-6">
             <Card>
               <CardContent className="p-4 space-y-4">
+                {/* The four permissions listed here were identical for every
+                    plugin — an invented per-plugin claim about what a studio
+                    would be granting. There is no column behind it, so it says
+                    what is actually true instead. */}
                 <h3 className="font-semibold">Permissions Required</h3>
-                <ul className="text-sm space-y-3 text-muted-foreground">
-                  <li className="flex gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-status-green shrink-0" />{" "}
-                    Read asset metadata
-                  </li>
-                  <li className="flex gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-status-green shrink-0" />{" "}
-                    Create new versions
-                  </li>
-                  <li className="flex gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-status-green shrink-0" />{" "}
-                    Post comments on review sessions
-                  </li>
-                  <li className="flex gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-status-green shrink-0" />{" "}
-                    Access render logs
-                  </li>
-                </ul>
+                <p className="text-sm text-muted-foreground">
+                  This plugin has not published a permissions manifest yet.
+                  Check with the author before installing it on a live show.
+                </p>
               </CardContent>
             </Card>
           </div>

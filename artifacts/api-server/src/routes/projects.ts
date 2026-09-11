@@ -4,6 +4,7 @@ import * as crypto from "crypto";
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability } from "../middleware/rbac";
 import { getClientScope } from "../lib/clientScope";
+import { getVisibilityScope, visibleProjectIds } from "../lib/visibilityScope";
 
 export const projectsRouter = Router();
 
@@ -17,8 +18,25 @@ projectsRouter.get("/", async (req, res) => {
     // role, so this is a no-op for them.
     const clientScope = await getClientScope(req);
     if (req.clientAccessLinkId && !clientScope) return res.json([]);
+
+    // An employee session sees the projects that hold work it can see.
+    // Safe to narrow because nothing resolves a task's project THROUGH this
+    // list: the frontend's getProjectId()/useEntityProjectMap() build that
+    // lookup from the shots/assets queries instead (lib/taskShape.ts), which
+    // are scoped to exactly the same rows -- so every task a caller can see
+    // still resolves to a project it can see. The only consumer of this list
+    // is pages/projects.tsx; home/shot-detail/asset-detail read the local
+    // project store, not this endpoint. `null` = studio-wide, no filter.
+    const scopedProjectIds = req.clientAccessLinkId
+      ? null
+      : await visibleProjectIds(tenantId, await getVisibilityScope(req));
+
     const projects = await prisma.project.findMany({
-      where: { tenantId, ...(clientScope ? { id: clientScope.projectId } : {}) },
+      where: {
+        tenantId,
+        ...(scopedProjectIds ? { id: { in: scopedProjectIds } } : {}),
+        ...(clientScope ? { id: clientScope.projectId } : {}),
+      },
     });
     return res.json(projects);
   } catch (err) {
@@ -36,6 +54,14 @@ projectsRouter.get("/:id", async (req, res) => {
     if (req.clientAccessLinkId && (!clientScope || clientScope.projectId !== req.params.id)) {
       return res.status(404).json({ error: "Not found" });
     }
+    // Same scope as GET / above -- leaving the by-id read tenant-wide would
+    // make the list filter cosmetic (the project page is reachable by id).
+    const scopedProjectIds = req.clientAccessLinkId
+      ? null
+      : await visibleProjectIds(tenantId, await getVisibilityScope(req));
+    if (scopedProjectIds && !scopedProjectIds.includes(req.params.id))
+      return res.status(404).json({ error: "Not found" });
+
     const project = await prisma.project.findFirst({
       where: { tenantId, id: req.params.id },
     });

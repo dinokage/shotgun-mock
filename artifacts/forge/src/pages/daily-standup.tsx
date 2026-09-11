@@ -8,8 +8,17 @@ import { useUserStore } from "@/store/users";
 import { useDepartmentStore } from "@/store/departments";
 import { useProjectStore } from "@/store/projects";
 import { useAuthStore } from "@/store/auth";
-import { useStandupsStore } from "@/store/standups";
-import { useBroadcastsStore } from "@/store/broadcasts";
+import { useStandupUpdates, usePostStandupUpdate } from "@/hooks/useStandups";
+import {
+  useStandupPlaylist,
+  useAddToStandupPlaylist,
+  useRemoveFromStandupPlaylist,
+  useReorderStandupPlaylist,
+  useClearStandupPlaylist,
+  useStandupApprovals,
+  useToggleStandupApproval,
+} from "@/hooks/useStandupBoard";
+import { useBroadcasts, toBroadcast } from "@/hooks/useBroadcasts";
 import { useUIStore } from "@/store/ui";
 import { useIsLeadership } from "@/hooks/use-capability";
 import {
@@ -56,7 +65,7 @@ import {
   useDailyLogsByUser,
   useAddDailyLog,
 } from "@/hooks/useTasks";
-import { fadeInUp, DURATION } from "@/lib/motion";
+import { fadeInUp } from "@/lib/motion";
 import {
   Empty,
   EmptyHeader,
@@ -301,14 +310,22 @@ export default function DailyStandup() {
   const { data: tasks = [] } = useTasks();
   const updateTaskMutation = useUpdateTask();
   const addDailyLog = useAddDailyLog();
-  const standupUpdates = useStandupsStore((s) => s.updates);
-  const addStandupUpdate = useStandupsStore((s) => s.addUpdate);
-  const playlistIds = useStandupsStore((s) => s.playlist);
-  const addToPlaylistStore = useStandupsStore((s) => s.addToPlaylist);
-  const removeFromPlaylistStore = useStandupsStore((s) => s.removeFromPlaylist);
-  const setPlaylistStore = useStandupsStore((s) => s.setPlaylist);
-  const clearPlaylistStore = useStandupsStore((s) => s.clearPlaylist);
-  const broadcasts = useBroadcastsStore((s) => s.broadcasts);
+  const { data: standupUpdates = [] } = useStandupUpdates();
+  const postStandupUpdate = usePostStandupUpdate();
+  // One shared, server-side dailies queue per tenant — everyone in the room
+  // sees the same list in the same order.
+  const { data: playlistItems = [] } = useStandupPlaylist();
+  const addToPlaylistMutation = useAddToStandupPlaylist();
+  const removeFromPlaylistMutation = useRemoveFromStandupPlaylist();
+  const reorderPlaylistMutation = useReorderStandupPlaylist();
+  const clearPlaylistMutation = useClearStandupPlaylist();
+  const { data: feedApprovals = [] } = useStandupApprovals();
+  const toggleFeedApproval = useToggleStandupApproval();
+  const { data: broadcastRows = [] } = useBroadcasts();
+  const broadcasts = useMemo(
+    () => broadcastRows.map(toBroadcast),
+    [broadcastRows],
+  );
   const { setActiveTaskDrawer } = useUIStore();
   const isLeadership = useIsLeadership();
   const [selectedDeptId, setSelectedDeptId] = useState<string>("ALL");
@@ -347,12 +364,10 @@ export default function DailyStandup() {
     }),
   );
 
-  // Tasks now come from the real backend (useTasks(), above); standup
-  // updates still live in a persisted Zustand store (see
-  // src/store/standups.ts). This poll is a connectivity heartbeat against
-  // the (decorative) apiClient stub, kept so a real backend could slot in
-  // later; a failed poll surfaces as a stale-data banner instead of only
-  // logging to the console.
+  // Tasks and standup updates both come from the real backend (useTasks() /
+  // useStandupUpdates(), above). This poll is a connectivity heartbeat; a
+  // failed poll surfaces as a stale-data banner instead of only logging to
+  // the console.
   const fetchData = async () => {
     try {
       await apiClient.get("/tasks");
@@ -380,6 +395,10 @@ export default function DailyStandup() {
   // Playlist entries derived live from the persisted id order + the current
   // task list, so it always reflects real task data (title/status/assignee)
   // instead of a stale snapshot captured at add-time.
+  const playlistIds = useMemo(
+    () => playlistItems.map((item) => item.taskId),
+    [playlistItems],
+  );
   const playlist = useMemo(
     () =>
       playlistIds
@@ -387,6 +406,18 @@ export default function DailyStandup() {
         .filter((t): t is (typeof tasks)[number] => Boolean(t)),
     [playlistIds, tasks],
   );
+
+  // Approvals arrive as flat (feedItemId, userId) rows; grouped here so a
+  // card can read its own count and whether the current user is in it.
+  const approvalsByFeedItem = useMemo(() => {
+    const grouped = new Map<string, string[]>();
+    for (const approval of feedApprovals) {
+      const existing = grouped.get(approval.feedItemId);
+      if (existing) existing.push(approval.userId);
+      else grouped.set(approval.feedItemId, [approval.userId]);
+    }
+    return grouped;
+  }, [feedApprovals]);
 
   // A task is "awaiting lead/supervisor review" once it's either been
   // quick-submitted (status 'review') or pushed through the formal review
@@ -400,16 +431,17 @@ export default function DailyStandup() {
       ["review", "lead-review", "pm-review"].includes(t.status),
   );
 
-  // Updates posted from the "My Updates" form, mapped with the full user
-  // object + a display time, the same shape the feed previously expected
-  // from the apiClient stub.
+  // Updates come from GET /standup-updates (already RBAC-scoped server-side);
+  // mapped here with the full user object + a display time. The client-side
+  // filter below is kept as a second pass so the feed can't show a row the
+  // roster says belongs to another department.
   const feedUpdates = standupUpdates
     .map((update) => {
       const user = users.find((u) => u.id === update.userId) || currentUser;
       return {
         ...update,
         user,
-        time: new Date(update.timestamp).toLocaleTimeString([], {
+        time: new Date(update.createdAt).toLocaleTimeString([], {
           hour: "2-digit",
           minute: "2-digit",
         }),
@@ -461,7 +493,7 @@ export default function DailyStandup() {
 
   const addToPlaylist = (task: any) => {
     if (!playlistIds.includes(task.id)) {
-      addToPlaylistStore(task.id);
+      addToPlaylistMutation.mutate(task.id);
       toast({
         title: "Added to Playlist",
         description: `${task.title} queued for dailies.`,
@@ -475,7 +507,7 @@ export default function DailyStandup() {
     const oldIndex = playlistIds.indexOf(active.id as string);
     const newIndex = playlistIds.indexOf(over.id as string);
     if (oldIndex === -1 || newIndex === -1) return;
-    setPlaylistStore(arrayMove(playlistIds, oldIndex, newIndex));
+    reorderPlaylistMutation.mutate(arrayMove(playlistIds, oldIndex, newIndex));
   };
 
   const handleFilesSelected = (files: FileList | null) => {
@@ -499,19 +531,14 @@ export default function DailyStandup() {
     });
   };
 
-  const handlePostUpdate = () => {
+  const handlePostUpdate = async () => {
     if (!updateText.trim()) return;
     setIsPosting(true);
-    // Small delay so the existing "Posting..." spinner state remains
-    // visible, using the shared fast-cut duration from lib/motion.
-    setTimeout(() => {
-      addStandupUpdate({
-        id: `su-${Date.now()}`,
-        userId: currentUser.id,
+    try {
+      await postStandupUpdate.mutateAsync({
         taskId: postTaskId || myTasks[0]?.id || null,
         text: updateText,
         hours: Number(updateHours) || 0,
-        timestamp: new Date().toISOString(),
       });
       toast({
         title: "Update Posted!",
@@ -519,8 +546,15 @@ export default function DailyStandup() {
       });
       setUpdateText("");
       setAttachedFiles([]);
+    } catch {
+      toast({
+        title: "Couldn't post update",
+        description: "Something went wrong — try again.",
+        variant: "destructive",
+      });
+    } finally {
       setIsPosting(false);
-    }, DURATION.fast * 1000);
+    }
   };
 
   const handleLogUpdateSubmit = () => {
@@ -1008,7 +1042,7 @@ export default function DailyStandup() {
                       onClick={() => {
                         if (sessionActive) {
                           setSessionActive(false);
-                          clearPlaylistStore();
+                          clearPlaylistMutation.mutate();
                           toast({
                             title: "Session Ended",
                             description: "Playlist cleared.",
@@ -1062,7 +1096,7 @@ export default function DailyStandup() {
                                   task={task}
                                   index={idx}
                                   onRemove={() =>
-                                    removeFromPlaylistStore(task.id)
+                                    removeFromPlaylistMutation.mutate(task.id)
                                   }
                                 />
                               ))}
@@ -1237,47 +1271,68 @@ export default function DailyStandup() {
               <h3 className="font-semibold text-lg mb-4">Team Updates Feed</h3>
 
               {/* Dynamic User Updates */}
-              {feedUpdates.map((update) => (
-                <Card
-                  key={update.id}
-                  className="border-primary/50 bg-primary/5 overflow-hidden animate-in fade-in slide-in-from-bottom-2"
-                >
-                  <CardContent className="p-0">
-                    <div className="p-4 flex items-start gap-3">
-                      <Avatar className="w-10 h-10 border border-primary/50">
-                        <AvatarImage src={update.user?.avatar} />
-                        <AvatarFallback>
-                          {update.user?.name?.charAt(0)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1">
-                        <div className="flex items-baseline justify-between">
-                          <div className="font-semibold text-sm">
-                            {update.user?.name}
+              {feedUpdates.map((update) => {
+                const approvers = approvalsByFeedItem.get(update.id) ?? [];
+                const hasApproved = approvers.includes(currentUser.id);
+                return (
+                  <Card
+                    key={update.id}
+                    className="border-primary/50 bg-primary/5 overflow-hidden animate-in fade-in slide-in-from-bottom-2"
+                  >
+                    <CardContent className="p-0">
+                      <div className="p-4 flex items-start gap-3">
+                        <Avatar className="w-10 h-10 border border-primary/50">
+                          <AvatarImage src={update.user?.avatar} />
+                          <AvatarFallback>
+                            {update.user?.name?.charAt(0)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1">
+                          <div className="flex items-baseline justify-between">
+                            <div className="font-semibold text-sm">
+                              {update.user?.name}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {update.time}
+                            </div>
                           </div>
-                          <div className="text-xs text-muted-foreground">
-                            {update.time}
+                          <div className="text-xs text-primary mb-2 flex items-center gap-1">
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] h-5 border-primary/30 bg-primary/10"
+                            >
+                              {update.source === "auto"
+                                ? "Auto End-of-Day"
+                                : "Recent Update"}
+                            </Badge>
+                            <span className="text-muted-foreground ml-1">
+                              logged {update.hours}h
+                            </span>
                           </div>
-                        </div>
-                        <div className="text-xs text-primary mb-2 flex items-center gap-1">
-                          <Badge
-                            variant="outline"
-                            className="text-[10px] h-5 border-primary/30 bg-primary/10"
+                          <p className="text-sm text-foreground/90 whitespace-pre-wrap">
+                            {update.text}
+                          </p>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className={cn(
+                              "mt-2 h-7 px-2 text-xs gap-1.5",
+                              hasApproved
+                                ? "text-green-600 dark:text-green-500"
+                                : "text-muted-foreground",
+                            )}
+                            onClick={() => toggleFeedApproval.mutate(update.id)}
                           >
-                            Recent Update
-                          </Badge>
-                          <span className="text-muted-foreground ml-1">
-                            logged {update.hours}h
-                          </span>
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            {approvers.length}{" "}
+                            {approvers.length === 1 ? "Approval" : "Approvals"}
+                          </Button>
                         </div>
-                        <p className="text-sm text-foreground/90 whitespace-pre-wrap">
-                          {update.text}
-                        </p>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           </div>
         </TabsContent>

@@ -15,13 +15,13 @@ import {
   EmptyTitle,
   EmptyDescription,
 } from "@/components/ui/empty";
-import { Project, isTaskDone } from "@/data/mockData";
+import { isTaskDone } from "@/data/mockData";
 import { useUserStore } from "@/store/users";
 import { useDepartmentStore } from "@/store/departments";
 import { useProjectStore } from "@/store/projects";
 import { useTasksStore } from "@/store/tasks";
 import { useReviewStore } from "@/store/reviews";
-import { usePublishingStore } from "@/store/publishing";
+import { usePublishLogs } from "@/hooks/usePublishLogs";
 import { useShotStore } from "@/store/shots";
 import {
   TrendingUp,
@@ -40,14 +40,9 @@ import { Link } from "wouter";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useMemo, useState } from "react";
 import { useCapability } from "@/hooks/use-capability";
-import { hashString, seededFraction } from "@/lib/seededMock";
-import { getAssigneeId, getShotId } from "@/lib/taskShape";
-
-// Fictional "today" this studio's books are closed against - matches the
-// anchor financials.tsx uses. The mock dataset (task/review/publish
-// timestamps) lives in and around mid-2024, so the date-range filter below
-// is anchored there too instead of drifting with the real-world calendar.
-const MOCK_TODAY = new Date("2024-10-15");
+import { getAssigneeId, getShotId, getProjectId, useEntityProjectMap } from "@/lib/taskShape";
+import { normalizeTaskStatus } from "@/lib/trackingStatus";
+import { useProjectProgress, NO_PROJECT_PROGRESS } from "@/lib/projectProgress";
 
 const DATE_RANGE_DAYS = { "7d": 7, "30d": 30, "90d": 90 } as const;
 type DateRangeKey = keyof typeof DATE_RANGE_DAYS;
@@ -57,36 +52,17 @@ function withinRange(iso: string, start: Date, end: Date): boolean {
   return t >= start.getTime() && t <= end.getTime();
 }
 
-/**
- * Deterministic per-project bid vs. actual hours + rate for the Bid Margins
- * table. Mirrors the spend-ratio model in financials.tsx's getProjectFinancials:
- * a stable per-project hash seeds an hour estimate, and a risk/progress-driven
- * ratio (with a small per-project jitter) decides how actuals diverge from the
- * bid - so every project lands on its own curve instead of a shared placeholder.
- * hashString/seededFraction live in src/lib/seededMock.ts, shared with
- * financials.tsx so the two pages' bid-vs-actual math can't drift apart.
- */
-function getProjectBidMargin(p: Project): {
-  bids: number;
-  actuals: number;
-  rate: number;
-} {
-  const seed = hashString(p.id);
-  const bids = 150 + (seed % 1200); // stable bid-hours estimate per project, 150-1349h
-  const jitter = seededFraction(seed, 41); // stable per-project value in [0,1)
+/** Number of buckets the delivery/workload grids split the selected range into. */
+const TREND_BUCKETS = 8;
 
-  const progressFactor = p.progress / 100;
-  const riskPremium = (p.riskScore / 100) * 0.4; // riskier shows tend to burn hotter
-  const jitterSpread = (jitter - 0.5) * 0.3; // +/-15%, keeps similar-risk projects visually distinct
-
-  let burnRatio = progressFactor * (0.8 + riskPremium) + jitterSpread;
-  if (p.status === "COMPLETE") burnRatio = 0.95 + jitter * 0.25; // wrapped shows land near/over their bid
-  burnRatio = Math.max(0.1, Math.min(1.5, burnRatio));
-
-  const actuals = Math.max(1, Math.round(bids * burnRatio));
-  const rate = 75 + (seed % 21); // stable $75-95/h per project
-
-  return { bids, actuals, rate };
+function bucketIndex(
+  time: number,
+  start: number,
+  end: number,
+  bucketMs: number,
+): number {
+  if (Number.isNaN(time) || time < start || time > end) return -1;
+  return Math.min(TREND_BUCKETS - 1, Math.floor((time - start) / bucketMs));
 }
 
 // users.punched_in_at is now real backend state for every user (not just
@@ -106,19 +82,19 @@ export default function Analytics() {
   const projects = useProjectStore((s) => s.projects);
   const tasks = useTasksStore((s) => s.tasks);
   const reviews = useReviewStore((s) => s.reviews);
-  const publishLogs = usePublishingStore((s) => s.logs);
+  const { data: publishLogs = [] } = usePublishLogs();
   const shots = useShotStore((s) => s.shots);
   const canViewFinancials = useCapability("view_financials");
 
   const [dateRange, setDateRange] = useState<DateRangeKey>("30d");
 
-  // Current period is [MOCK_TODAY - N days, MOCK_TODAY]; previous period is
-  // the N days immediately before that, so every KPI's trend arrow is a real
-  // comparison against the prior period of equal length instead of a
-  // hardcoded string.
-  const { currentStart, previousStart, previousEnd } = useMemo(() => {
+  // Current period is [now - N days, now]; previous period is the N days
+  // immediately before that, so every KPI's trend arrow is a real comparison
+  // against the prior period of equal length instead of a hardcoded string.
+  const { rangeEnd, currentStart, previousStart, previousEnd } = useMemo(() => {
     const days = DATE_RANGE_DAYS[dateRange];
-    const curStart = new Date(MOCK_TODAY);
+    const end = new Date();
+    const curStart = new Date(end);
     curStart.setDate(curStart.getDate() - days);
     // 1ms before curStart, not curStart itself - withinRange is inclusive on
     // both ends, so an end equal to the current period's start would let any
@@ -127,6 +103,7 @@ export default function Analytics() {
     const prevStart = new Date(curStart);
     prevStart.setDate(prevStart.getDate() - days);
     return {
+      rangeEnd: end,
       currentStart: curStart,
       previousStart: prevStart,
       previousEnd: prevEnd,
@@ -134,21 +111,20 @@ export default function Analytics() {
   }, [dateRange]);
 
   const filteredTasks = useMemo(
-    () =>
-      tasks.filter((t) => withinRange(t.createdAt, currentStart, MOCK_TODAY)),
-    [tasks, currentStart],
+    () => tasks.filter((t) => withinRange(t.createdAt, currentStart, rangeEnd)),
+    [tasks, currentStart, rangeEnd],
   );
   const filteredReviews = useMemo(
     () =>
-      reviews.filter((r) => withinRange(r.createdAt, currentStart, MOCK_TODAY)),
-    [reviews, currentStart],
+      reviews.filter((r) => withinRange(r.createdAt, currentStart, rangeEnd)),
+    [reviews, currentStart, rangeEnd],
   );
   const filteredPublishLogs = useMemo(
     () =>
       publishLogs.filter((p) =>
-        withinRange(p.publishedAt, currentStart, MOCK_TODAY),
+        withinRange(p.publishedAt, currentStart, rangeEnd),
       ),
-    [publishLogs, currentStart],
+    [publishLogs, currentStart, rangeEnd],
   );
 
   const previousTasks = useMemo(
@@ -177,7 +153,9 @@ export default function Analytics() {
     publishLogs: typeof filteredPublishLogs,
   ) {
     const total = tasks.length;
-    const done = tasks.filter((t) => isTaskDone(t.status)).length;
+    const done = tasks.filter((t) =>
+      isTaskDone(normalizeTaskStatus(t.status)),
+    ).length;
     const velocity = total > 0 ? (done / total) * 100 : 0;
     const approvalRate =
       reviews.length > 0
@@ -301,7 +279,7 @@ export default function Analytics() {
     const counts = new Map<string, number>();
     filteredTasks.forEach((t) => {
       const assigneeId = getAssigneeId(t);
-      if (assigneeId && isTaskDone(t.status))
+      if (assigneeId && isTaskDone(normalizeTaskStatus(t.status)))
         counts.set(assigneeId, (counts.get(assigneeId) || 0) + 1);
     });
     filteredReviews.forEach((r) => {
@@ -320,21 +298,125 @@ export default function Analytics() {
     [users, contributorCounts],
   );
 
-  // Generate mock chart data
-  const deliveryData = [
-    { week: "W1", planned: 12, actual: 10 },
-    { week: "W2", planned: 15, actual: 14 },
-    { week: "W3", planned: 18, actual: 20 },
-    { week: "W4", planned: 22, actual: 19 },
-    { week: "W5", planned: 25, actual: 23 },
-    { week: "W6", planned: 20, actual: 22 },
-    { week: "W7", planned: 28, actual: 26 },
-    { week: "W8", planned: 30, actual: 28 },
-  ];
+  // Planned vs delivered, bucketed across the selected range: planned = tasks
+  // whose own due date lands in the bucket, delivered = tasks that reached a
+  // done stage in it (lastStatusUpdate is the only completion timestamp tasks
+  // carry). Both series are counts of real rows, so a quiet range reads as an
+  // empty chart rather than an invented curve.
+  const deliveryData = useMemo(() => {
+    const start = currentStart.getTime();
+    const end = rangeEnd.getTime();
+    const bucketMs = Math.max(1, (end - start) / TREND_BUCKETS);
+    const buckets = Array.from({ length: TREND_BUCKETS }, (_, i) => ({
+      label: new Date(start + i * bucketMs).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      }),
+      planned: 0,
+      actual: 0,
+    }));
+
+    tasks.forEach((t) => {
+      if (t.dueDate) {
+        const i = bucketIndex(
+          new Date(t.dueDate).getTime(),
+          start,
+          end,
+          bucketMs,
+        );
+        if (i >= 0) buckets[i].planned += 1;
+      }
+      if (t.lastStatusUpdate && isTaskDone(normalizeTaskStatus(t.status))) {
+        const i = bucketIndex(
+          new Date(t.lastStatusUpdate).getTime(),
+          start,
+          end,
+          bucketMs,
+        );
+        if (i >= 0) buckets[i].actual += 1;
+      }
+    });
+    return buckets;
+  }, [tasks, currentStart, rangeEnd]);
 
   const maxDelivery = Math.max(
+    0,
     ...deliveryData.flatMap((d) => [d.planned, d.actual]),
   );
+
+  // Department workload: open (not done, not cancelled) tasks per department,
+  // bucketed by their own due dates across the selected range. Real capacity
+  // would need per-artist availability hours, which this database doesn't
+  // carry — so this counts committed work instead of claiming a % load.
+  const departmentWorkload = useMemo(() => {
+    const start = currentStart.getTime();
+    const end = rangeEnd.getTime();
+    const bucketMs = Math.max(1, (end - start) / TREND_BUCKETS);
+    const rows = departments.slice(0, 6).map((dept) => ({
+      dept,
+      weeks: Array.from({ length: TREND_BUCKETS }, () => 0),
+    }));
+    const byName = new Map(rows.map((r) => [r.dept.name, r]));
+
+    tasks.forEach((t) => {
+      const row = t.department ? byName.get(t.department) : undefined;
+      if (!row || !t.dueDate) return;
+      const stage = normalizeTaskStatus(t.status);
+      if (isTaskDone(stage) || stage === "cancelled") return;
+      const i = bucketIndex(new Date(t.dueDate).getTime(), start, end, bucketMs);
+      if (i < 0) return;
+      row.weeks[i] += 1;
+    });
+
+    const labels = Array.from({ length: TREND_BUCKETS }, (_, i) =>
+      new Date(start + i * bucketMs).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      }),
+    );
+    const peak = Math.max(0, ...rows.flatMap((r) => r.weeks));
+    return { rows, labels, peak };
+  }, [tasks, departments, currentStart, rangeEnd]);
+
+  // Real per-task bid vs. logged hours for the burn-rate panel. actualHours is
+  // only ever written by time logging, so with nothing logged the panel says
+  // so instead of substituting a number.
+  const burnRateTasks = useMemo(
+    () => filteredTasks.filter((t) => (t.actualHours || 0) > 0).slice(0, 5),
+    [filteredTasks],
+  );
+
+  // Review statistics, all counted off the reviews actually in range.
+  const reviewStats = useMemo(() => {
+    const versionsReviewed = new Set(filteredReviews.map((r) => r.versionId))
+      .size;
+    const activeReviewers = new Set(filteredReviews.map((r) => r.reviewerId))
+      .size;
+    return {
+      logged: filteredReviews.length,
+      avgRounds:
+        versionsReviewed > 0 ? filteredReviews.length / versionsReviewed : null,
+      activeReviewers,
+    };
+  }, [filteredReviews]);
+
+  // Per-project bid vs. logged hours, summed from each project's own tasks
+  // (task -> entityId -> shot/asset -> projectId). No rate card exists in the
+  // database, so this stays in hours and never turns into dollars.
+  const entityProjectMap = useEntityProjectMap();
+  const projectProgress = useProjectProgress();
+  const projectHours = useMemo(() => {
+    const map = new Map<string, { estimated: number; actual: number }>();
+    tasks.forEach((t) => {
+      const projectId = getProjectId(t, entityProjectMap);
+      if (!projectId) return;
+      const entry = map.get(projectId) ?? { estimated: 0, actual: 0 };
+      entry.estimated += t.estimatedHours || 0;
+      entry.actual += t.actualHours || 0;
+      map.set(projectId, entry);
+    });
+    return map;
+  }, [tasks, entityProjectMap]);
 
   function toCSV(rows: (string | number)[][]): string {
     return rows
@@ -459,8 +541,8 @@ export default function Analytics() {
                 : "Your role doesn't include View Financials"
             }
           >
-            {!canViewFinancials && <Lock className="w-3 h-3 mr-1.5" />} Bid
-            Margins
+            {!canViewFinancials && <Lock className="w-3 h-3 mr-1.5" />} Bid vs
+            Logged
           </TabsTrigger>
           <TabsTrigger value="timecards">Timecards & Tracking</TabsTrigger>
         </TabsList>
@@ -476,24 +558,25 @@ export default function Analytics() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="pt-4 space-y-5">
-                  {filteredTasks.length === 0 ? (
+                  {burnRateTasks.length === 0 ? (
                     <Empty className="border-0 py-4">
                       <EmptyHeader>
                         <EmptyMedia variant="icon">
                           <Flame />
                         </EmptyMedia>
-                        <EmptyTitle>No tasks in this range</EmptyTitle>
+                        <EmptyTitle>No time logged yet</EmptyTitle>
                         <EmptyDescription>
-                          Try a wider date range.
+                          Burn rate compares logged hours against bid hours.
+                          Nothing has been logged against tasks in this range.
                         </EmptyDescription>
                       </EmptyHeader>
                     </Empty>
                   ) : (
-                    filteredTasks.slice(0, 5).map((task) => {
-                      const bids = task.estimatedHours || 40;
-                      const actuals =
-                        task.actualHours || (hashString(task.id) % 40) + 10; // Deterministic fallback if undefined
-                      const burnRate = Math.round((actuals / bids) * 100);
+                    burnRateTasks.map((task) => {
+                      const bids = task.estimatedHours || 0;
+                      const actuals = task.actualHours || 0;
+                      const burnRate =
+                        bids > 0 ? Math.round((actuals / bids) * 100) : null;
                       const isOverBudget = actuals > bids;
 
                       const shot = shots.find((s) => s.id === getShotId(task));
@@ -534,13 +617,15 @@ export default function Analytics() {
                             />
                             <div
                               className={`absolute top-0 bottom-0 left-0 rounded-full transition-all duration-700 ${isOverBudget ? "bg-red-500" : "bg-green-500"}`}
-                              style={{ width: `${Math.min(burnRate, 100)}%` }}
+                              style={{
+                                width: `${burnRate === null ? 0 : Math.min(burnRate, 100)}%`,
+                              }}
                             />
                             {isOverBudget && (
                               <div
                                 className="absolute top-0 bottom-0 right-0 bg-red-600 animate-pulse"
                                 style={{
-                                  width: `${Math.min(burnRate - 100, 100)}%`,
+                                  width: `${burnRate === null ? 100 : Math.min(burnRate - 100, 100)}%`,
                                 }}
                               />
                             )}
@@ -555,7 +640,7 @@ export default function Analytics() {
                                     : "text-foreground"
                                 }
                               >
-                                {burnRate}%
+                                {burnRate === null ? "no bid hours" : `${burnRate}%`}
                               </span>
                             </span>
                             {isOverBudget ? (
@@ -581,101 +666,126 @@ export default function Analytics() {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-lg">Delivery Trends</CardTitle>
+                  <p className="text-xs text-muted-foreground">
+                    Tasks due vs. tasks completed, across the selected range.
+                  </p>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex items-end gap-3 h-48">
-                    {deliveryData.map((d, i) => (
-                      <div
-                        key={i}
-                        className="flex-1 flex flex-col items-center gap-1"
-                      >
-                        <div className="flex gap-0.5 items-end h-40 w-full">
+                  {maxDelivery === 0 ? (
+                    <Empty className="border-0 py-4">
+                      <EmptyHeader>
+                        <EmptyMedia variant="icon">
+                          <TrendingUp />
+                        </EmptyMedia>
+                        <EmptyTitle>No deliveries in this range</EmptyTitle>
+                        <EmptyDescription>
+                          No tasks are due or were completed in this window. Try
+                          a wider date range.
+                        </EmptyDescription>
+                      </EmptyHeader>
+                    </Empty>
+                  ) : (
+                    <>
+                      <div className="flex items-end gap-3 h-48">
+                        {deliveryData.map((d, i) => (
                           <div
-                            className="flex-1 bg-primary/20 rounded-t-sm transition-all duration-500"
-                            style={{
-                              height: `${(d.planned / maxDelivery) * 100}%`,
-                            }}
-                          />
-                          <div
-                            className="flex-1 bg-primary rounded-t-sm transition-all duration-500"
-                            style={{
-                              height: `${(d.actual / maxDelivery) * 100}%`,
-                            }}
-                          />
-                        </div>
-                        <span className="text-[10px] text-muted-foreground">
-                          {d.week}
-                        </span>
+                            key={i}
+                            className="flex-1 flex flex-col items-center gap-1"
+                          >
+                            <div className="flex gap-0.5 items-end h-40 w-full">
+                              <div
+                                className="flex-1 bg-primary/20 rounded-t-sm transition-all duration-500"
+                                style={{
+                                  height: `${(d.planned / maxDelivery) * 100}%`,
+                                }}
+                                title={`${d.planned} due`}
+                              />
+                              <div
+                                className="flex-1 bg-primary rounded-t-sm transition-all duration-500"
+                                style={{
+                                  height: `${(d.actual / maxDelivery) * 100}%`,
+                                }}
+                                title={`${d.actual} completed`}
+                              />
+                            </div>
+                            <span className="text-[10px] text-muted-foreground">
+                              {d.label}
+                            </span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                  <div className="flex items-center gap-4 mt-4 text-xs text-muted-foreground">
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-3 h-3 rounded-sm bg-primary/20" />{" "}
-                      Planned
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-3 h-3 rounded-sm bg-primary" /> Actual
-                    </div>
-                  </div>
+                      <div className="flex items-center gap-4 mt-4 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-3 h-3 rounded-sm bg-primary/20" />{" "}
+                          Due
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-3 h-3 rounded-sm bg-primary" />{" "}
+                          Completed
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </CardContent>
               </Card>
 
-              {/* Department Capacity Heatmap */}
+              {/* Department Workload — open tasks by due date. A true capacity
+                figure would need per-artist availability hours, which the
+                database doesn't carry, so this counts committed work rather
+                than claiming a % load. */}
               <Card>
                 <CardHeader className="pb-3 flex flex-row items-center justify-between">
-                  <CardTitle className="text-lg">Department Capacity</CardTitle>
-                  <div className="flex items-center gap-4 text-[10px] text-muted-foreground">
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-2.5 h-2.5 rounded bg-green-500/20 border border-green-500/50" />{" "}
-                      Available
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-2.5 h-2.5 rounded bg-yellow-500/20 border border-yellow-500/50" />{" "}
-                      Heavy
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-2.5 h-2.5 rounded bg-red-500/20 border border-red-500/50" />{" "}
-                      Overloaded
-                    </div>
+                  <div>
+                    <CardTitle className="text-lg">
+                      Department Workload
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Open tasks by due date. Artist availability isn't tracked,
+                      so this is committed work, not capacity.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground shrink-0">
+                    Lighter
+                    <div className="w-2.5 h-2.5 rounded bg-primary/10 border border-border" />
+                    <div className="w-2.5 h-2.5 rounded bg-primary/30 border border-border" />
+                    <div className="w-2.5 h-2.5 rounded bg-primary/60 border border-border" />
+                    Heavier
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="overflow-x-auto custom-scrollbar pb-2">
-                    <table className="w-full min-w-[600px] text-xs">
-                      <thead>
-                        <tr>
-                          <th className="text-left font-medium text-muted-foreground pb-2 w-32">
-                            Department
-                          </th>
-                          {["W1", "W2", "W3", "W4", "W5", "W6", "W7", "W8"].map(
-                            (w) => (
+                  {departmentWorkload.peak === 0 ? (
+                    <Empty className="border-0 py-4">
+                      <EmptyHeader>
+                        <EmptyMedia variant="icon">
+                          <Users />
+                        </EmptyMedia>
+                        <EmptyTitle>No open tasks due in this range</EmptyTitle>
+                        <EmptyDescription>
+                          Departments show workload once their tasks carry due
+                          dates inside the selected window.
+                        </EmptyDescription>
+                      </EmptyHeader>
+                    </Empty>
+                  ) : (
+                    <div className="overflow-x-auto custom-scrollbar pb-2">
+                      <table className="w-full min-w-[600px] text-xs">
+                        <thead>
+                          <tr>
+                            <th className="text-left font-medium text-muted-foreground pb-2 w-32">
+                              Department
+                            </th>
+                            {departmentWorkload.labels.map((label) => (
                               <th
-                                key={w}
+                                key={label}
                                 className="text-center font-medium text-muted-foreground pb-2 w-16"
                               >
-                                {w}
+                                {label}
                               </th>
-                            ),
-                          )}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {departments.slice(0, 6).map((dept, i) => {
-                          // Deterministic capacity curve per week (0-150%), seeded per dept+week
-                          const baseLoad = [80, 95, 60, 110, 40, 85][i];
-                          const weekLoads = Array.from({ length: 8 }).map(
-                            (_, w) => {
-                              return Math.max(
-                                0,
-                                baseLoad +
-                                  Math.sin(w) * 30 +
-                                  seededFraction(i, w) * 20,
-                              );
-                            },
-                          );
-
-                          return (
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {departmentWorkload.rows.map(({ dept, weeks }) => (
                             <tr
                               key={dept.id}
                               className="border-t border-border group"
@@ -694,32 +804,33 @@ export default function Analytics() {
                                   </div>
                                 </Link>
                               </td>
-                              {weekLoads.map((load, w) => {
-                                let color =
-                                  "bg-green-500/10 text-green-600 border-green-500/30";
-                                if (load > 110)
-                                  color =
-                                    "bg-red-500/10 text-red-600 border-red-500/30";
-                                else if (load > 85)
-                                  color =
-                                    "bg-yellow-500/10 text-yellow-600 border-yellow-500/30";
+                              {weeks.map((count, w) => {
+                                const share = count / departmentWorkload.peak;
+                                const tint =
+                                  count === 0
+                                    ? "bg-muted/30 text-muted-foreground"
+                                    : share > 0.66
+                                      ? "bg-primary/60 text-foreground"
+                                      : share > 0.33
+                                        ? "bg-primary/30 text-foreground"
+                                        : "bg-primary/10 text-foreground";
                                 return (
                                   <td key={w} className="p-1">
                                     <div
-                                      className={`h-8 rounded flex items-center justify-center font-mono text-[10px] border transition-colors hover:border-primary/50 cursor-help ${color}`}
-                                      title={`${dept.name} Week ${w + 1}: ${Math.round(load)}% Capacity`}
+                                      className={`h-8 rounded flex items-center justify-center font-mono text-[10px] border border-border transition-colors hover:border-primary/50 cursor-help ${tint}`}
+                                      title={`${dept.name}, ${departmentWorkload.labels[w]}: ${count} open task${count === 1 ? "" : "s"} due`}
                                     >
-                                      {Math.round(load)}%
+                                      {count}
                                     </div>
                                   </td>
                                 );
                               })}
                             </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -731,21 +842,31 @@ export default function Analytics() {
                 <CardContent>
                   <div className="grid grid-cols-4 gap-6">
                     {[
-                      { label: "Avg Rounds", value: "1.6", sub: "per shot" },
                       {
-                        label: "First-Pass Rate",
-                        value: "42%",
-                        sub: "approved on v001",
-                      },
-                      {
-                        label: "Avg Turnaround",
-                        value: "4.2h",
-                        sub: "from submit to decision",
+                        label: "Reviews Logged",
+                        value: String(reviewStats.logged),
+                        sub: "in this range",
                       },
                       {
                         label: "Active Reviewers",
-                        value: "12",
-                        sub: "this week",
+                        value: String(reviewStats.activeReviewers),
+                        sub: "people who reviewed",
+                      },
+                      {
+                        label: "Avg Rounds",
+                        value:
+                          reviewStats.avgRounds === null
+                            ? "—"
+                            : reviewStats.avgRounds.toFixed(1),
+                        sub: "reviews per version",
+                      },
+                      {
+                        label: "Avg Turnaround",
+                        value:
+                          reviewStats.logged === 0
+                            ? "—"
+                            : `${avgReviewTime.toFixed(1)}h`,
+                        sub: "from submit to decision",
                       },
                     ].map((s, i) => (
                       <div key={i} className="text-center">
@@ -765,55 +886,48 @@ export default function Analytics() {
 
             {/* Right column */}
             <div className="space-y-6">
-              {/* Project Forecast */}
+              {/* Project Progress — real task completion per project; there is
+                no risk score or forecast model behind the real data. */}
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-lg">Project Forecast</CardTitle>
+                  <CardTitle className="text-lg">Project Progress</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-5">
                   {projects.slice(0, 5).map((proj) => {
-                    const risk = proj.riskScore;
+                    const progress =
+                      projectProgress.get(proj.id) ?? NO_PROJECT_PROGRESS;
+                    const endDate = proj.endDate ? new Date(proj.endDate) : null;
+                    const hasEndDate =
+                      endDate !== null && !Number.isNaN(endDate.getTime());
                     return (
                       <div key={proj.id} className="space-y-2">
                         <div className="flex justify-between text-sm">
                           <span className="font-medium">{proj.name}</span>
-                          <Badge
-                            variant={
-                              risk > 50
-                                ? "destructive"
-                                : risk > 30
-                                  ? "secondary"
-                                  : "outline"
-                            }
-                            className="text-[10px]"
-                          >
-                            {risk > 50
-                              ? "High Risk"
-                              : risk > 30
-                                ? "Medium"
-                                : "Low Risk"}
+                          <Badge variant="outline" className="text-[10px]">
+                            {progress.percent === null
+                              ? "No tasks"
+                              : `${progress.done}/${progress.total} tasks`}
                           </Badge>
                         </div>
                         <div className="relative h-5 bg-muted rounded-full overflow-hidden">
                           <div
-                            className="absolute top-0 bottom-0 left-0 bg-primary/30 rounded-full"
-                            style={{
-                              width: `${Math.min(proj.progress + 20, 100)}%`,
-                            }}
-                          />
-                          <div
                             className="absolute top-0 bottom-0 left-0 bg-primary rounded-full"
-                            style={{ width: `${proj.progress}%` }}
+                            style={{ width: `${progress.percent ?? 0}%` }}
                           />
                         </div>
                         <div className="flex justify-between text-[10px] text-muted-foreground">
-                          <span>{proj.progress}% complete</span>
                           <span>
-                            Due{" "}
-                            {new Date(proj.dueDate).toLocaleDateString(
-                              "en-US",
-                              { month: "short", year: "numeric" },
-                            )}
+                            {progress.percent === null
+                              ? "No tasks yet"
+                              : `${progress.percent}% complete`}
+                          </span>
+                          <span>
+                            {hasEndDate
+                              ? `Due ${endDate!.toLocaleDateString("en-US", {
+                                  month: "short",
+                                  year: "numeric",
+                                })}`
+                              : "No end date set"}
                           </span>
                         </div>
                       </div>
@@ -845,31 +959,6 @@ export default function Analytics() {
                           (p) => p.status === "failed",
                         ).length,
                         color: "text-red-500",
-                      },
-                      {
-                        label: "Avg Duration",
-                        value: (() => {
-                          if (filteredPublishLogs.length === 0) return "—";
-                          const totalSeconds = filteredPublishLogs.reduce(
-                            (sum, p) => {
-                              const match = p.duration.match(
-                                /(\d+)m\s*(\d+)s/,
-                              );
-                              if (!match) return sum;
-                              return (
-                                sum +
-                                Number(match[1]) * 60 +
-                                Number(match[2])
-                              );
-                            },
-                            0,
-                          );
-                          const avgSeconds = Math.round(
-                            totalSeconds / filteredPublishLogs.length,
-                          );
-                          return `${Math.floor(avgSeconds / 60)}m ${avgSeconds % 60}s`;
-                        })(),
-                        color: "text-blue-500",
                       },
                       {
                         label: "Validation Pass Rate",
@@ -953,7 +1042,7 @@ export default function Analytics() {
                     <EmptyMedia variant="icon">
                       <Lock />
                     </EmptyMedia>
-                    <EmptyTitle>Bid margins access restricted</EmptyTitle>
+                    <EmptyTitle>Bid hours access restricted</EmptyTitle>
                     <EmptyDescription>
                       Your role doesn't include View Financials in the current
                       Roles &amp; Permissions scheme. Ask a producer or manager
@@ -968,12 +1057,12 @@ export default function Analytics() {
               <Card>
                 <CardHeader>
                   <CardTitle className="text-xl flex items-center gap-2">
-                    <Flame className="text-orange-500" /> Bid vs. Delivered
-                    Profitability
+                    <Flame className="text-orange-500" /> Bid vs. Logged Hours
                   </CardTitle>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Won bid hours vs. hours actually delivered, per project. For
-                    live budget spend and burn-rate tracking, see the{" "}
+                    Bid hours vs. hours logged, summed from each project's own
+                    tasks. No rate card or budget is configured for this studio,
+                    so there are no dollar figures to show here or on the{" "}
                     <Link href="/financials">
                       <span className="text-primary hover:underline cursor-pointer">
                         Financials dashboard
@@ -989,34 +1078,29 @@ export default function Analytics() {
                         <tr className="border-b border-border/50 text-muted-foreground">
                           <th className="pb-3 font-medium">Project</th>
                           <th className="pb-3 font-medium text-right">
-                            Estimated Bid (hrs)
+                            Bid (hrs)
                           </th>
                           <th className="pb-3 font-medium text-right">
-                            Actual Burn (hrs)
+                            Logged (hrs)
                           </th>
                           <th className="pb-3 font-medium text-right">
-                            Avg Rate ($)
+                            Variance (hrs)
                           </th>
                           <th className="pb-3 font-medium text-right">
-                            Bid Value ($)
-                          </th>
-                          <th className="pb-3 font-medium text-right">
-                            Actual Cost ($)
-                          </th>
-                          <th className="pb-3 font-medium text-right">
-                            Profit Margin
+                            Tasks Done
                           </th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border/50">
                         {projects.map((proj) => {
-                          const { bids, actuals, rate } =
-                            getProjectBidMargin(proj);
-                          const bidValue = bids * rate;
-                          const actualCost = actuals * rate;
-                          const profit = bidValue - actualCost;
-                          const margin = Math.round((profit / bidValue) * 100);
-                          const isLoss = margin < 0;
+                          const hours = projectHours.get(proj.id) ?? {
+                            estimated: 0,
+                            actual: 0,
+                          };
+                          const progress =
+                            projectProgress.get(proj.id) ?? NO_PROJECT_PROGRESS;
+                          const hasLogged = hours.actual > 0;
+                          const variance = hours.estimated - hours.actual;
 
                           return (
                             <tr
@@ -1025,32 +1109,24 @@ export default function Analytics() {
                             >
                               <td className="py-4 font-medium">{proj.name}</td>
                               <td className="py-4 text-right tabular-nums">
-                                {bids}h
+                                {hours.estimated > 0
+                                  ? `${hours.estimated}h`
+                                  : "—"}
                               </td>
                               <td className="py-4 text-right tabular-nums text-muted-foreground">
-                                {actuals}h
+                                {hasLogged ? `${hours.actual}h` : "No time logged"}
+                              </td>
+                              <td
+                                className={`py-4 text-right tabular-nums ${hasLogged && variance < 0 ? "text-red-500" : "text-muted-foreground"}`}
+                              >
+                                {hasLogged
+                                  ? `${variance > 0 ? "+" : ""}${variance}h`
+                                  : "—"}
                               </td>
                               <td className="py-4 text-right tabular-nums">
-                                ${rate}/h
-                              </td>
-                              <td className="py-4 text-right tabular-nums">
-                                ${bidValue.toLocaleString()}
-                              </td>
-                              <td className="py-4 text-right tabular-nums">
-                                ${actualCost.toLocaleString()}
-                              </td>
-                              <td className="py-4 text-right">
-                                <Badge
-                                  variant="outline"
-                                  className={
-                                    isLoss
-                                      ? "bg-red-500/10 text-red-500 border-red-500/20"
-                                      : "bg-green-500/10 text-green-500 border-green-500/20"
-                                  }
-                                >
-                                  {isLoss ? "" : "+"}
-                                  {margin}%
-                                </Badge>
+                                {progress.percent === null
+                                  ? "No tasks"
+                                  : `${progress.done} / ${progress.total}`}
                               </td>
                             </tr>
                           );

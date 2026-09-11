@@ -1,3 +1,4 @@
+import { parseDueDate } from "@/lib/taskDates";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
 import { useQueries } from "@tanstack/react-query";
@@ -61,15 +62,22 @@ export default function TasksTimelineView({
     }
     let minStart = Infinity;
     let maxEnd = -Infinity;
+    // Undated tasks are skipped rather than treated as due at the epoch,
+    // which would drag the timeline's start back to 1970 and compress every
+    // real bar into a sliver.
     projectTasks.forEach((task) => {
-      const due = new Date(task.dueDate).getTime();
+      const dueDate = parseDueDate(task.dueDate);
+      if (!dueDate) return;
+      const due = dueDate.getTime();
       const durationDays = Math.max(1, task.estimatedHours / 8);
       const start = due - durationDays * MS_PER_DAY;
       if (start < minStart) minStart = start;
       if (due > maxEnd) maxEnd = due;
     });
     projectMilestones.forEach((m) => {
-      const due = new Date(m.dueDate).getTime();
+      const dueDate = parseDueDate(m.dueDate);
+      if (!dueDate) return;
+      const due = dueDate.getTime();
       if (due < minStart) minStart = due;
       if (due > maxEnd) maxEnd = due;
     });

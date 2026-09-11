@@ -1,5 +1,26 @@
 import { create } from "zustand";
 
+// Both wrapped in try/catch: storage access throws outright in a private
+// window or when site data is blocked, and a layout preference must never be
+// the reason the application fails to start.
+const SIDEBAR_KEY = "forge-sidebar-collapsed";
+
+function readStoredCollapsed(): boolean {
+  try {
+    return localStorage.getItem(SIDEBAR_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeStoredCollapsed(collapsed: boolean): void {
+  try {
+    localStorage.setItem(SIDEBAR_KEY, collapsed ? "1" : "0");
+  } catch {
+    // Preference simply will not persist; the app is unaffected.
+  }
+}
+
 interface UIState {
   aiAssistantOpen: boolean;
   toggleAiAssistant: () => void;
@@ -71,10 +92,23 @@ export const useUIStore = create<UIState>((set) => ({
   notificationPanelOpen: false,
   setNotificationPanelOpen: (open) => set({ notificationPanelOpen: open }),
 
-  sidebarCollapsed: false,
-  setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
+  // Remembered per browser. Collapsing the sidebar is a lasting preference
+  // about how much room you want for the work -- it reset on every reload,
+  // so anyone who collapsed it to widen the review player had to do it again
+  // on the next page they opened. Deliberately localStorage rather than the
+  // server: it is a property of this screen, not of the person, and someone
+  // on a large monitor and a laptop wants different answers.
+  sidebarCollapsed: readStoredCollapsed(),
+  setSidebarCollapsed: (collapsed) => {
+    writeStoredCollapsed(collapsed);
+    set({ sidebarCollapsed: collapsed });
+  },
   toggleSidebar: () =>
-    set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+    set((state) => {
+      const next = !state.sidebarCollapsed;
+      writeStoredCollapsed(next);
+      return { sidebarCollapsed: next };
+    }),
 
   mobileNavOpen: false,
   setMobileNavOpen: (open) => set({ mobileNavOpen: open }),

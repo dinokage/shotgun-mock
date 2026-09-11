@@ -5,6 +5,11 @@ import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability } from "../middleware/rbac";
 import { hashPassword, signSession } from "../lib/auth";
 import { sendInviteEmail } from "../lib/mailer";
+import { rateLimitByIp } from "../lib/rateLimit";
+
+// Invite tokens are 256-bit, but accepting one creates a user account, so the
+// endpoint gets a ceiling like every other unauthenticated write.
+const INVITE_ACCEPT_RULE = { name: "invite-accept:ip", limit: 10, windowSeconds: 3600 };
 
 export const invitesRouter = Router();
 
@@ -115,7 +120,7 @@ invitesRouter.get("/:token", async (req, res) => {
 // straight into a session -- same "no password/email step, land them in the
 // app" shape as client-access.ts's /redeem, just for a real employee login
 // instead of a scoped client session.
-invitesRouter.post("/:token/accept", async (req, res) => {
+invitesRouter.post("/:token/accept", rateLimitByIp(INVITE_ACCEPT_RULE), async (req, res) => {
   try {
     const { token } = req.params;
     const { name, password } = req.body;
@@ -123,7 +128,7 @@ invitesRouter.post("/:token/accept", async (req, res) => {
       return res.status(400).json({ error: "name and a password (min 8 chars) are required" });
 
     const invite = await prisma.pendingInvite.findFirst({
-      where: { token, expiresAt: { gt: new Date() } },
+      where: { token: String(token), expiresAt: { gt: new Date() } },
     });
     if (!invite) return res.status(404).json({ error: "Invalid or expired invite" });
 

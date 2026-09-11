@@ -70,11 +70,12 @@ model Asset {
   notes         String?
   updatedAt     DateTime  @default(now()) @map("updated_at") @db.Timestamp(6)
 
-  assignee User?     @relation(fields: [assigneeId], references: [id], onUpdate: NoAction, map: "assets_assignee_id_users_id_fk")
-  episode  Episode?  @relation(fields: [episodeId], references: [id], onUpdate: NoAction, map: "assets_episode_id_episodes_id_fk")
-  project  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "assets_project_id_projects_id_fk")
-  sequence Sequence? @relation(fields: [sequenceId], references: [id], onUpdate: NoAction, map: "assets_sequence_id_sequences_id_fk")
-  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "assets_tenant_id_tenants_id_fk")
+  assignee        User?           @relation(fields: [assigneeId], references: [id], onUpdate: NoAction, map: "assets_assignee_id_users_id_fk")
+  episode         Episode?        @relation(fields: [episodeId], references: [id], onUpdate: NoAction, map: "assets_episode_id_episodes_id_fk")
+  project         Project         @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "assets_project_id_projects_id_fk")
+  sequence        Sequence?       @relation(fields: [sequenceId], references: [id], onUpdate: NoAction, map: "assets_sequence_id_sequences_id_fk")
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "assets_tenant_id_tenants_id_fk")
+  assetActivities AssetActivity[]
 
   @@map("assets")
 }
@@ -119,6 +120,7 @@ model ClientAccessLink {
   version       Version?     @relation(fields: [versionId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_access_links_version_id_versions_id_fk")
   reviews       Review[]
   annotations   Annotation[]
+  clientNotes   ClientNote[]
 
   @@unique([tenantId, code], map: "client_access_links_tenant_id_code_unique")
   @@map("client_access_links")
@@ -152,9 +154,11 @@ model Department {
   icon          String?
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamp(6)
 
-  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "departments_tenant_id_tenants_id_fk")
-  pendingInvites PendingInvite[]
-  users          User[]
+  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "departments_tenant_id_tenants_id_fk")
+  pendingInvites    PendingInvite[]
+  users             User[]
+  pipelineStages    PipelineStage[]
+  taskTemplateItems TaskTemplateItem[]
 
   @@map("departments")
 }
@@ -239,6 +243,9 @@ model Project {
   tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "projects_tenant_id_tenants_id_fk")
   sequences         Sequence[]
   shots             Shot[]
+  pipelines         ProjectPipeline[]
+  deliveries        Delivery[]
+  broadcasts        Broadcast[]
 
   @@map("projects")
 }
@@ -323,11 +330,12 @@ model Shot {
   notes                String    @default("")
   updatedAt            DateTime  @default(now()) @map("updated_at") @db.Timestamp(6)
 
-  assignee User?     @relation(fields: [assigneeId], references: [id], onUpdate: NoAction, map: "shots_assignee_id_users_id_fk")
-  episode  Episode?  @relation(fields: [episodeId], references: [id], onUpdate: NoAction, map: "shots_episode_id_episodes_id_fk")
-  project  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "shots_project_id_projects_id_fk")
-  sequence Sequence? @relation(fields: [sequenceId], references: [id], onUpdate: NoAction, map: "shots_sequence_id_sequences_id_fk")
-  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "shots_tenant_id_tenants_id_fk")
+  assignee    User?        @relation(fields: [assigneeId], references: [id], onUpdate: NoAction, map: "shots_assignee_id_users_id_fk")
+  episode     Episode?     @relation(fields: [episodeId], references: [id], onUpdate: NoAction, map: "shots_episode_id_episodes_id_fk")
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "shots_project_id_projects_id_fk")
+  sequence    Sequence?    @relation(fields: [sequenceId], references: [id], onUpdate: NoAction, map: "shots_sequence_id_sequences_id_fk")
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "shots_tenant_id_tenants_id_fk")
+  clientNotes ClientNote[]
 
   @@map("shots")
 }
@@ -339,6 +347,9 @@ model StandupUpdate {
   taskId    String?  @map("task_id")
   text      String
   hours     Int      @default(0)
+  // "manual" when a person wrote it from daily-standup.tsx, "auto" when the
+  // logout handler generated it from that day's real task/daily-log activity.
+  source    String   @default("manual")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "standup_updates_tenant_id_tenants_id_fk")
@@ -442,6 +453,9 @@ model Task {
   priority         String    @default("medium")
   department       String?
   pipelinePhase    String?   @map("pipeline_phase")
+  /// The configured stage this task sits at. `pipelinePhase` above is the
+  /// older free-text label nothing enforces; this is the real reference.
+  pipelineStageId  String?   @map("pipeline_stage_id")
   weeklyRating     String?   @map("weekly_rating")
   tags             Json      @default("[]")
   estimatedHours   Int       @default(0) @map("estimated_hours")
@@ -451,15 +465,17 @@ model Task {
   lastStatusUpdate DateTime  @default(now()) @map("last_status_update") @db.Timestamp(6)
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
 
-  dailyLogs          DailyLog[]
-  taskApprovalEvents TaskApprovalEvent[]
-  taskAttachments    TaskAttachment[]
-  taskChecklistItems TaskChecklistItem[]
-  taskComments       TaskComment[]
-  dependentTaskLinks TaskDependency[]    @relation("TaskDependents")
-  taskDependencies   TaskDependency[]    @relation("TaskDependencies")
-  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tasks_tenant_id_tenants_id_fk")
-  versions           Version[]
+  dailyLogs            DailyLog[]
+  taskApprovalEvents   TaskApprovalEvent[]
+  taskAttachments      TaskAttachment[]
+  taskChecklistItems   TaskChecklistItem[]
+  taskComments         TaskComment[]
+  dependentTaskLinks   TaskDependency[]      @relation("TaskDependents")
+  taskDependencies     TaskDependency[]      @relation("TaskDependencies")
+  tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tasks_tenant_id_tenants_id_fk")
+  versions             Version[]
+  pipelineStage        PipelineStage?        @relation(fields: [pipelineStageId], references: [id], onUpdate: NoAction, map: "tasks_pipeline_stage_id_fk")
+  standupPlaylistItems StandupPlaylistItem[]
 
   @@map("tasks")
 }
@@ -520,6 +536,40 @@ model Tenant {
   tenantRoles         TenantRole[]
   users               User[]
   versions            Version[]
+  pipelineTemplates   PipelineTemplate[]
+  pipelineStages      PipelineStage[]
+  projectPipelines    ProjectPipeline[]
+  chatChannels        ChatChannel[]
+  chatChannelMembers  ChatChannelMember[]
+  chatMessages        ChatMessage[]
+  deliveries          Delivery[]
+  deliveryItems       DeliveryItem[]
+  deliveryDownloads   DeliveryDownload[]
+  publishLogs         PublishLog[]
+  studioSettings      StudioSetting[]
+  apiKeys             ApiKey[]
+  webhooks            Webhook[]
+  licenseServers      LicenseServer[]
+  integrations        Integration[]
+  entityTypeDefs      EntityTypeDef[]
+  entityFieldDefs     EntityFieldDef[]
+  taskTemplates       TaskTemplate[]
+  taskTemplateItems   TaskTemplateItem[]
+  workflows           Workflow[]
+  workflowRuns        WorkflowRun[]
+  tenantPlugins       TenantPlugin[]
+  trackingViews       TrackingView[]
+  notificationPrefs   NotificationPreference[]
+  standupPlaylist     StandupPlaylistItem[]
+  standupApprovals    StandupApproval[]
+  assetActivity       AssetActivity[]
+  reviewPresentations ReviewPresentation[]
+  reviewComments      ReviewComment[]
+  clientNotes         ClientNote[]
+  broadcasts          Broadcast[]
+  auditRollbacks      AuditRollback[]
+  passwordResetTokens PasswordResetToken[]
+  attendanceRecords   AttendanceRecord[]
 
   @@map("tenants")
 }
@@ -538,23 +588,73 @@ model User {
   deletedAt      DateTime? @map("deleted_at") @db.Timestamp(6)
   departmentId   String?   @map("department_id")
   punchedInAt    DateTime? @map("punched_in_at") @db.Timestamp(6)
+  /// Bumped on every authenticated request (throttled, see tenant.ts), never
+  /// cleared. This is the "online" signal, deliberately separate from
+  /// punchedInAt -- clocking in is an attendance/payroll fact that survives
+  /// closing the laptop; being online is only true while requests keep
+  /// arriving, so a closed tab silently ages out instead of staying "active"
+  /// forever waiting for a logout click that may never come.
+  lastSeenAt     DateTime? @map("last_seen_at") @db.Timestamp(6)
+  /// When this user finished (or skipped) the first-run walkthrough. Null
+  /// means they have never been shown it. Stored per user rather than in
+  /// browser storage so the tour does not reappear every time someone signs
+  /// in from a different machine, which is normal in a shared studio.
+  onboardedAt    DateTime? @map("onboarded_at") @db.Timestamp(6)
+  /// The role this person asked for when they registered, when that role
+  /// carries more authority than the one they were actually given. The
+  /// account is always created at least privilege; this records the claim so
+  /// an administrator can approve it deliberately. Cleared once resolved, so
+  /// a non-null value means "awaiting a decision".
+  requestedRole  String?   @map("requested_role")
+  /// Bumped to invalidate every session this user holds. Sessions are
+  /// stateless JWTs with a 7-day life, so without this a logout, a password
+  /// change, or an offboarding left existing tokens usable for up to a week.
+  /// Every request compares the value in the token against this column.
+  tokenVersion   Int       @default(0) @map("token_version")
 
-  annotations         Annotation[]
-  assets              Asset[]
-  clientAccessLinks   ClientAccessLink[]
-  dailyLogs           DailyLog[]
-  notifications       Notification[]
-  reviews             Review[]
-  sequenceTeamMembers SequenceTeamMember[]
-  shots               Shot[]
-  standupUpdates      StandupUpdate[]
-  taskApprovalEvents  TaskApprovalEvent[]
-  taskAttachments     TaskAttachment[]
-  taskComments        TaskComment[]
-  department          Department?          @relation(fields: [departmentId], references: [id], onUpdate: NoAction, map: "users_department_id_departments_id_fk")
-  role                TenantRole           @relation(fields: [roleId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "users_role_id_tenant_roles_id_fk")
-  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "users_tenant_id_tenants_id_fk")
-  versions            Version[]
+  annotations               Annotation[]
+  assets                    Asset[]
+  clientAccessLinks         ClientAccessLink[]
+  dailyLogs                 DailyLog[]
+  notifications             Notification[]
+  reviews                   Review[]
+  sequenceTeamMembers       SequenceTeamMember[]
+  shots                     Shot[]
+  standupUpdates            StandupUpdate[]
+  taskApprovalEvents        TaskApprovalEvent[]
+  taskAttachments           TaskAttachment[]
+  taskComments              TaskComment[]
+  department                Department?              @relation(fields: [departmentId], references: [id], onUpdate: NoAction, map: "users_department_id_departments_id_fk")
+  role                      TenantRole               @relation(fields: [roleId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "users_role_id_tenant_roles_id_fk")
+  tenant                    Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "users_tenant_id_tenants_id_fk")
+  versions                  Version[]
+  chatChannels              ChatChannel[]
+  chatChannelMembers        ChatChannelMember[]
+  chatMessages              ChatMessage[]
+  deliveries                Delivery[]
+  publishLogs               PublishLog[]
+  studioSettings            StudioSetting[]
+  apiKeys                   ApiKey[]
+  webhooks                  Webhook[]
+  integrations              Integration[]
+  entityTypeDefs            EntityTypeDef[]
+  taskTemplates             TaskTemplate[]
+  workflows                 Workflow[]
+  workflowRuns              WorkflowRun[]
+  tenantPlugins             TenantPlugin[]
+  trackingViews             TrackingView[]
+  notificationPrefs         NotificationPreference[]
+  standupPlaylist           StandupPlaylistItem[]
+  standupApprovals          StandupApproval[]
+  assetActivity             AssetActivity[]
+  reviewPresentations       ReviewPresentation[]
+  reviewCommentsAuthored    ReviewComment[]          @relation("ReviewCommentAuthor")
+  reviewCommentsTransferred ReviewComment[]          @relation("ReviewCommentTransferrer")
+  clientNotesTransferred    ClientNote[]
+  broadcasts                Broadcast[]
+  auditRollbacks            AuditRollback[]
+  passwordResetTokens       PasswordResetToken[]
+  attendanceRecords         AttendanceRecord[]
 
   @@map("users")
 }
@@ -575,12 +675,758 @@ model Version {
   fileSize      String   @default("0MB") @map("file_size")
   createdById   String?  @map("created_by_id")
 
-  annotations       Annotation[]
-  clientAccessLinks ClientAccessLink[]
-  reviews           Review[]
-  createdBy         User?              @relation(fields: [createdById], references: [id], onUpdate: NoAction, map: "versions_created_by_id_users_id_fk")
-  task              Task?              @relation(fields: [taskId], references: [id], onUpdate: NoAction, map: "versions_task_id_tasks_id_fk")
-  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "versions_tenant_id_tenants_id_fk")
+  annotations         Annotation[]
+  clientAccessLinks   ClientAccessLink[]
+  reviews             Review[]
+  createdBy           User?                @relation(fields: [createdById], references: [id], onUpdate: NoAction, map: "versions_created_by_id_users_id_fk")
+  task                Task?                @relation(fields: [taskId], references: [id], onUpdate: NoAction, map: "versions_task_id_tasks_id_fk")
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "versions_tenant_id_tenants_id_fk")
+  reviewPresentations ReviewPresentation[]
+  reviewComments      ReviewComment[]
+  clientNotes         ClientNote[]
 
   @@map("versions")
+}
+
+// ---------------------------------------------------------------------------
+// Configurable production pipeline
+//
+// There is no canonical stage ordering in this industry: Autodesk's Flow
+// Production Tracking ships no default step list at all and makes display
+// order an author-supplied field, and both Flow and AYON scope steps per
+// entity type with per-project enable/disable. So a pipeline is a template of
+// ordered stages, and each project may reorder or switch off stages without
+// forking the template.
+// ---------------------------------------------------------------------------
+
+model PipelineTemplate {
+  id          String   @id
+  tenantId    String   @map("tenant_id")
+  name        String
+  /// "3d" | "2d" | "vfx" — which discipline this template describes.
+  discipline  String
+  /// "shot" | "asset" — asset stages and shot stages are separate tracks.
+  entityKind  String   @map("entity_kind")
+  description String   @default("")
+  isDefault   Boolean  @default(false) @map("is_default")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "pipeline_templates_tenant_id_tenants_id_fk")
+  stages   PipelineStage[]
+  projects ProjectPipeline[]
+
+  @@map("pipeline_templates")
+}
+
+model PipelineStage {
+  id             String  @id
+  tenantId       String  @map("tenant_id")
+  templateId     String  @map("template_id")
+  name           String
+  shortCode      String  @map("short_code")
+  sortOrder      Int     @map("sort_order")
+  /// The department that owns this stage, when one exists in this tenant.
+  departmentId   String? @map("department_id")
+  isOptional     Boolean @default(false) @map("is_optional")
+  /// Deliverable extensions, e.g. [".mov", ".exr"].
+  outputFormats  Json    @default("[]") @map("output_formats")
+  /// Whether the artist keeps a local copy alongside the review copy.
+  keepsLocalCopy Boolean @default(false) @map("keeps_local_copy")
+  /// Who reviews this stage, e.g. ["lead", "production_head", "producer"].
+  reviewAudience Json    @default("[]") @map("review_audience")
+  /// "shot" | "asset" | null — which DCC publish this stage performs.
+  dccPublishKind String? @map("dcc_publish_kind")
+
+  template   PipelineTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "pipeline_stages_template_id_fk")
+  department Department?      @relation(fields: [departmentId], references: [id], onUpdate: NoAction, map: "pipeline_stages_department_id_fk")
+  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "pipeline_stages_tenant_id_tenants_id_fk")
+  tasks      Task[]
+
+  @@index([templateId, sortOrder])
+  @@map("pipeline_stages")
+}
+
+model ProjectPipeline {
+  id             String   @id
+  tenantId       String   @map("tenant_id")
+  projectId      String   @map("project_id")
+  templateId     String   @map("template_id")
+  /// Per-project reorder and enable/disable, keyed by stage id:
+  /// { "<stageId>": { "sortOrder": 3, "enabled": false } }.
+  /// Stored as overrides rather than a copied stage list so a template edit
+  /// still reaches every project that hasn't deliberately diverged.
+  stageOverrides Json     @default("{}") @map("stage_overrides")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  project  Project          @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "project_pipelines_project_id_fk")
+  template PipelineTemplate @relation(fields: [templateId], references: [id], onUpdate: NoAction, map: "project_pipelines_template_id_fk")
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "project_pipelines_tenant_id_tenants_id_fk")
+
+  @@unique([projectId, templateId])
+  @@map("project_pipelines")
+}
+
+// ---------------------------------------------------------------------------
+// Subsystems that previously lived only in browser localStorage, so two people
+// on two machines saw different data and neither was wrong. Chat messages were
+// never delivered, delivery access codes could not be redeemed from another
+// browser, and publish logs vanished with the tab.
+// ---------------------------------------------------------------------------
+
+model ChatChannel {
+  id           String    @id
+  tenantId     String    @map("tenant_id")
+  /// "channel" | "group" | "dm"
+  kind         String    @default("channel")
+  name         String
+  description  String    @default("")
+  departmentId String?   @map("department_id")
+  createdById  String?   @map("created_by_id")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  archivedAt   DateTime? @map("archived_at") @db.Timestamp(6)
+
+  tenant    Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "chat_channels_tenant_id_fk")
+  createdBy User?               @relation(fields: [createdById], references: [id], onUpdate: NoAction, map: "chat_channels_created_by_id_fk")
+  members   ChatChannelMember[]
+  messages  ChatMessage[]
+
+  @@map("chat_channels")
+}
+
+model ChatChannelMember {
+  id         String    @id
+  tenantId   String    @map("tenant_id")
+  channelId  String    @map("channel_id")
+  userId     String    @map("user_id")
+  joinedAt   DateTime  @default(now()) @map("joined_at") @db.Timestamp(6)
+  /// Drives unread badges without scanning the whole message history.
+  lastReadAt DateTime? @map("last_read_at") @db.Timestamp(6)
+
+  tenant  Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "chat_channel_members_tenant_id_fk")
+  channel ChatChannel @relation(fields: [channelId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "chat_channel_members_channel_id_fk")
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "chat_channel_members_user_id_fk")
+
+  @@unique([channelId, userId])
+  @@map("chat_channel_members")
+}
+
+model ChatMessage {
+  id             String    @id
+  tenantId       String    @map("tenant_id")
+  channelId      String    @map("channel_id")
+  authorId       String?   @map("author_id")
+  body           String    @default("")
+  attachmentUrl  String?   @map("attachment_url")
+  attachmentName String?   @map("attachment_name")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  editedAt       DateTime? @map("edited_at") @db.Timestamp(6)
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamp(6)
+
+  tenant  Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "chat_messages_tenant_id_fk")
+  channel ChatChannel @relation(fields: [channelId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "chat_messages_channel_id_fk")
+  author  User?       @relation(fields: [authorId], references: [id], onUpdate: NoAction, map: "chat_messages_author_id_fk")
+
+  @@index([channelId, createdAt])
+  @@map("chat_messages")
+}
+
+model Delivery {
+  id          String    @id
+  tenantId    String    @map("tenant_id")
+  projectId   String?   @map("project_id")
+  name        String
+  notes       String    @default("")
+  /// Redeemed by an external recipient at /delivery/:id — must be unique and
+  /// unguessable, same contract as ClientAccessLink.code.
+  accessCode  String    @unique(map: "deliveries_access_code_unique") @map("access_code")
+  status      String    @default("draft")
+  createdById String?   @map("created_by_id")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  expiresAt   DateTime? @map("expires_at") @db.Timestamp(6)
+  revokedAt   DateTime? @map("revoked_at") @db.Timestamp(6)
+
+  tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "deliveries_tenant_id_fk")
+  project   Project?           @relation(fields: [projectId], references: [id], onUpdate: NoAction, map: "deliveries_project_id_fk")
+  createdBy User?              @relation(fields: [createdById], references: [id], onUpdate: NoAction, map: "deliveries_created_by_id_fk")
+  items     DeliveryItem[]
+  downloads DeliveryDownload[]
+
+  @@map("deliveries")
+}
+
+model DeliveryItem {
+  id         String  @id
+  tenantId   String  @map("tenant_id")
+  deliveryId String  @map("delivery_id")
+  entityType String? @map("entity_type")
+  entityId   String? @map("entity_id")
+  versionId  String? @map("version_id")
+  fileName   String  @map("file_name")
+  fileSize   String  @default("0MB") @map("file_size")
+  mediaUrl   String  @default("") @map("media_url")
+
+  tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "delivery_items_tenant_id_fk")
+  delivery  Delivery           @relation(fields: [deliveryId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "delivery_items_delivery_id_fk")
+  downloads DeliveryDownload[]
+
+  @@map("delivery_items")
+}
+
+model DeliveryDownload {
+  id           String   @id
+  tenantId     String   @map("tenant_id")
+  deliveryId   String   @map("delivery_id")
+  itemId       String?  @map("item_id")
+  downloadedAt DateTime @default(now()) @map("downloaded_at") @db.Timestamp(6)
+
+  tenant   Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "delivery_downloads_tenant_id_fk")
+  delivery Delivery      @relation(fields: [deliveryId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "delivery_downloads_delivery_id_fk")
+  item     DeliveryItem? @relation(fields: [itemId], references: [id], onUpdate: NoAction, map: "delivery_downloads_item_id_fk")
+
+  @@map("delivery_downloads")
+}
+
+model PublishLog {
+  id            String   @id
+  tenantId      String   @map("tenant_id")
+  /// "shot" | "asset" — mirrors the DCC's shot-publish vs asset-publish split.
+  publishKind   String   @map("publish_kind")
+  entityType    String   @map("entity_type")
+  entityId      String   @map("entity_id")
+  taskId        String?  @map("task_id")
+  versionId     String?  @map("version_id")
+  publishedById String?  @map("published_by_id")
+  publishedAt   DateTime @default(now()) @map("published_at") @db.Timestamp(6)
+  status        String   @default("queued")
+  fileName      String   @default("")
+  fileSize      String   @default("0MB") @map("file_size")
+  notes         String   @default("")
+  /// Pre-publish validator output, one entry per check.
+  validationLog Json     @default("[]") @map("validation_log")
+
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "publish_logs_tenant_id_fk")
+  publishedBy User?  @relation(fields: [publishedById], references: [id], onUpdate: NoAction, map: "publish_logs_published_by_id_fk")
+
+  @@index([entityId, publishedAt])
+  @@map("publish_logs")
+}
+
+/// Generic tenant-scoped key/value settings (studio profile, security policy,
+/// pipeline paths). One table rather than six near-empty ones, because these
+/// are read as whole documents and never queried by their inner fields.
+model StudioSetting {
+  id          String   @id
+  tenantId    String   @map("tenant_id")
+  key         String
+  value       Json     @default("{}")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  updatedById String?  @map("updated_by_id")
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "studio_settings_tenant_id_fk")
+  updatedBy User?  @relation(fields: [updatedById], references: [id], onUpdate: NoAction, map: "studio_settings_updated_by_id_fk")
+
+  @@unique([tenantId, key])
+  @@map("studio_settings")
+}
+
+model ApiKey {
+  id          String    @id
+  tenantId    String    @map("tenant_id")
+  name        String
+  /// Only the hash is stored; the token itself is shown once at creation and
+  /// is unrecoverable afterwards.
+  tokenHash   String    @map("token_hash")
+  /// Short non-secret prefix so a key is identifiable in a list.
+  tokenPrefix String    @map("token_prefix")
+  createdById String?   @map("created_by_id")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  lastUsedAt  DateTime? @map("last_used_at") @db.Timestamp(6)
+  revokedAt   DateTime? @map("revoked_at") @db.Timestamp(6)
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "api_keys_tenant_id_fk")
+  createdBy User?  @relation(fields: [createdById], references: [id], onUpdate: NoAction, map: "api_keys_created_by_id_fk")
+
+  @@map("api_keys")
+}
+
+model Webhook {
+  id          String    @id
+  tenantId    String    @map("tenant_id")
+  url         String
+  events      Json      @default("[]")
+  secret      String    @default("")
+  isActive    Boolean   @default(true) @map("is_active")
+  createdById String?   @map("created_by_id")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  lastFiredAt DateTime? @map("last_fired_at") @db.Timestamp(6)
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "webhooks_tenant_id_fk")
+  createdBy User?  @relation(fields: [createdById], references: [id], onUpdate: NoAction, map: "webhooks_created_by_id_fk")
+
+  @@map("webhooks")
+}
+
+model LicenseServer {
+  id         String   @id
+  tenantId   String   @map("tenant_id")
+  name       String
+  vendor     String   @default("")
+  host       String   @default("")
+  port       Int?
+  seatsTotal Int      @default(0) @map("seats_total")
+  seatsInUse Int      @default(0) @map("seats_in_use")
+  status     String   @default("unknown")
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "license_servers_tenant_id_fk")
+
+  @@map("license_servers")
+}
+
+model Integration {
+  id            String    @id
+  tenantId      String    @map("tenant_id")
+  /// "maya" | "blender" | "nuke" | "houdini" | ...
+  provider      String
+  displayName   String    @map("display_name")
+  status        String    @default("disconnected")
+  config        Json      @default("{}")
+  autoSync      Boolean   @default(false) @map("auto_sync")
+  lastSyncAt    DateTime? @map("last_sync_at") @db.Timestamp(6)
+  connectedById String?   @map("connected_by_id")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "integrations_tenant_id_fk")
+  connectedBy User?  @relation(fields: [connectedById], references: [id], onUpdate: NoAction, map: "integrations_connected_by_id_fk")
+
+  @@unique([tenantId, provider])
+  @@map("integrations")
+}
+
+// ---------------------------------------------------------------------------
+// The last of the browser-localStorage subsystems. Each of these looked like
+// shared studio state and behaved like a private per-device note: a schema an
+// admin designed, a workflow someone wired up, a saved tracking view, a
+// dailies playlist, a broadcast meant to reach the client portal.
+// ---------------------------------------------------------------------------
+
+model EntityTypeDef {
+  id          String   @id
+  tenantId    String   @map("tenant_id")
+  name        String
+  /// lucide-react icon name, resolved at render time.
+  icon        String   @default("Box")
+  color       String   @default("")
+  description String   @default("")
+  createdById String?  @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "entity_type_defs_tenant_id_fk")
+  createdBy User?            @relation(fields: [createdById], references: [id], onUpdate: NoAction, map: "entity_type_defs_created_by_id_fk")
+  fields    EntityFieldDef[]
+
+  @@unique([tenantId, name])
+  @@map("entity_type_defs")
+}
+
+model EntityFieldDef {
+  id           String  @id
+  tenantId     String  @map("tenant_id")
+  entityTypeId String  @map("entity_type_id")
+  /// Stable snake_case identifier that computed expressions reference. It is
+  /// unique per entity type because an expression resolves by key alone.
+  key          String
+  label        String
+  /// text | number | date | boolean | single_select | multi_select | computed
+  type         String
+  required     Boolean @default(false)
+  description  String  @default("")
+  /// Choices for single_select / multi_select.
+  options      Json    @default("[]")
+  defaultValue String? @map("default_value")
+  /// computed fields only.
+  expression   String?
+  sortOrder    Int     @default(0) @map("sort_order")
+
+  tenant     Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "entity_field_defs_tenant_id_fk")
+  entityType EntityTypeDef @relation(fields: [entityTypeId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "entity_field_defs_entity_type_id_fk")
+
+  @@unique([entityTypeId, key])
+  @@map("entity_field_defs")
+}
+
+model TaskTemplate {
+  id          String   @id
+  tenantId    String   @map("tenant_id")
+  name        String
+  description String   @default("")
+  icon        String   @default("ListChecks")
+  createdById String?  @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "task_templates_tenant_id_fk")
+  createdBy User?              @relation(fields: [createdById], references: [id], onUpdate: NoAction, map: "task_templates_created_by_id_fk")
+  items     TaskTemplateItem[]
+
+  @@map("task_templates")
+}
+
+model TaskTemplateItem {
+  id             String  @id
+  tenantId       String  @map("tenant_id")
+  templateId     String  @map("template_id")
+  title          String
+  departmentId   String? @map("department_id")
+  estimatedHours Int     @default(0) @map("estimated_hours")
+  priority       String  @default("medium")
+  sortOrder      Int     @default(0) @map("sort_order")
+
+  tenant     Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "task_template_items_tenant_id_fk")
+  template   TaskTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "task_template_items_template_id_fk")
+  department Department?  @relation(fields: [departmentId], references: [id], onUpdate: NoAction, map: "task_template_items_department_id_fk")
+
+  @@map("task_template_items")
+}
+
+model Workflow {
+  id          String   @id
+  tenantId    String   @map("tenant_id")
+  name        String
+  description String   @default("")
+  /// What starts a run, e.g. "New Version" / "Status Change".
+  trigger     String   @default("")
+  status      String   @default("draft")
+  /// The React Flow graph: { nodes: [...], edges: [...] }. Stored whole
+  /// because the editor reads and writes it as one document and nothing
+  /// queries individual nodes.
+  graph       Json     @default("{\"nodes\":[],\"edges\":[]}")
+  createdById String?  @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  tenant    Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "workflows_tenant_id_fk")
+  createdBy User?         @relation(fields: [createdById], references: [id], onUpdate: NoAction, map: "workflows_created_by_id_fk")
+  runs      WorkflowRun[]
+
+  @@map("workflows")
+}
+
+model WorkflowRun {
+  id            String    @id
+  tenantId      String    @map("tenant_id")
+  workflowId    String    @map("workflow_id")
+  status        String    @default("running")
+  currentNode   String    @default("") @map("current_node")
+  triggeredById String?   @map("triggered_by_id")
+  entityId      String?   @map("entity_id")
+  startedAt     DateTime  @default(now()) @map("started_at") @db.Timestamp(6)
+  completedAt   DateTime? @map("completed_at") @db.Timestamp(6)
+  /// Append-only run log: [{ timestamp, node, message, status }].
+  logs          Json      @default("[]")
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "workflow_runs_tenant_id_fk")
+  workflow    Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "workflow_runs_workflow_id_fk")
+  triggeredBy User?    @relation(fields: [triggeredById], references: [id], onUpdate: NoAction, map: "workflow_runs_triggered_by_id_fk")
+
+  @@index([workflowId, startedAt])
+  @@map("workflow_runs")
+}
+
+/// Per-tenant install/enable state for a marketplace plugin. The catalogue
+/// itself is static product data; only what this studio has turned on is
+/// tenant state.
+model TenantPlugin {
+  id            String   @id
+  tenantId      String   @map("tenant_id")
+  pluginId      String   @map("plugin_id")
+  installed     Boolean  @default(true)
+  enabled       Boolean  @default(true)
+  installedById String?  @map("installed_by_id")
+  installedAt   DateTime @default(now()) @map("installed_at") @db.Timestamp(6)
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tenant_plugins_tenant_id_fk")
+  installedBy User?  @relation(fields: [installedById], references: [id], onUpdate: NoAction, map: "tenant_plugins_installed_by_id_fk")
+
+  @@unique([tenantId, pluginId])
+  @@map("tenant_plugins")
+}
+
+model TrackingView {
+  id        String   @id
+  tenantId  String   @map("tenant_id")
+  /// Owner. A view is private to its author unless isShared is set.
+  userId    String   @map("user_id")
+  name      String
+  /// The full filter/grouping/sort configuration the Tracking Grid restores.
+  filters   Json     @default("{}")
+  isShared  Boolean  @default(false) @map("is_shared")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tracking_views_tenant_id_fk")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tracking_views_user_id_fk")
+
+  @@map("tracking_views")
+}
+
+model NotificationPreference {
+  id       String  @id
+  tenantId String  @map("tenant_id")
+  userId   String  @map("user_id")
+  category String
+  push     Boolean @default(true)
+  email    Boolean @default(false)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "notification_preferences_tenant_id_fk")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "notification_preferences_user_id_fk")
+
+  @@unique([userId, category])
+  @@map("notification_preferences")
+}
+
+/// The Dailies playlist is one shared queue per tenant — the point of a
+/// dailies session is that everyone watches the same list in the same order.
+model StandupPlaylistItem {
+  id        String   @id
+  tenantId  String   @map("tenant_id")
+  taskId    String   @map("task_id")
+  sortOrder Int      @default(0) @map("sort_order")
+  addedById String?  @map("added_by_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  tenant  Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "standup_playlist_items_tenant_id_fk")
+  task    Task   @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "standup_playlist_items_task_id_fk")
+  addedBy User?  @relation(fields: [addedById], references: [id], onUpdate: NoAction, map: "standup_playlist_items_added_by_id_fk")
+
+  @@unique([tenantId, taskId])
+  @@map("standup_playlist_items")
+}
+
+/// An acknowledgement on a standup feed item. `feedItemId` is a plain string,
+/// not an FK: the feed mixes standup updates with other sources, so a
+/// constraint here would reject valid acknowledgements.
+model StandupApproval {
+  id         String   @id
+  tenantId   String   @map("tenant_id")
+  feedItemId String   @map("feed_item_id")
+  userId     String   @map("user_id")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "standup_approvals_tenant_id_fk")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "standup_approvals_user_id_fk")
+
+  @@unique([feedItemId, userId])
+  @@map("standup_approvals")
+}
+
+/// Append-only trace of what someone did to an asset outside this app —
+/// opened it in a DCC, or published it by hand. Kept as a log rather than a
+/// latest-only field so attribution survives the next person's action.
+model AssetActivity {
+  id        String   @id
+  tenantId  String   @map("tenant_id")
+  assetId   String   @map("asset_id")
+  /// "dcc_open" | "publish"
+  kind      String
+  /// DCC application name, for dcc_open.
+  app       String?
+  userId    String?  @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "asset_activity_tenant_id_fk")
+  asset  Asset  @relation(fields: [assetId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "asset_activity_asset_id_fk")
+  user   User?  @relation(fields: [userId], references: [id], onUpdate: NoAction, map: "asset_activity_user_id_fk")
+
+  @@index([assetId, createdAt])
+  @@map("asset_activity")
+}
+
+/// Who currently has the floor in a review session. One row per version, so
+/// two people can't both be presenting the same version.
+model ReviewPresentation {
+  id            String   @id
+  tenantId      String   @map("tenant_id")
+  versionId     String   @map("version_id")
+  presenterId   String?  @map("presenter_id")
+  presenterName String   @default("") @map("presenter_name")
+  frame         Int      @default(1)
+  isActive      Boolean  @default(false) @map("is_active")
+  startedAt     DateTime @default(now()) @map("started_at") @db.Timestamp(6)
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "review_presentations_tenant_id_fk")
+  version   Version @relation(fields: [versionId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "review_presentations_version_id_fk")
+  presenter User?   @relation(fields: [presenterId], references: [id], onUpdate: NoAction, map: "review_presentations_presenter_id_fk")
+
+  @@unique([tenantId, versionId])
+  @@map("review_presentations")
+}
+
+/// A note on the review player's timeline. Distinct from Annotation, which
+/// holds the drawn marks; this is the written/spoken feedback stream.
+model ReviewComment {
+  id                   String    @id
+  tenantId             String    @map("tenant_id")
+  versionId            String    @map("version_id")
+  authorId             String?   @map("author_id")
+  frame                Int       @default(1)
+  text                 String    @default("")
+  /// Uploaded voice note. A browser blob: URL does not survive a reload, so
+  /// anything durable has to be a real uploaded file.
+  audioUrl             String?   @map("audio_url")
+  /// Amplitude samples captured during recording, for the waveform.
+  waveform             Json      @default("[]")
+  /// Drawn marks carried over when a client note is transferred in.
+  annotations          Json      @default("[]")
+  /// Set only on comments transferred in from a client note — client
+  /// feedback never reaches this stream automatically.
+  fromClientAuthorName String?   @map("from_client_author_name")
+  fromClientShotName   String?   @map("from_client_shot_name")
+  transferredById      String?   @map("transferred_by_id")
+  transferredAt        DateTime? @map("transferred_at") @db.Timestamp(6)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+
+  tenant        Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "review_comments_tenant_id_fk")
+  version       Version @relation(fields: [versionId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "review_comments_version_id_fk")
+  author        User?   @relation("ReviewCommentAuthor", fields: [authorId], references: [id], onUpdate: NoAction, map: "review_comments_author_id_fk")
+  transferredBy User?   @relation("ReviewCommentTransferrer", fields: [transferredById], references: [id], onUpdate: NoAction, map: "review_comments_transferred_by_id_fk")
+
+  @@index([versionId, frame])
+  @@map("review_comments")
+}
+
+/// A note left in the client portal. Deliberately NOT visible to the internal
+/// team until someone transfers it into the review comment stream — that
+/// moderation gate is the feature, not an oversight.
+model ClientNote {
+  id                 String    @id
+  tenantId           String    @map("tenant_id")
+  shotId             String    @map("shot_id")
+  versionId          String?   @map("version_id")
+  frame              Int       @default(1)
+  text               String    @default("")
+  authorName         String    @default("") @map("author_name")
+  clientAccessLinkId String?   @map("client_access_link_id")
+  annotations        Json      @default("[]")
+  transferred        Boolean   @default(false)
+  transferredAt      DateTime? @map("transferred_at") @db.Timestamp(6)
+  transferredById    String?   @map("transferred_by_id")
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_notes_tenant_id_fk")
+  shot             Shot              @relation(fields: [shotId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_notes_shot_id_fk")
+  version          Version?          @relation(fields: [versionId], references: [id], onUpdate: NoAction, map: "client_notes_version_id_fk")
+  clientAccessLink ClientAccessLink? @relation(fields: [clientAccessLinkId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "client_notes_client_access_link_id_fk")
+  transferredBy    User?             @relation(fields: [transferredById], references: [id], onUpdate: NoAction, map: "client_notes_transferred_by_id_fk")
+
+  @@index([shotId, createdAt])
+  @@map("client_notes")
+}
+
+model Broadcast {
+  id        String   @id
+  tenantId  String   @map("tenant_id")
+  authorId  String?  @map("author_id")
+  text      String
+  /// "internal" | "internal_and_client" — the latter also surfaces on the
+  /// client portal for `projectId`, the only bridge to that external surface.
+  audience  String   @default("internal")
+  projectId String?  @map("project_id")
+  /// "info" | "success" | "warning"
+  severity  String   @default("info")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "broadcasts_tenant_id_fk")
+  author  User?    @relation(fields: [authorId], references: [id], onUpdate: NoAction, map: "broadcasts_author_id_fk")
+  project Project? @relation(fields: [projectId], references: [id], onUpdate: NoAction, map: "broadcasts_project_id_fk")
+
+  @@index([tenantId, createdAt])
+  @@map("broadcasts")
+}
+
+/// Where an entity has been rolled back to in Time Travel, plus the field
+/// values captured immediately before the first rollback in a chain — that
+/// snapshot is what "Restore latest" puts back.
+/// A single-use password-reset grant. Only the hash of the token is stored,
+/// the same way API keys are handled -- a leaked database dump must not hand
+/// an attacker a working reset link for every account.
+model PasswordResetToken {
+  id          String    @id
+  tenantId    String    @map("tenant_id")
+  userId      String    @map("user_id")
+  tokenHash   String    @unique(map: "password_reset_tokens_token_hash_unique") @map("token_hash")
+  expiresAt   DateTime  @map("expires_at") @db.Timestamp(6)
+  usedAt      DateTime? @map("used_at") @db.Timestamp(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  /// Recorded for the audit trail: which address asked for the reset.
+  requestedIp String?   @map("requested_ip")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "password_reset_tokens_tenant_id_fk")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "password_reset_tokens_user_id_fk")
+
+  @@index([userId, createdAt])
+  @@map("password_reset_tokens")
+}
+
+model AuditRollback {
+  id           String   @id
+  tenantId     String   @map("tenant_id")
+  /// "asset" | "shot"
+  entityType   String   @map("entity_type")
+  entityId     String   @map("entity_id")
+  rolledBackTo DateTime @map("rolled_back_to") @db.Timestamp(6)
+  snapshot     Json     @default("{}")
+  createdById  String?  @map("created_by_id")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "audit_rollbacks_tenant_id_fk")
+  createdBy User?  @relation(fields: [createdById], references: [id], onUpdate: NoAction, map: "audit_rollbacks_created_by_id_fk")
+
+  @@unique([tenantId, entityType, entityId])
+  @@map("audit_rollbacks")
+}
+
+/// One row per worked shift. This is the attendance record proper, kept
+/// separate from `User.punchedInAt` on purpose: that column holds only the
+/// *current* punch and is overwritten by the next one, so it can say whether
+/// someone is in right now but can never answer "how many hours did she work
+/// last week" or "was he in on the 3rd" -- the questions attendance exists to
+/// answer. Rows here are append-only history and outlive the punch.
+///
+/// Opened automatically when someone whose role keeps a timesheet signs in
+/// (see AUTO_CLOCK_IN_ROLES in routes/auth.ts) and closed on sign-out. admin
+/// and client never get rows: one is an account-administration role, the
+/// other an external reviewer, and neither works a studio shift.
+model AttendanceRecord {
+  id       String @id
+  tenantId String @map("tenant_id")
+  userId   String @map("user_id")
+  /// The calendar date the shift is attributed to, as YYYY-MM-DD in the
+  /// studio's timezone. Stored denormalised rather than derived from
+  /// clockInAt at query time so a day's roll-up is a plain indexed equality
+  /// match, and so a night shift crossing midnight stays on the day it began.
+  date       String
+  clockInAt  DateTime  @map("clock_in_at") @db.Timestamp(6)
+  clockOutAt DateTime? @map("clock_out_at") @db.Timestamp(6)
+  /// Whole minutes between the two punches, written when the row is closed.
+  /// Precomputed because every report sums it, and recomputing a difference
+  /// across thousands of rows on every query is wasted work.
+  minutes    Int?
+  /// How the row was opened: "login" | "manual".
+  source     String    @default("login")
+  /// How it was closed: "logout" | "manual" | "auto" (never signed out, closed
+  /// by the stale-shift sweep). Null while the shift is still open. Kept
+  /// distinct so a report can tell a real clock-out from an inferred one --
+  /// an auto-closed shift is an estimate and must not be paid as measured.
+  closedBy   String?   @map("closed_by")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "attendance_records_tenant_id_fk")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "attendance_records_user_id_fk")
+
+  @@index([tenantId, userId, date])
+  @@index([tenantId, date])
+  @@map("attendance_records")
 }

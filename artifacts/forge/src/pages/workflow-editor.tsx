@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -48,15 +48,17 @@ import {
   AlertTriangle,
   type LucideIcon,
 } from "lucide-react";
-import { Link, useRoute } from "wouter";
-import { WORKFLOWS } from "@/data/mockData";
+import { Link, useLocation, useRoute } from "wouter";
 import { stagger } from "@/lib/motion";
 import {
-  useWorkflowsStore,
+  useWorkflow,
+  useWorkflows,
+  useCreateWorkflow,
+  useUpdateWorkflow,
   type WorkflowNode as StoredWorkflowNode,
   type WorkflowNodeData,
   type WorkflowNodeKind,
-} from "@/store/workflows";
+} from "@/hooks/useWorkflows";
 import { useCapability } from "@/hooks/use-capability";
 import {
   Tooltip,
@@ -190,6 +192,30 @@ function resolveNonCollidingPosition(
   return { x: desired.x + radius * 24, y: desired.y };
 }
 
+const NEW_WORKFLOW_NAME = "Untitled Workflow";
+
+/** The blank canvas a workflow starts from: one trigger node and nothing else. */
+function createStarterGraph(): { nodes: StoredWorkflowNode[]; edges: Edge[] } {
+  return {
+    nodes: [
+      {
+        id: `trigger-${Math.random().toString(36).slice(2, 9)}`,
+        type: "custom",
+        position: { x: 360, y: 80 },
+        data: {
+          label: "Manual Trigger",
+          description: "Starting point for this workflow",
+          icon: "Play",
+          color: "green",
+          kind: "trigger",
+          config: defaultConfigFor("trigger"),
+        },
+      },
+    ],
+    edges: [],
+  };
+}
+
 function createNodeFromPaletteItem(
   item: PaletteItem,
   position: { x: number; y: number },
@@ -319,49 +345,29 @@ function simulateTestRun(
 
 function WorkflowEditorInner() {
   const [, routeParams] = useRoute("/workflows/:id");
+  const [, setLocation] = useLocation();
+  // /workflows/new is a draft that owns no row yet: it has no id to load or
+  // autosave against, and only the explicit Save creates the workflow.
   const isNewWorkflowRoute = routeParams?.id === "new";
-  const routeWorkflowId =
-    routeParams?.id && WORKFLOWS.some((wf) => wf.id === routeParams.id)
-      ? routeParams.id
-      : undefined;
+  const workflowId = isNewWorkflowRoute ? undefined : routeParams?.id;
 
-  // /workflows/new must never resolve to an existing workflow's id. It
-  // previously fell through to WORKFLOWS[0] ('wf1' - a real, live,
-  // 342-run production graph) because 'new' doesn't match anything in
-  // WORKFLOWS, and any edit here autosaves - silently corrupting wf1. Give
-  // "new" its own throwaway id instead, generated once per mount so every
-  // visit to /workflows/new starts a genuinely blank workflow.
-  const [workflowId, setWorkflowId] = useState<string>(() =>
-    isNewWorkflowRoute
-      ? `wf-new-${Math.random().toString(36).slice(2, 9)}`
-      : (routeWorkflowId ?? WORKFLOWS[0]?.id ?? "wf1"),
-  );
-
-  const getGraph = useWorkflowsStore((s) => s.getGraph);
-  const saveGraph = useWorkflowsStore((s) => s.saveGraph);
-  const resetGraphAction = useWorkflowsStore((s) => s.resetGraph);
+  const { data: workflows = [] } = useWorkflows();
+  const { data: workflow } = useWorkflow(workflowId);
+  const createWorkflow = useCreateWorkflow();
+  const updateWorkflow = useUpdateWorkflow();
   // Editing pipeline graphs (adding/moving/deleting nodes, wiring edges,
   // saving, resetting) is gated on manage_pipeline rather than left open to
   // anyone who can reach this (already leadership-only) route.
   const canManagePipeline = useCapability("manage_pipeline");
 
-  // Seed React Flow's local state synchronously from the store so there's
-  // no empty-canvas flash on first paint.
-  const initialGraph = useMemo(() => getGraph(workflowId), []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const [nodes, setNodes, onNodesChangeBase] =
-    useNodesState<StoredWorkflowNode>(initialGraph.nodes);
-  const [edges, setEdges, onEdgesChangeBase] = useEdgesState<Edge>(
-    initialGraph.edges,
+  const [nodes, setNodes, onNodesChangeBase] = useNodesState<StoredWorkflowNode>(
+    [],
   );
+  const [edges, setEdges, onEdgesChangeBase] = useEdgesState<Edge>([]);
   const [selectedNode, setSelectedNode] = useState<StoredWorkflowNode | null>(
     null,
   );
-  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(
-    initialGraph.updatedAt && new Date(initialGraph.updatedAt).getTime() > 0
-      ? new Date(initialGraph.updatedAt)
-      : null,
-  );
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [justSaved, setJustSaved] = useState(false);
   const [testRunOpen, setTestRunOpen] = useState(false);
   const [testRunResult, setTestRunResult] = useState<TestRunResult | null>(
@@ -370,34 +376,37 @@ function WorkflowEditorInner() {
 
   const reactFlowInstance = useReactFlow<StoredWorkflowNode, Edge>();
   const canvasRef = useRef<HTMLDivElement>(null);
-  const isFirstRunRef = useRef(true);
   const skipNextAutosaveRef = useRef(true);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Which workflow the canvas currently holds. Guards the load effect below
+  // from re-seeding the canvas (and discarding in-flight edits) every time the
+  // workflow query re-resolves - including after our own autosave writes it
+  // back into the cache.
+  const loadedIdRef = useRef<string | null>(null);
 
-  const currentWorkflow = WORKFLOWS.find((wf) => wf.id === workflowId);
-  // Not one of the seeded WORKFLOWS - either the /workflows/new draft, or a
-  // workflow whose id no longer resolves. Drives the "Untitled Workflow"
-  // label and its virtual entry in the workflow switcher below.
-  const isNewWorkflow = !currentWorkflow;
-
-  // Switch workflows: load its persisted (or freshly-seeded) graph.
+  // Load the graph the canvas should hold: the server's copy for a saved
+  // workflow, a blank starter for the /workflows/new draft.
   useEffect(() => {
-    if (isFirstRunRef.current) {
-      isFirstRunRef.current = false;
+    if (isNewWorkflowRoute) {
+      if (loadedIdRef.current === "new") return;
+      loadedIdRef.current = "new";
+      const starter = createStarterGraph();
+      skipNextAutosaveRef.current = true;
+      setNodes(starter.nodes);
+      setEdges(starter.edges);
+      setSelectedNode(null);
+      setLastSavedAt(null);
       return;
     }
-    const graph = getGraph(workflowId);
+    if (!workflow || loadedIdRef.current === workflow.id) return;
+    loadedIdRef.current = workflow.id;
     skipNextAutosaveRef.current = true;
-    setNodes(graph.nodes);
-    setEdges(graph.edges);
+    setNodes(workflow.graph.nodes ?? []);
+    setEdges(workflow.graph.edges ?? []);
     setSelectedNode(null);
-    setLastSavedAt(
-      graph.updatedAt && new Date(graph.updatedAt).getTime() > 0
-        ? new Date(graph.updatedAt)
-        : null,
-    );
+    setLastSavedAt(new Date(workflow.updatedAt));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workflowId]);
+  }, [isNewWorkflowRoute, workflow]);
 
   // Debounced autosave whenever the graph actually changes.
   //
@@ -415,16 +424,27 @@ function WorkflowEditorInner() {
       return;
     }
     if (!canManagePipeline) return;
+    // An unsaved /workflows/new draft has no row to autosave into - Save
+    // creates it.
+    if (!workflowId) return;
+    // Only ever write back the workflow the canvas has actually loaded. While
+    // the graph is still in flight `nodes` is the empty initial state, and
+    // anything else re-running this effect in that window (the capability
+    // resolving after login, say) would otherwise persist that emptiness over
+    // the real graph.
+    if (loadedIdRef.current !== workflowId) return;
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(() => {
-      saveGraph(workflowId, nodes, edges);
-      setLastSavedAt(new Date());
+      updateWorkflow.mutate(
+        { id: workflowId, graph: { nodes, edges } },
+        { onSuccess: () => setLastSavedAt(new Date()) },
+      );
     }, 500);
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes, edges, canManagePipeline]);
+  }, [nodes, edges, canManagePipeline, workflowId]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange<StoredWorkflowNode>[]) => {
@@ -611,15 +631,46 @@ function WorkflowEditorInner() {
     setSelectedNode(clone);
   }, [canManagePipeline, selectedNode, nodes, setNodes]);
 
+  const markSaved = useCallback(() => {
+    setLastSavedAt(new Date());
+    setJustSaved(true);
+    setTimeout(() => setJustSaved(false), 1400);
+  }, []);
+
   const handleSaveClick = useCallback(() => {
     if (!canManagePipeline) return;
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    saveGraph(workflowId, nodes, edges);
-    const now = new Date();
-    setLastSavedAt(now);
-    setJustSaved(true);
-    setTimeout(() => setJustSaved(false), 1400);
-  }, [canManagePipeline, saveGraph, workflowId, nodes, edges]);
+
+    if (!workflowId) {
+      createWorkflow.mutate(
+        { name: NEW_WORKFLOW_NAME, graph: { nodes, edges } },
+        {
+          onSuccess: (created) => {
+            // The draft now owns a row: adopt its id so autosave has somewhere
+            // to write, and don't let the load effect wipe the canvas.
+            loadedIdRef.current = created.id;
+            markSaved();
+            setLocation(`/workflows/${created.id}`);
+          },
+        },
+      );
+      return;
+    }
+
+    updateWorkflow.mutate(
+      { id: workflowId, graph: { nodes, edges } },
+      { onSuccess: markSaved },
+    );
+  }, [
+    canManagePipeline,
+    workflowId,
+    nodes,
+    edges,
+    createWorkflow,
+    updateWorkflow,
+    markSaved,
+    setLocation,
+  ]);
 
   const handleTestRun = useCallback(() => {
     setTestRunResult(simulateTestRun(nodes, edges));
@@ -628,21 +679,21 @@ function WorkflowEditorInner() {
 
   const handleReset = useCallback(() => {
     if (!canManagePipeline) return;
-    resetGraphAction(workflowId);
-    const graph = getGraph(workflowId);
+    const starter = createStarterGraph();
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     skipNextAutosaveRef.current = true;
-    setNodes(graph.nodes);
-    setEdges(graph.edges);
+    setNodes(starter.nodes);
+    setEdges(starter.edges);
     setSelectedNode(null);
-    setLastSavedAt(new Date());
-  }, [
-    canManagePipeline,
-    resetGraphAction,
-    getGraph,
-    workflowId,
-    setNodes,
-    setEdges,
-  ]);
+    if (workflowId) {
+      updateWorkflow.mutate(
+        { id: workflowId, graph: starter },
+        { onSuccess: () => setLastSavedAt(new Date()) },
+      );
+    } else {
+      setLastSavedAt(null);
+    }
+  }, [canManagePipeline, workflowId, updateWorkflow, setNodes, setEdges]);
 
   return (
     <div className="h-[calc(100vh-3.5rem)] flex flex-col">
@@ -660,15 +711,13 @@ function WorkflowEditorInner() {
               </h1>
               <select
                 className="bg-muted text-xs px-2 py-1 rounded border border-border outline-none"
-                value={workflowId}
-                onChange={(e) => setWorkflowId(e.target.value)}
+                value={workflowId ?? "new"}
+                onChange={(e) => setLocation(`/workflows/${e.target.value}`)}
               >
-                {isNewWorkflow && (
-                  <option value={workflowId}>
-                    Untitled Workflow (unsaved)
-                  </option>
+                {isNewWorkflowRoute && (
+                  <option value="new">{NEW_WORKFLOW_NAME} (unsaved)</option>
                 )}
-                {WORKFLOWS.map((wf) => (
+                {workflows.map((wf) => (
                   <option key={wf.id} value={wf.id}>
                     {wf.name}
                   </option>
@@ -677,14 +726,14 @@ function WorkflowEditorInner() {
               <Badge
                 variant="outline"
                 className={`text-[9px] h-4 border-0 ${
-                  currentWorkflow?.status === "active"
+                  workflow?.status === "active"
                     ? "bg-green-500/10 text-green-500"
-                    : currentWorkflow?.status === "paused"
+                    : workflow?.status === "paused"
                       ? "bg-amber-500/10 text-amber-500"
                       : "bg-muted text-muted-foreground"
                 }`}
               >
-                {(currentWorkflow?.status ?? "draft").toUpperCase()}
+                {(workflow?.status ?? "draft").toUpperCase()}
               </Badge>
             </div>
             <div className="text-[10px] text-muted-foreground mt-0.5 h-3 timecode">
@@ -1055,7 +1104,7 @@ function WorkflowEditorInner() {
               <Play className="w-4 h-4 text-primary" /> Test Run
             </DialogTitle>
             <DialogDescription>
-              Simulated dry run of "{currentWorkflow?.name ?? "this workflow"}"
+              Simulated dry run of "{workflow?.name ?? NEW_WORKFLOW_NAME}"
               — no real actions were executed.
             </DialogDescription>
           </DialogHeader>

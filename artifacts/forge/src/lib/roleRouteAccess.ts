@@ -58,25 +58,32 @@ const STUDIO_ADMIN_ROUTES = [
   "/integrations",
 ];
 
-// Admin-only: the plugin/tool marketplace. Unlike every other
-// studio-admin-tier route, this one is NOT shared with production_head —
-// only admin decides plugin/tool access.
-const ADMIN_ONLY_ROUTES = ["/marketplace"];
+// The plugin/tool marketplace. Shared with production_head and the main
+// producer because both are expected to switch extensions on for the studio.
+const EXTENSION_ROUTES = ["/marketplace"];
 
 export const ROLE_ALLOWED_ROUTES: Record<Role, string[]> = {
   artist: [...BASE_ROUTES],
-  producer: [...BASE_ROUTES, ...PRODUCTION_MANAGEMENT_ROUTES],
+  // The main producer outranks the admin: everything the admin reaches, plus
+  // production management.
+  producer: [
+    ...BASE_ROUTES,
+    ...PRODUCTION_MANAGEMENT_ROUTES,
+    ...STUDIO_ADMIN_ROUTES,
+    ...EXTENSION_ROUTES,
+  ],
   lead: [...BASE_ROUTES, ...PRODUCTION_MANAGEMENT_ROUTES],
   production_head: [
     ...BASE_ROUTES,
     ...PRODUCTION_MANAGEMENT_ROUTES,
     ...STUDIO_ADMIN_ROUTES,
+    ...EXTENSION_ROUTES,
   ],
   admin: [
     ...BASE_ROUTES,
     ...PRODUCTION_MANAGEMENT_ROUTES,
     ...STUDIO_ADMIN_ROUTES,
-    ...ADMIN_ONLY_ROUTES,
+    ...EXTENSION_ROUTES,
   ],
   client: [],
 };

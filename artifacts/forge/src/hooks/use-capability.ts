@@ -1,9 +1,5 @@
 import { useAuthStore } from "@/store/auth";
-import {
-  usePermissionsStore,
-  LEADERSHIP_ROLES,
-  type CapabilityId,
-} from "@/store/permissions";
+import { LEADERSHIP_ROLES, type CapabilityId } from "@/store/permissions";
 
 /**
  * Gates a specific action against the editable Roles & Permissions matrix

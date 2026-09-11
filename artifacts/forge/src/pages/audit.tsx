@@ -36,7 +36,13 @@ import {
   Undo2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useAuditStore } from "@/store/audit";
+import { useCapability } from "@/hooks/use-capability";
+import {
+  useAuditRollback,
+  useClearAuditRollback,
+  useRollbackEntity,
+} from "@/hooks/useAuditRollback";
+import { ApiError } from "@/lib/apiClient";
 
 export default function AuditLog() {
   // "asset1" is a mock id that exists in no real tenant, so the page used to
@@ -62,10 +68,17 @@ export default function AuditLog() {
     ? shots.filter((s) => s.name.toLowerCase().includes(searchTerm))
     : shots;
 
-  const rollbackPoints = useAuditStore((s) => s.rollbackPoints);
-  const rollbackEntity = useAuditStore((s) => s.rollbackEntity);
-  const clearRollback = useAuditStore((s) => s.clearRollback);
-  const rollbackPoint = rollbackPoints[selectedEntity];
+  // Rollback bookkeeping is shared studio state, not this browser's: whoever
+  // rolled an entity back, everyone sees it.
+  const { data: rollback } = useAuditRollback(selectedEntity || undefined);
+  const rollbackMutation = useRollbackEntity();
+  const clearRollbackMutation = useClearAuditRollback();
+  // Rolling back rewrites the entity's live fields, so the server gates the
+  // write on manage_pipeline. Admin and lead reach this page through
+  // LeadershipGuard without holding it — show them the timeline read-only
+  // rather than buttons that can only 403.
+  const canRollback = useCapability("manage_pipeline");
+  const rollbackPoint = rollback?.rolledBackTo;
 
   // Server-side filtered by entityId and already ordered newest-first.
   const { data: events = [] } = useAuditLogs(selectedEntity);
@@ -89,19 +102,44 @@ export default function AuditLog() {
       });
       return;
     }
-    rollbackEntity(selectedEntity, entityType, timestamp, events);
-    toast({
-      title: "Rollback complete",
-      description: `${selectedEntity} restored to state at ${timestamp} — real fields updated, not just this timeline view.`,
-    });
+    rollbackMutation.mutate(
+      { entityType, entityId: selectedEntity, rolledBackTo: timestamp },
+      {
+        onSuccess: () =>
+          toast({
+            title: "Rollback complete",
+            description: `${selectedEntity} restored to state at ${timestamp} — real fields updated, not just this timeline view.`,
+          }),
+        onError: (err) =>
+          toast({
+            title: "Rollback failed",
+            description:
+              err instanceof ApiError ? err.message : "Could not reach the server.",
+            variant: "destructive",
+          }),
+      },
+    );
   };
 
   const handleRestoreLatest = () => {
-    clearRollback(selectedEntity, entityType);
-    toast({
-      title: "Restored to latest",
-      description: `${selectedEntity} is back to its current state.`,
-    });
+    if (!rollback) return;
+    clearRollbackMutation.mutate(
+      { entityType: rollback.entityType, entityId: rollback.entityId },
+      {
+        onSuccess: () =>
+          toast({
+            title: "Restored to latest",
+            description: `${rollback.entityId} is back to its current state.`,
+          }),
+        onError: (err) =>
+          toast({
+            title: "Restore failed",
+            description:
+              err instanceof ApiError ? err.message : "Could not reach the server.",
+            variant: "destructive",
+          }),
+      },
+    );
   };
 
   return (
@@ -172,14 +210,17 @@ export default function AuditLog() {
                 Events after this point are marked reverted below.
               </span>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="shrink-0"
-              onClick={handleRestoreLatest}
-            >
-              <Undo2 className="w-3.5 h-3.5 mr-1.5" /> Restore latest
-            </Button>
+            {canRollback && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                disabled={clearRollbackMutation.isPending}
+                onClick={handleRestoreLatest}
+              >
+                <Undo2 className="w-3.5 h-3.5 mr-1.5" /> Restore latest
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
@@ -202,7 +243,7 @@ export default function AuditLog() {
           const changedFields = Object.keys(event.metadata.before);
           const hasChanges = changedFields.length > 0;
           const isReverted =
-            Boolean(rollbackPoint) && event.createdAt > rollbackPoint;
+            rollbackPoint !== undefined && event.createdAt > rollbackPoint;
           const description =
             changedFields.length > 0
               ? `Updated ${changedFields.join(", ")}`
@@ -274,40 +315,43 @@ export default function AuditLog() {
                   </div>
                 </button>
 
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="shrink-0 group hover:border-destructive hover:text-destructive transition-colors"
-                    >
-                      <RotateCcw className="w-4 h-4 mr-1.5 group-hover:-rotate-90 transition-transform" />{" "}
-                      Rollback
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>
-                        Rollback to this state?
-                      </AlertDialogTitle>
-                      <AlertDialogDescription>
-                        This restores{" "}
-                        <span className="font-mono">{selectedEntity}</span> to
-                        its state as of{" "}
-                        <span className="font-mono">{event.createdAt}</span>.
-                        Changes made after this point will be discarded.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction
-                        onClick={() => handleRollback(event.createdAt)}
+                {canRollback && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={rollbackMutation.isPending}
+                        className="shrink-0 group hover:border-destructive hover:text-destructive transition-colors"
                       >
+                        <RotateCcw className="w-4 h-4 mr-1.5 group-hover:-rotate-90 transition-transform" />{" "}
                         Rollback
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>
+                          Rollback to this state?
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This restores{" "}
+                          <span className="font-mono">{selectedEntity}</span> to
+                          its state as of{" "}
+                          <span className="font-mono">{event.createdAt}</span>.
+                          Changes made after this point will be discarded.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => handleRollback(event.createdAt)}
+                        >
+                          Rollback
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
               </div>
 
               {isExpanded && hasChanges && (

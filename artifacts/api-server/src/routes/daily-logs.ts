@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "@workspace/db";
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import { denyClientAccess } from "../middleware/rbac";
+import { getVisibilityScope, dailyLogScopeWhere } from "../lib/visibilityScope";
 import * as crypto from "crypto";
 
 export const dailyLogsRouter = Router();
@@ -14,11 +15,19 @@ dailyLogsRouter.get("/", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const { taskId, userId } = req.query;
+    // Timesheet entries are personal data: an artist reads only their own,
+    // a lead their department's. Intersected with (not overwritten by) the
+    // caller's own ?userId= filter, so narrowing a query can never widen
+    // what comes back.
+    const scopeWhere = await dailyLogScopeWhere(tenantId, await getVisibilityScope(req));
     const rows = await prisma.dailyLog.findMany({
       where: {
         tenantId,
         ...(typeof taskId === "string" ? { taskId } : {}),
-        ...(typeof userId === "string" ? { userId } : {}),
+        AND: [
+          ...(typeof userId === "string" ? [{ userId }] : []),
+          scopeWhere,
+        ],
       },
     });
     return res.json(rows);

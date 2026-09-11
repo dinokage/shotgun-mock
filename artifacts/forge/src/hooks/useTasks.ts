@@ -240,6 +240,7 @@ export interface TaskApprovalEventDTO {
   action:
     | "submitted-for-lead-review"
     | "submitted-for-manager-review"
+    | "submitted-for-producer-review"
     | "approved"
     | "changes-requested"
     | "rejected"

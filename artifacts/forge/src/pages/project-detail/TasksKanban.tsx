@@ -1,8 +1,10 @@
+import { isOverdue, formatDueDate } from "@/lib/taskDates";
 import { useTasksStore } from "@/store/tasks";
 import { useAuthStore } from "@/store/auth";
 import { TaskStatus } from "@/data/mockData";
 import { useUpdateTask } from "@/hooks/useTasks";
 import { getAssigneeId, getProjectId, useEntityProjectMap } from "@/lib/taskShape";
+import { normalizeTaskStatus } from "@/lib/trackingStatus";
 import {
   DndContext,
   DragOverlay,
@@ -56,16 +58,11 @@ const COLUMNS: { id: TaskStatus; title: string }[] = [
   { id: "complete", title: "Complete" },
   { id: "cancelled", title: "Cancelled" },
 ];
-const KNOWN_STATUS_IDS = new Set<string>(COLUMNS.map((c) => c.id));
-// Real tracksheet-imported tasks carry a studio's own pipeline-stage
-// vocabulary (e.g. "TK_01_APP", "WFF", "Client_App") that matches none of
-// the stages above -- without this catch-all, every such task was silently
-// invisible on every Kanban board (confirmed live: 1065 real tasks, every
-// column showing 0). This column is purely a visibility safety net.
-const OTHER_COLUMN: { id: TaskStatus; title: string } = {
-  id: "other",
-  title: "Other",
-};
+// Real tracksheet-imported tasks carry the studio's own vocabulary
+// ("TK_01_APP", "WFF", "Client_App"), which matches none of the columns
+// above — every such task used to fall into a catch-all "Other" column.
+// normalizeTaskStatus resolves each code to the stage it means, so cards
+// land in the column that reflects where the work actually is.
 
 function SortableTaskCard({
   task,
@@ -91,7 +88,7 @@ function SortableTaskCard({
     opacity: isDragging ? 0.4 : 1,
   };
 
-  const isOverdue = new Date(task.dueDate) < new Date();
+  const overdue = isOverdue(task.dueDate);
 
   return (
     <div
@@ -141,13 +138,10 @@ function SortableTaskCard({
           <div className="flex items-center gap-2">
             <UserAvatar userId={getAssigneeId(task) ?? ""} />
             <div
-              className={`flex items-center gap-1 text-[10px] ${isOverdue ? "text-red-500 font-medium" : "text-muted-foreground"}`}
+              className={`flex items-center gap-1 text-[10px] ${overdue ? "text-red-500 font-medium" : "text-muted-foreground"}`}
             >
               <Clock className="w-3 h-3" />
-              {new Date(task.dueDate).toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-              })}
+              {formatDueDate(task.dueDate, { month: "short", day: "numeric" }, "No date")}
             </div>
           </div>
 
@@ -229,10 +223,7 @@ function ClaimableTaskCard({
             className={`flex items-center gap-1 text-[10px] text-muted-foreground`}
           >
             <Clock className="w-3 h-3" />
-            {new Date(task.dueDate).toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-            })}
+            {formatDueDate(task.dueDate, { month: "short", day: "numeric" }, "No date")}
           </div>
           <PriorityChip priority={task.priority} />
         </div>
@@ -448,7 +439,7 @@ export default function KanbanView({
 
         {COLUMNS.map((col) => {
           const columnTasks = projectTasks.filter(
-            (t) => t.status === col.id && getAssigneeId(t),
+            (t) => normalizeTaskStatus(t.status) === col.id && getAssigneeId(t),
           );
           return (
             <DroppableColumn
@@ -460,20 +451,6 @@ export default function KanbanView({
             />
           );
         })}
-        {(() => {
-          const otherTasks = projectTasks.filter(
-            (t) => getAssigneeId(t) && !KNOWN_STATUS_IDS.has(t.status),
-          );
-          return (
-            <DroppableColumn
-              key={OTHER_COLUMN.id}
-              col={OTHER_COLUMN}
-              tasks={otherTasks}
-              onUpdateTask={updateTask}
-              entityProjectMap={resolvedEntityProjectMap}
-            />
-          );
-        })()}
       </div>
       {createPortal(
         <DragOverlay>

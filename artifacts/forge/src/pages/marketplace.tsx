@@ -1,17 +1,21 @@
 import { useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { stagger } from "@/lib/motion";
+import { useAuthStore } from "@/store/auth";
+import { ComingSoon } from "@/components/shared/ComingSoon";
 import { PLUGINS } from "@/data/mockData";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { usePluginsStore } from "@/store/plugins";
+import {
+  useInstalledPlugins,
+  useInstallPlugin,
+  useUninstallPlugin,
+  useSetPluginEnabled,
+} from "@/hooks/usePlugins";
 import {
   Search,
-  Star,
-  ShieldCheck,
-  Download,
   Package,
   Zap,
   Link as LinkIcon,
@@ -58,28 +62,38 @@ const ICON_MAP: Record<string, any> = {
   Plug,
 };
 
+// Derived from the catalogue rather than hardcoded: the fixed list had
+// drifted and omitted three categories, so those plugins were only reachable
+// under "All".
 const CATEGORIES = [
   "All",
-  "Pipeline",
-  "Render",
-  "Integration",
-  "Monitoring",
-  "Annotation",
+  ...Array.from(new Set(PLUGINS.map((p) => p.category))).sort(),
 ];
 
 export default function Marketplace() {
+  const { currentUser } = useAuthStore();
   const prefersReducedMotion = useReducedMotion();
-  const {
-    installedPlugins,
-    installPlugin,
-    uninstallPlugin,
-    enabledPlugins,
-    togglePlugin,
-  } = usePluginsStore();
+  const { data: installed = [] } = useInstalledPlugins();
+  const installPlugin = useInstallPlugin();
+  const uninstallPlugin = useUninstallPlugin();
+  const setPluginEnabled = useSetPluginEnabled();
   const { toast } = useToast();
   const canManageIntegrations = useCapability("manage_integrations");
   const [activeCategory, setActiveCategory] = useState("All");
   const [search, setSearch] = useState("");
+
+  // No DCC integration hooks exist behind any of these plugins yet -- an
+  // artist or producer "installing" one would get a toggle that does
+  // nothing real. Admin keeps the working page while this is built out.
+  if (currentUser?.role !== "admin") {
+    return (
+      <ComingSoon
+        icon={Package}
+        title="Plugin Marketplace"
+        description="DCC plugin integrations aren't wired up yet. Once they are, you'll be able to browse and install them here."
+      />
+    );
+  }
 
   const visiblePlugins = PLUGINS.filter((p) => {
     const matchesCategory =
@@ -90,25 +104,25 @@ export default function Marketplace() {
     return matchesCategory && matchesSearch;
   });
 
+  // A catalogue entry with no row on the server is uninstalled, full stop.
+  const installState = new Map(installed.map((p) => [p.pluginId, p]));
+
   const handleInstallToggle = (e: React.MouseEvent, id: string) => {
     e.preventDefault(); // Prevent link click
     if (!canManageIntegrations) return;
-    if (installedPlugins[id]) {
-      uninstallPlugin(id);
-      toast({ description: "Plugin removed" });
+    if (installState.has(id)) {
+      uninstallPlugin.mutate(id, {
+        onSuccess: () => toast({ description: "Plugin removed" }),
+      });
     } else {
-      installPlugin(id);
-      toast({
-        title: "Plugin installed",
-        description: "Plugin is now active.",
+      installPlugin.mutate(id, {
+        onSuccess: () =>
+          toast({
+            title: "Plugin installed",
+            description: "Plugin is now active.",
+          }),
       });
     }
-  };
-
-  const handleEnableToggle = (e: React.MouseEvent, id: string) => {
-    e.preventDefault();
-    if (!canManageIntegrations) return;
-    togglePlugin(id);
   };
 
   return (
@@ -161,8 +175,9 @@ export default function Marketplace() {
         )}
         {visiblePlugins.map((plugin, i) => {
           const Icon = ICON_MAP[plugin.icon] || Package;
-          const isInstalled = installedPlugins[plugin.id];
-          const isEnabled = enabledPlugins[plugin.id];
+          const state = installState.get(plugin.id);
+          const isInstalled = !!state;
+          const isEnabled = state?.enabled ?? false;
 
           return (
             <motion.div
@@ -176,14 +191,6 @@ export default function Marketplace() {
                       <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
                         <Icon className="w-6 h-6" />
                       </div>
-                      {plugin.verified && (
-                        <Badge
-                          variant="outline"
-                          className="bg-blue-500/10 text-blue-500 border-blue-500/30 gap-1 px-1.5 py-0"
-                        >
-                          <ShieldCheck className="w-3 h-3" /> Verified
-                        </Badge>
-                      )}
                     </div>
 
                     <h3 className="font-bold text-lg mb-1 group-hover:text-primary transition-colors">
@@ -193,18 +200,12 @@ export default function Marketplace() {
                       {plugin.category}
                     </div>
 
-                    <div className="flex items-center gap-4 text-sm mt-auto mb-5">
-                      <div className="flex items-center gap-1 font-medium">
-                        <Star className="w-4 h-4 fill-yellow-500 text-yellow-500" />{" "}
-                        {plugin.rating}
-                      </div>
-                      <div className="flex items-center gap-1 text-muted-foreground">
-                        <Download className="w-4 h-4" /> {plugin.installs}
-                      </div>
-                    </div>
+                    <p className="text-sm text-muted-foreground mb-5 line-clamp-3">
+                      {plugin.description}
+                    </p>
 
                     <div
-                      className="pt-4 border-t border-border flex items-center justify-between"
+                      className="mt-auto pt-4 border-t border-border flex items-center justify-between"
                       onClick={(e) => e.preventDefault()}
                     >
                       {isInstalled ? (
@@ -213,8 +214,12 @@ export default function Marketplace() {
                             <Switch
                               checked={isEnabled}
                               disabled={!canManageIntegrations}
-                              onCheckedChange={() =>
-                                canManageIntegrations && togglePlugin(plugin.id)
+                              onCheckedChange={(next) =>
+                                canManageIntegrations &&
+                                setPluginEnabled.mutate({
+                                  pluginId: plugin.id,
+                                  enabled: next,
+                                })
                               }
                             />
                             <span className="text-xs font-medium text-muted-foreground">
