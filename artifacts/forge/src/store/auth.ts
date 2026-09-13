@@ -27,6 +27,32 @@ interface AuthState {
   updateCurrentUser: (updates: Partial<UserDTO>) => void;
 }
 
+/**
+ * Last digest token seen per heavy collection, and the rows we already hold
+ * for it. Module-level rather than store state: this is a transport detail of
+ * how the stores are kept fresh, and nothing renders from it.
+ *
+ * Only the three expensive collections are gated this way. The rest
+ * (projects, users, departments, versions, reviews) total around 10KB
+ * together, so probing them would cost more than fetching them -- and users
+ * in particular must stay current because it carries presence.
+ */
+const heavyCache: Record<
+  "tasks" | "shots" | "assets",
+  { token: string | null; rows: any[] }
+> = {
+  tasks: { token: null, rows: [] },
+  shots: { token: null, rows: [] },
+  assets: { token: null, rows: [] },
+};
+
+/** Drops the cached rows so the next poll refetches everything. */
+export function resetSyncCache() {
+  heavyCache.tasks = { token: null, rows: [] };
+  heavyCache.shots = { token: null, rows: [] };
+  heavyCache.assets = { token: null, rows: [] };
+}
+
 export const useAuthStore = create<AuthState>()((set, get) => ({
   currentUser: null,
   tenantName: null,
@@ -39,14 +65,39 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       const response = await apiFetch<any>("/auth/me");
       const user = response.user;
 
+      // Ask what actually moved before pulling ~1.6MB of tasks and shots.
+      // This poll runs every few seconds for every signed-in person; on a
+      // quiet minute the honest answer is "nothing changed", and this is how
+      // the server gets to say that in a few hundred bytes instead of
+      // re-querying and re-serialising both collections in full.
+      //
+      // A failed or unavailable digest falls through to fetching everything,
+      // so the worst case is the old behaviour rather than a stale screen.
+      const digest = await apiFetch<Record<string, string>>("/sync/digest").catch(
+        () => null,
+      );
+      const needs = (key: "tasks" | "shots" | "assets") =>
+        !digest || heavyCache[key].token !== digest[key];
+
+      const fetchHeavy = async (key: "tasks" | "shots" | "assets") => {
+        if (!needs(key)) return heavyCache[key].rows;
+        const rows = await apiFetch<any[]>(`/${key}`).catch(
+          // Keep what we already had on a failed refetch; an empty list here
+          // would blank every board on one dropped request.
+          () => heavyCache[key].rows,
+        );
+        heavyCache[key] = { token: digest?.[key] ?? null, rows };
+        return rows;
+      };
+
       // HYDRATE ALL MOCK ARRAYS FROM BACKEND SO THE APP JUST WORKS
       const [projects, users, tasks, assets, shots, deps, versions, reviews] =
         await Promise.all([
           apiFetch("/projects").catch(() => []),
           apiFetch("/users").catch(() => []),
-          apiFetch("/tasks").catch(() => []),
-          apiFetch("/assets").catch(() => []),
-          apiFetch("/shots").catch(() => []),
+          fetchHeavy("tasks"),
+          fetchHeavy("assets"),
+          fetchHeavy("shots"),
           apiFetch("/departments").catch(() => []),
           apiFetch("/versions").catch(() => []),
           apiFetch("/reviews").catch(() => []),
@@ -168,6 +219,13 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   login: async (email, password) => {
     try {
       set({ loginError: null });
+      // Drop the previous session's rows before the new one hydrates. The
+      // digest is deliberately tenant-wide, so it reads the same for everyone
+      // in the studio -- without this, signing in as an artist on a browser
+      // that had a producer signed in would match the cached token and render
+      // the producer's 1,066 tasks to someone entitled to see two. The rows
+      // are scoped per person even though the change signal is not.
+      resetSyncCache();
       await apiFetch("/auth/login", {
         method: "POST",
         body: JSON.stringify({ email, password }),
@@ -191,6 +249,9 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     try {
       await apiFetch("/auth/logout", { method: "POST" });
     } finally {
+      // Same reasoning as login: never leave one person's rows sitting in a
+      // module-level cache for whoever signs in next.
+      resetSyncCache();
       set({
         currentUser: null,
         tenantName: null,
