@@ -39,7 +39,6 @@ import { UserAvatar } from "@/components/shared/UserAvatar";
 import { copyToClipboard } from "@/lib/utils";
 import {
   Building2,
-  Cloud,
   UploadCloud,
   Key,
   Plus,
@@ -81,6 +80,11 @@ import {
   useLicenseServers,
   useCreateLicenseServer,
 } from "@/hooks/useStudioSettings";
+import {
+  useApiTokens,
+  useCreateApiToken,
+  useRevokeApiToken,
+} from "@/hooks/useApiTokens";
 
 type PipelineDept = "VFX" | "3D" | "2D";
 
@@ -213,6 +217,9 @@ export default function Settings() {
   const apiKeysQuery = useApiKeys(canManageIntegrations);
   const createApiKey = useCreateApiKey();
   const revokeApiKey = useRevokeApiKey();
+  const apiTokensQuery = useApiTokens();
+  const createApiToken = useCreateApiToken();
+  const revokeApiToken = useRevokeApiToken();
   const webhooksQuery = useWebhooks(canManageIntegrations);
   const createWebhook = useCreateWebhook();
   const deleteWebhook = useDeleteWebhook();
@@ -234,6 +241,7 @@ export default function Settings() {
     stagesSetting.data?.value ?? DEFAULT_PIPELINE_STAGES;
 
   const apiKeys = apiKeysQuery.data ?? [];
+  const apiTokens = apiTokensQuery.data ?? [];
   const webhookEndpoints = webhooksQuery.data ?? [];
   const licenseServers = licenseServersQuery.data ?? [];
 
@@ -252,6 +260,9 @@ export default function Settings() {
 
   const [tokenDialogOpen, setTokenDialogOpen] = useState(false);
   const [tokenNameDraft, setTokenNameDraft] = useState("");
+
+  const [personalTokenDialogOpen, setPersonalTokenDialogOpen] = useState(false);
+  const [personalTokenLabelDraft, setPersonalTokenLabelDraft] = useState("");
 
   const [webhookDialogOpen, setWebhookDialogOpen] = useState(false);
   const [webhookUrlDraft, setWebhookUrlDraft] = useState("");
@@ -389,6 +400,35 @@ export default function Settings() {
     }
   };
 
+  const handleSubmitPersonalToken = async () => {
+    const label = personalTokenLabelDraft.trim();
+    if (!label) return;
+    try {
+      const created = await createApiToken.mutateAsync({ label });
+      setPersonalTokenLabelDraft("");
+      setPersonalTokenDialogOpen(false);
+      setRevealedSecret({
+        title: "Copy your token now",
+        description: `"${created.label}" is stored hashed — this is the only time it can be shown. Paste it into your DCC plugin's settings. If you lose it, revoke it here and generate a new one.`,
+        value: created.token,
+      });
+    } catch (err) {
+      reportError("Could not generate token", err);
+    }
+  };
+
+  const handleRevokePersonalToken = async (id: string, label: string) => {
+    try {
+      await revokeApiToken.mutateAsync(id);
+      toast({
+        title: "Token revoked",
+        description: `"${label}" can no longer be used to authenticate.`,
+      });
+    } catch (err) {
+      reportError("Could not revoke token", err);
+    }
+  };
+
   const handleSubmitWebhook = async () => {
     const url = webhookUrlDraft.trim();
     if (!url) return;
@@ -453,16 +493,23 @@ export default function Settings() {
     | "profile"
     | "security"
     | "notifications"
+    | "tokens"
     | "developer"
     | "pipelines"
     | "members"
     | "licenses"
     | "deployment";
+  // DCC plugin integration is early enough (three plugin scripts, a new
+  // bearer-token auth path) that it's restricted to admin only for now,
+  // rather than every employee self-issuing API access -- a deliberate
+  // narrowing from how it first shipped, not the original design.
+  const isAdmin = currentUser?.role === "admin";
   const visibleTabs = useMemo<TabId[]>(() => {
     const tabs: TabId[] = [];
     if (canManageRoles) tabs.push("profile");
     if (canManageRoles) tabs.push("security");
     tabs.push("notifications");
+    if (isAdmin) tabs.push("tokens");
     if (canManageIntegrations) tabs.push("developer");
     if (canManagePipeline) tabs.push("pipelines");
     if (canManageMembers) tabs.push("members");
@@ -471,6 +518,7 @@ export default function Settings() {
     return tabs;
   }, [
     canManageRoles,
+    isAdmin,
     canManageIntegrations,
     canManagePipeline,
     canManageMembers,
@@ -499,6 +547,9 @@ export default function Settings() {
             <TabsTrigger value="security">Security & SSO</TabsTrigger>
           )}
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
+          {/* DCC plugin integration (Maya/Blender/Nuke) is early enough that
+              it's admin-only for now, not self-service for every employee. */}
+          {isAdmin && <TabsTrigger value="tokens">API Tokens</TabsTrigger>}
           {/* Ungated on purpose: every role, including an artist who sees no
               other tab here, needs a way back to the walkthrough. */}
           <TabsTrigger value="help">Help</TabsTrigger>
@@ -628,6 +679,23 @@ export default function Settings() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
+                  {/* These three were saved as settings but nothing at sign-in
+                      ever read them, so "Enforce 2FA" switched on protected
+                      nobody. Locked and labelled until enforcement exists,
+                      rather than letting an administrator rely on them. */}
+                  <div
+                    role="note"
+                    className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
+                  >
+                    <p className="font-medium">Not enforced yet</p>
+                    <p className="text-muted-foreground mt-0.5">
+                      Sign-in doesn't check Okta SSO, two-factor
+                      authentication or the IP allowlist yet, so these are
+                      locked to avoid giving a false sense of protection.
+                      Accounts are currently protected by password, rate
+                      limiting and session revocation.
+                    </p>
+                  </div>
                   <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/10">
                     <div className="flex items-center gap-3">
                       <Shield className="w-8 h-8 text-blue-500" />
@@ -650,7 +718,11 @@ export default function Settings() {
                         </p>
                       </div>
                     </div>
-                    <Button variant="outline" onClick={handleConfigureOkta}>
+                    <Button
+                      variant="outline"
+                      onClick={handleConfigureOkta}
+                      disabled
+                    >
                       {security.oktaConfigured ? "Reconfigure" : "Configure"}
                     </Button>
                   </div>
@@ -671,7 +743,8 @@ export default function Settings() {
                         onCheckedChange={(checked) =>
                           setSecurityDraft({ ...security, enforce2FA: checked })
                         }
-                        aria-label="Enforce two-factor authentication"
+                        disabled
+                        aria-label="Enforce two-factor authentication (not enforced yet)"
                       />
                     </motion.div>
                   </div>
@@ -680,6 +753,7 @@ export default function Settings() {
                     <Input
                       placeholder="e.g. 192.168.1.0/24, 10.0.0.0/8"
                       className="max-w-xl"
+                      disabled
                       value={security.ipAllowlist}
                       onChange={(e) =>
                         setSecurityDraft({
@@ -694,10 +768,7 @@ export default function Settings() {
                     </p>
                   </div>
                   <div className="pt-4 border-t border-border">
-                    <Button
-                      onClick={handleSaveSecurity}
-                      disabled={saveSecurity.isPending}
-                    >
+                    <Button onClick={handleSaveSecurity} disabled>
                       {saveSecurity.isPending ? "Saving…" : "Save Changes"}
                     </Button>
                   </div>
@@ -819,6 +890,108 @@ export default function Settings() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {isAdmin && (
+        <TabsContent value="tokens" className="space-y-6 animate-in fade-in">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between border-b border-border pb-4">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  Personal Access Tokens
+                  <Badge variant="outline" className="text-[10px]">
+                    Admin only, early access
+                  </Badge>
+                </CardTitle>
+                <CardDescription>
+                  For DCC plugins (Maya, Blender, Nuke) and scripts running on
+                  your own machine. A token acts as you, with exactly your own
+                  permissions -- generate one, paste it into the plugin's
+                  settings once. Restricted to admin for now while DCC
+                  integration is still new.
+                </CardDescription>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => setPersonalTokenDialogOpen(true)}
+              >
+                <Plus className="w-4 h-4 mr-2" /> Generate Token
+              </Button>
+            </CardHeader>
+            <CardContent className="p-0">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/30 border-b border-border">
+                  <tr>
+                    <th className="p-4 text-left font-medium text-muted-foreground">
+                      Label
+                    </th>
+                    <th className="p-4 text-left font-medium text-muted-foreground">
+                      Last Used
+                    </th>
+                    <th className="p-4 text-left font-medium text-muted-foreground">
+                      Created
+                    </th>
+                    <th className="p-4 text-center font-medium text-muted-foreground">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {apiTokens.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={4}
+                        className="p-4 text-center text-muted-foreground text-sm"
+                      >
+                        No tokens yet. Generate one to connect a DCC plugin.
+                      </td>
+                    </tr>
+                  )}
+                  {apiTokens.map((tok) => (
+                    <tr
+                      key={tok.id}
+                      className="border-b border-border last:border-0 hover:bg-muted/10"
+                    >
+                      <td className="p-4 font-medium flex items-center gap-2">
+                        <Key className="w-4 h-4 text-muted-foreground" />{" "}
+                        {tok.label}
+                      </td>
+                      <td className="p-4 text-muted-foreground">
+                        {formatTimestamp(tok.lastUsedAt) ?? "Never used"}
+                      </td>
+                      <td className="p-4 text-muted-foreground">
+                        {new Date(tok.createdAt).toLocaleDateString()}
+                      </td>
+                      <td className="p-4 text-center">
+                        {tok.revokedAt ? (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] text-muted-foreground"
+                          >
+                            Revoked{" "}
+                            {new Date(tok.revokedAt).toLocaleDateString()}
+                          </Badge>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-500 hover:text-red-600 hover:bg-red-500/10"
+                            disabled={revokeApiToken.isPending}
+                            onClick={() =>
+                              handleRevokePersonalToken(tok.id, tok.label)
+                            }
+                          >
+                            Revoke
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        )}
 
         {canManagePipeline && (
           <TabsContent value="pipelines" className="animate-in fade-in">
@@ -1135,68 +1308,47 @@ export default function Settings() {
             value="deployment"
             className="space-y-6 animate-in fade-in"
           >
-            <Card className="border-primary ring-1 ring-primary/20">
+            {/* This tab used to describe a cloud deployment Forge never had
+                ("SaaS Managed", "AWS us-west-2", "S3 with Transfer
+                Acceleration") on an air-gapped, self-hosted install. It now
+                describes what docker-compose.yml actually runs. */}
+            <Card>
               <CardHeader>
                 <div className="flex items-center gap-3 mb-1">
-                  <Cloud className="w-6 h-6 text-primary" />
-                  <CardTitle className="text-2xl text-primary">
-                    SaaS Managed
-                  </CardTitle>
+                  <Building2 className="w-6 h-6 text-primary" />
+                  <CardTitle className="text-2xl">Self-hosted</CardTitle>
                 </div>
                 <CardDescription>
-                  Your instance is fully managed by Forge.
+                  Forge runs on your studio's own server. No production data
+                  is sent to an outside cloud service.
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="bg-primary/10 border border-primary/20 p-4 rounded-lg text-sm text-foreground/90 space-y-2">
-                  <p>
-                    <strong>Current Region:</strong> AWS us-west-2 (Oregon)
-                  </p>
-                  <p>
-                    <strong>Database:</strong> Multi-AZ High Availability
-                  </p>
-                  <p>
-                    <strong>Storage:</strong> S3 with Transfer Acceleration
-                  </p>
-                </div>
+                <dl className="grid grid-cols-1 sm:grid-cols-[10rem_1fr] gap-x-6 gap-y-3 text-sm">
+                  <dt className="font-medium text-muted-foreground">
+                    Runs as
+                  </dt>
+                  <dd>Docker Compose on the studio server</dd>
+                  <dt className="font-medium text-muted-foreground">
+                    Database
+                  </dt>
+                  <dd>
+                    PostgreSQL, backed up automatically every 6 hours to the
+                    server's backups folder
+                  </dd>
+                  <dt className="font-medium text-muted-foreground">Cache</dt>
+                  <dd>Redis</dd>
+                  <dt className="font-medium text-muted-foreground">
+                    Media storage
+                  </dt>
+                  <dd>The server's local uploads volume</dd>
+                  <dt className="font-medium text-muted-foreground">
+                    Network
+                  </dt>
+                  <dd>Studio intranet</dd>
+                </dl>
               </CardContent>
             </Card>
-
-            <div className="grid grid-cols-2 gap-6 opacity-60">
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center gap-3 mb-1">
-                    <Building2 className="w-6 h-6" />
-                    <CardTitle>On-Premises</CardTitle>
-                  </div>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
-                  Deploy Forge inside your studio's firewall. Requires
-                  Enterprise license.
-                  <div className="mt-4">
-                    <Button variant="outline" size="sm" disabled>
-                      Contact Sales
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center gap-3 mb-1">
-                    <Cloud className="w-6 h-6" />
-                    <CardTitle>Hybrid Connect</CardTitle>
-                  </div>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
-                  SaaS control plane with on-premise asset storage mounts.
-                  <div className="mt-4">
-                    <Button variant="outline" size="sm" disabled>
-                      Contact Sales
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
           </TabsContent>
         )}
 
@@ -1208,12 +1360,18 @@ export default function Settings() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between border-b border-border pb-4">
                 <div>
-                  <CardTitle>API Keys</CardTitle>
+                  <CardTitle className="flex items-center gap-2">
+                    API Keys
+                    <Badge variant="outline" className="text-[10px]">
+                      Not active yet
+                    </Badge>
+                  </CardTitle>
                   <CardDescription>
-                    Manage personal access tokens for API requests.
+                    Tokens can't be used yet: the API only accepts a signed-in
+                    session. Existing tokens are listed so they can be revoked.
                   </CardDescription>
                 </div>
-                <Button size="sm" onClick={() => setTokenDialogOpen(true)}>
+                <Button size="sm" onClick={() => setTokenDialogOpen(true)} disabled>
                   <Plus className="w-4 h-4 mr-2" /> Generate New Token
                 </Button>
               </CardHeader>
@@ -1358,12 +1516,18 @@ export default function Settings() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between border-b border-border pb-4">
                 <div>
-                  <CardTitle>Webhooks</CardTitle>
+                  <CardTitle className="flex items-center gap-2">
+                    Webhooks
+                    <Badge variant="outline" className="text-[10px]">
+                      Not active yet
+                    </Badge>
+                  </CardTitle>
                   <CardDescription>
-                    Listen to real-time events across your studio.
+                    Endpoints are saved, but Forge doesn't send events to them
+                    yet. Existing endpoints are listed so they can be removed.
                   </CardDescription>
                 </div>
-                <Button size="sm" onClick={() => setWebhookDialogOpen(true)}>
+                <Button size="sm" onClick={() => setWebhookDialogOpen(true)} disabled>
                   <Plus className="w-4 h-4 mr-2" /> Add Endpoint
                 </Button>
               </CardHeader>
@@ -1577,6 +1741,50 @@ export default function Settings() {
             <Button
               onClick={handleSubmitToken}
               disabled={!tokenNameDraft.trim() || createApiKey.isPending}
+            >
+              Generate Token
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={personalTokenDialogOpen}
+        onOpenChange={setPersonalTokenDialogOpen}
+      >
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>Generate Token</DialogTitle>
+            <DialogDescription>
+              Create a personal access token for a DCC plugin or script.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label htmlFor="personal-token-label">Label</Label>
+            <Input
+              id="personal-token-label"
+              placeholder="e.g. Maya - workstation 3"
+              value={personalTokenLabelDraft}
+              onChange={(e) => setPersonalTokenLabelDraft(e.target.value)}
+              autoFocus
+            />
+            <p className="text-xs text-muted-foreground">
+              The token is shown once, immediately after it's created, and
+              cannot be retrieved afterwards.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setPersonalTokenDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSubmitPersonalToken}
+              disabled={
+                !personalTokenLabelDraft.trim() || createApiToken.isPending
+              }
             >
               Generate Token
             </Button>

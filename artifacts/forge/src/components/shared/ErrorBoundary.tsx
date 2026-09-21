@@ -1,4 +1,5 @@
 import React, { Component, ErrorInfo, ReactNode } from "react";
+import { reportError } from "@/lib/reportError";
 
 interface Props {
   children?: ReactNode;
@@ -25,6 +26,15 @@ export class ErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("Uncaught error:", error, errorInfo);
+    // A render crash is the single most important thing to record: the person
+    // it happened to sees a red page and reloads, and without this the only
+    // evidence was a console line on their machine that nobody reads.
+    reportError({
+      kind: error.name || "ReactRenderCrash",
+      message: error.message || String(error),
+      stack: error.stack,
+      context: { componentStack: errorInfo.componentStack },
+    });
     this.setState({
       error: error,
       errorInfo: errorInfo,

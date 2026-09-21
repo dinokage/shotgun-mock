@@ -101,7 +101,7 @@ reviewsRouter.get("/", async (req, res) => {
     // Same employee-role narrowing as versions.ts's GET / -- review notes
     // ("needs changes", client feedback) belong to the shot/asset they were
     // left on, so they follow that row's visibility.
-    const employeeScopeWhere = req.clientAccessLinkId
+    const employeeScopeWhere = clientScope
       ? null
       : await entityRefScopeWhere(tenantId, await getVisibilityScope(req));
 

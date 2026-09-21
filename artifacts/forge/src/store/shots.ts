@@ -6,7 +6,12 @@ interface ShotState {
   shots: Shot[];
   setShots: (shots: Shot[]) => void;
   updateShot: (id: string, updates: Partial<Shot>) => void;
-  updateReviewStatus: (id: string, isInternal: boolean, status: string) => void;
+  /** Resolves once a client decision is saved; rejects with the server's reason. */
+  updateReviewStatus: (
+    id: string,
+    isInternal: boolean,
+    status: string,
+  ) => Promise<void>;
 }
 
 // Helper to lazily sync mutations to the backend without blocking the UI
@@ -29,16 +34,16 @@ const syncBackend = async (id: string, updates: any) => {
 // while the request 403'd and only this browser's local Zustand state
 // ever changed. PUT /shots/:id/client-review is the narrow, client-scoped
 // endpoint built for exactly this write.
+//
+// Unlike syncBackend this one rethrows. A client's approval is the one write
+// they came to the portal to make, and swallowing its failure is what let
+// the page say "sent to the studio team" when nothing had been saved.
 const syncClientReviewDecision = async (id: string, status: string) => {
-  try {
-    const { apiFetch } = await import("@/lib/apiClient");
-    await apiFetch(`/shots/${id}/client-review`, {
-      method: "PUT",
-      body: JSON.stringify({ status }),
-    });
-  } catch (err) {
-    console.error("Failed to sync client review decision to backend", err);
-  }
+  const { apiFetch } = await import("@/lib/apiClient");
+  await apiFetch(`/shots/${id}/client-review`, {
+    method: "PUT",
+    body: JSON.stringify({ status }),
+  });
 };
 
 export const useShotStore = create<ShotState>()(
@@ -54,7 +59,10 @@ export const useShotStore = create<ShotState>()(
         }));
         syncBackend(id, updates);
       },
-      updateReviewStatus: (id, isInternal, status) => {
+      updateReviewStatus: async (id, isInternal, status) => {
+        // The client decision is saved first and shown after, so a rejected
+        // decision never appears to have gone through on the client's screen.
+        if (!isInternal) await syncClientReviewDecision(id, status);
         set((state) => ({
           shots: state.shots.map((s) => {
             if (s.id === id) {
@@ -65,11 +73,7 @@ export const useShotStore = create<ShotState>()(
             return s;
           }),
         }));
-        if (isInternal) {
-          syncBackend(id, { internalReviewStatus: status });
-        } else {
-          syncClientReviewDecision(id, status);
-        }
+        if (isInternal) syncBackend(id, { internalReviewStatus: status });
       },
     }),
     {

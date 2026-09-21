@@ -15,6 +15,79 @@ export const invitesRouter = Router();
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+/**
+ * GET /api/invites
+ *
+ * Outstanding invitations. Without this an administrator could send an invite
+ * and then had no way to find out whether it existed, who it went to, or
+ * whether it had already expired -- so a new starter saying "I never got the
+ * email" had no answer but to send another and hope.
+ *
+ * The token is deliberately NOT returned. It is the credential: anyone
+ * holding it can create an account as the role it names, so a list endpoint
+ * that included it would turn "may manage members" into "may mint an account
+ * for any pending invitation at will, silently". `expired` is derived here so
+ * the caller reads a state rather than re-implementing the comparison.
+ */
+invitesRouter.get(
+  "/",
+  tenantAuthMiddleware,
+  requireCapability("manage_members"),
+  async (req, res) => {
+    try {
+      const tenantId = req.tenantId!;
+      const rows = await prisma.pendingInvite.findMany({
+        where: { tenantId },
+        select: {
+          id: true,
+          email: true,
+          roleId: true,
+          departmentId: true,
+          expiresAt: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      const now = Date.now();
+      return res.json(
+        rows.map((r) => ({ ...r, expired: r.expiresAt.getTime() < now })),
+      );
+    } catch (err) {
+      req.log.error(err, "Failed to list pending invites");
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
+
+/**
+ * DELETE /api/invites/:id
+ *
+ * Revokes an invitation that has not been accepted -- someone who left before
+ * starting, or an address typed wrong. Deleting the row invalidates the token,
+ * since acceptance looks it up by exact match.
+ */
+invitesRouter.delete(
+  "/:id",
+  tenantAuthMiddleware,
+  requireCapability("manage_members"),
+  async (req, res) => {
+    try {
+      const tenantId = req.tenantId!;
+      const deleted = await prisma.pendingInvite.deleteMany({
+        where: { id: String(req.params.id), tenantId },
+      });
+      if (deleted.count === 0) {
+        return res.status(404).json({ error: "Not found" });
+      }
+      return res.status(204).end();
+    } catch (err) {
+      req.log.error(err, "Failed to revoke invite");
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
+
 // Only the "create and send" step requires an authenticated admin session --
 // applied per-route rather than router.use(), since the accept flow below
 // runs before the invitee has any session at all (same reasoning as

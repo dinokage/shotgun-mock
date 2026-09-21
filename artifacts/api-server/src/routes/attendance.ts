@@ -1,4 +1,5 @@
 import { Router } from "express";
+import * as crypto from "crypto";
 import { prisma } from "@workspace/db";
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import { denyClientAccess } from "../middleware/rbac";
@@ -229,6 +230,104 @@ attendanceRouter.post("/clock-out", async (req, res) => {
     return res.status(200).json({ message: "Clocked out" });
   } catch (err) {
     req.log.error(err, "Manual clock-out failed");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * Who signs off a day's hours: the same two roles that see the Payroll tab.
+ * The admin monitors and approves nothing; a client keeps no timesheet.
+ */
+const TIMESHEET_APPROVER_ROLES = ["production_head", "producer"];
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * GET /api/attendance/approvals?date=YYYY-MM-DD
+ *
+ * Whose hours are signed off for the day (today, studio time, by default),
+ * limited to the people this caller may see attendance for.
+ */
+attendanceRouter.get("/approvals", async (req, res) => {
+  try {
+    const tenantId = req.tenantId!;
+    const date =
+      typeof req.query.date === "string" && DATE_RE.test(req.query.date)
+        ? req.query.date
+        : studioDate();
+
+    const scope = await getVisibilityScope(req);
+    const allowed = await readableUserIds(tenantId, scope);
+    const approvals = await prisma.timesheetApproval.findMany({
+      where: { tenantId, date, ...(allowed ? { userId: { in: allowed } } : {}) },
+      select: { userId: true, date: true, approvedById: true, createdAt: true },
+    });
+    return res.json({ date, approvals });
+  } catch (err) {
+    req.log.error(err, "Failed to read timesheet approvals");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * POST /api/attendance/approvals  { userIds: string[], date?: YYYY-MM-DD }
+ *
+ * Signs off the day for each listed person. Idempotent: re-approving is a
+ * no-op. Ids that aren't a timesheet-keeping member of this studio are
+ * skipped rather than failing the whole batch, and the response says how many
+ * were actually approved.
+ */
+attendanceRouter.post("/approvals", async (req, res) => {
+  try {
+    const tenantId = req.tenantId!;
+    const role = await prisma.tenantRole.findFirst({
+      where: { id: req.roleId!, tenantId },
+      select: { name: true },
+    });
+    if (!role || !TIMESHEET_APPROVER_ROLES.includes(role.name)) {
+      return res
+        .status(403)
+        .json({ error: "Only a production head or producer can approve timesheets" });
+    }
+
+    const { userIds, date: rawDate } = req.body ?? {};
+    const date = rawDate === undefined ? studioDate() : rawDate;
+    if (typeof date !== "string" || !DATE_RE.test(date)) {
+      return res.status(400).json({ error: "date must be YYYY-MM-DD" });
+    }
+    if (date > studioDate()) {
+      return res.status(400).json({ error: "Hours can't be approved for a day that hasn't happened" });
+    }
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+      return res.status(400).json({ error: "userIds must be a non-empty array" });
+    }
+    const ids = [
+      ...new Set(userIds.filter((v: unknown): v is string => typeof v === "string")),
+    ].slice(0, 1000);
+
+    const people = await prisma.user.findMany({
+      where: {
+        tenantId,
+        id: { in: ids },
+        deletedAt: null,
+        role: { name: { notIn: ["admin", "client"] } },
+      },
+      select: { id: true },
+    });
+
+    await prisma.timesheetApproval.createMany({
+      data: people.map((p) => ({
+        id: crypto.randomUUID(),
+        tenantId,
+        userId: p.id,
+        date,
+        approvedById: req.userId!,
+      })),
+      skipDuplicates: true,
+    });
+
+    return res.status(201).json({ date, approved: people.length });
+  } catch (err) {
+    req.log.error(err, "Failed to approve timesheets");
     return res.status(500).json({ error: "Internal server error" });
   }
 });

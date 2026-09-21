@@ -14,6 +14,12 @@ export const ROLE_LANDING_ROUTE: Record<string, string> = {
   producer: "/production",
   lead: "/production",
   artist: "/tasks",
+  // client-review.tsx is the one route a signed-in client account can reach
+  // (registered outside AuthGuard/RoleRouteGuard entirely, see App.tsx) --
+  // without this entry a client fell through to "/", which RoleRouteGuard
+  // immediately bounces back to "/login" with no explanation, stranding an
+  // otherwise-successful login.
+  client: "/client-review",
 };
 
 export default function Login() {
@@ -95,12 +101,6 @@ export default function Login() {
         <p className="mt-6 text-center text-sm text-muted-foreground">
           <a href="/forgot-password" className="text-primary hover:underline">
             Forgot your password?
-          </a>
-        </p>
-        <p className="mt-2 text-center text-sm text-muted-foreground">
-          New to the studio?{" "}
-          <a href="/register" className="text-primary hover:underline">
-            Create an account
           </a>
         </p>
         <p className="mt-2 text-center text-sm text-muted-foreground">

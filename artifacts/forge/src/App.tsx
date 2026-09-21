@@ -37,11 +37,11 @@ import ProductionDashboard from "@/pages/production";
 import Timesheets from "@/pages/timesheets";
 import ClientReview from "@/pages/client-review";
 import AcceptInvite from "@/pages/accept-invite";
-import Register from "@/pages/register";
 import ForgotPassword from "@/pages/forgot-password";
 import ResetPassword from "@/pages/reset-password";
 
 import Audit from "@/pages/audit";
+import Diagnostics from "@/pages/diagnostics";
 import NotFound from "@/pages/not-found";
 import Deliveries from "@/pages/deliveries";
 import DeliveryDetail from "@/pages/delivery-detail";
@@ -82,18 +82,20 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 function RoleRouteGuard({ children }: { children: React.ReactNode }) {
   const { currentUser } = useAuthStore();
   const [location, setLocation] = useLocation();
-  // client has no route allow-list (see ROLE_ALLOWED_ROUTES) and no main-app
-  // landing route — it should never actually reach this guard (client
-  // sessions don't populate currentUser, see AuthGuard), but short-circuit
-  // it explicitly so a future change can't turn an empty allow-list into a
-  // redirect loop or blank page.
+  // client has no route allow-list (see ROLE_ALLOWED_ROUTES) — its one
+  // reachable page, /client-review, is registered outside this guard
+  // entirely (see the top-level Switch in Router below), so a signed-in
+  // client only ever hits this guard by navigating straight to a protected
+  // URL (e.g. a bookmark). Short-circuit it back to their real landing page
+  // rather than "/login", which would just show them a login form despite
+  // already being authenticated.
   const isClient = currentUser?.role === "client";
   const allowed =
     !currentUser || (!isClient && canAccessRoute(currentUser.role, location));
 
   useEffect(() => {
     if (currentUser && !allowed) {
-      setLocation(isClient ? "/login" : ROLE_LANDING_ROUTE[currentUser.role] ?? "/");
+      setLocation(isClient ? "/client-review" : ROLE_LANDING_ROUTE[currentUser.role] ?? "/");
     }
   }, [currentUser, allowed, isClient, setLocation]);
 
@@ -131,7 +133,12 @@ function Router() {
       <Route path="/login" component={Login} />
       <Route path="/client-review" component={ClientReview} />
       <Route path="/accept-invite" component={AcceptInvite} />
-      <Route path="/register" component={Register} />
+      {/* Self-registration is closed -- accounts are created by an admin
+          (Admin Panel) or via an admin-sent invite (/accept-invite above).
+          No route here means a direct /register visit falls through to
+          AuthGuard below, which sends an unauthenticated visitor to
+          /login -- there is deliberately nowhere for a "Create an account"
+          link to point. */}
       <Route path="/forgot-password" component={ForgotPassword} />
       <Route path="/reset-password" component={ResetPassword} />
       {/* Public, outside AuthGuard — external recipients reach a specific
@@ -248,6 +255,11 @@ function Router() {
                 <Route path="/audit">
                   <LeadershipGuard>
                     <Audit />
+                  </LeadershipGuard>
+                </Route>
+                <Route path="/diagnostics">
+                  <LeadershipGuard>
+                    <Diagnostics />
                   </LeadershipGuard>
                 </Route>
                 {/* Not LeadershipGuard-wrapped: settings.tsx gates every

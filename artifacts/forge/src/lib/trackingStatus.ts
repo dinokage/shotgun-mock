@@ -25,6 +25,10 @@ export function normalizeTaskStatus(raw: string | null | undefined): TaskStatus 
     "review",
     "lead-review",
     "pm-review",
+    // Without this the producer's own stage fell through to the tracksheet
+    // heuristics below and came back "in-progress", so work waiting on final
+    // sign-off vanished from the review queue and read as unstarted work.
+    "producer-review",
     "approved",
     "complete",
     "cancelled",
@@ -75,6 +79,7 @@ export function isTracksheetStatus(raw: string | null | undefined): boolean {
     "review",
     "lead-review",
     "pm-review",
+    "producer-review",
     "approved",
     "complete",
     "cancelled",

@@ -74,9 +74,76 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 import * as Sentry from "@sentry/node";
+import { captureError, resolveSoleTenantId } from "./lib/errorSink";
 
 app.use("/api", router);
 
 Sentry.setupExpressErrorHandler(app);
+
+// Records anything that reaches Express's error handler. Sentry stays wired
+// above for the day a DSN exists, but this deployment is air-gapped: without
+// an outbound route to sentry.io that handler collects nothing, which is how
+// a server ends up looking instrumented while reporting into the void. This
+// writes to the studio's own database instead, so the errors are visible on
+// the box where they happened.
+//
+// Four parameters, including the unused `next`: Express identifies an error
+// handler by arity, and dropping it silently demotes this to ordinary
+// middleware that never runs on failure.
+app.use(
+  (
+    err: Error & { status?: number; statusCode?: number },
+    req: express.Request,
+    res: express.Response,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    next: express.NextFunction,
+  ) => {
+    const status = err.status ?? err.statusCode ?? 500;
+    // An unauthenticated request has no tenant on it -- malformed JSON sent
+    // at the login route is the ordinary case -- and reads are scoped
+    // strictly per tenant, so recording it unattributed would file it where
+    // nobody can see it.
+    const resolveTenant = req.tenantId
+      ? Promise.resolve(req.tenantId)
+      : resolveSoleTenantId();
+    void resolveTenant.then((tenantId) =>
+      captureError({
+        source: "api",
+        kind: err.name || "Error",
+        message: err.message || String(err),
+        stack: err.stack,
+        path: req.originalUrl?.split("?")[0],
+        method: req.method,
+        statusCode: status,
+        tenantId,
+        userId: req.userId ?? null,
+        context: { requestId: (req as { id?: unknown }).id },
+      }),
+    );
+    req.log?.error({ err }, "unhandled error");
+    if (res.headersSent) return;
+    res.status(status).json({ error: "Internal server error" });
+  },
+);
+
+// A crash in a promise nobody awaited never reaches Express, so it would
+// otherwise leave no trace beyond the process log -- and on a server nobody
+// watches, that is no trace at all.
+process.on("unhandledRejection", (reason) => {
+  const err = reason instanceof Error ? reason : new Error(String(reason));
+  // No request, so no session to attribute from. Resolved to the
+  // deployment's tenant where that is unambiguous; reads are scoped strictly
+  // per tenant, so without this a background crash would be recorded and then
+  // visible to nobody.
+  void resolveSoleTenantId().then((tenantId) =>
+    captureError({
+      source: "api",
+      kind: `UnhandledRejection: ${err.name}`,
+      message: err.message,
+      stack: err.stack,
+      tenantId,
+    }),
+  );
+});
 
 export default app;

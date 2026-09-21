@@ -14,6 +14,8 @@ export interface UserDTO {
   title: string | null;
   avatar: string | null;
   status: string | null;
+  /** Percent of a working week booked, 0-100, or null if never set. */
+  capacity: number | null;
   punchedInAt: string | null;
   lastSeenAt: string | null;
   requestedRole: string | null;
@@ -42,6 +44,40 @@ export function useSendInvite() {
   });
 }
 
+// Mirrors GET /api/invites. The invite token is deliberately not included:
+// it is the credential that creates the account.
+export interface InviteDTO {
+  id: string;
+  email: string;
+  roleId: string;
+  departmentId: string | null;
+  expiresAt: string;
+  createdAt: string;
+  expired: boolean;
+}
+
+/**
+ * Outstanding invites. `enabled` lets a page that renders before its own
+ * capability redirect avoid a guaranteed 403 for people without
+ * manage_members.
+ */
+export function useInvites(enabled = true) {
+  return useQuery<InviteDTO[]>({
+    queryKey: ["invites"],
+    queryFn: () => apiFetch<InviteDTO[]>("/invites"),
+    enabled,
+    staleTime: 30000,
+  });
+}
+
+export function useRevokeInvite() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/invites/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["invites"] }),
+  });
+}
+
 export function useUsersMap() {
   const { data: users = [] } = useUsers();
   return useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
@@ -60,6 +96,7 @@ export function useUpdateProfile() {
       name?: string;
       title?: string | null;
       avatar?: string | null;
+      capacity?: number | null;
     }) => apiClient.patch<UserDTO>("/users/me", body),
     onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ["users"] });
@@ -71,6 +108,7 @@ export function useUpdateProfile() {
         name: updated.name,
         title: updated.title ?? undefined,
         avatar: updated.avatar ?? undefined,
+        capacity: updated.capacity ?? undefined,
       });
     },
   });

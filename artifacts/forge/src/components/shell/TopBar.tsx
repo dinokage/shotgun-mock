@@ -72,7 +72,7 @@ export function TopBar() {
 
   if (!currentUser) return null;
 
-  // Global roles (admin/production_head) see every department, so there is
+  // Global roles (admin/production_head/producer) see every department, so there is
   // no per-role department to look up for them; everyone else always sees
   // their own department's badge.
   const isGlobalRole = isUnscoped;

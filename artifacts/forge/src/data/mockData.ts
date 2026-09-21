@@ -71,7 +71,6 @@ export interface User {
   startDate: string;
   status: "active" | "away" | "on-leave";
   skills: string[];
-  password: string; // For login simulation
   capabilities?: string[]; // Array of RBAC capability IDs
   punchedInAt?: string | null; // Real backend punch-clock state (users.punched_in_at); undefined for generated mock rows
   lastSeenAt?: string | null; // Real backend presence heartbeat (users.last_seen_at); undefined for generated mock rows
@@ -332,6 +331,13 @@ export interface Version {
   notes: string;
   derivedFromId: string;
   fileSize: string;
+  // The real backend row (routes/versions.ts's VersionDTO) always carries
+  // these two; store/auth.ts's fetchMe spreads the raw API row into every
+  // synced Version (`...v`), so they're present on every real version at
+  // runtime even though the mock literals above never set them. Declared
+  // here so real code can read them without an `any` cast.
+  mediaUrl?: string | null;
+  taskId?: string | null;
 }
 
 export interface Review {
@@ -1345,7 +1351,11 @@ export const USERS: User[] = USER_DEFS.map((def, i) => {
     title: def.title,
     departmentId: deptId,
     avatar: `https://i.pravatar.cc/150?u=u${i + 1}`,
-    email: `${def.name.split(" ")[0].toLowerCase()}@nebula.co`,
+    // Never a real login: this whole USERS array is a display-only seed
+    // (real accounts are authenticated server-side, per real emails in the
+    // database) -- but a domain that reads as a genuine company address
+    // invites confusion, so it's marked as generated data on its face.
+    email: `${def.name.split(" ")[0].toLowerCase()}@example-studio.test`,
     studioId: "studio1",
     capacity: 60 + Math.floor((i * 7 + 13) % 40),
     licenses: userLicenses,
@@ -1353,7 +1363,6 @@ export const USERS: User[] = USER_DEFS.map((def, i) => {
     startDate: `20${20 + (i % 5)}-${String((i % 12) + 1).padStart(2, "0")}-01`,
     status: i % 15 === 0 ? "away" : i % 20 === 0 ? "on-leave" : "active",
     skills: def.skills,
-    password: "forge123", // All users share a demo password
   };
 });
 

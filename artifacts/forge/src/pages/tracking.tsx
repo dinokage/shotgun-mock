@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import * as XLSX from "xlsx";
 import {
   Search,
   Filter,
@@ -917,7 +918,16 @@ export default function TrackingGrid() {
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
 
-  const handleExportCSV = () => {
+  // A real .xlsx, not CSV -- matches the format the studio's tracksheets
+  // actually come in as (excelImport.ts's import side), and reads directly
+  // in Excel with column widths, not just comma-separated text. There's no
+  // persistent server-side tracksheet file this app writes back into (the
+  // studio's original upload is parsed client-side and discarded, not
+  // stored) -- this is the honest version of "the tracksheet stays
+  // up to date": it's generated fresh from whatever the DB says right now,
+  // every time it's clicked, so it can never go stale the way a
+  // once-uploaded file sitting untouched would.
+  const handleExportExcel = () => {
     const headers = [
       "No",
       "Project",
@@ -950,23 +960,25 @@ export default function TrackingGrid() {
       row.updatedAt,
       row.notes,
     ]);
-    const csv = [headers, ...rows]
-      .map((r) => r.map(escapeCSVValue).join(","))
-      .join("\n");
 
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `tracking-grid-${new Date().toISOString().split("T")[0]}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const sheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    sheet["!cols"] = headers.map((h, i) => ({
+      wch: Math.max(
+        h.length,
+        ...rows.map((r) => String(r[i] ?? "").length),
+        8,
+      ) + 2,
+    }));
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, sheet, "Tracking Grid");
+    XLSX.writeFile(
+      workbook,
+      `tracking-grid-${new Date().toISOString().split("T")[0]}.xlsx`,
+    );
 
     toast({
       title: "Export Complete",
-      description: `${trackingData.length} rows exported to CSV.`,
+      description: `${trackingData.length} rows exported to Excel, reflecting current status.`,
     });
   };
 
@@ -1197,10 +1209,10 @@ export default function TrackingGrid() {
           <Button
             variant="outline"
             size="sm"
-            onClick={handleExportCSV}
+            onClick={handleExportExcel}
             className="border-border text-foreground"
           >
-            <Download className="w-4 h-4 mr-2" /> Export CSV
+            <Download className="w-4 h-4 mr-2" /> Export Excel
           </Button>
           {canImportTracksheet && (
             <Button
@@ -1215,31 +1227,79 @@ export default function TrackingGrid() {
           <Button
             size="sm"
             className="bg-emerald-600 hover:bg-emerald-700 text-white border-0"
-            onClick={() => {
+            onClick={async () => {
+              // Every save is awaited before anything is reported. This used
+              // to fire the requests, clear the staged edits and say "Changes
+              // Saved" in the same tick, so a rejected save was lost silently.
+              const saves: {
+                id: string;
+                run: () => Promise<unknown>;
+              }[] = [];
               Object.entries(localOverrides).forEach(([id, changes]) => {
                 if ("status" in changes || "notes" in changes) {
-                  updateShotMutation.mutate({
+                  saves.push({
                     id,
-                    ...("status" in changes ? { status: changes.status } : {}),
-                    ...("notes" in changes ? { notes: changes.notes } : {}),
+                    run: () =>
+                      updateShotMutation.mutateAsync({
+                        id,
+                        ...("status" in changes ? { status: changes.status } : {}),
+                        ...("notes" in changes ? { notes: changes.notes } : {}),
+                      }),
                   });
                 }
                 if (changes.internalReview)
-                  updateShotMutation.mutate({
+                  saves.push({
                     id,
-                    internalReviewStatus: changes.internalReview,
+                    run: () =>
+                      updateShotMutation.mutateAsync({
+                        id,
+                        internalReviewStatus: changes.internalReview,
+                      }),
                   });
                 if (changes.clientReview)
-                  updateShotMutation.mutate({
+                  saves.push({
                     id,
-                    clientReviewStatus: changes.clientReview,
+                    run: () =>
+                      updateShotMutation.mutateAsync({
+                        id,
+                        clientReviewStatus: changes.clientReview,
+                      }),
                   });
               });
-              setLocalOverrides({});
-              toast({
-                title: "Changes Saved",
-                description: "Tracking grid updated successfully.",
-              });
+              if (saves.length === 0) return;
+
+              const outcomes = await Promise.allSettled(saves.map((s) => s.run()));
+              const failedIds = new Set(
+                saves
+                  .filter((_, i) => outcomes[i].status === "rejected")
+                  .map((s) => s.id),
+              );
+
+              // Keep only the rows that failed staged, so they can be retried
+              // without re-entering the edits that did save.
+              setLocalOverrides((prev) =>
+                Object.fromEntries(
+                  Object.entries(prev).filter(([id]) => failedIds.has(id)),
+                ),
+              );
+
+              if (failedIds.size === 0) {
+                toast({
+                  title: "Changes Saved",
+                  description: "Tracking grid updated successfully.",
+                });
+              } else {
+                const firstError = outcomes.find(
+                  (o): o is PromiseRejectedResult => o.status === "rejected",
+                )?.reason;
+                toast({
+                  title: `${failedIds.size} row${failedIds.size === 1 ? "" : "s"} didn't save`,
+                  description: `${
+                    firstError instanceof Error ? firstError.message : "The server rejected the change."
+                  } Those rows are still marked unsaved — try again.`,
+                  variant: "destructive",
+                });
+              }
             }}
           >
             <Save className="w-4 h-4 mr-2" /> Save Changes

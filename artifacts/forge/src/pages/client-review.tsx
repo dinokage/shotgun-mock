@@ -31,7 +31,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { useReviewStore, PRESENTED_VERSION_ID } from "@/store/reviews";
+import { useReviewStore } from "@/store/reviews";
 import {
   usePresentationValue,
   useClientNotes,
@@ -60,6 +60,9 @@ import {
   useUpdateAnnotation,
   useDeleteAnnotation,
 } from "@/hooks/useReviews";
+import { useEpisodes } from "@/hooks/useEpisodes";
+import { useSequences } from "@/hooks/useSequences";
+import { Film, Layers, ChevronRight } from "lucide-react";
 
 const COLORS = [
   "#10b981",
@@ -124,41 +127,6 @@ export default function ClientReview() {
 
   const [tool, setTool] = useState<AnnotationTool>("select");
   const [color, setColor] = useState("#10b981");
-  // Annotations are persisted server-side, keyed to the version currently
-  // being reviewed (PRESENTED_VERSION_ID — the same id review.tsx uses for
-  // this concept, and the one this page already imports for Presentation
-  // Mode's lock check above).
-  const { data: annotations = [] } = useAnnotations(PRESENTED_VERSION_ID);
-  const createAnnotation = useCreateAnnotation(PRESENTED_VERSION_ID);
-  const updateAnnotation = useUpdateAnnotation(PRESENTED_VERSION_ID);
-  const deleteAnnotation = useDeleteAnnotation(PRESENTED_VERSION_ID);
-  // Bridges AnnotationCanvas's raw dispatch-style API onto the server-backed
-  // list above — added ids become createAnnotation.mutate calls, dropped
-  // ids become deleteAnnotation.mutate calls, and ids present in both but
-  // with changed fields become updateAnnotation.mutate calls against
-  // PUT /reviews/annotations/:id.
-  const applyAnnotationsUpdate: SetAnnotations = (update) => {
-    const prevList = annotations;
-    const nextList =
-      typeof update === "function"
-        ? (update as (prev: Annotation[]) => Annotation[])(prevList)
-        : update;
-    const prevById = new Map(prevList.map((a) => [a.id, a]));
-    const nextIds = new Set(nextList.map((a) => a.id));
-    nextList.forEach((a) => {
-      const prev = prevById.get(a.id);
-      if (!prev) {
-        const { id, ...rest } = a;
-        createAnnotation.mutate(rest);
-      } else if (JSON.stringify(prev) !== JSON.stringify(a)) {
-        const { id, ...rest } = a;
-        updateAnnotation.mutate({ id, ...rest });
-      }
-    });
-    prevList
-      .filter((a) => !nextIds.has(a.id))
-      .forEach((a) => deleteAnnotation.mutate(a.id));
-  };
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<
     string | null
   >(null);
@@ -196,6 +164,34 @@ export default function ClientReview() {
       if (clientScope.projectId) return s.projectId === clientScope.projectId;
       return true;
     });
+
+  // Dashboard drill-down: Episode -> Sequence -> Shot, same structure as the
+  // internal app's own Episodes tab (project-detail/EpisodesTab.tsx) --
+  // pendingReviews above used to render as one flat grid, which stopped
+  // being readable once a client had more than a handful of shots pending
+  // across a real episode/sequence structure.
+  const [reviewLevel, setReviewLevel] = useState<
+    "episodes" | "sequences" | "shots"
+  >("episodes");
+  const [activeReviewEpisodeId, setActiveReviewEpisodeId] = useState<
+    string | null
+  >(null);
+  const [activeReviewSequenceId, setActiveReviewSequenceId] = useState<
+    string | null
+  >(null);
+  // Every pendingReviews shot belongs to the same client-granted project, so
+  // any one of them names it -- falls back to the projects store for the
+  // (rare) all-caught-up case where pendingReviews is empty.
+  const reviewProjectId = pendingReviews[0]?.projectId ?? projects[0]?.id;
+  const { data: reviewEpisodes = [] } = useEpisodes(reviewProjectId);
+  const { data: reviewSequences = [] } = useSequences(reviewProjectId);
+  const activeReviewEpisode = reviewEpisodes.find(
+    (e) => e.id === activeReviewEpisodeId,
+  );
+  const activeReviewSequence = reviewSequences.find(
+    (s) => s.id === activeReviewSequenceId,
+  );
+
   const activeShot = activeReviewId
     ? shots.find((s) => s.id === activeReviewId)
     : null;
@@ -216,6 +212,49 @@ export default function ClientReview() {
       forShot[0]?.id
     );
   }, [activeShot, versions]);
+
+  const activeVersion = useMemo(
+    () => versions.find((v) => v.id === activeVersionId),
+    [versions, activeVersionId],
+  );
+
+  // Annotations are persisted server-side, keyed to the real Version row
+  // above. PRESENTED_VERSION_ID (the id this used to key on) was a
+  // hardcoded demo id that no longer exists in the database -- every client
+  // drawing was silently rejected server-side ("Invalid versionId") with no
+  // error surfaced anywhere. activeVersionId is the same id the internal
+  // review player itself annotates against.
+  const { data: annotations = [] } = useAnnotations(activeVersionId);
+  const createAnnotation = useCreateAnnotation(activeVersionId);
+  const updateAnnotation = useUpdateAnnotation(activeVersionId);
+  const deleteAnnotation = useDeleteAnnotation(activeVersionId);
+  // Bridges AnnotationCanvas's raw dispatch-style API onto the server-backed
+  // list above — added ids become createAnnotation.mutate calls, dropped
+  // ids become deleteAnnotation.mutate calls, and ids present in both but
+  // with changed fields become updateAnnotation.mutate calls against
+  // PUT /reviews/annotations/:id.
+  const applyAnnotationsUpdate: SetAnnotations = (update) => {
+    const prevList = annotations;
+    const nextList =
+      typeof update === "function"
+        ? (update as (prev: Annotation[]) => Annotation[])(prevList)
+        : update;
+    const prevById = new Map(prevList.map((a) => [a.id, a]));
+    const nextIds = new Set(nextList.map((a) => a.id));
+    nextList.forEach((a) => {
+      const prev = prevById.get(a.id);
+      if (!prev) {
+        const { id, ...rest } = a;
+        createAnnotation.mutate(rest);
+      } else if (JSON.stringify(prev) !== JSON.stringify(a)) {
+        const { id, ...rest } = a;
+        updateAnnotation.mutate({ id, ...rest });
+      }
+    });
+    prevList
+      .filter((a) => !nextIds.has(a.id))
+      .forEach((a) => deleteAnnotation.mutate(a.id));
+  };
 
   // Presentation Mode: when an internal reviewer is presenting the version
   // the client is looking at, this viewer's playhead is locked to theirs and
@@ -262,11 +301,23 @@ export default function ClientReview() {
     [activeShot],
   );
 
-  // Real per-shot media reference for playback, instead of one hardcoded
-  // clip shared by every shot regardless of which one was clicked.
-  const activeVideoSrc = usePlaceholderVideoSrc(
+  // The version's real uploaded media, not a generated placeholder clip --
+  // this was the core of the "client portal shows a placeholder, not real
+  // footage" gap: every shot played the same fake clip regardless of what
+  // the studio had actually uploaded and approved for review. Falls back to
+  // the placeholder only when the version genuinely has no media yet, so
+  // the player still shows *something* rather than a blank frame.
+  const hasRealMedia = !!activeVersion?.mediaUrl;
+  const activeMediaExt = activeVersion?.mediaUrl?.split(".").pop()?.toLowerCase();
+  const activeMediaIsImage = ["png", "jpg", "jpeg", "gif", "webp"].includes(
+    activeMediaExt || "",
+  );
+  const placeholderVideoSrc = usePlaceholderVideoSrc(
     activeShot ? resolveThumbnailSeed(activeShot, versions) : 0,
   );
+  const activeVideoSrc = hasRealMedia
+    ? (activeVersion!.mediaUrl ?? undefined)
+    : placeholderVideoSrc;
 
   // Client feedback moderation: notes submitted here are held pending until
   // an internal reviewer explicitly transfers them into the team comment
@@ -390,8 +441,9 @@ export default function ClientReview() {
     };
   }, [draggingElement]);
 
-  const handleSubmit = (action: "approved" | "changes_requested") => {
-    if (activeShot) {
+  const handleSubmit = async (action: "approved" | "changes_requested") => {
+    if (!activeShot) return;
+    {
       // Persist the real decision: the shot's clientReviewStatus (the
       // review-pipeline record) and its overall status (what takes it out of
       // "Awaiting Review" on this dashboard and on the producer home page,
@@ -400,11 +452,25 @@ export default function ClientReview() {
       // client-access session is capable of) -- a separate updateShot() call
       // here would hit the generic PUT /shots/:id, which requires edit_tasks
       // and always 403s for a client session.
-      updateReviewStatus(
-        activeShot.id,
-        false,
-        action === "approved" ? "approved" : "changes-requested",
-      );
+      try {
+        await updateReviewStatus(
+          activeShot.id,
+          false,
+          action === "approved" ? "approved" : "changes-requested",
+        );
+      } catch (err) {
+        // Stay on the shot so nothing looks settled that wasn't.
+        toast({
+          title: "Your decision wasn't saved",
+          description: `${
+            err instanceof Error && err.message
+              ? err.message
+              : "The studio server didn't respond."
+          } Please try again, or contact your studio producer.`,
+          variant: "destructive",
+        });
+        return;
+      }
     }
     toast({
       title: action === "approved" ? "Approved" : "Changes Requested",
@@ -529,14 +595,42 @@ export default function ClientReview() {
         </header>
 
         <main className="p-8 max-w-7xl mx-auto space-y-8">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">
-              Pending Reviews
-            </h1>
-            <p className="text-zinc-400 mt-2 text-sm">
-              Please review the following deliveries and provide your feedback
-              or approval.
-            </p>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight">
+                {reviewLevel === "episodes" ? (
+                  "Pending Reviews"
+                ) : (
+                  <span className="flex items-center gap-2 text-2xl">
+                    <button
+                      className="text-zinc-500 hover:text-white transition-colors"
+                      onClick={() => {
+                        if (reviewLevel === "shots") {
+                          setReviewLevel("sequences");
+                          setActiveReviewSequenceId(null);
+                        } else {
+                          setReviewLevel("episodes");
+                          setActiveReviewEpisodeId(null);
+                        }
+                      }}
+                    >
+                      <ChevronLeft className="w-6 h-6" />
+                    </button>
+                    {activeReviewEpisode?.name}
+                    {reviewLevel === "shots" && activeReviewSequence && (
+                      <>
+                        <ChevronRight className="w-4 h-4 text-zinc-600" />
+                        {activeReviewSequence.name}
+                      </>
+                    )}
+                  </span>
+                )}
+              </h1>
+              <p className="text-zinc-400 mt-2 text-sm">
+                Please review the following deliveries and provide your feedback
+                or approval.
+              </p>
+            </div>
           </div>
 
           {pendingReviews.length === 0 ? (
@@ -547,9 +641,83 @@ export default function ClientReview() {
                 There are no pending reviews at this time.
               </p>
             </div>
+          ) : reviewLevel === "episodes" ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {reviewEpisodes
+                .filter((ep) =>
+                  pendingReviews.some((s) => s.episodeId === ep.id),
+                )
+                .map((ep) => {
+                  const count = pendingReviews.filter(
+                    (s) => s.episodeId === ep.id,
+                  ).length;
+                  return (
+                    <div
+                      key={ep.id}
+                      className="group bg-zinc-900 border border-white/10 rounded-xl p-6 hover:border-accent-scope/50 transition-all cursor-pointer flex items-center gap-4"
+                      onClick={() => {
+                        setActiveReviewEpisodeId(ep.id);
+                        setReviewLevel("sequences");
+                      }}
+                    >
+                      <div className="w-12 h-12 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0">
+                        <Film className="w-6 h-6 text-zinc-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-lg truncate">
+                          {ep.name}
+                        </div>
+                        <div className="text-sm text-zinc-500">
+                          {count} pending review{count === 1 ? "" : "s"}
+                        </div>
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
+                    </div>
+                  );
+                })}
+            </div>
+          ) : reviewLevel === "sequences" ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {reviewSequences
+                .filter(
+                  (sq) =>
+                    sq.episodeId === activeReviewEpisodeId &&
+                    pendingReviews.some((s) => s.sequenceId === sq.id),
+                )
+                .map((sq) => {
+                  const count = pendingReviews.filter(
+                    (s) => s.sequenceId === sq.id,
+                  ).length;
+                  return (
+                    <div
+                      key={sq.id}
+                      className="group bg-zinc-900 border border-white/10 rounded-xl p-6 hover:border-accent-scope/50 transition-all cursor-pointer flex items-center gap-4"
+                      onClick={() => {
+                        setActiveReviewSequenceId(sq.id);
+                        setReviewLevel("shots");
+                      }}
+                    >
+                      <div className="w-12 h-12 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0">
+                        <Layers className="w-6 h-6 text-zinc-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-lg truncate">
+                          {sq.name}
+                        </div>
+                        <div className="text-sm text-zinc-500">
+                          {count} pending review{count === 1 ? "" : "s"}
+                        </div>
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
+                    </div>
+                  );
+                })}
+            </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {pendingReviews.map((shot) => {
+              {pendingReviews
+                .filter((s) => s.sequenceId === activeReviewSequenceId)
+                .map((shot) => {
                 const project = projects.find((p) => p.id === shot.projectId);
                 return (
                   <div
@@ -702,15 +870,24 @@ export default function ClientReview() {
             className="relative w-full max-w-5xl aspect-video bg-zinc-900 bg-cover bg-center rounded-lg overflow-hidden shadow-2xl border border-white/5"
             style={{ backgroundImage: `url(${activeVersionPoster})` }}
           >
-            <video
-              key={activeShot?.id}
-              ref={videoRef}
-              src={activeVideoSrc}
-              poster={activeVersionPoster}
-              className="absolute inset-0 w-full h-full object-contain pointer-events-none"
-              muted
-              playsInline
-            />
+            {activeMediaIsImage ? (
+              <img
+                key={activeShot?.id}
+                src={activeVideoSrc}
+                alt={activeShot?.name ?? "Review frame"}
+                className="absolute inset-0 w-full h-full object-contain pointer-events-none"
+              />
+            ) : (
+              <video
+                key={activeShot?.id}
+                ref={videoRef}
+                src={activeVideoSrc}
+                poster={activeVersionPoster}
+                className="absolute inset-0 w-full h-full object-contain pointer-events-none"
+                muted
+                playsInline
+              />
+            )}
 
             <AnnotationCanvas
               annotations={annotations}

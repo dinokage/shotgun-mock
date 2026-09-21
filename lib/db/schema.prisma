@@ -68,6 +68,9 @@ model Asset {
   publishStatus String    @default("draft") @map("publish_status")
   description   String    @default("")
   notes         String?
+  /// Same field Task already has (Task.dueDate) -- assets never got the
+  /// equivalent, so a lead scheduling an asset had nowhere to put a deadline.
+  dueDate       DateTime? @map("due_date") @db.Timestamp(6)
   updatedAt     DateTime  @default(now()) @map("updated_at") @db.Timestamp(6)
 
   assignee        User?           @relation(fields: [assigneeId], references: [id], onUpdate: NoAction, map: "assets_assignee_id_users_id_fk")
@@ -124,6 +127,31 @@ model ClientAccessLink {
 
   @@unique([tenantId, code], map: "client_access_links_tenant_id_code_unique")
   @@map("client_access_links")
+}
+
+/// Grants a real, signed-in `client`-role account visibility into one
+/// project -- the piece ClientAccessLink alone never provided. Before this,
+/// every client reached the portal only through an anonymous code-redeemed
+/// link (no real userId behind the session), so a signed-in client account
+/// had nowhere in the schema that said which project(s) it belonged to;
+/// PUT /shots/:id/client-review rejected it outright, and there was no
+/// client-scoped read at all. Granted/revoked by a producer or admin;
+/// resolved the same way a link's own project/episode/version grant is.
+model ClientProjectAccess {
+  id        String   @id
+  tenantId  String   @map("tenant_id")
+  userId    String   @map("user_id")
+  projectId String   @map("project_id")
+  grantedByUserId String @map("granted_by_user_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  tenant       Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_project_access_tenant_id_tenants_id_fk")
+  user         User   @relation("ClientProjectAccessUser", fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_project_access_user_id_users_id_fk")
+  project      Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_project_access_project_id_projects_id_fk")
+  grantedByUser User  @relation("ClientProjectAccessGrantedBy", fields: [grantedByUserId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_project_access_granted_by_user_id_users_id_fk")
+
+  @@unique([userId, projectId], map: "client_project_access_user_id_project_id_unique")
+  @@map("client_project_access")
 }
 
 model DailyLog {
@@ -239,6 +267,7 @@ model Project {
 
   assets            Asset[]
   clientAccessLinks ClientAccessLink[]
+  clientProjectAccess ClientProjectAccess[]
   episodes          Episode[]
   tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "projects_tenant_id_tenants_id_fk")
   sequences         Sequence[]
@@ -350,6 +379,12 @@ model StandupUpdate {
   // "manual" when a person wrote it from daily-standup.tsx, "auto" when the
   // logout handler generated it from that day's real task/daily-log activity.
   source    String   @default("manual")
+  /// URLs from the generic /uploads endpoint. Files were staged in the
+  /// composer, then silently dropped on post -- never sent to the server at
+  /// all. A JSON array here (not a join table) because these are read-only
+  /// once a standup update is posted; nothing ever edits one attachment
+  /// independently of the others.
+  attachmentUrls Json @default("[]") @map("attachment_urls")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "standup_updates_tenant_id_tenants_id_fk")
@@ -516,6 +551,7 @@ model Tenant {
   assets              Asset[]
   auditLogs           AuditLog[]
   clientAccessLinks   ClientAccessLink[]
+  clientProjectAccess ClientProjectAccess[]
   dailyLogs           DailyLog[]
   departments         Department[]
   episodes            Episode[]
@@ -548,6 +584,7 @@ model Tenant {
   publishLogs         PublishLog[]
   studioSettings      StudioSetting[]
   apiKeys             ApiKey[]
+  apiTokens           ApiToken[]
   webhooks            Webhook[]
   licenseServers      LicenseServer[]
   integrations        Integration[]
@@ -587,6 +624,10 @@ model User {
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
   deletedAt      DateTime? @map("deleted_at") @db.Timestamp(6)
   departmentId   String?   @map("department_id")
+  /// Percent of a working week this person is booked, 0-100. Self-edited on
+  /// their own profile. Team Capacity widgets read this directly now instead
+  /// of a field that never existed (member.capacity ?? 0, always 0).
+  capacity       Int?
   punchedInAt    DateTime? @map("punched_in_at") @db.Timestamp(6)
   /// Bumped on every authenticated request (throttled, see tenant.ts), never
   /// cleared. This is the "online" signal, deliberately separate from
@@ -615,6 +656,8 @@ model User {
   annotations               Annotation[]
   assets                    Asset[]
   clientAccessLinks         ClientAccessLink[]
+  clientProjectAccess       ClientProjectAccess[] @relation("ClientProjectAccessUser")
+  clientProjectAccessGranted ClientProjectAccess[] @relation("ClientProjectAccessGrantedBy")
   dailyLogs                 DailyLog[]
   notifications             Notification[]
   reviews                   Review[]
@@ -635,6 +678,7 @@ model User {
   publishLogs               PublishLog[]
   studioSettings            StudioSetting[]
   apiKeys                   ApiKey[]
+  apiTokens                 ApiToken[]
   webhooks                  Webhook[]
   integrations              Integration[]
   entityTypeDefs            EntityTypeDef[]
@@ -949,6 +993,34 @@ model ApiKey {
   @@map("api_keys")
 }
 
+/// Personal access token for DCC plugins (Maya/Blender/Nuke) and other
+/// script-driven access -- distinct from ApiKey above, which is a tenant-wide
+/// key with no bound user and was never actually wired into request
+/// authentication. Every ApiToken always belongs to exactly one real person;
+/// a request authenticated with one acts as that person, with exactly their
+/// own capabilities -- nothing new to grant, nothing shared across users.
+model ApiToken {
+  id         String    @id
+  tenantId   String    @map("tenant_id")
+  userId     String    @map("user_id")
+  /// SHA-256 of the raw token -- fast, deterministic lookup on every request.
+  /// Argon2 (used for passwords) is deliberately NOT used here: its slowness
+  /// defends against guessing a low-entropy human password, which doesn't
+  /// apply to a 256-bit random token, and would add real latency to every
+  /// authenticated DCC-plugin request.
+  tokenHash  String    @map("token_hash")
+  label      String
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  lastUsedAt DateTime? @map("last_used_at") @db.Timestamp(6)
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamp(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "api_tokens_tenant_id_fk")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "api_tokens_user_id_fk")
+
+  @@index([tokenHash])
+  @@map("api_tokens")
+}
+
 model Webhook {
   id          String    @id
   tenantId    String    @map("tenant_id")
@@ -1221,6 +1293,24 @@ model StandupApproval {
   @@map("standup_approvals")
 }
 
+/// A day's hours signed off for one person. The Payroll tab's "Approve
+/// Timesheets" used to set browser state only, so an approval vanished on
+/// refresh and nobody else ever saw it. One row per person per studio-local
+/// day; approving the same day again is a no-op, not a duplicate.
+model TimesheetApproval {
+  id           String   @id
+  tenantId     String   @map("tenant_id")
+  userId       String   @map("user_id")
+  /// Studio-local calendar date, YYYY-MM-DD -- same basis as attendance_records.date.
+  date         String
+  approvedById String   @map("approved_by_id")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  @@unique([tenantId, userId, date])
+  @@index([tenantId, date])
+  @@map("timesheet_approvals")
+}
+
 /// Append-only trace of what someone did to an asset outside this app —
 /// opened it in a DCC, or published it by hand. Kept as a log rather than a
 /// latest-only field so attribution survives the next person's action.
@@ -1386,6 +1476,49 @@ model AuditRollback {
 
   @@unique([tenantId, entityType, entityId])
   @@map("audit_rollbacks")
+}
+
+/// A captured error, from either side of the wire.
+///
+/// Sentry is wired into the API but needs a DSN and an outbound route to
+/// sentry.io, and this platform is deployed air-gapped: the studio server has
+/// intranet only. An error reporter that cannot reach its collector reports
+/// nothing, which is how a deployment ends up with no error visibility at all
+/// while appearing instrumented. This table is the collector -- on the same
+/// Postgres the app already runs on, so there is no second service to stand up
+/// and no image to carry in on a USB stick.
+///
+/// Deliberately append-only and capped by a retention sweep rather than
+/// updated in place: an error is a record of something that happened, and
+/// rewriting it loses the thing you came to look at.
+model ErrorEvent {
+  id       String @id
+  tenantId String? @map("tenant_id")
+  /// "api" | "web" -- which side of the wire raised it.
+  source   String
+  /// Error class or short label, e.g. "TypeError". Indexed for grouping.
+  kind     String
+  message  String
+  stack    String?
+  /// Request path for an API error, route path for a web one.
+  path     String?
+  method   String?
+  statusCode Int?    @map("status_code")
+  /// Who hit it, when known. Null for unauthenticated and client-link errors.
+  userId   String?  @map("user_id")
+  /// Browser user-agent for web errors; null for API.
+  userAgent String? @map("user_agent")
+  /// Release identifier, so an error can be tied to a deployed build.
+  release  String?
+  /// Anything else worth keeping: request id, component stack, breadcrumbs.
+  context  Json     @default("{}")
+  /// Set when someone has dealt with it, so the list can show what is new.
+  resolvedAt DateTime? @map("resolved_at") @db.Timestamp(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  @@index([tenantId, createdAt])
+  @@index([kind, createdAt])
+  @@map("error_events")
 }
 
 /// One row per worked shift. This is the attendance record proper, kept

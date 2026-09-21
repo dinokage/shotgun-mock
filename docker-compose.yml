@@ -62,7 +62,29 @@ services:
     # AOF/RDB reload after a restart just means a few cold cache misses,
     # not data loss -- Postgres (backed up above) is the only store that
     # needs durability here.
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    #
+    # maxmemory + allkeys-lru: Redis defaults to no limit and `noeviction`,
+    # which is the wrong shape for a cache in two ways. Unbounded, it grows
+    # until it takes the host's memory with it; and on reaching a limit,
+    # `noeviction` makes Redis *reject writes* rather than drop the oldest
+    # entries. That second one matters here more than it looks: session
+    # validity is cached and fails CLOSED, so a full Redis would not degrade
+    # the studio's tool, it would lock everyone out of it. 256mb is many
+    # times the working set (measured at ~1.3MB with the studio's real data)
+    # and evicting the least-recently-used key costs a cache miss, nothing
+    # more.
+    command:
+      [
+        "redis-server",
+        "--save",
+        "",
+        "--appendonly",
+        "no",
+        "--maxmemory",
+        "256mb",
+        "--maxmemory-policy",
+        "allkeys-lru",
+      ]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -174,4 +196,5 @@ services:
 
 volumes:
   forge-db-data:
+  forge-db-data-clean:
   forge-uploads-data:

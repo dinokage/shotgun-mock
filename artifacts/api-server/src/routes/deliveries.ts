@@ -1,7 +1,11 @@
 import { Router } from "express";
 import { prisma } from "@workspace/db";
 import { tenantAuthMiddleware } from "../middleware/tenant";
-import { requireCapability, denyClientAccess } from "../middleware/rbac";
+import {
+  requireCapability,
+  requireAnyCapability,
+  denyClientAccess,
+} from "../middleware/rbac";
 import * as crypto from "crypto";
 import { rateLimitByIp } from "../lib/rateLimit";
 
@@ -173,6 +177,10 @@ deliveriesRouter.use(tenantAuthMiddleware);
 deliveriesRouter.use(denyClientAccess);
 
 const MANAGE_DELIVERIES = "approve_reviews";
+// Reading also admits the admin, who monitors deliveries without making them:
+// the admin role has no approve_reviews, so the Deliveries page it can open
+// was rejected on its very first request. Writes stay on MANAGE_DELIVERIES.
+const READ_DELIVERIES = requireAnyCapability(MANAGE_DELIVERIES, "manage_roles");
 
 async function projectInTenant(id: string, tenantId: string) {
   const row = await prisma.project.findFirst({
@@ -296,7 +304,7 @@ const DELIVERY_INCLUDE = {
 // client package's code straight off the API.
 deliveriesRouter.get(
   "/",
-  requireCapability(MANAGE_DELIVERIES),
+  READ_DELIVERIES,
   async (req, res) => {
     try {
       const tenantId = req.tenantId!;
@@ -319,7 +327,7 @@ deliveriesRouter.get(
 
 deliveriesRouter.get(
   "/:id",
-  requireCapability(MANAGE_DELIVERIES),
+  READ_DELIVERIES,
   async (req, res) => {
     try {
       const tenantId = req.tenantId!;

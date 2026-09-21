@@ -55,6 +55,7 @@ const STUDIO_ADMIN_ROUTES = [
   "/workflows",
   "/schema-builder",
   "/audit",
+  "/diagnostics",
   "/integrations",
 ];
 

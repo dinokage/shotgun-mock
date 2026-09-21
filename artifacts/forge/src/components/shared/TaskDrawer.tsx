@@ -1,7 +1,9 @@
 import { useUIStore } from "@/store/ui";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { getNextDepartment, DEPENDENCY_TYPE_LABELS } from "@/data/mockData";
 import { canApproveAsProductionManager } from "@/lib/taskShape";
+import { normalizeTaskStatus } from "@/lib/trackingStatus";
 import { useUserStore } from "@/store/users";
 import { useProjectStore } from "@/store/projects";
 import { useDepartmentStore } from "@/store/departments";
@@ -406,7 +408,23 @@ export function TaskDrawer() {
                 <div className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1">
                   <CalendarDays className="w-3 h-3" /> Due Date
                 </div>
-                <span className="text-sm font-medium">{task.dueDate}</span>
+                {canEditTasksForHandoff ? (
+                  <Input
+                    type="date"
+                    className="h-8 text-sm font-medium w-40"
+                    value={task.dueDate ? task.dueDate.slice(0, 10) : ""}
+                    onChange={(e) =>
+                      updateTaskMutation.mutate({
+                        id: task.id,
+                        dueDate: e.target.value || null,
+                      })
+                    }
+                  />
+                ) : (
+                  <span className="text-sm font-medium">
+                    {task.dueDate || "Not set"}
+                  </span>
+                )}
               </div>
               <div>
                 <div className="text-xs font-medium text-muted-foreground mb-1.5">
@@ -538,15 +556,21 @@ export function TaskDrawer() {
                   drawer (which set status to 'review'), and the formal chain
                   driven from the review player (which sets 'lead-review'
                   directly) - so both values are treated as "awaiting review"
-                  here. Gated to the department's own Lead/Supervisor
-                  (Producer/Lead share the single `lead` role tier). This no
+                  here. Gated to the department's own Lead (the producer is
+                  studio-wide and signs off at the final stage). This no
                   longer goes straight to 'approved' — it hands off to the
                   department's Production Manager (or the studio's overall
                   production management if the department has none) for a
                   second, final sign-off before anything reaches the client. */}
-              {DEPARTMENT_LEADERSHIP_ROLES.includes(currentUser.role) &&
-                currentUser.departmentId === currentDept?.id &&
-                ["review", "lead-review"].includes(task.status) && (
+              {(currentUser.role === "admin" ||
+                (DEPARTMENT_LEADERSHIP_ROLES.includes(currentUser.role) &&
+                  currentUser.departmentId === currentDept?.id)) &&
+                // A tracksheet-imported task's raw status (e.g. uppercase
+                // "REVIEW") never matched this comparison directly -- see
+                // the identical fix in review.tsx's reviewWorkflowStatus.
+                ["review", "lead-review"].includes(
+                  normalizeTaskStatus(task.status),
+                ) && (
                   <div className="flex w-full gap-2">
                     <Button
                       className="flex-1 bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
@@ -598,14 +622,15 @@ export function TaskDrawer() {
                   client-facing review queue (client-review.tsx filters shots
                   on exactly that status), so it keeps the look-before-you-leap
                   confirm step the old single-gate flow used to have. */}
-              {currentUser.role === "production_head" &&
-                canApproveAsProductionManager(
-                  currentUser.id,
-                  task.department,
-                  users,
-                  departments,
-                ) &&
-                task.status === "pm-review" &&
+              {(currentUser.role === "admin" ||
+                (currentUser.role === "production_head" &&
+                  canApproveAsProductionManager(
+                    currentUser.id,
+                    task.department,
+                    users,
+                    departments,
+                  ))) &&
+                normalizeTaskStatus(task.status) === "pm-review" &&
                 (clientSendConfirmOpen ? (
                   <div className="w-full rounded-md border border-accent-tally/30 bg-accent-tally/5 p-3 space-y-3">
                     <p className="text-sm">

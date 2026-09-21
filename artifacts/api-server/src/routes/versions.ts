@@ -59,7 +59,7 @@ versionsRouter.get("/", async (req, res) => {
     // are as sensitive as the shot they hang off, and this list was
     // tenant-wide for every role. Skipped for a client-access session, which
     // is already bounded by clientScope above and has no employee role.
-    const employeeScopeWhere = req.clientAccessLinkId
+    const employeeScopeWhere = clientScope
       ? null
       : await entityRefScopeWhere(tenantId, await getVisibilityScope(req));
 
@@ -72,6 +72,10 @@ versionsRouter.get("/", async (req, res) => {
         ...(clientEntityIdFilter ? { entityId: clientEntityIdFilter } : {}),
         ...(employeeScopeWhere ?? {}),
       },
+      // Oldest first, so "the latest version" is simply the last row. With no
+      // order, which row a page treated as current was whatever Postgres
+      // happened to return first.
+      orderBy: { createdAt: "asc" },
     });
     return res.json(rows);
   } catch (err) {
@@ -95,6 +99,17 @@ versionsRouter.post("/", denyClientAccess, requireCapability("submit_reviews"), 
 
     if (taskId && !(await taskInTenant(taskId, tenantId)))
       return res.status(400).json({ error: "Invalid taskId" });
+
+    if (entityType !== "shot" && entityType !== "asset")
+      return res.status(400).json({ error: "entityType must be 'shot' or 'asset'" });
+
+    // Same boundary PUT /:id enforces: holding submit_reviews says you may add
+    // versions, not to which shots. Without this an artist could attach footage
+    // to a shot that never appears in their own list.
+    if (
+      !(await canSeeEntity(tenantId, await getVisibilityScope(req), entityType, entityId))
+    )
+      return res.status(404).json({ error: "Not found" });
 
     const created = await prisma.version.create({
       data: {
@@ -158,6 +173,30 @@ versionsRouter.put("/:id", denyClientAccess, requireCapability("submit_reviews")
 
     await prisma.version.updateMany({ where: { tenantId, id: versionId }, data: updates });
     const updated = await prisma.version.findFirstOrThrow({ where: { tenantId, id: versionId } });
+
+    // Nothing anywhere in this app ever wrote Shot.thumbnail, so every real
+    // shot fell back to the generic placeholder forever -- this is the one
+    // point in the upload flow where a version's real media becomes known,
+    // so it's the natural place to fix that. Only for directly-renderable
+    // image media (PNG/JPEG/GIF/WebP, which includes the EXR-transcoded PNG
+    // proxy uploads.ts's /video handler writes as mediaUrl) -- a raw video
+    // file has no frame-extraction pipeline to derive a still from yet, so
+    // those are deliberately left alone rather than pointing a thumbnail at
+    // something a browser <img> can't decode.
+    if (
+      typeof updates.mediaUrl === "string" &&
+      updates.mediaUrl &&
+      existing.entityType === "shot"
+    ) {
+      const ext = updates.mediaUrl.split(".").pop()?.toLowerCase();
+      if (ext && ["png", "jpg", "jpeg", "gif", "webp"].includes(ext)) {
+        await prisma.shot.updateMany({
+          where: { tenantId, id: existing.entityId },
+          data: { thumbnail: updates.mediaUrl },
+        });
+      }
+    }
+
     return res.json(updated);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });

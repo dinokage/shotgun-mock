@@ -11,6 +11,8 @@ import { getProjectId, useEntityProjectMap } from "@/lib/taskShape";
 import { normalizeTaskStatus } from "@/lib/trackingStatus";
 import { isTaskDone, type TaskStatus } from "@/data/mockData";
 import { byDueDate } from "@/lib/taskDates";
+import { useCapability } from "@/hooks/use-capability";
+import ClientAccessCard from "./ClientAccessCard";
 
 // There is no burndown card here any more: a burndown needs a history of
 // remaining work over time, and the only timestamps tasks carry
@@ -53,6 +55,7 @@ export default function DashboardTab({ project }: { project: any }) {
   const entityProjectMap = useEntityProjectMap();
   const { data: events = [] } = useRecentAuditLogs(10);
   const users = useUserStore((state) => state.users);
+  const canManageClientAccess = useCapability("approve_reviews");
 
   const allProjectShots = useMemo(
     () => shots.filter((s) => s.projectId === project.id),
@@ -308,6 +311,8 @@ export default function DashboardTab({ project }: { project: any }) {
             )}
           </CardContent>
         </Card>
+
+        {canManageClientAccess && <ClientAccessCard project={project} />}
       </div>
     </div>
   );

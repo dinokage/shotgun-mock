@@ -74,12 +74,25 @@ const SelectContent = React.forwardRef<
     <SelectPrimitive.Content
       ref={ref}
       className={cn(
-        "relative z-50 max-h-[--radix-select-content-available-height] min-w-[8rem] overflow-y-auto overflow-x-hidden rounded-md border bg-popover text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 origin-[--radix-select-content-transform-origin]",
+        // A long list (e.g. the studio's ~18 departments) rendered past the
+        // top of a short viewport with no way to reach the hidden items --
+        // scrolling up did nothing, because nothing was actually clipped.
+        // --radix-select-content-available-height should have capped this,
+        // but wasn't taking effect; min() with a fixed fallback guarantees a
+        // real height limit exists regardless, so overflow-y-auto always has
+        // something to do and the scroll buttons below always have a reason
+        // to appear.
+        "relative z-50 max-h-[min(20rem,var(--radix-select-content-available-height,20rem))] min-w-[8rem] overflow-y-auto overflow-x-hidden rounded-md border bg-popover text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 origin-[--radix-select-content-transform-origin]",
         position === "popper" &&
           "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
         className,
       )}
       position={position}
+      // Without this, Radix can position content flush against the viewport
+      // edge with no margin to work its own collision/sizing math against --
+      // an 8px buffer on every side is what makes it reliably choose to
+      // shrink-and-scroll instead of overflowing past the edge.
+      collisionPadding={8}
       {...props}
     >
       <SelectScrollUpButton />

@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { useRoute, Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -43,6 +44,7 @@ import { getAssigneeId, getAssetId, getShotId } from "@/lib/taskShape";
 import { useUIStore } from "@/store/ui";
 import { useProjectStore } from "@/store/projects";
 import { useUserStore } from "@/store/users";
+import { useCapability } from "@/hooks/use-capability";
 import { useTasksStore } from "@/store/tasks";
 import { useShotStore } from "@/store/shots";
 import { fadeInUp, confirmPulse } from "@/lib/motion";
@@ -127,6 +129,10 @@ export default function AssetDetail() {
   const rollbackToVersion = useReviewStore((s) => s.rollbackToVersion);
   const { data: assets = [], isLoading } = useAssets();
   const updateAssetMutation = useUpdateAsset();
+  // Matches PUT /assets/:id's actual server-side gate (submit_reviews), not
+  // a task-specific capability -- assets and tasks are edited through
+  // different routes with different grants.
+  const canEditAsset = useCapability("submit_reviews");
   const recordActivity = useRecordAssetActivity();
   const setActiveTaskDrawer = useUIStore((s) => s.setActiveTaskDrawer);
   const projects = useProjectStore((s) => s.projects);
@@ -190,11 +196,16 @@ export default function AssetDetail() {
 
   const handleOpenInDCC = () => {
     const app = dccAppForAssetType(asset.type);
+    // Forge is a browser app with no way to launch a local desktop
+    // application -- there's no OS-level handoff to Maya/Nuke/etc from here.
+    // This still logs which DCC the asset would open in (real activity, read
+    // by anyone checking who's working on what) rather than pretending the
+    // launch itself happened.
     recordActivity.mutate({ assetId: asset.id, kind: "dcc_open", app });
     toast({
-      title: `Launching ${app}`,
-      description: `Opening ${asset.name} (${displayVersionNumber}) in ${app}...`,
-      duration: 2500,
+      title: "Not available in the browser",
+      description: `Opening files directly in ${app} isn't supported yet — logged that you're working on ${asset.name} (${displayVersionNumber}) in ${app}.`,
+      duration: 3500,
     });
   };
 
@@ -278,6 +289,28 @@ export default function AssetDetail() {
             </span>
             <span>Size: {asset.fileSize}</span>
             {asset.polyCount && <span>Polys: {asset.polyCount}</span>}
+            <span className="flex items-center gap-1.5">
+              Due:{" "}
+              {canEditAsset ? (
+                <Input
+                  type="date"
+                  className="h-7 text-sm w-36"
+                  value={asset.dueDate ? asset.dueDate.slice(0, 10) : ""}
+                  onChange={(e) =>
+                    updateAssetMutation.mutate({
+                      id: asset.id,
+                      dueDate: e.target.value || null,
+                    })
+                  }
+                />
+              ) : (
+                <span className="text-foreground">
+                  {asset.dueDate
+                    ? new Date(asset.dueDate).toLocaleDateString()
+                    : "Not set"}
+                </span>
+              )}
+            </span>
             <span>
               Project:{" "}
               <Link

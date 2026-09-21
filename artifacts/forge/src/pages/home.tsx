@@ -24,7 +24,6 @@ import { getAssigneeId, getShotId, useEntityProjectMap } from "@/lib/taskShape";
 import { normalizeTaskStatus } from "@/lib/trackingStatus";
 import {
   computeProjectProgress,
-  useProjectProgress,
   NO_PROJECT_PROGRESS,
 } from "@/lib/projectProgress";
 import { generateInsights, type AIInsight } from "@/lib/aiInsights";
@@ -979,17 +978,22 @@ function SupervisorDashboard({ currentUser }: { currentUser: User }) {
                         <span className="font-medium">{member.name}</span>
                         <span
                           className={
-                            (member.capacity ?? 0) > 90
+                            member.capacity != null && member.capacity > 90
                               ? "text-red-500"
                               : "text-muted-foreground"
                           }
                         >
-                          {member.capacity ?? 0}% Booked
+                          {/* member.capacity ?? 0 used to show "0% Booked"
+                              for everyone, always -- the field never existed
+                              server-side. It exists now (self-set on each
+                              person's own profile), so null genuinely means
+                              "hasn't set one yet", not "fully free". */}
+                          {member.capacity != null ? `${member.capacity}% Booked` : "Not set"}
                         </span>
                       </div>
                       <Progress
                         value={member.capacity ?? 0}
-                        className={`h-1.5 ${(member.capacity ?? 0) > 90 ? "bg-red-500/20 [&>div]:bg-red-500" : ""}`}
+                        className={`h-1.5 ${member.capacity != null && member.capacity > 90 ? "bg-red-500/20 [&>div]:bg-red-500" : ""}`}
                       />
                     </div>
                   ))}
@@ -1496,203 +1500,19 @@ function ArtistDashboard({ currentUser }: { currentUser: User }) {
   );
 }
 
-// --- Client Dashboard (Deliveries & Approvals Focus) ---
-function ClientDashboard({ currentUser }: { currentUser: User }) {
-  const [, setLocation] = useLocation();
-  const projects = useProjectStore((state) => state.projects);
-  const shots = useShotStore((state) => state.shots);
-  const activeProjects = projects.filter((p) => p.status !== "COMPLETE");
-  const progressByProject = useProjectProgress();
-
-  // Deliveries awaiting this client's sign-off — same source of truth as the
-  // producer dashboard's review queue, not a hand-written placeholder list.
-  const pendingApprovals = useMemo(
-    () =>
-      shots.filter(
-        (s) =>
-          s.status === "client-review" || s.clientReviewStatus === "pending",
-      ),
-    [shots],
-  );
-  const approvedDeliveries = useMemo(
-    () => shots.filter((s) => s.clientReviewStatus === "approved").length,
-    [shots],
-  );
-
-  return (
-    <MotionConfig reducedMotion="user">
-      <div className="p-6 max-w-[1400px] mx-auto space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Project Status</h1>
-          <p className="text-muted-foreground mt-1">
-            Welcome back, {currentUser.name}
-          </p>
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          {[
-            {
-              label: "Active Projects",
-              value: activeProjects.length,
-              icon: FolderOpen,
-            },
-            {
-              label: "Pending Your Approval",
-              value: pendingApprovals.length,
-              icon: PlayCircle,
-            },
-            {
-              label: "Approved Deliveries",
-              value: approvedDeliveries,
-              icon: CheckCircle2,
-            },
-          ].map((s, i) => (
-            <motion.div key={i} {...stagger(i)}>
-              <Card className={STAT_TILE_CARD_CLASS}>
-                <CardContent className="p-5 flex items-center gap-4">
-                  <div
-                    className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${STAT_TILE_ACCENTS[i % 2]}`}
-                  >
-                    <s.icon className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <div className="text-2xl font-bold">{s.value}</div>
-                    <div className="text-xs font-medium text-muted-foreground">
-                      {s.label}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          ))}
-        </div>
-
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-          <Card className="border-border/50">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-lg">Pending Your Approval</CardTitle>
-              <Link
-                href="/client-review"
-                className="text-sm text-accent-scope hover:underline flex items-center"
-              >
-                Review All <ArrowRight className="w-4 h-4 ml-1" />
-              </Link>
-            </CardHeader>
-            <CardContent>
-              {pendingApprovals.length === 0 ? (
-                <Empty>
-                  <EmptyHeader>
-                    <EmptyMedia variant="icon">
-                      <Inbox />
-                    </EmptyMedia>
-                    <EmptyTitle>Nothing awaiting approval</EmptyTitle>
-                    <EmptyDescription>
-                      Deliveries will appear here once they're ready for your
-                      review.
-                    </EmptyDescription>
-                  </EmptyHeader>
-                </Empty>
-              ) : (
-                <div className="divide-y divide-border">
-                  {pendingApprovals.slice(0, 6).map((shot, i) => {
-                    const project = projects.find(
-                      (p) => p.id === shot.projectId,
-                    );
-                    return (
-                      <motion.div
-                        key={shot.id}
-                        {...stagger(i)}
-                        role="button"
-                        tabIndex={0}
-                        className="py-3 flex items-center justify-between hover:bg-muted/30 -mx-4 px-4 transition-colors cursor-pointer touch-target hover-elevate active-elevate-2"
-                        onClick={() => setLocation("/client-review")}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            setLocation("/client-review");
-                          }
-                        }}
-                      >
-                        <div>
-                          <div className="font-medium text-sm">{shot.name}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {project?.name || "Unknown project"}
-                          </div>
-                        </div>
-                        <Badge
-                          variant="outline"
-                          className="text-pink-500 border-pink-500/30 bg-pink-500/10"
-                        >
-                          Awaiting Review
-                        </Badge>
-                      </motion.div>
-                    );
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card className="border-border/50">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Project Status</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {activeProjects.length === 0 ? (
-                <Empty>
-                  <EmptyHeader>
-                    <EmptyMedia variant="icon">
-                      <FolderOpen />
-                    </EmptyMedia>
-                    <EmptyTitle>No active projects</EmptyTitle>
-                    <EmptyDescription>
-                      Your projects will show up here once one is underway.
-                    </EmptyDescription>
-                  </EmptyHeader>
-                </Empty>
-              ) : (
-                <div className="space-y-4">
-                  {activeProjects.slice(0, 5).map((project) => {
-                    const progress =
-                      progressByProject.get(project.id) ?? NO_PROJECT_PROGRESS;
-                    return (
-                      <div key={project.id} className="space-y-1.5">
-                        <div className="flex justify-between text-xs">
-                          <span className="font-medium">{project.name}</span>
-                          <span className="text-muted-foreground">
-                            {progress.percent === null
-                              ? "No tasks yet"
-                              : `${progress.percent}%`}
-                          </span>
-                        </div>
-                        {progress.percent !== null && (
-                          <Progress value={progress.percent} className="h-1.5" />
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    </MotionConfig>
-  );
-}
-
 // --- Main Router ---
 export default function Home() {
   const { currentUser } = useAuthStore();
 
   if (!currentUser) return null;
 
+  // A signed-in client never actually reaches Home -- RoleRouteGuard (see
+  // App.tsx) sends them straight to /client-review, the one page their role
+  // can reach. This router has no client branch for that reason.
   if (STUDIO_LEADERSHIP_ROLES.includes(currentUser.role)) {
     return <ProducerDashboard />;
   } else if (DEPARTMENT_LEADERSHIP_ROLES.includes(currentUser.role)) {
     return <SupervisorDashboard currentUser={currentUser} />;
-  } else if (currentUser.role === "client") {
-    return <ClientDashboard currentUser={currentUser} />;
   } else {
     return <ArtistDashboard currentUser={currentUser} />;
   }

@@ -84,6 +84,15 @@ RUN pnpm --filter "@workspace/api-zod" deploy --prod --legacy /prod/api-zod
 FROM node:22-alpine AS runner
 WORKDIR /app
 
+# For the EXR review pipeline (routes/uploads.ts): oiiotool (OpenImageIO)
+# does the actual EXR -> PNG transcode -- ffmpeg's own EXR decoder only
+# understands a plain RGB(A) file and rejects any real studio render with
+# AOV channels (Cryptomatte/Depth/Mist/...), confirmed against this
+# studio's own render output. ffmpeg stays installed for everything else
+# this route handles (video review uploads). Installed here rather than in
+# the builder stage since the runner is what actually ships.
+RUN apk add --no-cache ffmpeg openimageio-tools
+
 COPY --from=builder /prod /app/prod
 COPY --from=builder /app/artifacts/api-server/dist /app/prod/api-server/dist
 COPY --from=builder /app/lib/db/schema.prisma /app/prod/db/schema.prisma

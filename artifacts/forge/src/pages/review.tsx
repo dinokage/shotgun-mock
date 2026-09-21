@@ -39,6 +39,7 @@ import {
   LEADERSHIP_ROLES,
   DEPARTMENT_LEADERSHIP_ROLES,
 } from "@/store/permissions";
+import { normalizeTaskStatus } from "@/lib/trackingStatus";
 import { Link, useSearch, useRoute } from "wouter";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -86,6 +87,7 @@ import { useAssetStore } from "@/store/assets";
 import {
   getShotId,
   getAssetId,
+  getAssigneeId,
   canApproveAsProductionManager,
 } from "@/lib/taskShape";
 import {
@@ -334,9 +336,19 @@ export default function Review() {
     versionEntityId,
     versionEntityType,
   );
-  const existingVersion = taskId
-    ? taskVersions.find((v) => v.taskId === taskId)
-    : undefined;
+  // A task can now hold several versions (each upload over existing footage
+  // adds one), so "the" version is the newest. Sorted here as well as by the
+  // API so an older cached list can't put a stale version on screen.
+  const taskVersionsForTask = useMemo(
+    () =>
+      taskId
+        ? taskVersions
+            .filter((v) => v.taskId === taskId)
+            .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+        : [],
+    [taskVersions, taskId],
+  );
+  const existingVersion = taskVersionsForTask[taskVersionsForTask.length - 1];
   const createVersion = useCreateVersion();
   const versionCreateAttempted = useRef<string | null>(null);
   useEffect(() => {
@@ -373,7 +385,23 @@ export default function Review() {
   // Roles & Permissions) rather than a hardcoded role list — isLead/isProd above
   // stay hardcoded only for the things that don't have a matching capability id
   // (presenting, sharing the client link).
-  const canSubmitReview = useCapability("submit_reviews");
+  // submit_reviews is held studio-wide, including by leadership roles that
+  // never hold work themselves (production_head and producer inherit it as
+  // part of the admin-superset capability grant). That's correct for
+  // hasSubmitCapability below -- reviewers legitimately draw notes on work
+  // that isn't theirs, and the server allows exactly that (POST .../
+  // annotations only checks the bare capability). It's wrong for the actual
+  // "Submit for Review" action: submitting is specifically "send MY work up
+  // the chain", so canSubmitReview additionally requires being the task's
+  // actual assignee -- tasks can only ever be assigned to an artist (enforced
+  // server-side), so in practice this now reads as "the artist holding this
+  // task". Mirrors the same ownership check the server now enforces on this
+  // exact transition.
+  const hasSubmitCapability = useCapability("submit_reviews");
+  const canSubmitReview =
+    hasSubmitCapability &&
+    !!currentUser &&
+    getAssigneeId(reviewedTask) === currentUser.id;
   const canApproveReview = useCapability("approve_reviews");
   // The Lead-stage approval gate is department-scoped, mirroring
   // TaskDrawer.tsx: approve_reviews alone would let a Lead/Producer approve
@@ -385,28 +413,36 @@ export default function Review() {
   );
   // Only the department's own lead holds the first gate. The producer is a
   // single studio-wide role with its own final gate below, so it no longer
-  // doubles as department leadership here.
+  // doubles as department leadership here. Admin bypasses every department
+  // scope here -- it now holds every capability (migration 0017) and is
+  // meant to be able to act as any role, studio-wide, not just hold the
+  // underlying capability while still being blocked by a role-name check.
+  const isAdminUser = currentUser?.role === "admin";
   const canApproveAsLead = Boolean(
     currentUser &&
       canApproveReview &&
-      currentUser.role === "lead" &&
-      currentUser.departmentId === reviewedDept?.id,
+      (isAdminUser ||
+        (currentUser.role === "lead" &&
+          currentUser.departmentId === reviewedDept?.id)),
   );
   const canApproveAsPM = Boolean(
     currentUser &&
-      currentUser.role === "production_head" &&
-      canApproveAsProductionManager(
-        currentUser.id,
-        reviewedTask?.department,
-        users,
-        departments,
-      ),
+      (isAdminUser ||
+        (currentUser.role === "production_head" &&
+          canApproveAsProductionManager(
+            currentUser.id,
+            reviewedTask?.department,
+            users,
+            departments,
+          ))),
   );
   // The main producer is studio-wide, so unlike the Lead and Production
   // Manager gates above this one carries no department check — they are the
   // single final sign-off before a shot reaches the client.
   const canApproveAsProducer = Boolean(
-    currentUser && canApproveReview && currentUser.role === "producer",
+    currentUser &&
+      canApproveReview &&
+      (isAdminUser || currentUser.role === "producer"),
   );
   // Presentation Mode: a Lead/Producer broadcasts their playhead to everyone
   // else viewing this version — the internal page and the client portal, on
@@ -515,7 +551,7 @@ export default function Review() {
   // toolbar was offered to roles whose every stroke came back 403 -- the
   // admin above all, who is the account most likely to be exploring. The
   // tools now read as unavailable rather than broken.
-  const canEdit = !viewerMode && !isLockedViewer && canSubmitReview;
+  const canEdit = !viewerMode && !isLockedViewer && hasSubmitCapability;
   // Comments (including voice notes) are server-backed and keyed to this
   // version, so every reviewer on the same version sees the same stream.
   const { data: comments = [] } = useReviewComments(versionId);
@@ -742,18 +778,26 @@ export default function Review() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [existingVersion?.mediaUrl]);
 
+  // Tracksheet-imported tasks carry the studio's own raw status vocabulary
+  // (e.g. uppercase "REVIEW", "Rtk_done") rather than this app's canonical
+  // lowercase stages -- a raw string comparison against reviewedTask.status
+  // silently missed every one of them (fell through to "wip"), which is why
+  // no approval button ever rendered for the vast majority of real,
+  // imported work. normalizeTaskStatus() is the same canonicalization
+  // review-queue.tsx already runs status through before bucketing.
+  const normalizedTaskStatus = normalizeTaskStatus(reviewedTask?.status);
   const reviewWorkflowStatus:
     | "wip"
     | "lead-review"
     | "pm-review"
     | "producer-review"
     | "approved" =
-    reviewedTask?.status === "review" || reviewedTask?.status === "lead-review"
+    normalizedTaskStatus === "review" || normalizedTaskStatus === "lead-review"
       ? "lead-review"
-      : reviewedTask?.status === "pm-review" ||
-          reviewedTask?.status === "producer-review" ||
-          reviewedTask?.status === "approved"
-        ? reviewedTask.status
+      : normalizedTaskStatus === "pm-review" ||
+          normalizedTaskStatus === "producer-review" ||
+          normalizedTaskStatus === "approved"
+        ? normalizedTaskStatus
         : "wip";
   const submitApproval = (
     status:
@@ -1495,12 +1539,27 @@ export default function Review() {
     }
   };
 
+  // The thing under review, whichever kind it is. The player used to require
+  // a shot and turned asset tasks away with "Asset review isn't supported in
+  // this player yet" -- but an asset carries versions exactly as a shot does,
+  // and the annotation, comment and approval machinery below never cared
+  // which it was. Modelling, texturing and rigging submit assets, so a third
+  // of the pipeline had no way to be reviewed at all.
+  const reviewedEntity = reviewedShot ?? reviewedAsset;
+  const reviewedEntityHref = reviewedShot
+    ? `/shots/${reviewedShot.id}`
+    : reviewedAsset
+      ? `/assets/${reviewedAsset.id}`
+      : "/review?queue=1";
+
   // Same fallback string the header title already computes inline just below
   // — pulled into a variable here only so FeedbackList can use it too,
   // without touching the header's existing JSX.
   const versionLabel = reviewedShot
     ? `${reviewedShot.name} ${reviewedShot.currentVersion}`
-    : "Untitled Review";
+    : reviewedAsset
+      ? `${reviewedAsset.name} ${reviewedAsset.version ?? ""}`.trim()
+      : "Untitled Review";
 
   // Every hook above is called unconditionally regardless of which of these
   // branches fires -- only the render output is gated here, at the very end
@@ -1519,18 +1578,17 @@ export default function Review() {
       </div>
     );
   }
-  if (reviewedTaskAssetId && !reviewedShot) {
+  if (!reviewedEntity) {
     return (
       <div className="h-full flex flex-col items-center justify-center gap-1 text-muted-foreground text-sm">
-        <div>Asset review isn't supported in this player yet.</div>
-        <div className="text-xs">Only shot-based tasks can be opened here.</div>
-      </div>
-    );
-  }
-  if (!reviewedShot) {
-    return (
-      <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
-        This task's shot could not be found.
+        <div>
+          This task's {reviewedTaskAssetId ? "asset" : "shot"} could not be
+          found.
+        </div>
+        <div className="text-xs">
+          It may have been deleted, or it belongs to a department you cannot
+          see.
+        </div>
       </div>
     );
   }
@@ -1550,7 +1608,7 @@ export default function Review() {
             asChild
             className="h-8 w-8 text-muted-foreground shrink-0"
           >
-            <Link href={`/shots/${reviewedShot.id}`}>
+            <Link href={reviewedEntityHref}>
               <ChevronLeft className="w-5 h-5" />
             </Link>
           </Button>
@@ -1801,45 +1859,23 @@ export default function Review() {
                 {canSubmitReview &&
                   reviewWorkflowStatus === "wip" &&
                   (existingVersion?.mediaUrl ? (
-                    <>
-                      <Button
-                        size="sm"
-                        className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
-                        onClick={() => {
-                          submitApproval(
-                            "lead-review",
-                            "submitted-for-lead-review",
-                          );
-                          toast({
-                            title: "Submitted",
-                            description: "Submitted for Lead Review",
-                          });
-                        }}
-                      >
-                        <Upload className="w-4 h-4 mr-2" /> Submit to
-                        Lead/Supervisor for Review
-                      </Button>
-                      {/* Straight to the main producer, skipping the lead
-                          gate — for work the producer asked for directly, or
-                          when the department has no lead available. */}
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          submitApproval(
-                            "producer-review",
-                            "submitted-for-producer-review",
-                          );
-                          toast({
-                            title: "Submitted",
-                            description: "Submitted for Main Producer Review",
-                          });
-                        }}
-                      >
-                        <Send className="w-4 h-4 mr-2" /> Submit to Main
-                        Producer
-                      </Button>
-                    </>
+                    <Button
+                      size="sm"
+                      className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
+                      onClick={() => {
+                        submitApproval(
+                          "lead-review",
+                          "submitted-for-lead-review",
+                        );
+                        toast({
+                          title: "Submitted",
+                          description: "Submitted for Lead Review",
+                        });
+                      }}
+                    >
+                      <Upload className="w-4 h-4 mr-2" /> Submit to
+                      Lead/Supervisor for Review
+                    </Button>
                   ) : (
                     <span className="text-xs text-muted-foreground">
                       Insert your footage above to submit for review
@@ -1904,26 +1940,32 @@ export default function Review() {
                     falling back to the studio's overall Production
                     Management production_head(s), falling back to any
                     production_head — see canApproveAsPM above /
-                    getProductionManagerApprovers in lib/taskShape.ts. */}
+                    getProductionManagerApprovers in lib/taskShape.ts.
+                    Production Head is this studio's terminal approver -- there
+                    is no separate Main Producer in practice, so approving
+                    here goes straight to "approved"/published (which forwards
+                    the shot into the client-facing review queue, same as the
+                    producer-review block below) rather than handing off to a
+                    role nobody holds. The producer-review stage still exists
+                    for tenants that do staff a producer (see below), and the
+                    backend already lets a production_head approve directly
+                    regardless of current status as exactly this kind of
+                    cover -- this just makes the UI match that. */}
                 {canApproveAsPM && reviewWorkflowStatus === "pm-review" && (
                   <>
                     <Button
                       size="sm"
                       className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
                       onClick={() => {
-                        submitApproval(
-                          "producer-review",
-                          "submitted-for-producer-review",
-                        );
+                        submitApproval("approved", "published");
                         toast({
-                          title: "Sent to Main Producer",
-                          description:
-                            "Approved by Production — awaiting final sign-off",
+                          title: "Published",
+                          description: "Approved & sent to the client",
                         });
                       }}
                     >
                       <CheckCircle2 className="w-4 h-4 mr-2" /> Approve &
-                      Send to Producer
+                      Publish to Client
                     </Button>
                     <Button
                       size="sm"
@@ -1943,10 +1985,18 @@ export default function Review() {
                   </>
                 )}
 
-                {/* The main producer's final gate. Publishing here is what
-                    forwards the shot into the client-facing review queue —
-                    client-review.tsx filters shots on exactly that status. */}
-                {canApproveAsProducer &&
+                {/* The main producer's final gate, for tenants that actually
+                    staff one. Nothing in the current UI sends a task here
+                    any more (the wip-stage "Submit to Main Producer" skip
+                    was removed, and Leads only ever hand off to pm-review),
+                    but Production Head can still approve here too -- a
+                    tenant that stops staffing a producer shouldn't leave any
+                    already-in-flight or directly-API-created task in this
+                    status stuck with no one able to act on it. Publishing
+                    here forwards the shot into the client-facing review
+                    queue -- client-review.tsx filters shots on exactly that
+                    status. */}
+                {(canApproveAsProducer || canApproveAsPM) &&
                   reviewWorkflowStatus === "producer-review" && (
                     <>
                       <Button
@@ -2044,7 +2094,7 @@ export default function Review() {
                     // filter greys out QuickTime files the browser could in
                     // fact play. Whether it plays depends on the codec inside,
                     // not the extension -- see the check in onChange.
-                    accept="video/*,.mov,.mp4,.webm,.m4v"
+                    accept="video/*,image/png,image/jpeg,image/gif,image/webp,.mov,.mp4,.webm,.m4v,.png,.jpg,.jpeg,.gif,.webp,.exr"
                     className="hidden"
                     ref={fileInputRef}
                     onChange={async (e) => {
@@ -2072,8 +2122,13 @@ export default function Review() {
                       // transcode step, not a codec the browser has. Saying so
                       // plainly beats accepting the file and showing black.
                       const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+                      // EXR is deliberately absent here: the server now
+                      // transcodes a single EXR frame to a viewable PNG
+                      // proxy on upload (routes/uploads.ts). An EXR
+                      // *sequence* still isn't handled -- this input only
+                      // ever picks one file -- so multi-frame renders still
+                      // need a review copy exported for now.
                       const UNPLAYABLE: Record<string, string> = {
-                        exr: "OpenEXR is a linear high-dynamic-range render format — browsers have no decoder for it, and showing it needs a tone-mapped transcode first.",
                         dpx: "DPX is a film scan format with no browser decoder.",
                         tif: "TIFF sequences can't be played back in a browser.",
                         tiff: "TIFF sequences can't be played back in a browser.",
@@ -2139,19 +2194,57 @@ export default function Review() {
                       setIsUploadingVideo(true);
                       try {
                         const uploaded = await uploadVideo.mutateAsync(file);
-                        await updateVersion.mutateAsync({
-                          id: versionId,
-                          mediaUrl: uploaded.url,
-                        });
-                        toast({
-                          title: "Video Inserted",
-                          description: `Now reviewing "${file.name}". Visible to the whole team.`,
-                        });
-                      } catch {
+                        if (
+                          existingVersion?.mediaUrl &&
+                          versionEntityId &&
+                          versionEntityType
+                        ) {
+                          // Footage is already under review: this upload is
+                          // the next version, not a replacement. Overwriting
+                          // left nothing to compare against, orphaned the old
+                          // file, and put the old notes on top of new frames.
+                          const highest = taskVersionsForTask.reduce(
+                            (max, v) =>
+                              Math.max(
+                                max,
+                                parseInt(v.versionNumber.replace(/\D/g, ""), 10) || 0,
+                              ),
+                            0,
+                          );
+                          const nextNumber = `v${String(highest + 1).padStart(3, "0")}`;
+                          await createVersion.mutateAsync({
+                            entityId: versionEntityId,
+                            entityType: versionEntityType,
+                            versionNumber: nextNumber,
+                            mediaUrl: uploaded.url,
+                            taskId,
+                          });
+                          toast({
+                            title: `${nextNumber} Uploaded`,
+                            description: `"${file.name}" is now the version under review. ${existingVersion.versionNumber} and its notes stay available in Compare.`,
+                          });
+                        } else {
+                          await updateVersion.mutateAsync({
+                            id: versionId,
+                            mediaUrl: uploaded.url,
+                          });
+                          toast({
+                            title: "Media Inserted",
+                            description: `Now reviewing "${file.name}". Visible to the whole team.`,
+                          });
+                        }
+                      } catch (err) {
+                        // The server's reason ("must be MP4, MOV…", "limited
+                        // to 500 MB") is the part that tells someone what to
+                        // do. A generic message sent people back to retry a
+                        // file that would never be accepted.
+                        const reason =
+                          err instanceof Error && err.message
+                            ? err.message
+                            : "The upload didn't reach the server.";
                         toast({
                           title: "Upload Failed",
-                          description:
-                            "The video is only visible in this tab until upload succeeds — try inserting it again.",
+                          description: `${reason} Until an upload succeeds, the file is only visible in this tab.`,
                           variant: "destructive",
                         });
                       } finally {
@@ -2532,16 +2625,26 @@ export default function Review() {
                           // of a video.
                           const isBlob = clip.src.startsWith("blob:");
                           const isLoading = !clip.src;
+                          // A blob: URL has no extension, but the clip keeps
+                          // the picked file's name. Reading it lets a still
+                          // preview as an image while it uploads, instead of
+                          // as a video that fails to decode.
                           const ext = isBlob
-                            ? ""
+                            ? (clip.name?.split(".").pop()?.toLowerCase() ?? "")
                             : clip.src.split(".").pop()?.toLowerCase();
+                          const isImage = [
+                            "png",
+                            "jpg",
+                            "jpeg",
+                            "gif",
+                            "webp",
+                          ].includes(ext || "");
                           const isVideo =
-                            isBlob || ["mp4", "webm", "mov"].includes(ext || "");
-                          const isImage =
-                            !isBlob &&
-                            ["png", "jpg", "jpeg", "gif", "webp"].includes(
-                              ext || "",
-                            );
+                            !isImage &&
+                            (isBlob ||
+                              ["mp4", "m4v", "webm", "mov", "avi"].includes(
+                                ext || "",
+                              ));
                           const isDCC = !isLoading && !isVideo && !isImage;
 
                           if (isLoading) {
@@ -2558,11 +2661,11 @@ export default function Review() {
                               >
                                 <div className="bg-black/50 rounded-lg px-4 py-2 text-sm font-medium backdrop-blur-sm">
                                   No footage uploaded yet
-                                  {canSubmitReview && !viewerMode
+                                  {hasSubmitCapability && !viewerMode
                                     ? " — insert your video to begin reviewing."
                                     : "."}
                                 </div>
-                                {canSubmitReview && !viewerMode && (
+                                {hasSubmitCapability && !viewerMode && (
                                   <Button
                                     size="sm"
                                     disabled={isUploadingVideo}
@@ -2764,11 +2867,10 @@ export default function Review() {
                       {playbackError} can't be decoded in this browser
                     </div>
                     <p className="text-xs text-white/70 max-w-md leading-relaxed">
-                      The file uploaded fine and is safe on the server — the
-                      browser just has no decoder for what is inside it. This is
-                      almost always ProRes or DNxHD in a .mov. Export an H.264
-                      MP4 review copy and upload that; the master stays where it
-                      is.
+                      The browser has no decoder for what is inside this file.
+                      For a .mov this is almost always ProRes or DNxHD. Export
+                      an H.264 MP4 review copy and upload that, and keep the
+                      original as the master.
                     </p>
                     <Button
                       size="sm"
@@ -3260,12 +3362,12 @@ export default function Review() {
                 {/* Gated on the capability the API enforces, not just on
                     viewerMode: an admin holds no submit_reviews, so the
                     composer used to render for them and every send 403'd. */}
-                {!viewerMode && !canSubmitReview && (
+                {!viewerMode && !hasSubmitCapability && (
                   <div className="p-4 border-t border-border bg-card shrink-0 text-xs text-muted-foreground">
                     Your role can view this review but not post feedback on it.
                   </div>
                 )}
-                {!viewerMode && canSubmitReview && (
+                {!viewerMode && hasSubmitCapability && (
                   <div className="p-4 border-t border-border bg-card shrink-0">
                     <textarea
                       className="w-full h-24 bg-muted/50 border border-border rounded-md p-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-primary mb-2"

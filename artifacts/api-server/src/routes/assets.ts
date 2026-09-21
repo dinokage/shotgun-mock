@@ -109,6 +109,7 @@ const PATCHABLE_FIELDS = [
   "publishStatus",
   "description",
   "notes",
+  "dueDate",
 ] as const;
 
 // The only current frontend caller (asset-detail.tsx's Publish button) sets
@@ -137,7 +138,15 @@ assetsRouter.put("/:id", requireCapability("submit_reviews"), async (req, res) =
     const before: Record<string, unknown> = {};
     for (const field of PATCHABLE_FIELDS) {
       if (field in req.body) {
-        updates[field] = req.body[field];
+        // Same coercion tasks.ts already applies to Task.dueDate -- an empty
+        // string clears the deadline rather than being handed to Prisma as
+        // an invalid Date.
+        updates[field] =
+          field === "dueDate"
+            ? req.body[field]
+              ? new Date(req.body[field])
+              : null
+            : req.body[field];
         before[field] = (existing as Record<string, unknown>)[field];
       }
     }

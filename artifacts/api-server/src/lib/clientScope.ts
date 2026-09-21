@@ -18,8 +18,31 @@ export interface ClientScope {
 // closed: callers must treat null-for-a-client-session as "resolve failed",
 // distinguishable from a genuinely non-client caller by checking
 // req.clientAccessLinkId themselves, same as denyClientAccess does).
+//
+// A signed-in `client`-role account (real userId, no clientAccessLinkId) is
+// resolved the same way, via ClientProjectAccess instead of a redeemed link
+// -- this is what makes every route that already calls getClientScope() work
+// for a real client login with no changes of its own. Known simplification:
+// if a client has been granted more than one project, only the most
+// recently granted one is used (ClientScope has room for exactly one
+// project) -- multi-project clients need every scope-consuming route
+// widened to a project list, which is a larger, separate change.
 export async function getClientScope(req: Request): Promise<ClientScope | null> {
-  if (!req.clientAccessLinkId) return null;
+  if (!req.clientAccessLinkId) {
+    if (!req.userId || !req.roleId || !req.tenantId) return null;
+    const role = await prisma.tenantRole.findFirst({
+      where: { id: req.roleId, tenantId: req.tenantId },
+      select: { name: true },
+    });
+    if (role?.name !== "client") return null;
+
+    const grant = await prisma.clientProjectAccess.findFirst({
+      where: { tenantId: req.tenantId, userId: req.userId },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!grant) return null;
+    return { projectId: grant.projectId, episodeId: null, versionId: null, shotId: null };
+  }
 
   const link = await prisma.clientAccessLink.findFirst({
     where: { id: req.clientAccessLinkId, revokedAt: null },

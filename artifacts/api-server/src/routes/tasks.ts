@@ -67,7 +67,10 @@ async function callerCanSeeTask(req: import("express").Request, taskId: string) 
 // authority the UI implies. Ordinary status values (in-progress, done, the
 // free-text tracksheet-imported statuses, etc.) are untouched -- only these
 // two specific target statuses represent a genuine trust escalation.
-const DEPARTMENT_LEADERSHIP_ROLE_NAMES = ["lead", "producer"];
+// Lead only. The producer holds the final, studio-wide gate ("approved" below)
+// and review.tsx already keeps them out of this department-level one; leaving
+// them here let a direct API call skip the lead stage the UI enforces.
+const DEPARTMENT_LEADERSHIP_ROLE_NAMES = ["lead"];
 
 async function canApproveAsDeptLead(
   tenantId: string,
@@ -75,15 +78,22 @@ async function canApproveAsDeptLead(
   actorRoleId: string,
   taskDepartmentName: string | null,
 ): Promise<boolean> {
+  const actorRole = await prisma.tenantRole.findFirst({
+    where: { id: actorRoleId, tenantId },
+    select: { name: true },
+  });
+  // Admin holds every capability (migration 0017: this studio's admin
+  // absorbs production management, there's no separate Main Producer) and
+  // is meant to act as any role studio-wide -- bypasses the department-lead
+  // role-name/department check below the same way the frontend's
+  // canApproveAsLead now does.
+  if (actorRole?.name === "admin") return true;
+
   const grant = await prisma.tenantRoleCapability.findFirst({
     where: { roleId: actorRoleId, capabilityId: "approve_reviews" },
   });
   if (!grant) return false;
 
-  const actorRole = await prisma.tenantRole.findFirst({
-    where: { id: actorRoleId, tenantId },
-    select: { name: true },
-  });
   if (!actorRole || !DEPARTMENT_LEADERSHIP_ROLE_NAMES.includes(actorRole.name)) return false;
   if (!taskDepartmentName) return false;
 
@@ -99,6 +109,7 @@ async function canApproveAsProdManager(
   taskDepartmentName: string | null,
 ): Promise<boolean> {
   const actorRole = await prisma.tenantRole.findFirst({ where: { id: actorRoleId, tenantId }, select: { name: true } });
+  if (actorRole?.name === "admin") return true;
   if (!actorRole || actorRole.name !== "production_head") return false;
 
   const productionHeads = await prisma.user.findMany({
@@ -315,7 +326,19 @@ tasksRouter.put("/:id", async (req, res) => {
     }
     updates.lastStatusUpdate = new Date();
 
-    if (updates.status === "pm-review") {
+    if (updates.status === "review" || updates.status === "lead-review") {
+      // The one gate missing from this chain: every other transition below
+      // checks who may make it, but the very first one -- an artist
+      // submitting their own work -- had no check at all. Anyone holding
+      // edit_tasks (every leadership role) could move ANY artist's task into
+      // review, which is how a Lead/Producer/Production Head ended up seeing
+      // "Submit for Review" on work that was never theirs to submit.
+      if (existing.assignedTo !== req.userId) {
+        return res.status(403).json({
+          error: "Forbidden: only the artist this task is assigned to can submit it for review",
+        });
+      }
+    } else if (updates.status === "pm-review") {
       if (!(await canApproveAsDeptLead(tenantId, req.userId!, req.roleId!, existing.department)))
         return res.status(403).json({
           error:
@@ -359,6 +382,30 @@ tasksRouter.put("/:id", async (req, res) => {
     await prisma.task.updateMany({ where: { tenantId, id: taskId }, data: updates });
     const updated = await prisma.task.findFirstOrThrow({ where: { tenantId, id: taskId } });
     await cacheDelPattern(cacheKeys.tasksListAllScopes(tenantId));
+
+    // Nothing ever told an artist they'd been handed a task -- only
+    // approval-chain transitions notified anyone. Only on a genuine change
+    // (not e.g. saving the same assignee back unchanged), and never for
+    // self-assignment (assigning your own already-held task to yourself,
+    // the no-op case a "you're assigned" ping would be pure noise for).
+    if (
+      updates.assignedTo !== undefined &&
+      updates.assignedTo !== existing.assignedTo &&
+      updates.assignedTo &&
+      updates.assignedTo !== req.userId
+    ) {
+      const assigner = await prisma.user.findFirst({ where: { id: req.userId!, tenantId }, select: { name: true } });
+      createNotification({
+        tenantId,
+        recipientUserId: updates.assignedTo as string,
+        category: "assignment",
+        title: `You've been assigned "${updated.title}"`,
+        description: `${assigner?.name ?? "Someone"} assigned this task to you.`,
+        entityType: "task",
+        entityId: taskId,
+        actionUrl: `/tasks?open=${taskId}`,
+      }).catch((err) => req.log.error(err, "Failed to notify the new assignee"));
+    }
 
     // Fire-and-forget: a task reaching "approved" is the one authoritative
     // moment to check whether its whole sequence just wrapped early. Hooked
@@ -490,6 +537,39 @@ tasksRouter.post("/:id/comments", async (req, res) => {
         text,
       },
     });
+
+    // @mentions: match "@" followed by a real person's first name against
+    // this tenant's roster. Comment notifications were entirely absent
+    // before this -- nobody was ever told they'd been mentioned in one.
+    // First-name matching (not a strict @handle syntax) because nothing in
+    // this app assigns people a distinct handle to type.
+    const mentionMatches = [...text.matchAll(/@([A-Za-z][\w'-]*)/g)].map((m) => m[1].toLowerCase());
+    if (mentionMatches.length > 0) {
+      const tenantUsers = await prisma.user.findMany({
+        where: { tenantId, deletedAt: null },
+        select: { id: true, name: true },
+      });
+      const mentioned = tenantUsers.filter(
+        (u) =>
+          u.id !== userId &&
+          mentionMatches.includes(u.name.split(" ")[0]?.toLowerCase() ?? ""),
+      );
+      const task = await prisma.task.findFirst({ where: { tenantId, id: taskId }, select: { title: true } });
+      const author = await prisma.user.findFirst({ where: { id: userId, tenantId }, select: { name: true } });
+      for (const person of mentioned) {
+        await createNotification({
+          tenantId,
+          recipientUserId: person.id,
+          category: "mention",
+          title: `${author?.name ?? "Someone"} mentioned you`,
+          description: `On "${task?.title ?? "a task"}": ${text.slice(0, 140)}`,
+          entityType: "task",
+          entityId: taskId,
+          actionUrl: `/tasks?open=${taskId}`,
+        }).catch((err) => req.log.error(err, "Failed to notify a mentioned user"));
+      }
+    }
+
     return res.status(201).json(created);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -625,7 +705,16 @@ tasksRouter.post("/:id/approval-events", async (req, res) => {
     // "submitted-for-manager-review" event they didn't actually have
     // authority for would falsify that record even if the task's real status
     // never moved.
-    if (action === "submitted-for-manager-review") {
+    if (action === "submitted-for-lead-review") {
+      // Same gap, same fix as PUT /:id above -- this audit event must not be
+      // writable by anyone but the task's own assignee, or the record itself
+      // becomes falsifiable.
+      if (approvalTask.assignedTo !== userId) {
+        return res.status(403).json({
+          error: "Forbidden: only the artist this task is assigned to can submit it for review",
+        });
+      }
+    } else if (action === "submitted-for-manager-review") {
       if (!(await canApproveAsDeptLead(tenantId, userId, roleId, approvalTask.department)))
         return res.status(403).json({ error: "Forbidden: missing lead-approval authority" });
     } else if (action === "submitted-for-producer-review") {

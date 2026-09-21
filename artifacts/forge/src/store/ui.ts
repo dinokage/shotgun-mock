@@ -47,6 +47,12 @@ interface UIState {
   createTaskDefaultAssigneeId: string | null;
   setCreateTaskDefaultAssigneeId: (userId: string | null) => void;
 
+  // Same idea, for the project -- lets a project's own Tasks tab open the
+  // modal already scoped to itself instead of making someone re-pick it
+  // from every project in the tenant. Cleared whenever the modal closes.
+  createTaskDefaultProjectId: string | null;
+  setCreateTaskDefaultProjectId: (projectId: string | null) => void;
+
   createProjectModalOpen: boolean;
   setCreateProjectModalOpen: (open: boolean) => void;
 
@@ -85,6 +91,10 @@ export const useUIStore = create<UIState>((set) => ({
   createTaskDefaultAssigneeId: null,
   setCreateTaskDefaultAssigneeId: (userId) =>
     set({ createTaskDefaultAssigneeId: userId }),
+
+  createTaskDefaultProjectId: null,
+  setCreateTaskDefaultProjectId: (projectId) =>
+    set({ createTaskDefaultProjectId: projectId }),
 
   createProjectModalOpen: false,
   setCreateProjectModalOpen: (open) => set({ createProjectModalOpen: open }),

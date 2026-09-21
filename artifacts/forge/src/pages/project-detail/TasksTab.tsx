@@ -1,12 +1,20 @@
 import { useState } from "react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { Kanban, List, GitCommit } from "lucide-react";
+import { Kanban, List, GitCommit, Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useUIStore } from "@/store/ui";
+import { useCapability } from "@/hooks/use-capability";
 import KanbanView from "./TasksKanban";
 import TasksListView from "./TasksList";
 import TasksTimelineView from "./TasksTimeline";
 
 export default function TasksTab({ project }: { project: any }) {
   const [view, setView] = useState("kanban");
+  const setCreateTaskDefaultProjectId = useUIStore(
+    (s) => s.setCreateTaskDefaultProjectId,
+  );
+  const setCreateTaskModalOpen = useUIStore((s) => s.setCreateTaskModalOpen);
+  const canCreateTasks = useCapability("create_tasks");
 
   return (
     <div className="flex flex-col h-full overflow-hidden border border-border rounded-lg bg-card/50">
@@ -36,6 +44,18 @@ export default function TasksTab({ project }: { project: any }) {
             <GitCommit className="w-4 h-4 mr-2" /> Timeline
           </ToggleGroupItem>
         </ToggleGroup>
+        {canCreateTasks && (
+          <Button
+            size="sm"
+            className="gap-1.5"
+            onClick={() => {
+              setCreateTaskDefaultProjectId(project.id);
+              setCreateTaskModalOpen(true);
+            }}
+          >
+            <Plus className="w-4 h-4" /> Add Task
+          </Button>
+        )}
       </div>
 
       <div className="flex-1 overflow-hidden relative">

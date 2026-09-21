@@ -149,11 +149,15 @@ export default function IntegrationsHub() {
     const wasDisconnected = current?.status === "disconnected";
     try {
       await syncIntegration.mutateAsync({ provider, displayName: name });
+      // No live connection to any external DCC/pipeline tool actually
+      // exists yet -- this records the studio's own connection status
+      // (who marked it connected, and when) rather than pulling real data,
+      // so the copy says exactly that instead of implying a live data sync.
       toast({
-        title: wasDisconnected ? "Connected" : "Sync Initiated",
+        title: wasDisconnected ? "Marked as Connected" : "Status Updated",
         description: wasDisconnected
-          ? `${name} is now connected and synchronized.`
-          : `Synchronizing pipeline data with ${name}...`,
+          ? `${name} is now recorded as connected. Live data sync isn't built yet.`
+          : `Recorded a sync check-in for ${name}. Live data sync isn't built yet.`,
       });
     } catch (err) {
       toast({
@@ -189,8 +193,8 @@ export default function IntegrationsHub() {
         ),
       );
       toast({
-        title: "Sync All Initiated",
-        description: `Synchronizing pipeline data with ${syncable.length} connected integrations...`,
+        title: "Check-in Recorded",
+        description: `Updated sync timestamps for ${syncable.length} connected integrations. Live data sync isn't built yet.`,
       });
     } catch (err) {
       toast({
@@ -526,7 +530,8 @@ export default function IntegrationsHub() {
                   <div>
                     <div className="text-sm font-medium">Auto-sync</div>
                     <div className="text-xs text-muted-foreground">
-                      Automatically pull pipeline data on a schedule
+                      Records this integration as scheduled for sync. Not
+                      enforced yet — there's no background job running it.
                     </div>
                   </div>
                   <Switch

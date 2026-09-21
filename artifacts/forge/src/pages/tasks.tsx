@@ -1,5 +1,6 @@
 import { normalizeTaskStatus } from "@/lib/trackingStatus";
 import { useState, useMemo, type MouseEvent } from "react";
+import { useLocation } from "wouter";
 import { useAuthStore } from "@/store/auth";
 import { useCapability } from "@/hooks/use-capability";
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,7 @@ import { useDepartmentStore } from "@/store/departments";
 import { useTasks, useUpdateTask } from "@/hooks/useTasks";
 import { useShots } from "@/hooks/useShots";
 import { useAssets } from "@/hooks/useAssets";
+import { useAllSequences } from "@/hooks/useSequences";
 import {
   Search,
   ListTodo,
@@ -44,6 +46,8 @@ export default function Tasks() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [projectFilter, setProjectFilter] = useState("all");
   const [departmentFilter, setDepartmentFilter] = useState("all");
+  const [sequenceFilter, setSequenceFilter] = useState("all");
+  const [assigneeFilter, setAssigneeFilter] = useState("all");
 
   const [view, setView] = useState<ViewMode>(() => {
     const role = useAuthStore.getState().currentUser?.role;
@@ -64,6 +68,7 @@ export default function Tasks() {
   // that lookup client-side from the already-fetched shots/assets data.
   const { data: liveShots = [] } = useShots();
   const { data: liveAssets = [] } = useAssets();
+  const { data: allSequences = [] } = useAllSequences();
   const entityProjectMap = useMemo(() => {
     const map: Record<string, string> = {};
     liveShots.forEach((s) => {
@@ -74,13 +79,46 @@ export default function Tasks() {
     });
     return map;
   }, [liveShots, liveAssets]);
+  // Every task's linked entity, keyed by entityId -- resolves both which
+  // sequence a task belongs to (for the filter below) and what to show as
+  // "linked to" on each row, instead of relying on the task's free-text
+  // title to say which shot or asset it's actually for.
+  const entityById = useMemo(() => {
+    const map: Record<
+      string,
+      { name: string; kind: "shot" | "asset"; sequenceId: string | null }
+    > = {};
+    liveShots.forEach((s) => {
+      map[s.id] = { name: s.name, kind: "shot", sequenceId: s.sequenceId };
+    });
+    liveAssets.forEach((a) => {
+      map[a.id] = { name: a.name, kind: "asset", sequenceId: a.sequenceId };
+    });
+    return map;
+  }, [liveShots, liveAssets]);
+  const sequenceNameById = useMemo(
+    () => new Map(allSequences.map((s) => [s.id, s.name])),
+    [allSequences],
+  );
 
   const liveUsers = useUserStore((s) => s.users);
   const liveProjects = useProjectStore((s) => s.projects);
   const liveDepartments = useDepartmentStore((s) => s.departments);
+  // Tasks can only ever be assigned to an artist (assignedTo must be an
+  // artist -- enforced server-side in routes/tasks.ts), so that's the only
+  // set of people this filter needs to offer.
+  const assignableArtists = useMemo(
+    () => liveUsers.filter((u) => u.role === "artist"),
+    [liveUsers],
+  );
 
   const { setActiveTaskDrawer, setCreateTaskModalOpen } = useUIStore();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
+  const openInReviewPlayer = (e: MouseEvent, taskId: string) => {
+    e.stopPropagation();
+    setLocation(`/review/${taskId}`);
+  };
 
   const { currentUser } = useAuthStore();
 
@@ -139,6 +177,13 @@ export default function Tasks() {
         return false;
       if (departmentFilter !== "all" && t.department !== departmentFilter)
         return false;
+      if (
+        sequenceFilter !== "all" &&
+        entityById[t.entityId]?.sequenceId !== sequenceFilter
+      )
+        return false;
+      if (assigneeFilter !== "all" && t.assignedTo !== assigneeFilter)
+        return false;
       if (!forceMyTasksOnly && myTasksOnly && t.assignedTo !== currentUserId)
         return false;
 
@@ -149,6 +194,8 @@ export default function Tasks() {
     statusFilter,
     projectFilter,
     departmentFilter,
+    sequenceFilter,
+    assigneeFilter,
     myTasksOnly,
     forceMyTasksOnly,
     currentUserId,
@@ -156,6 +203,7 @@ export default function Tasks() {
     needsReviewOnly,
     myDepartmentName,
     entityProjectMap,
+    entityById,
     liveDepartments,
   ]);
 
@@ -327,6 +375,34 @@ export default function Tasks() {
             ))}
           </SelectContent>
         </Select>
+        <Select value={sequenceFilter} onValueChange={setSequenceFilter}>
+          <SelectTrigger className="w-40 h-9">
+            <SelectValue placeholder="Sequence" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Sequences</SelectItem>
+            {allSequences.map((s) => (
+              <SelectItem key={s.id} value={s.id}>
+                {s.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {!isArtist && (
+          <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
+            <SelectTrigger className="w-40 h-9">
+              <SelectValue placeholder="Artist" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Artists</SelectItem>
+              {assignableArtists.map((a) => (
+                <SelectItem key={a.id} value={a.id}>
+                  {a.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       <div className="flex-1 overflow-hidden">
@@ -341,10 +417,13 @@ export default function Tasks() {
               const project = liveProjects.find(
                 (p) => p.id === entityProjectMap[task.entityId],
               );
+              const entity = entityById[task.entityId];
               return (
                 <Card
                   key={task.id}
                   onClick={() => setActiveTaskDrawer(task.id)}
+                  onDoubleClick={(e) => openInReviewPlayer(e, task.id)}
+                  title="Click for details, double-click to open in the review player"
                   className="p-4 cursor-pointer touch-target hover-elevate active-elevate-2 border-border"
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -352,6 +431,11 @@ export default function Tasks() {
                       <div className="font-medium text-[15px] leading-snug">
                         {task.title}
                       </div>
+                      {entity && (
+                        <div className="text-xs text-primary/80 mt-0.5 truncate">
+                          {entity.kind === "shot" ? "Shot" : "Asset"}: {entity.name}
+                        </div>
+                      )}
                       <div className="text-xs text-muted-foreground mt-1.5 flex items-center gap-2 flex-wrap">
                         <Badge
                           variant="outline"
@@ -423,26 +507,33 @@ export default function Tasks() {
                   const project = liveProjects.find(
                     (p) => p.id === entityProjectMap[task.entityId],
                   );
+                  const entity = entityById[task.entityId];
                   return (
                     <tr
                       key={task.id}
                       className="border-b last:border-0 hover:bg-muted/30 transition-colors cursor-pointer"
                       onClick={() => setActiveTaskDrawer(task.id)}
+                      onDoubleClick={(e) => openInReviewPlayer(e, task.id)}
+                      title="Click for details, double-click to open in the review player"
                     >
                       <td className="p-4">
                         <div className="font-medium text-[15px]">
                           {task.title}
                         </div>
-                        <div className="text-xs text-muted-foreground mt-1 flex items-center gap-2">
+                        <div className="text-xs text-muted-foreground mt-1 flex items-center gap-2 flex-wrap">
                           <Badge
                             variant="outline"
                             className="text-[9px] uppercase"
                           >
                             {task.department}
                           </Badge>
-                          {task.entityType === "shot" && (
-                            <span className="text-indigo-400">
-                              Shot: {task.entityId}
+                          {entity && (
+                            <span className="text-indigo-400 truncate">
+                              {entity.kind === "shot" ? "Shot" : "Asset"}:{" "}
+                              {entity.name}
+                              {entity.sequenceId &&
+                                sequenceNameById.get(entity.sequenceId) &&
+                                ` · ${sequenceNameById.get(entity.sequenceId)}`}
                             </span>
                           )}
                         </div>

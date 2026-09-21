@@ -112,7 +112,7 @@ export default function Profile() {
           // Clients only see their studio points of contact, not the internal roster.
           return STUDIO_LEADERSHIP_ROLES.includes(user.role);
         }
-        // Studio leadership (admin/production_head) sees everyone.
+        // Studio leadership (admin/production_head/producer) sees everyone.
         return true;
       })());
 
@@ -357,8 +357,20 @@ export default function Profile() {
                 {user.status}
               </Badge>
             </div>
-            <p className="text-muted-foreground text-lg">
+            <p className="text-muted-foreground text-lg flex items-center gap-2 flex-wrap">
               {ROLE_LABELS[user.role] || user.title}
+              {/* Previously only ever shown once, at the moment of
+                  registration -- afterwards there was no way to tell the
+                  request was even still pending, or that it had ever been
+                  made. */}
+              {isMe && user.requestedRole && user.requestedRole !== user.role && (
+                <Badge
+                  variant="outline"
+                  className="text-amber-500 border-amber-500/40 bg-amber-500/10 text-xs font-normal"
+                >
+                  Requested {ROLE_LABELS[user.requestedRole as keyof typeof ROLE_LABELS] ?? user.requestedRole} — pending approval
+                </Badge>
+              )}
             </p>
 
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mt-3 text-sm text-muted-foreground">
@@ -469,7 +481,38 @@ export default function Profile() {
                 <div className="flex items-center gap-2 text-sm">
                   <Clock className="w-4 h-4 text-yellow-500" /> Capacity
                 </div>
-                <div className="font-semibold">{user.capacity ?? 0}%</div>
+                {isMe ? (
+                  <div className="flex items-center gap-1">
+                    <Input
+                      type="number"
+                      min={0}
+                      max={100}
+                      className="h-7 w-16 text-right"
+                      defaultValue={user.capacity ?? ""}
+                      placeholder="—"
+                      onBlur={(e) => {
+                        const raw = e.target.value.trim();
+                        const value = raw === "" ? null : Math.max(0, Math.min(100, Number(raw)));
+                        if (value === (user.capacity ?? null)) return;
+                        updateProfile.mutate(
+                          { capacity: value },
+                          {
+                            onError: () =>
+                              toast({
+                                title: "Couldn't update capacity",
+                                variant: "destructive",
+                              }),
+                          },
+                        );
+                      }}
+                    />
+                    <span className="text-sm text-muted-foreground">%</span>
+                  </div>
+                ) : (
+                  <div className="font-semibold">
+                    {user.capacity != null ? `${user.capacity}%` : "Not set"}
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

@@ -15,6 +15,9 @@ export interface StandupUpdateDTO {
   hours: number;
   /** "auto" for the summary posted on logout, "manual" for a person's own post. */
   source: string;
+  /** URLs from the generic /uploads endpoint. Files used to be staged in the
+   * composer and silently dropped on post -- never sent to the server. */
+  attachmentUrls: string[];
   createdAt: string;
 }
 
@@ -29,7 +32,12 @@ export function useStandupUpdates() {
 export function usePostStandupUpdate() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: { text: string; taskId?: string | null; hours?: number }) =>
+    mutationFn: (body: {
+      text: string;
+      taskId?: string | null;
+      hours?: number;
+      attachmentUrls?: string[];
+    }) =>
       apiClient.post<StandupUpdateDTO>("/standup-updates", body),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ["standup-updates"] }),

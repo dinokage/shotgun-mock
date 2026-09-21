@@ -5,6 +5,7 @@ import { useCreateProject } from "@/hooks/useProjects";
 import { useCreateEpisode } from "@/hooks/useEpisodes";
 import { useCreateSequence } from "@/hooks/useSequences";
 import { useCreateShot } from "@/hooks/useShots";
+import { useCapability } from "@/hooks/use-capability";
 import {
   Dialog,
   DialogContent,
@@ -54,6 +55,13 @@ export function CreateProjectModal() {
   const createShot = useCreateShot();
   const { currentUser } = useAuthStore();
   const { toast } = useToast();
+  // POST /shots is gated on create_tasks server-side (an admin, view-only by
+  // design, doesn't hold it). Offering this section to someone who can
+  // create the project but never the shots inside it produced exactly the
+  // dead end this capability check now prevents -- an empty project nobody
+  // holding it could ever populate, and a raw "Forbidden" toast on the one
+  // action they tried.
+  const canAddShots = useCapability("create_tasks");
 
   const [name, setName] = useState("");
   const [client, setClient] = useState("");
@@ -264,52 +272,59 @@ export function CreateProjectModal() {
             />
           </div>
 
-          <div className="space-y-2 pt-2 border-t border-border">
-            <div className="flex items-center justify-between">
-              <Label>Initial Shots (Optional)</Label>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={addDraftShotRow}
-              >
-                <Plus className="w-3.5 h-3.5 mr-1" /> Add Shot
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Set up the same Episode / Sequence / Shot structure used when
-              assigning tasks — a new project starts with none, so add a
-              few here, or skip this and use "Import Tracksheet" on the
-              Tracking Grid later for bulk import.
-            </p>
-            {draftShots.map((row, i) => (
-              <div key={i} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2">
-                <Input
-                  placeholder="Episode (optional)"
-                  value={row.episode}
-                  onChange={(e) => updateDraftShotRow(i, { episode: e.target.value })}
-                />
-                <Input
-                  placeholder="Sequence (optional)"
-                  value={row.sequence}
-                  onChange={(e) => updateDraftShotRow(i, { sequence: e.target.value })}
-                />
-                <Input
-                  placeholder="Shot name *"
-                  value={row.shot}
-                  onChange={(e) => updateDraftShotRow(i, { shot: e.target.value })}
-                />
+          {canAddShots ? (
+            <div className="space-y-2 pt-2 border-t border-border">
+              <div className="flex items-center justify-between">
+                <Label>Initial Shots (Optional)</Label>
                 <Button
                   type="button"
                   variant="ghost"
-                  size="icon"
-                  onClick={() => removeDraftShotRow(i)}
+                  size="sm"
+                  onClick={addDraftShotRow}
                 >
-                  <X className="w-4 h-4" />
+                  <Plus className="w-3.5 h-3.5 mr-1" /> Add Shot
                 </Button>
               </div>
-            ))}
-          </div>
+              <p className="text-xs text-muted-foreground">
+                Set up the same Episode / Sequence / Shot structure used when
+                assigning tasks — a new project starts with none, so add a
+                few here, or skip this and use "Import Tracksheet" on the
+                Tracking Grid later for bulk import.
+              </p>
+              {draftShots.map((row, i) => (
+                <div key={i} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2">
+                  <Input
+                    placeholder="Episode (optional)"
+                    value={row.episode}
+                    onChange={(e) => updateDraftShotRow(i, { episode: e.target.value })}
+                  />
+                  <Input
+                    placeholder="Sequence (optional)"
+                    value={row.sequence}
+                    onChange={(e) => updateDraftShotRow(i, { sequence: e.target.value })}
+                  />
+                  <Input
+                    placeholder="Shot name *"
+                    value={row.shot}
+                    onChange={(e) => updateDraftShotRow(i, { shot: e.target.value })}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => removeDraftShotRow(i)}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground pt-2 border-t border-border">
+              Shots aren't added here — ask a producer or lead to add the
+              first shots once the project is created.
+            </p>
+          )}
 
           <DialogFooter className="mt-6">
             <Button

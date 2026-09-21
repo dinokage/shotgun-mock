@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "@workspace/db";
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability, denyClientAccess } from "../middleware/rbac";
+import { getClientScope } from "../lib/clientScope";
 import { getVisibilityScope, visibleSequenceIds } from "../lib/visibilityScope";
 import * as crypto from "crypto";
 
@@ -25,22 +26,37 @@ async function sequenceInTenant(id: string, tenantId: string) {
 export const sequencesRouter = Router();
 
 sequencesRouter.use(tenantAuthMiddleware);
-// Internal pipeline sequence management has no client-facing equivalent.
-sequencesRouter.use(denyClientAccess);
 
 sequencesRouter.get("/", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const { projectId, episodeId } = req.query;
-    // A sequence holds no tasks itself -- it is visible to a scoped role
-    // when it contains a shot or asset that role has work on.
-    const visibleIds = await visibleSequenceIds(tenantId, await getVisibilityScope(req));
+    // A client-review session (link or signed-in) sees only its granted
+    // project's sequences -- narrowed further to one episode when the grant
+    // is that specific. Mirrors episodes.ts's identical pattern; sequences
+    // had none of this until the client portal needed to show them grouped
+    // the same Episode -> Sequence -> Shot way the internal app does.
+    const clientScope = await getClientScope(req);
+    if (req.clientAccessLinkId && !clientScope) return res.json([]);
+
+    // A sequence holds no tasks itself -- it is visible to a scoped
+    // employee role when it contains a shot or asset that role has work on.
+    // `null` (client, or an employee role with no scoping) = no filter here.
+    const visibleIds = clientScope
+      ? null
+      : await visibleSequenceIds(tenantId, await getVisibilityScope(req));
     const rows = await prisma.sequence.findMany({
       where: {
         tenantId,
         ...(typeof projectId === "string" ? { projectId } : {}),
         ...(typeof episodeId === "string" ? { episodeId } : {}),
         ...(visibleIds ? { id: { in: visibleIds } } : {}),
+        ...(clientScope
+          ? {
+              projectId: clientScope.projectId,
+              ...(clientScope.episodeId ? { episodeId: clientScope.episodeId } : {}),
+            }
+          : {}),
       },
     });
     return res.json(rows);
@@ -51,9 +67,10 @@ sequencesRouter.get("/", async (req, res) => {
 
 // create_tasks matches TracksheetImportDialog.tsx's own gate -- sequences
 // are created as part of the same tracksheet-import flow episodes/shots
-// are. The self-service .../team routes below are deliberately left
-// ungated (any authenticated user joins/leaves on their own).
-sequencesRouter.post("/", requireCapability("create_tasks"), async (req, res) => {
+// are. denyClientAccess here (and on the team routes below) since none of
+// this -- creating sequences, joining a team roster -- has a legitimate
+// client use case, unlike the read above.
+sequencesRouter.post("/", denyClientAccess, requireCapability("create_tasks"), async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const { projectId, episodeId, name } = req.body;
@@ -78,10 +95,13 @@ sequencesRouter.post("/", requireCapability("create_tasks"), async (req, res) =>
 // early-completion auto-reassignment flow (routes/tasks.ts) reads to find
 // who's free and which department (via usersTable, joined below) they
 // belong to.
-sequencesRouter.get("/:id/team", async (req, res) => {
+sequencesRouter.get("/:id/team", denyClientAccess, async (req, res) => {
   try {
     const tenantId = req.tenantId!;
-    const sequenceId = req.params.id;
+    // Cast needed: denyClientAccess + this route's "/:id" path typing widens
+    // req.params.id to `string | string[]` for overload resolution, even
+    // though a plain ":id" segment is always a single string at runtime.
+    const sequenceId = req.params.id as string;
     if (!(await sequenceInTenant(sequenceId, tenantId)))
       return res.status(404).json({ error: "Not found" });
 
@@ -111,12 +131,12 @@ sequencesRouter.get("/:id/team", async (req, res) => {
 // Join is idempotent (upsert with a no-op update against the sequence+user
 // unique constraint) -- clicking "Join Team" twice, or a double-submit,
 // should never 500 or produce a duplicate row.
-sequencesRouter.post("/:id/team", async (req, res) => {
+sequencesRouter.post("/:id/team", denyClientAccess, async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const userId = req.userId;
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
-    const sequenceId = req.params.id;
+    const sequenceId = req.params.id as string;
     if (!(await sequenceInTenant(sequenceId, tenantId)))
       return res.status(404).json({ error: "Not found" });
 
@@ -134,12 +154,12 @@ sequencesRouter.post("/:id/team", async (req, res) => {
 // Self-leave only -- this is a self-service roster, not something a lead
 // manages on someone else's behalf (a lead removing an artist would be a
 // different, capability-gated action; not built here).
-sequencesRouter.delete("/:id/team/me", async (req, res) => {
+sequencesRouter.delete("/:id/team/me", denyClientAccess, async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const userId = req.userId;
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
-    const sequenceId = req.params.id;
+    const sequenceId = req.params.id as string;
 
     await prisma.sequenceTeamMember.deleteMany({
       where: { tenantId, sequenceId, userId },

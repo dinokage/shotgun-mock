@@ -27,7 +27,7 @@ projectsRouter.get("/", async (req, res) => {
     // still resolves to a project it can see. The only consumer of this list
     // is pages/projects.tsx; home/shot-detail/asset-detail read the local
     // project store, not this endpoint. `null` = studio-wide, no filter.
-    const scopedProjectIds = req.clientAccessLinkId
+    const scopedProjectIds = clientScope
       ? null
       : await visibleProjectIds(tenantId, await getVisibilityScope(req));
 
@@ -51,12 +51,25 @@ projectsRouter.get("/:id", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const clientScope = await getClientScope(req);
-    if (req.clientAccessLinkId && (!clientScope || clientScope.projectId !== req.params.id)) {
+    // Any client-type caller (a redeemed access link, or a real signed-in
+    // `client` account) must have a resolved scope that matches this exact
+    // project -- checked against BOTH signals, not just clientAccessLinkId,
+    // because a signed-in client with a grant for a DIFFERENT project would
+    // otherwise skip this block entirely (clientScope truthy, but for the
+    // wrong project) and fall through to the scopedProjectIds check below,
+    // which is deliberately skipped whenever clientScope is set (see GET /
+    // above) -- leaving nothing to stop them reading an arbitrary project by
+    // id. An ungranted signed-in client (clientScope null) is unaffected by
+    // this block and is still correctly denied by the scopedProjectIds
+    // fallback, since a client never holds a task and so is never "visible"
+    // there either.
+    const isClientCaller = !!req.clientAccessLinkId || clientScope !== null;
+    if (isClientCaller && (!clientScope || clientScope.projectId !== req.params.id)) {
       return res.status(404).json({ error: "Not found" });
     }
     // Same scope as GET / above -- leaving the by-id read tenant-wide would
     // make the list filter cosmetic (the project page is reachable by id).
-    const scopedProjectIds = req.clientAccessLinkId
+    const scopedProjectIds = clientScope
       ? null
       : await visibleProjectIds(tenantId, await getVisibilityScope(req));
     if (scopedProjectIds && !scopedProjectIds.includes(req.params.id))

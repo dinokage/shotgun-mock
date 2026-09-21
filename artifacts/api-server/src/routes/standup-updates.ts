@@ -10,8 +10,9 @@ export const standupUpdatesRouter = Router();
 // artifacts/forge/src/store/permissions.ts -- daily-standup.tsx already
 // filters the feed by these exact groups, so scope the query the same way
 // rather than shipping the whole studio's updates to an artist's browser.
-const STUDIO_LEADERSHIP_ROLES = ["admin", "production_head"];
-const DEPARTMENT_LEADERSHIP_ROLES = ["producer", "lead"];
+// The producer is studio-wide, as in lib/visibilityScope.ts.
+const STUDIO_LEADERSHIP_ROLES = ["admin", "production_head", "producer"];
+const DEPARTMENT_LEADERSHIP_ROLES = ["lead"];
 
 // Both the daily-log `date` column and the frontend's own log-filing calls
 // use a UTC YYYY-MM-DD string, so derive the task-activity window from that
@@ -157,7 +158,7 @@ standupUpdatesRouter.post("/", async (req, res) => {
     const userId = req.userId;
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-    const { text, taskId, hours } = req.body;
+    const { text, taskId, hours, attachmentUrls } = req.body;
     if (typeof text !== "string" || !text.trim())
       return res.status(400).json({ error: "text is required" });
 
@@ -169,6 +170,14 @@ standupUpdatesRouter.post("/", async (req, res) => {
       if (!task) return res.status(400).json({ error: "Invalid taskId" });
     }
 
+    // URLs only, from the generic /uploads endpoint the composer already
+    // calls for each staged file -- this route never receives file bytes
+    // itself. Files used to be staged in the UI and then silently dropped on
+    // post; the composer now uploads each one first and sends the URLs here.
+    const urls = Array.isArray(attachmentUrls)
+      ? attachmentUrls.filter((u: unknown): u is string => typeof u === "string").slice(0, 10)
+      : [];
+
     const created = await prisma.standupUpdate.create({
       data: {
         id: crypto.randomUUID(),
@@ -178,6 +187,7 @@ standupUpdatesRouter.post("/", async (req, res) => {
         text: text.trim(),
         hours: typeof hours === "number" && hours > 0 ? Math.round(hours) : 0,
         source: "manual",
+        attachmentUrls: urls,
       },
     });
     return res.status(201).json(created);

@@ -125,7 +125,7 @@ export async function sweepStaleShifts(tenantId: string): Promise<void> {
   const cutoff = new Date(Date.now() - MAX_OPEN_SHIFT_HOURS * 3600_000);
   const stale = await prisma.attendanceRecord.findMany({
     where: { tenantId, clockOutAt: null, clockInAt: { lt: cutoff } },
-    select: { id: true, clockInAt: true },
+    select: { id: true, clockInAt: true, userId: true },
   });
   for (const row of stale) {
     const closedAt = new Date(
@@ -140,4 +140,17 @@ export async function sweepStaleShifts(tenantId: string): Promise<void> {
       },
     });
   }
+
+  // The punch column is a separate fact from the shift row, and closing only
+  // the row left `punchedInAt` running forever -- the header clock read
+  // "43:15 PUNCHED IN" for someone who had simply closed their laptop two
+  // days earlier. Anyone whose shift has just been swept, or who is punched
+  // in with no open shift at all, is punched out here too.
+  await prisma.user.updateMany({
+    where: {
+      tenantId,
+      punchedInAt: { not: null, lt: cutoff },
+    },
+    data: { punchedInAt: null },
+  });
 }

@@ -21,6 +21,7 @@ export interface AssetDTO {
   publishStatus: string;
   description: string;
   notes: string | null;
+  dueDate: string | null;
   createdAt: string;
   updatedAt: string;
 }

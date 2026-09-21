@@ -24,14 +24,27 @@ import { normalizeTaskStatus, isTracksheetStatus } from "@/lib/trackingStatus";
 // "live" in the review queue; anything else is still being worked on and has
 // nothing to review yet. Compared against the *normalized* stage, so
 // tracksheet-imported rows (TK_02_APP, Rtk_done, ...) land here too.
-const REVIEW_STAGES = ["review", "lead-review", "pm-review", "approved"];
+const REVIEW_STAGES = [
+  "review",
+  "lead-review",
+  "pm-review",
+  "producer-review",
+  "approved",
+];
 
-type QueueFilter = "awaiting-me" | "lead-review" | "pm-review" | "approved" | "all";
+type QueueFilter =
+  | "awaiting-me"
+  | "lead-review"
+  | "pm-review"
+  | "producer-review"
+  | "approved"
+  | "all";
 
 const FILTER_LABELS: Record<QueueFilter, string> = {
   "awaiting-me": "Awaiting Me",
   "lead-review": "Lead Review",
-  "pm-review": "Producer Review",
+  "pm-review": "Production Head Review",
+  "producer-review": "Producer Review",
   approved: "Approved",
   all: "All",
 };
@@ -80,12 +93,18 @@ export default function ReviewQueue() {
   // "Awaiting me" answers the question the queue exists for: what is blocked
   // on this specific person right now. It is deliberately role-derived rather
   // than a saved filter — an artist sees work sent back to them, a lead sees
-  // their department's lead-review tier, a producer sees the pm-review tier.
+  // their department's lead-review tier, the production head the pm-review
+  // tier, and the producer the final producer-review tier.
   const awaitingMe = useMemo(() => {
     if (!currentUser) return [] as typeof rows;
     const isLead = DEPARTMENT_LEADERSHIP_ROLES.includes(currentUser.role);
     return rows.filter((r) => {
       const status = r.stage;
+      if (status === "producer-review") {
+        // No department check: the producer is the studio's single final
+        // gate, matching canApproveAsProducer in review.tsx.
+        return currentUser.role === "producer";
+      }
       if (status === "pm-review") {
         return canApproveAsProductionManager(
           currentUser.id,
@@ -144,6 +163,7 @@ export default function ReviewQueue() {
       (r) => r.stage === "review" || r.stage === "lead-review",
     ).length,
     "pm-review": rows.filter((r) => r.stage === "pm-review").length,
+    "producer-review": rows.filter((r) => r.stage === "producer-review").length,
     approved: rows.filter((r) => r.stage === "approved").length,
     all: rows.length,
   };

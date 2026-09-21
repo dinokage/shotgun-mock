@@ -1,5 +1,6 @@
 import * as argon2 from "argon2";
 import jwt from "jsonwebtoken";
+import * as crypto from "crypto";
 
 // No hardcoded fallback -- a fallback string baked into source is a public
 // secret the moment this repo is (GitGuardian flagged exactly this pattern
@@ -54,4 +55,22 @@ export function verifySession(token: string): SessionPayload | null {
   } catch (err) {
     return null;
   }
+}
+
+const API_TOKEN_PREFIX = "forge_pat_";
+
+/**
+ * Personal API tokens (DCC plugins, scripts) are 256 bits of CSPRNG entropy,
+ * hashed with plain SHA-256 rather than argon2 -- argon2's deliberate
+ * slowness defends against guessing a low-entropy human-chosen password,
+ * which doesn't apply here, and would add real latency to every
+ * token-authenticated request. The raw value is shown exactly once at
+ * creation; only the hash is ever stored.
+ */
+export function generateApiToken(): string {
+  return `${API_TOKEN_PREFIX}${crypto.randomBytes(32).toString("base64url")}`;
+}
+
+export function hashApiToken(rawToken: string): string {
+  return crypto.createHash("sha256").update(rawToken).digest("hex");
 }

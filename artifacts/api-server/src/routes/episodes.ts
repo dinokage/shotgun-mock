@@ -37,7 +37,7 @@ episodesRouter.get("/", async (req, res) => {
     // endpoints return, so every shot a caller can list still has its
     // episode present here (tracking.tsx groups shots by episode and would
     // otherwise lose the grouping label). `null` = studio-wide, no filter.
-    const scopedEpisodeIds = req.clientAccessLinkId
+    const scopedEpisodeIds = clientScope
       ? null
       : await visibleEpisodeIds(tenantId, await getVisibilityScope(req));
 

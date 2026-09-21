@@ -12,6 +12,48 @@ import {
   entityRefScopeWhere,
   visibleEntityIds,
 } from "../lib/visibilityScope";
+import { createNotification, findProductionManagers } from "./notifications";
+
+// Shared by both notification fan-outs below (a new client note, and a note
+// being transferred): resolves the shot's assignee and that department's
+// lead(s) the same way shots.ts's client-review notification does, so a
+// client's feedback reaches the same three roles regardless of which of the
+// two actions produced it.
+async function shotReviewRecipients(
+  tenantId: string,
+  shotId: string,
+): Promise<{ assigneeId: string | null; leadIds: string[]; pmIds: string[] }> {
+  const shot = await prisma.shot.findFirst({
+    where: { id: shotId, tenantId },
+    select: { assigneeId: true },
+  });
+  const assignee = shot?.assigneeId
+    ? await prisma.user.findFirst({
+        where: { id: shot.assigneeId, tenantId },
+        select: { id: true, departmentId: true },
+      })
+    : null;
+  const departmentName = assignee?.departmentId
+    ? (
+        await prisma.department.findFirst({
+          where: { id: assignee.departmentId, tenantId },
+          select: { name: true },
+        })
+      )?.name ?? null
+    : null;
+  const leads = departmentName
+    ? await prisma.user.findMany({
+        where: { tenantId, department: { name: departmentName }, role: { name: "lead" } },
+        select: { id: true },
+      })
+    : [];
+  const pms = await findProductionManagers(tenantId, departmentName);
+  return {
+    assigneeId: assignee?.id ?? null,
+    leadIds: leads.map((l) => l.id),
+    pmIds: pms.map((p) => p.id),
+  };
+}
 
 // Presentation Mode, the review timeline's comment stream, and the client
 // portal's notes used to live in one browser's localStorage, cross-tab-synced
@@ -666,6 +708,27 @@ reviewSessionRouter.post("/client-notes", async (req, res) => {
         annotations: asObjectArray(annotations, MAX_ANNOTATIONS) as never,
       },
     });
+
+    // A client note sits in moderation until a lead/PM transfers it (see
+    // .../transfer below) -- notify them it's waiting, same as any other
+    // "awaiting your review" fan-out. Not sent to the artist yet: the note
+    // isn't visible to the team until it's actually transferred.
+    const { leadIds, pmIds } = await shotReviewRecipients(tenantId, shotId);
+    await Promise.all(
+      [...new Set([...leadIds, ...pmIds])].map((recipientUserId) =>
+        createNotification({
+          tenantId,
+          recipientUserId,
+          category: "review",
+          title: `Client note on "${shot.name}"`,
+          description: `${authorName} left a note: "${body.slice(0, 140)}${body.length > 140 ? "…" : ""}"`,
+          entityType: "shot",
+          entityId: shotId,
+          actionUrl: `/shots/${shotId}`,
+        }),
+      ),
+    );
+
     return res.status(201).json(clientNoteDTO(created, shot.name, null));
   } catch (err) {
     req.log.error(err, "Failed to create client note");
@@ -747,6 +810,27 @@ reviewSessionRouter.post(
         where: { id: userId, tenantId },
         select: { name: true },
       });
+
+      // This is the actual "reaches the artist" step the client's feedback
+      // was waiting on -- the note existed since POST /client-notes, but
+      // only now is it something the artist is allowed to see, so only now
+      // do they get told about it. Carries the note text itself so the
+      // notification names what needs to change, not just that something
+      // does.
+      const { assigneeId } = await shotReviewRecipients(tenantId, note.shotId);
+      if (assigneeId) {
+        await createNotification({
+          tenantId,
+          recipientUserId: assigneeId,
+          category: "workflow",
+          title: `Client feedback on "${shot?.name ?? "your shot"}"`,
+          description: `${note.authorName}: "${note.text.slice(0, 140)}${note.text.length > 140 ? "…" : ""}"`,
+          entityType: "shot",
+          entityId: note.shotId,
+          actionUrl: `/shots/${note.shotId}`,
+        });
+      }
+
       return res.status(201).json(commentDTO(comment, transferrer?.name ?? null));
     } catch (err) {
       req.log.error(err, "Failed to transfer client note");

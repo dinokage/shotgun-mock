@@ -4,14 +4,16 @@ import { prisma } from "@workspace/db";
 // Mirrors STUDIO_LEADERSHIP_ROLES in artifacts/forge/src/store/permissions.ts
 // -- the only roster rows an external client has any legitimate reason to
 // see (their studio points of contact), matching what people.tsx/profile.tsx
-// already filter down to on the frontend.
-const STUDIO_LEADERSHIP_ROLES = ["admin", "production_head"];
+// already filter down to on the frontend. Includes the producer, who is the
+// studio-wide final reviewer and so a client's natural point of contact.
+const STUDIO_LEADERSHIP_ROLES = ["admin", "production_head", "producer"];
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability } from "../middleware/rbac";
 import { hashPassword, verifyPassword } from "../lib/auth";
 import { getVisibilityScope } from "../lib/visibilityScope";
 import { getClientScope } from "../lib/clientScope";
-import { revokeSessions } from "./auth";
+import { revokeSessions, AUTO_CLOCK_IN_ROLES } from "./auth";
+import { openShift, closeShift } from "../lib/attendance";
 import { cacheDel, cacheKeys } from "../lib/cache";
 import * as crypto from "crypto";
 import * as fs from "fs";
@@ -102,6 +104,7 @@ router.get("/", async (req, res) => {
         title: true,
         avatar: true,
         status: true,
+        capacity: true,
         punchedInAt: true,
         lastSeenAt: true,
         requestedRole: true,
@@ -226,11 +229,17 @@ router.patch("/me", async (req, res) => {
     const userId = req.userId;
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-    const { name, title, avatar } = req.body;
+    const { name, title, avatar, capacity } = req.body;
     const data: Record<string, unknown> = {};
     if (name !== undefined) data.name = name;
     if (title !== undefined) data.title = title;
     if (avatar !== undefined) data.avatar = avatar;
+    if (capacity !== undefined) {
+      if (capacity !== null && (typeof capacity !== "number" || capacity < 0 || capacity > 100)) {
+        return res.status(400).json({ error: "capacity must be a number between 0 and 100, or null" });
+      }
+      data.capacity = capacity;
+    }
 
     if (Object.keys(data).length === 0) {
       return res.status(400).json({ error: "No valid fields to update" });
@@ -273,6 +282,21 @@ router.post("/me/punch-in", async (req, res) => {
     if (result.count === 0) return res.status(404).json({ error: "Not found" });
     const updated = await prisma.user.findFirstOrThrow({ where: { id: userId, tenantId } });
 
+    // The header clock used to set only `punchedInAt`, so hours clocked here
+    // never reached attendance_records -- only sign-in did. Same role rule
+    // and same best-effort contract as the login path in auth.ts.
+    try {
+      const role = await prisma.tenantRole.findFirst({
+        where: { id: req.roleId!, tenantId },
+        select: { name: true },
+      });
+      if (role && AUTO_CLOCK_IN_ROLES.includes(role.name)) {
+        await openShift(tenantId, userId, "manual");
+      }
+    } catch (err) {
+      req.log.error(err, "Failed to open attendance shift on punch-in");
+    }
+
     await cacheDel(cacheKeys.userMe(tenantId, userId));
     const { hashedPassword: _omit, ...user } = updated;
     return res.json(user);
@@ -294,6 +318,13 @@ router.post("/me/punch-out", async (req, res) => {
     });
     if (result.count === 0) return res.status(404).json({ error: "Not found" });
     const updated = await prisma.user.findFirstOrThrow({ where: { id: userId, tenantId } });
+
+    // No role check needed: closeShift is a no-op when nothing is open.
+    try {
+      await closeShift(tenantId, userId, "manual");
+    } catch (err) {
+      req.log.error(err, "Failed to close attendance shift on punch-out");
+    }
 
     await cacheDel(cacheKeys.userMe(tenantId, userId));
     const { hashedPassword: _omit, ...user } = updated;
@@ -363,10 +394,64 @@ router.patch("/:id", requireCapability("manage_members"), async (req, res) => {
     // resolution purposes, even though a plain ":id" segment is always a
     // single string at runtime.
     const userId = req.params.id as string;
-    const { roleId, departmentId, status } = req.body;
+    const { roleId, departmentId, status, password } = req.body;
 
     const existing = await prisma.user.findFirst({ where: { tenantId, id: userId } });
     if (!existing) return res.status(404).json({ error: "Not found" });
+
+    // Two ways to lock the studio out of its own administration: an admin
+    // demoting or deactivating themselves, and removing the last active admin.
+    // Either leaves nobody holding manage_members, and there is no recovery
+    // short of editing the database by hand.
+    const changesRole = roleId !== undefined && roleId !== existing.roleId;
+    const deactivates = status === "inactive" && existing.status !== "inactive";
+    if (changesRole || deactivates) {
+      if (userId === req.userId) {
+        return res.status(400).json({
+          error:
+            "You can't change your own role or deactivate your own account. Ask another administrator.",
+        });
+      }
+      const currentRole = await prisma.tenantRole.findFirst({
+        where: { id: existing.roleId, tenantId },
+        select: { name: true },
+      });
+      if (currentRole?.name === "admin") {
+        const otherActiveAdmins = await prisma.user.count({
+          where: {
+            tenantId,
+            id: { not: userId },
+            status: "active",
+            deletedAt: null,
+            role: { name: "admin" },
+          },
+        });
+        if (otherActiveAdmins === 0) {
+          return res.status(409).json({
+            error:
+              "This is the studio's only active administrator. Make someone else an administrator first.",
+          });
+        }
+      }
+    }
+
+    // Resetting someone else's password is the same trust level as changing
+    // their role -- an administrator acting for a person who lost access or
+    // never set one up (e.g. an account created directly rather than through
+    // an accepted invite). Left out of the self-service check above (a person
+    // can and should be able to change their own password elsewhere); this
+    // route path is for setting ANOTHER person's password, which is why it is
+    // still blocked when userId === req.userId below.
+    if (password !== undefined) {
+      if (userId === req.userId) {
+        return res.status(400).json({
+          error: "Use your own account settings to change your own password.",
+        });
+      }
+      if (typeof password !== "string" || password.length < 6) {
+        return res.status(400).json({ error: "password must be at least 6 characters" });
+      }
+    }
 
     const data: Record<string, unknown> = {};
 
@@ -402,6 +487,10 @@ router.patch("/:id", requireCapability("manage_members"), async (req, res) => {
       data.status = status;
     }
 
+    if (password !== undefined) {
+      data.hashedPassword = await hashPassword(password);
+    }
+
     if (Object.keys(data).length === 0) {
       return res.status(400).json({ error: "No valid fields to update" });
     }
@@ -423,13 +512,15 @@ router.patch("/:id", requireCapability("manage_members"), async (req, res) => {
     // 7-day life -- which makes demotion and offboarding cosmetic.
     if (
       (data.roleId !== undefined && data.roleId !== existing.roleId) ||
-      data.status === "inactive"
+      data.status === "inactive" ||
+      data.hashedPassword !== undefined
     ) {
       // Same reasoning as the role-change case above, applied to
-      // deactivation: the middleware check catches it within 5 minutes via
-      // the cache TTL regardless, but revoking immediately means a
-      // deactivated account's existing session dies on its very next
-      // request rather than whenever that cache entry happens to expire.
+      // deactivation and to a password reset: the middleware check catches
+      // it within 5 minutes via the cache TTL regardless, but revoking
+      // immediately means an old session (or an old password someone else
+      // learned) stops working on its very next request rather than
+      // whenever that cache entry happens to expire.
       await revokeSessions(userId, tenantId);
     }
     const { hashedPassword: _omit, ...user } = updated;

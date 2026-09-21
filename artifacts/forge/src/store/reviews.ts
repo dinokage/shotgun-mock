@@ -2,13 +2,6 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { Review, Version } from "@/data/mockData";
 
-/**
- * The single mock "version" the client review portal keys its annotations to.
- * This is a stand-in for a real per-shot/per-version review-session id; the
- * internal player already uses the task's real Version row instead.
- */
-export const PRESENTED_VERSION_ID = "seq-020-sh-040-v003";
-
 interface ReviewState {
   reviews: Review[];
   versions: Version[];

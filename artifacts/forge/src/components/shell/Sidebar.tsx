@@ -31,6 +31,7 @@ import {
   DollarSign,
   Truck,
   ShieldCheck,
+  Activity,
 } from "lucide-react";
 import { useUIStore } from "@/store/ui";
 import { useAuthStore } from "@/store/auth";
@@ -153,6 +154,12 @@ const ALL_NAV: NavItem[] = [
     href: "/admin",
     capabilities: ["manage_members"],
   },
+  {
+    label: "Diagnostics",
+    icon: Activity,
+    href: "/diagnostics",
+    capabilities: ["manage_roles"],
+  },
 ];
 
 export function Sidebar() {
@@ -191,6 +198,10 @@ export function Sidebar() {
       ? // Production Manager's own queue: the final sign-off stage, not the
         // Lead's — see TaskDrawer.tsx's two-stage approval gate.
         tasks.filter((t) => t.status === "pm-review").length
+      : currentUser.role === "producer"
+        ? // The producer's own queue is the final gate after the
+          // Production Manager, not the Lead tier below.
+          tasks.filter((t) => t.status === "producer-review").length
       : isLeadership
         ? // Items awaiting a Lead sign-off across the studio (same status
           // SupervisorDashboard treats as its department review queue).

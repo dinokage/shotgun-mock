@@ -31,6 +31,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Task, TaskStatus } from "@/data/mockData";
 import { STUDIO_LEADERSHIP_ROLES } from "@/store/permissions";
+import { shotNumber } from "@/lib/shotName";
 import { UploadCloud, X, FileIcon } from "lucide-react";
 
 export function CreateTaskModal() {
@@ -39,6 +40,8 @@ export function CreateTaskModal() {
     setCreateTaskModalOpen,
     createTaskDefaultAssigneeId,
     setCreateTaskDefaultAssigneeId,
+    createTaskDefaultProjectId,
+    setCreateTaskDefaultProjectId,
   } = useUIStore();
   const { tasks, setTasks } = useTasksStore();
   const { currentUser } = useAuthStore();
@@ -101,10 +104,19 @@ export function CreateTaskModal() {
     }
   }, [createTaskModalOpen, createTaskDefaultAssigneeId]);
 
+  // Same idea for the project, e.g. opened via "Add Task" on a project's own
+  // Tasks tab -- skips making someone re-pick a project they're already in.
+  useEffect(() => {
+    if (createTaskModalOpen && createTaskDefaultProjectId) {
+      setProjectId(createTaskDefaultProjectId);
+    }
+  }, [createTaskModalOpen, createTaskDefaultProjectId]);
+
   const handleOpenChange = (open: boolean) => {
     setCreateTaskModalOpen(open);
     if (!open) {
       setCreateTaskDefaultAssigneeId(null);
+      setCreateTaskDefaultProjectId(null);
       setPendingFiles([]);
     }
   };
@@ -117,8 +129,16 @@ export function CreateTaskModal() {
   // store/permissions.ts (also used by home.tsx) instead of a local copy.
   const isStudioLeadership = STUDIO_LEADERSHIP_ROLES.includes(currentUser.role);
 
+  // A task can only ever be assigned to an artist -- leadership assigns
+  // work, it never holds it, enforced server-side in routes/tasks.ts
+  // (assignedToIsArtist). This dropdown used to offer leads/producers too,
+  // which the server would then reject with "assignedTo must be an artist"
+  // the moment one was picked -- filtering here means every option shown
+  // actually works.
   const availableUsers = users.filter(
-    (u) => isStudioLeadership || u.departmentId === currentUser.departmentId,
+    (u) =>
+      u.role === "artist" &&
+      (isStudioLeadership || u.departmentId === currentUser.departmentId),
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -374,7 +394,7 @@ export function CreateTaskModal() {
                 <SelectContent>
                   {shotsInSequence.map((s) => (
                     <SelectItem key={s.id} value={s.id}>
-                      {s.name}
+                      {shotNumber(s.name)}
                     </SelectItem>
                   ))}
                 </SelectContent>

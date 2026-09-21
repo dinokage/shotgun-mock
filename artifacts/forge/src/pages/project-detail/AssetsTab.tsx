@@ -4,9 +4,21 @@ import { useShotStore } from "@/store/shots";
 import { useAssetStore } from "@/store/assets";
 import { useReviewStore } from "@/store/reviews";
 import { useUserStore } from "@/store/users";
+import { useCreateShot } from "@/hooks/useShots";
+import { useCreateAsset } from "@/hooks/useAssets";
+import { useCapability } from "@/hooks/use-capability";
+import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import {
   Popover,
   PopoverContent,
@@ -42,6 +54,13 @@ export default function AssetsTab({ project }: { project: any }) {
   const users = useUserStore((state) => state.users);
   const [noteDraft, setNoteDraft] = useState<string | null>(null);
   const noteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [newName, setNewName] = useState("");
+  const canCreateShot = useCapability("create_tasks");
+  const canCreateAsset = useCapability("manage_pipeline");
+  const createShot = useCreateShot();
+  const createAsset = useCreateAsset();
+  const { toast } = useToast();
 
   const allItems =
     view === "shots"
@@ -101,6 +120,34 @@ export default function AssetsTab({ project }: { project: any }) {
     setList(
       list.includes(value) ? list.filter((v) => v !== value) : [...list, value],
     );
+  };
+
+  const canAddCurrentView = view === "shots" ? canCreateShot : canCreateAsset;
+  const isCreating =
+    view === "shots" ? createShot.isPending : createAsset.isPending;
+
+  const handleCreate = async () => {
+    const name = newName.trim();
+    if (!name) return;
+    try {
+      if (view === "shots") {
+        await createShot.mutateAsync({ projectId: project.id, name });
+      } else {
+        await createAsset.mutateAsync({ projectId: project.id, name });
+      }
+      toast({
+        title: view === "shots" ? "Shot added" : "Asset added",
+        description: `"${name}" was added to this project.`,
+      });
+      setNewName("");
+      setAddOpen(false);
+    } catch (err: any) {
+      toast({
+        title: "Couldn't add " + (view === "shots" ? "shot" : "asset"),
+        description: err?.message ?? "Something went wrong.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -239,6 +286,23 @@ export default function AssetsTab({ project }: { project: any }) {
                 </div>
               </PopoverContent>
             </Popover>
+            {canAddCurrentView && (
+              <Button
+                size="sm"
+                className="h-9 gap-1.5"
+                onClick={() => {
+                  setNewName("");
+                  setAddOpen(true);
+                }}
+              >
+                {view === "shots" ? (
+                  <FileVideo className="w-4 h-4" />
+                ) : (
+                  <Box className="w-4 h-4" />
+                )}
+                Add {view === "shots" ? "Shot" : "Asset"}
+              </Button>
+            )}
           </div>
         </div>
 
@@ -424,6 +488,42 @@ export default function AssetsTab({ project }: { project: any }) {
           </ScrollArea>
         </div>
       )}
+
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Add {view === "shots" ? "Shot" : "Asset"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label htmlFor="new-item-name">Name</Label>
+            <Input
+              id="new-item-name"
+              autoFocus
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder={view === "shots" ? "seq-010-sh-020" : "hero_character"}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && newName.trim() && !isCreating) {
+                  handleCreate();
+                }
+              }}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreate}
+              disabled={!newName.trim() || isCreating}
+            >
+              {isCreating ? "Adding..." : "Add"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

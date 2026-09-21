@@ -12,7 +12,7 @@ import { postAutoStandupUpdate } from "./standup-updates";
 import { cacheGet, cacheSet, cacheDel, cacheKeys } from "../lib/cache";
 import { sendPasswordResetEmail } from "../lib/mailer";
 import { isSessionStillValid } from "../middleware/tenant";
-import { openShift, closeShift } from "../lib/attendance";
+import { openShift, closeShift, sweepStaleShifts } from "../lib/attendance";
 import {
   rateLimitByIp,
   checkRateLimit,
@@ -29,12 +29,8 @@ export const authRouter = Router();
 // studio treats logging into the portal as the start of the working day.
 // admin is an account-administration role that keeps no timesheet, and
 // `client` is an external reviewer, so neither is ever punched in.
-const AUTO_CLOCK_IN_ROLES = ["artist", "lead", "production_head", "producer"];
-
-// Self-registration can only ever mint the least-privileged real role.
-// Anything above artist is granted deliberately, by someone holding
-// manage_members (PATCH /users/:id) or by an invite that names the role.
-const SELF_REGISTER_ROLE = "artist";
+// Exported so the manual punch routes in users.ts apply the same rule.
+export const AUTO_CLOCK_IN_ROLES = ["artist", "lead", "production_head", "producer"];
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -100,16 +96,6 @@ const REGISTER_RULE = { name: "register:ip", limit: 100, windowSeconds: 3600 };
 const REGISTER_OPTIONS_RULE = {
   name: "register:options",
   limit: 600,
-  windowSeconds: 3600,
-};
-
-// The bucket that actually constrains abuse, now that the IP ceiling has to
-// be loose enough for a shared address. Keyed per email, so hammering one
-// address is bounded no matter where the requests come from, while a room
-// full of new hires signing themselves up never collides.
-const REGISTER_EMAIL_RULE = {
-  name: "register:email",
-  limit: 5,
   windowSeconds: 3600,
 };
 
@@ -230,6 +216,12 @@ authRouter.post("/login", async (req, res) => {
       } catch (err) {
         req.log.error(err, "Failed to open attendance shift on login");
       }
+      // Close out anyone who never signed out. Fire-and-forget so it cannot
+      // slow a sign-in, and run here as well as on attendance reads because
+      // the header's running clock is visible to everyone while the
+      // attendance screen is visited by almost nobody -- without this the
+      // widget kept counting for days.
+      void sweepStaleShifts(user.tenantId).catch(() => {});
     }
 
     const token = signSession(sessionPayload);
@@ -350,191 +342,26 @@ authRouter.post("/logout", async (req, res) => {
 // contributes nothing but name/email/password -- tenant, role, department and
 // capabilities are all resolved server-side, so no registrant can hand
 // themselves a privileged role or cross into another studio's tenant.
-// Populates the registration form's department and role pickers. Necessarily
-// unauthenticated -- the person calling it has no account yet. It exposes only
-// names and identifiers of departments and roles, never any person or
-// production data. It carries its own generous budget rather than sharing
-// registration's: see REGISTER_OPTIONS_RULE.
-authRouter.get("/registration-options", rateLimitByIp(REGISTER_OPTIONS_RULE), async (req, res) => {
-  try {
-    const registrationSlug = process.env.REGISTRATION_TENANT_SLUG;
-    const tenants = registrationSlug
-      ? await prisma.tenant.findMany({ where: { slug: registrationSlug, deletedAt: null }, take: 2 })
-      : await prisma.tenant.findMany({ where: { deletedAt: null }, take: 2 });
-    if (tenants.length !== 1) return res.json({ departments: [], roles: [] });
-
-    const [departments, roles] = await Promise.all([
-      prisma.department.findMany({
-        where: { tenantId: tenants[0].id },
-        select: { id: true, name: true },
-        orderBy: { name: "asc" },
-      }),
-      prisma.tenantRole.findMany({
-        where: { tenantId: tenants[0].id },
-        select: { name: true },
-      }),
-    ]);
-
-    // The client role is an external-reviewer construct reached through an
-    // access link, never through self-registration, so offering it here would
-    // only produce accounts that cannot be used.
-    return res.json({
-      departments,
-      roles: roles.map((r) => r.name).filter((n) => n !== "client"),
-    });
-  } catch (err) {
-    req.log.error(err, "Failed to load registration options");
-    return res.status(500).json({ error: "Internal server error" });
-  }
+// Self-registration is closed studio-wide -- see POST /register below. Kept
+// as a 200 with empty lists rather than a 403 error: it's a lookup a
+// long-gone register page would poll, not an action, and an empty result is
+// the honest answer to "what's available to register into" (nothing).
+authRouter.get("/registration-options", rateLimitByIp(REGISTER_OPTIONS_RULE), async (_req, res) => {
+  return res.json({ departments: [], roles: [] });
 });
 
-authRouter.post("/register", rateLimitByIp(REGISTER_RULE), async (req, res) => {
-  // One response shape for "created" and "email already taken" alike:
-  // a differing status or message here would turn this endpoint into an
-  // account-enumeration oracle for the whole studio roster.
-  const genericSuccess = {
-    message:
-      "Registration received. If this email isn't already registered, you can now sign in.",
-  };
-
-  try {
-    const { name, email, password, departmentId, requestedRole } = req.body;
-    if (
-      typeof name !== "string" ||
-      !name.trim() ||
-      typeof email !== "string" ||
-      !email.trim() ||
-      typeof password !== "string"
-    ) {
-      return res
-        .status(400)
-        .json({ error: "name, email, and password are required" });
-    }
-    if (password.length < MIN_PASSWORD_LENGTH) {
-      return res.status(400).json({
-        error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters`,
-      });
-    }
-
-    const trimmedEmail = email.trim();
-
-    // Per-address ceiling. This is the bucket doing the real work now that
-    // the IP one has to stay loose for a studio behind a single NAT address
-    // -- and it rejects identically whether or not the account exists, so it
-    // stays consistent with the generic success response below rather than
-    // becoming an enumeration oracle of its own.
-    const emailKey = trimmedEmail.toLowerCase();
-    const emailBudget = await checkRateLimit(REGISTER_EMAIL_RULE, emailKey);
-    if (!emailBudget.allowed) {
-      req.log.warn({ rule: REGISTER_EMAIL_RULE.name }, "registration rate limit exceeded");
-      return rejectRateLimited(res, emailBudget.retryAfter);
-    }
-
-    // Which studio a self-registration lands in can't come from the request.
-    // A single-tenant deployment (the common case) resolves unambiguously;
-    // anything else has to name the tenant in the environment rather than
-    // guess.
-    const registrationSlug = process.env.REGISTRATION_TENANT_SLUG;
-    const tenants = registrationSlug
-      ? await prisma.tenant.findMany({
-          where: { slug: registrationSlug, deletedAt: null },
-          take: 2,
-        })
-      : await prisma.tenant.findMany({ where: { deletedAt: null }, take: 2 });
-    if (tenants.length !== 1) {
-      req.log.error(
-        { matched: tenants.length },
-        "Registration could not resolve a single tenant; set REGISTRATION_TENANT_SLUG",
-      );
-      return res
-        .status(503)
-        .json({ error: "Self-registration is not available on this instance" });
-    }
-    const tenant = tenants[0];
-
-    const role = await prisma.tenantRole.findFirst({
-      where: { tenantId: tenant.id, name: SELF_REGISTER_ROLE },
-      select: { id: true },
-    });
-    if (!role) {
-      req.log.error(
-        { tenantId: tenant.id },
-        `Registration blocked: tenant has no "${SELF_REGISTER_ROLE}" role`,
-      );
-      return res
-        .status(503)
-        .json({ error: "Self-registration is not available on this instance" });
-    }
-
-    // Case-insensitive on purpose, even though the stored value keeps the
-    // casing the registrant typed (matching invites.ts and POST /users):
-    // users.email is uniquely indexed on the exact string, so a
-    // case-sensitive check here would happily create a second account for
-    // what is, to every human involved, the same address.
-    const existing = await prisma.user.findFirst({
-      where: { email: { equals: trimmedEmail, mode: "insensitive" } },
-      select: { id: true },
-    });
-    if (existing) return res.status(201).json(genericSuccess);
-
-    // Department is safe to self-select: it scopes what a person sees, it
-    // grants no authority, and without it a new hire's lead cannot even find
-    // them to assign work. Validated against this tenant so the field cannot
-    // be used to point at another studio's department.
-    let resolvedDepartmentId: string | null = null;
-    if (typeof departmentId === "string" && departmentId.trim()) {
-      const dept = await prisma.department.findFirst({
-        where: { id: departmentId, tenantId: tenant.id },
-        select: { id: true },
-      });
-      if (!dept) return res.status(400).json({ error: "Unknown department" });
-      resolvedDepartmentId = dept.id;
-    }
-
-    // Role is NOT safe to self-select. Anyone who can reach this page could
-    // otherwise grant themselves studio-wide authority. The account is always
-    // created at SELF_REGISTER_ROLE; a request for anything more authoritative
-    // is recorded for an administrator to approve deliberately.
-    let recordedRequest: string | null = null;
-    if (typeof requestedRole === "string" && requestedRole.trim()) {
-      const wanted = requestedRole.trim();
-      if (wanted !== SELF_REGISTER_ROLE) {
-        const wantedRole = await prisma.tenantRole.findFirst({
-          where: { tenantId: tenant.id, name: wanted },
-          select: { name: true },
-        });
-        // An unrecognised role name is recorded as nothing rather than
-        // rejected: the registration itself is still valid, and refusing it
-        // would turn this into a probe for which roles exist.
-        if (wantedRole) recordedRequest = wantedRole.name;
-      }
-    }
-
-    await prisma.user.create({
-      data: {
-        id: crypto.randomUUID(),
-        tenantId: tenant.id,
-        roleId: role.id,
-        departmentId: resolvedDepartmentId,
-        email: trimmedEmail,
-        hashedPassword: await hashPassword(password),
-        name: name.trim(),
-        status: "active",
-        requestedRole: recordedRequest,
-      },
-    });
-
-    return res.status(201).json(genericSuccess);
-  } catch (err) {
-    // Two registrations for the same address racing each other land on
-    // users_email_unique -- the loser still has to get the same response the
-    // "already taken" branch above returns, not a 500 that reveals the race.
-    if ((err as { code?: string }).code === "P2002") {
-      return res.status(201).json(genericSuccess);
-    }
-    req.log.error(err, "Failed to register user");
-    return res.status(500).json({ error: "Internal server error" });
-  }
+// Self-registration is closed studio-wide -- only an admin creates accounts
+// now (Admin Panel's Create Account / Invite Member). This used to be a full
+// self-service signup (rate-limited, tenant-resolving, role-request-on-file)
+// -- removed rather than left dead behind an early return, since dead code
+// after an unconditional return also breaks this file's own null-narrowing
+// checks for no benefit. Re-add from git history if self-registration is
+// ever reopened.
+authRouter.post("/register", rateLimitByIp(REGISTER_RULE), async (_req, res) => {
+  return res.status(403).json({
+    error:
+      "Self-registration is disabled. Ask a studio administrator to create your account or send you an invite.",
+  });
 });
 
 // Marks the first-run walkthrough as seen. Deliberately idempotent and

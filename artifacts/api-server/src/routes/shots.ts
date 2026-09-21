@@ -4,6 +4,7 @@ import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability } from "../middleware/rbac";
 import { recordAuditLog } from "../lib/auditLog";
 import { getClientScope } from "../lib/clientScope";
+import { createNotification, findProductionManagers } from "./notifications";
 import {
   getVisibilityScope,
   visibleEntityIds,
@@ -50,10 +51,12 @@ shotsRouter.get("/", async (req, res) => {
 
     // An employee session is additionally narrowed to the shots their role
     // may see. A shot carries no assignee the pipeline actually fills in, so
-    // "my shots" means the shots the caller holds tasks on. Skipped for a
-    // client-access session, which is already bounded by clientScope above
-    // and has no employee role to scope by.
-    const visibleShotIds = req.clientAccessLinkId
+    // "my shots" means the shots the caller holds tasks on. Skipped for any
+    // client session -- a redeemed access link or a signed-in client account
+    // -- which is already bounded by clientScope above and has no employee
+    // role to scope by (checking clientScope itself, not req.clientAccessLinkId,
+    // is what makes this work for a real client login too).
+    const visibleShotIds = clientScope
       ? null
       : await visibleEntityIds(tenantId, await getVisibilityScope(req), "shot");
 
@@ -212,10 +215,6 @@ shotsRouter.put("/:id", requireCapability("edit_tasks"), async (req, res) => {
 // they already have capability for.
 shotsRouter.put("/:id/client-review", async (req, res) => {
   try {
-    if (!req.clientAccessLinkId) {
-      return res.status(403).json({ error: "Forbidden: client-access sessions only" });
-    }
-
     const tenantId = req.tenantId!;
     const shotId = req.params.id as string;
     const { status } = req.body;
@@ -228,6 +227,13 @@ shotsRouter.put("/:id/client-review", async (req, res) => {
     const existing = await prisma.shot.findFirst({ where: { tenantId, id: shotId } });
     if (!existing) return res.status(404).json({ error: "Not found" });
 
+    // Accepts a redeemed client-access link OR a real signed-in `client`
+    // account with a ClientProjectAccess grant -- getClientScope resolves
+    // both the same way now. An internal employee session (no access link,
+    // no client role) always resolves clientScope to null and is refused by
+    // the inScope check below, same as the old !req.clientAccessLinkId gate
+    // this replaces -- a signed-in client's approval used to be rejected
+    // here outright, which is the actual bug this fixes.
     const clientScope = await getClientScope(req);
     const inScope =
       !!clientScope &&
@@ -245,6 +251,59 @@ shotsRouter.put("/:id/client-review", async (req, res) => {
       },
     });
     const updated = await prisma.shot.findFirstOrThrow({ where: { tenantId, id: shotId } });
+
+    // Nothing told anyone internal a client had actually acted -- the shot's
+    // status changed, but that's indistinguishable from any other status
+    // change unless you already knew to look. Notify the artist holding the
+    // shot, that department's lead(s), and the studio's production
+    // manager(s) -- the same three-way fan-out tasks.ts already uses for
+    // the internal submit/approve chain.
+    const assignee = updated.assigneeId
+      ? await prisma.user.findFirst({
+          where: { id: updated.assigneeId, tenantId },
+          select: { id: true, departmentId: true },
+        })
+      : null;
+    const departmentName = assignee?.departmentId
+      ? (
+          await prisma.department.findFirst({
+            where: { id: assignee.departmentId, tenantId },
+            select: { name: true },
+          })
+        )?.name ?? null
+      : null;
+
+    const verb = status === "approved" ? "approved" : "requested changes on";
+    const notifyRecipients = new Set<string>();
+    if (assignee) notifyRecipients.add(assignee.id);
+    if (departmentName) {
+      const leads = await prisma.user.findMany({
+        where: { tenantId, department: { name: departmentName }, role: { name: "lead" } },
+        select: { id: true },
+      });
+      leads.forEach((l) => notifyRecipients.add(l.id));
+    }
+    const pms = await findProductionManagers(tenantId, departmentName);
+    pms.forEach((pm) => notifyRecipients.add(pm.id));
+
+    await Promise.all(
+      [...notifyRecipients].map((recipientUserId) =>
+        createNotification({
+          tenantId,
+          recipientUserId,
+          category: status === "approved" ? "review" : "workflow",
+          title: `Client ${verb} "${updated.name}"`,
+          description:
+            status === "approved"
+              ? `The client approved "${updated.name}".`
+              : `The client requested changes on "${updated.name}" -- check their notes for what's needed.`,
+          entityType: "shot",
+          entityId: updated.id,
+          actionUrl: `/shots/${updated.id}`,
+        }),
+      ),
+    );
+
     return res.json(updated);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });

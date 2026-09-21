@@ -9,6 +9,7 @@ import { useDepartmentStore } from "@/store/departments";
 import { useProjectStore } from "@/store/projects";
 import { useAuthStore } from "@/store/auth";
 import { useStandupUpdates, usePostStandupUpdate } from "@/hooks/useStandups";
+import { useUploadFile } from "@/hooks/useUploads";
 import {
   useStandupPlaylist,
   useAddToStandupPlaylist,
@@ -19,6 +20,10 @@ import {
   useToggleStandupApproval,
 } from "@/hooks/useStandupBoard";
 import { useBroadcasts, toBroadcast } from "@/hooks/useBroadcasts";
+import {
+  useTimesheetApprovals,
+  useApproveTimesheets,
+} from "@/hooks/useTimesheetApprovals";
 import { useUIStore } from "@/store/ui";
 import { useIsLeadership } from "@/hooks/use-capability";
 import {
@@ -312,6 +317,7 @@ export default function DailyStandup() {
   const addDailyLog = useAddDailyLog();
   const { data: standupUpdates = [] } = useStandupUpdates();
   const postStandupUpdate = usePostStandupUpdate();
+  const uploadFile = useUploadFile();
   // One shared, server-side dailies queue per tenant — everyone in the room
   // sees the same list in the same order.
   const { data: playlistItems = [] } = useStandupPlaylist();
@@ -330,7 +336,15 @@ export default function DailyStandup() {
   const isLeadership = useIsLeadership();
   const [selectedDeptId, setSelectedDeptId] = useState<string>("ALL");
   const [sessionActive, setSessionActive] = useState(false);
-  const [approvedUsers, setApprovedUsers] = useState<Set<string>>(new Set());
+  const viewerRole = useAuthStore((s) => s.currentUser?.role);
+  const { data: timesheetApprovals } = useTimesheetApprovals(
+    viewerRole === "production_head" || viewerRole === "producer",
+  );
+  const approveTimesheets = useApproveTimesheets();
+  const approvedUsers = useMemo(
+    () => new Set((timesheetApprovals?.approvals ?? []).map((a) => a.userId)),
+    [timesheetApprovals],
+  );
   const [updateText, setUpdateText] = useState("");
   const [updateHours, setUpdateHours] = useState("8");
   const [postTaskId, setPostTaskId] = useState("");
@@ -535,14 +549,28 @@ export default function DailyStandup() {
     if (!updateText.trim()) return;
     setIsPosting(true);
     try {
+      // Files were staged here and then just discarded on post -- never
+      // uploaded at all. Each one now goes through the same generic
+      // /uploads endpoint a task attachment uses, and the resulting URLs
+      // are what actually get attached to the update.
+      const attachmentUrls: string[] = [];
+      for (const file of attachedFiles) {
+        const uploaded = await uploadFile.mutateAsync(file);
+        attachmentUrls.push(uploaded.url);
+      }
+
       await postStandupUpdate.mutateAsync({
         taskId: postTaskId || myTasks[0]?.id || null,
         text: updateText,
         hours: Number(updateHours) || 0,
+        attachmentUrls,
       });
       toast({
         title: "Update Posted!",
-        description: "Your daily progress has been shared.",
+        description:
+          attachmentUrls.length > 0
+            ? `Your daily progress and ${attachmentUrls.length} file${attachmentUrls.length === 1 ? "" : "s"} have been shared.`
+            : "Your daily progress has been shared.",
       });
       setUpdateText("");
       setAttachedFiles([]);
@@ -1312,6 +1340,21 @@ export default function DailyStandup() {
                           <p className="text-sm text-foreground/90 whitespace-pre-wrap">
                             {update.text}
                           </p>
+                          {update.attachmentUrls?.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 mt-2">
+                              {update.attachmentUrls.map((url: string, i: number) => (
+                                <a
+                                  key={url}
+                                  href={url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-xs px-2 py-1 rounded bg-muted hover:bg-muted/70 text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+                                >
+                                  <Paperclip className="w-3 h-3" /> Attachment {i + 1}
+                                </a>
+                              ))}
+                            </div>
+                          )}
                           <Button
                             variant="ghost"
                             size="sm"
@@ -1377,14 +1420,28 @@ export default function DailyStandup() {
                   <Button
                     size="sm"
                     className="bg-amber-600 hover:bg-amber-700 text-white"
-                    onClick={() => {
-                      const allMemberIds = new Set(team.map((m) => m.id));
-                      setApprovedUsers(allMemberIds);
-                      toast({
-                        title: "Timesheets Approved",
-                        description: `Approved hours for ${team.length} employees.`,
-                      });
-                    }}
+                    disabled={approveTimesheets.isPending || team.length === 0}
+                    onClick={() =>
+                      approveTimesheets.mutate(
+                        team.map((m) => m.id),
+                        {
+                          onSuccess: ({ approved }) =>
+                            toast({
+                              title: "Timesheets Approved",
+                              description: `Approved today's hours for ${approved} ${approved === 1 ? "person" : "people"}.`,
+                            }),
+                          onError: (err) =>
+                            toast({
+                              title: "Timesheets weren't approved",
+                              description:
+                                err instanceof Error
+                                  ? err.message
+                                  : "Please try again.",
+                              variant: "destructive",
+                            }),
+                        },
+                      )
+                    }
                   >
                     Approve Timesheets
                   </Button>

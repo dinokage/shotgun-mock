@@ -99,13 +99,15 @@ export default function People() {
         return false; // Clients only see their studio points of contact, not the internal roster
       }
 
-      // 2. Apply UI search/filters
-      if (
-        search &&
-        !u.name.toLowerCase().includes(search.toLowerCase()) &&
-        !u.title.toLowerCase().includes(search.toLowerCase())
-      )
-        return false;
+      // 2. Apply UI search/filters. The box promises "name, role", so the
+      // role's display label ("Production Head") is searchable too, not just
+      // the free-text job title.
+      if (search) {
+        const q = search.toLowerCase();
+        const haystack = [u.name, u.title, ROLE_LABELS[u.role] ?? u.role];
+        if (!haystack.some((field) => field?.toLowerCase().includes(q)))
+          return false;
+      }
       if (deptFilter !== "all" && u.departmentId !== deptFilter) return false;
       return true;
     });

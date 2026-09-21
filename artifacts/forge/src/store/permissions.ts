@@ -44,7 +44,8 @@ export const CAPABILITIES: Capability[] = [
   {
     id: "delete_tasks",
     label: "Delete Tasks",
-    description: "Permanently remove tasks.",
+    description:
+      "Permanently remove tasks. Not enforced yet — there is no task-deletion feature in the app for this to gate.",
     category: "Tasks",
   },
   {
@@ -86,7 +87,8 @@ export const CAPABILITIES: Capability[] = [
   {
     id: "edit_financials",
     label: "Edit Budgets",
-    description: "Modify budgets, bids, and cost allocations.",
+    description:
+      "Modify budgets, bids, and cost allocations. Not enforced yet — there is no budget-editing feature in the app for this to gate.",
     category: "Financials",
   },
   {
@@ -146,9 +148,19 @@ export const LEADERSHIP_ROLES: Role[] = [
 
 // Finer-grained subsets of LEADERSHIP_ROLES for the handful of places that
 // need to distinguish "studio-wide" leadership (can act across every
-// department) from "department-scoped" leadership (producer/lead, act
-// within their own department only) — e.g. who a task can be assigned to,
-// or which dashboard variant renders.
-export const STUDIO_LEADERSHIP_ROLES: Role[] = ["admin", "production_head"];
-export const DEPARTMENT_LEADERSHIP_ROLES: Role[] = ["producer", "lead"];
+// department) from "department-scoped" leadership (the lead, acting within
+// their own department only) — e.g. who a task can be assigned to, or which
+// dashboard variant renders.
+//
+// Must match STUDIO_WIDE_ROLES in api-server/src/lib/visibilityScope.ts. The
+// producer is the single studio-wide final reviewer: the API already sends
+// them every department's data, and review.tsx already keeps them out of the
+// department lead gate. Listing them as department leadership here narrowed
+// that studio-wide data back down to one department in the UI.
+export const STUDIO_LEADERSHIP_ROLES: Role[] = [
+  "admin",
+  "production_head",
+  "producer",
+];
+export const DEPARTMENT_LEADERSHIP_ROLES: Role[] = ["lead"];
 

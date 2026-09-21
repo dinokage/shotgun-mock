@@ -37,6 +37,31 @@ export async function denyClientAccess(
   next();
 }
 
+/**
+ * Passes when the caller's role holds at least one of `capabilityIds`. For
+ * read access that legitimately belongs to more than one kind of role -- e.g.
+ * the admin monitoring deliveries it doesn't manage.
+ */
+export function requireAnyCapability(...capabilityIds: string[]) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    if (!req.roleId) {
+      res.status(403).json({ error: "Forbidden: Missing role" });
+      return;
+    }
+
+    const grant = await prisma.tenantRoleCapability.findFirst({
+      where: { roleId: req.roleId, capabilityId: { in: capabilityIds } },
+    });
+
+    if (!grant) {
+      res.status(403).json({ error: "Forbidden: Missing capability" });
+      return;
+    }
+
+    next();
+  };
+}
+
 export function requireCapability(capabilityId: string) {
   return async (req: Request, res: Response, next: NextFunction) => {
     if (!req.roleId) {
