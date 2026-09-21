@@ -13,9 +13,9 @@ projectsRouter.use(tenantAuthMiddleware);
 projectsRouter.get("/", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
-    // A client-access session sees only the project it was granted, not the
-    // full tenant-wide list -- getClientScope returns null for every other
-    // role, so this is a no-op for them.
+    // A client-access session sees only the project(s) it was granted, not
+    // the full tenant-wide list -- getClientScope returns null for every
+    // other role, so this is a no-op for them.
     const clientScope = await getClientScope(req);
     if (req.clientAccessLinkId && !clientScope) return res.json([]);
 
@@ -35,7 +35,11 @@ projectsRouter.get("/", async (req, res) => {
       where: {
         tenantId,
         ...(scopedProjectIds ? { id: { in: scopedProjectIds } } : {}),
-        ...(clientScope ? { id: clientScope.projectId } : {}),
+        // The client's whole project list, not just the "active" one --
+        // this is the one place a client should see every project they're
+        // granted (the portal's top-level Projects picker). Every other
+        // route still filters by clientScope.projectId (the active one).
+        ...(clientScope ? { id: { in: clientScope.projectIds } } : {}),
       },
     });
     return res.json(projects);
@@ -52,19 +56,21 @@ projectsRouter.get("/:id", async (req, res) => {
     const tenantId = req.tenantId!;
     const clientScope = await getClientScope(req);
     // Any client-type caller (a redeemed access link, or a real signed-in
-    // `client` account) must have a resolved scope that matches this exact
+    // `client` account) must have a resolved scope that includes this exact
     // project -- checked against BOTH signals, not just clientAccessLinkId,
     // because a signed-in client with a grant for a DIFFERENT project would
     // otherwise skip this block entirely (clientScope truthy, but for the
     // wrong project) and fall through to the scopedProjectIds check below,
     // which is deliberately skipped whenever clientScope is set (see GET /
     // above) -- leaving nothing to stop them reading an arbitrary project by
-    // id. An ungranted signed-in client (clientScope null) is unaffected by
-    // this block and is still correctly denied by the scopedProjectIds
-    // fallback, since a client never holds a task and so is never "visible"
-    // there either.
+    // id. Checked against the full projectIds list, not just the "active"
+    // projectId, so a client can open any of their granted projects by id --
+    // not only whichever one happens to be active. An ungranted signed-in
+    // client (clientScope null) is unaffected by this block and is still
+    // correctly denied by the scopedProjectIds fallback, since a client
+    // never holds a task and so is never "visible" there either.
     const isClientCaller = !!req.clientAccessLinkId || clientScope !== null;
-    if (isClientCaller && (!clientScope || clientScope.projectId !== req.params.id)) {
+    if (isClientCaller && (!clientScope || !clientScope.projectIds.includes(req.params.id))) {
       return res.status(404).json({ error: "Not found" });
     }
     // Same scope as GET / above -- leaving the by-id read tenant-wide would

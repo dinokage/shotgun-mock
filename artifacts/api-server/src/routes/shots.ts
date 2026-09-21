@@ -237,7 +237,11 @@ shotsRouter.put("/:id/client-review", async (req, res) => {
     const clientScope = await getClientScope(req);
     const inScope =
       !!clientScope &&
-      existing.projectId === clientScope.projectId &&
+      // Membership in the full grant list, not equality against
+      // clientScope.projectId -- a multi-project client reviewing a shot in
+      // a project other than whichever one is currently "active" must still
+      // be allowed to approve it.
+      clientScope.projectIds.includes(existing.projectId) &&
       (!clientScope.episodeId || existing.episodeId === clientScope.episodeId) &&
       (!clientScope.shotId || existing.id === clientScope.shotId);
     if (!inScope) return res.status(403).json({ error: "Forbidden" });

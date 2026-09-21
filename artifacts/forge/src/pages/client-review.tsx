@@ -62,7 +62,9 @@ import {
 } from "@/hooks/useReviews";
 import { useEpisodes } from "@/hooks/useEpisodes";
 import { useSequences } from "@/hooks/useSequences";
-import { Film, Layers, ChevronRight } from "lucide-react";
+import { useShots as useShotsQuery, type ShotDTO } from "@/hooks/useShots";
+import { hashString } from "@/lib/seededMock";
+import { Film, Layers, ChevronRight, FolderKanban } from "lucide-react";
 
 const COLORS = [
   "#10b981",
@@ -119,6 +121,15 @@ export default function ClientReview() {
   // Otherwise, everyone (even managers testing the portal) must enter the access code.
   const isExplicitClient = currentUser?.role === "client";
 
+  // A signed-in client account can be granted more than one project (a
+  // redeemed access-code link cannot -- it's minted for exactly one
+  // project/episode/shot by nature, so it keeps going straight into that
+  // single scope, unaffected by any of this). This is the new top level:
+  // "which project" before "which episode."
+  const [activeReviewProjectId, setActiveReviewProjectId] = useState<
+    string | null
+  >(null);
+
   const [activeReviewId, setActiveReviewId] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [frame, setFrame] = useState(1);
@@ -142,17 +153,42 @@ export default function ClientReview() {
 
   // Pending client reviews — sourced from the persisted shot store (not the
   // static SHOTS import) so an Approve/Request Changes decision below is
-  // reflected here immediately, and stays reflected across reloads.
+  // reflected here immediately, and stays reflected across reloads. This is
+  // still the access-code path's data source: a redeemed link is always
+  // scoped to exactly one project/episode/shot, so it never needs the
+  // project-picker below and keeps its original behavior untouched.
   const shots = useShotStore((s) => s.shots);
   const updateReviewStatus = useShotStore((s) => s.updateReviewStatus);
+
+  // A signed-in client's shots for whichever project is currently active --
+  // fetched directly (not from the global store, which only ever holds
+  // whichever single project got hydrated at login) so switching projects
+  // in the picker below actually reflects that project's real shots.
+  // ShotDTO has no thumbnailSeed (a mock-only concept) -- derive one the
+  // same deterministic way auth.ts's login hydration already does for
+  // VERSIONS, so placeholder art still renders when a shot has no matching
+  // Version row.
+  const { data: activeProjectShotsRaw = [] } = useShotsQuery(
+    isExplicitClient && activeReviewProjectId ? activeReviewProjectId : undefined,
+  );
+  const activeProjectShots = useMemo(
+    () =>
+      activeProjectShotsRaw.map((s: ShotDTO) => ({
+        ...s,
+        thumbnailSeed: hashString(s.id),
+      })),
+    [activeProjectShotsRaw],
+  );
+
   // Scoped to the redeemed access link's grant (see clientScope above), most
   // specific field first — a versionId grant limits to that single shot's
   // delivered version, an episodeId grant to that episode's shots, a
   // projectId grant to that project's shots. clientScope is null for the
   // legacy bypass paths, which keep seeing every pending review as before.
-  const pendingReviews = shots
+  const pendingReviews = (isExplicitClient ? activeProjectShots : shots)
     .filter((s) => s.status === "client-review")
     .filter((s) => {
+      if (isExplicitClient) return true; // already scoped by the project fetch above
       if (!clientScope) return true;
       if (clientScope.versionId) {
         const scopedVersion = versions.find(
@@ -165,26 +201,34 @@ export default function ClientReview() {
       return true;
     });
 
-  // Dashboard drill-down: Episode -> Sequence -> Shot, same structure as the
-  // internal app's own Episodes tab (project-detail/EpisodesTab.tsx) --
-  // pendingReviews above used to render as one flat grid, which stopped
-  // being readable once a client had more than a handful of shots pending
-  // across a real episode/sequence structure.
+  // Dashboard drill-down: Project -> Episode -> Sequence -> Shot, same
+  // structure as the internal app's own Episodes tab
+  // (project-detail/EpisodesTab.tsx). The "projects" level only applies to a
+  // signed-in client (who may hold more than one grant) -- an access-code
+  // session is always scoped to a single project already, so it skips
+  // straight to "episodes" exactly as before.
   const [reviewLevel, setReviewLevel] = useState<
-    "episodes" | "sequences" | "shots"
-  >("episodes");
+    "projects" | "episodes" | "sequences" | "shots"
+  >(isExplicitClient ? "projects" : "episodes");
   const [activeReviewEpisodeId, setActiveReviewEpisodeId] = useState<
     string | null
   >(null);
   const [activeReviewSequenceId, setActiveReviewSequenceId] = useState<
     string | null
   >(null);
-  // Every pendingReviews shot belongs to the same client-granted project, so
-  // any one of them names it -- falls back to the projects store for the
-  // (rare) all-caught-up case where pendingReviews is empty.
-  const reviewProjectId = pendingReviews[0]?.projectId ?? projects[0]?.id;
+  // A signed-in client's active project comes from the picker above; an
+  // access-code session still derives it the old way -- every pendingReviews
+  // shot belongs to the same client-granted project, so any one of them
+  // names it, falling back to the projects store for the (rare)
+  // all-caught-up case where pendingReviews is empty.
+  const reviewProjectId = isExplicitClient
+    ? (activeReviewProjectId ?? undefined)
+    : (pendingReviews[0]?.projectId ?? projects[0]?.id);
   const { data: reviewEpisodes = [] } = useEpisodes(reviewProjectId);
   const { data: reviewSequences = [] } = useSequences(reviewProjectId);
+  const activeReviewProject = projects.find(
+    (p) => p.id === activeReviewProjectId,
+  );
   const activeReviewEpisode = reviewEpisodes.find(
     (e) => e.id === activeReviewEpisodeId,
   );
@@ -598,7 +642,9 @@ export default function ClientReview() {
           <div className="flex items-center justify-between gap-4">
             <div>
               <h1 className="text-3xl font-bold tracking-tight">
-                {reviewLevel === "episodes" ? (
+                {reviewLevel === "projects" ? (
+                  "Your Projects"
+                ) : reviewLevel === "episodes" && !isExplicitClient ? (
                   "Pending Reviews"
                 ) : (
                   <span className="flex items-center gap-2 text-2xl">
@@ -608,15 +654,21 @@ export default function ClientReview() {
                         if (reviewLevel === "shots") {
                           setReviewLevel("sequences");
                           setActiveReviewSequenceId(null);
-                        } else {
+                        } else if (reviewLevel === "sequences") {
                           setReviewLevel("episodes");
+                          setActiveReviewEpisodeId(null);
+                        } else if (isExplicitClient) {
+                          setReviewLevel("projects");
+                          setActiveReviewProjectId(null);
                           setActiveReviewEpisodeId(null);
                         }
                       }}
                     >
                       <ChevronLeft className="w-6 h-6" />
                     </button>
-                    {activeReviewEpisode?.name}
+                    {reviewLevel === "episodes" && isExplicitClient
+                      ? activeReviewProject?.name
+                      : activeReviewEpisode?.name}
                     {reviewLevel === "shots" && activeReviewSequence && (
                       <>
                         <ChevronRight className="w-4 h-4 text-zinc-600" />
@@ -627,13 +679,51 @@ export default function ClientReview() {
                 )}
               </h1>
               <p className="text-zinc-400 mt-2 text-sm">
-                Please review the following deliveries and provide your feedback
-                or approval.
+                {reviewLevel === "projects"
+                  ? "Select a project to view its pending deliveries."
+                  : "Please review the following deliveries and provide your feedback or approval."}
               </p>
             </div>
           </div>
 
-          {pendingReviews.length === 0 ? (
+          {reviewLevel === "projects" ? (
+            projects.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-64 border border-white/5 rounded-xl bg-zinc-900/20">
+                <FolderKanban className="w-16 h-16 text-zinc-600 mb-4 opacity-50" />
+                <h3 className="text-xl font-semibold">No Projects Yet</h3>
+                <p className="text-zinc-500">
+                  You haven't been granted access to any projects. Contact
+                  your studio producer.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {projects.map((p) => (
+                  <div
+                    key={p.id}
+                    className="group bg-zinc-900 border border-white/10 rounded-xl p-6 hover:border-accent-scope/50 transition-all cursor-pointer flex items-center gap-4"
+                    onClick={() => {
+                      setActiveReviewProjectId(p.id);
+                      setReviewLevel("episodes");
+                    }}
+                  >
+                    <div className="w-12 h-12 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0">
+                      <FolderKanban className="w-6 h-6 text-zinc-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-lg truncate">
+                        {p.name}
+                      </div>
+                      {p.type && (
+                        <div className="text-sm text-zinc-500">{p.type}</div>
+                      )}
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
+                  </div>
+                ))}
+              </div>
+            )
+          ) : pendingReviews.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-64 border border-white/5 rounded-xl bg-zinc-900/20">
               <CheckCircle2 className="w-16 h-16 text-status-green mb-4 opacity-50" />
               <h3 className="text-xl font-semibold">All Caught Up!</h3>

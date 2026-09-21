@@ -2,7 +2,19 @@ import { Request } from "express";
 import { prisma } from "@workspace/db";
 
 export interface ClientScope {
+  /** The project every scoped list route (episodes/sequences/shots/reviews/
+   * versions/broadcasts) filters by -- "the project currently being
+   * browsed." Resolved from a `?projectId=` query param when the caller
+   * passed one AND it's in `projectIds`, else defaults to `projectIds[0]`. */
   projectId: string;
+  /** Every project this session may access at all -- for a signed-in
+   * `client` account, every ClientProjectAccess grant; for a redeemed
+   * ClientAccessLink, always exactly the one project it resolves to (a link
+   * is minted for a single project/episode/shot by nature). Entitlement
+   * checks (may this caller touch project X at all) must check membership
+   * here, not equality against `projectId` -- `projectId` only tracks which
+   * one is currently active for list-scoping. */
+  projectIds: string[];
   episodeId: string | null;
   versionId: string | null;
   shotId: string | null;
@@ -22,11 +34,10 @@ export interface ClientScope {
 // A signed-in `client`-role account (real userId, no clientAccessLinkId) is
 // resolved the same way, via ClientProjectAccess instead of a redeemed link
 // -- this is what makes every route that already calls getClientScope() work
-// for a real client login with no changes of its own. Known simplification:
-// if a client has been granted more than one project, only the most
-// recently granted one is used (ClientScope has room for exactly one
-// project) -- multi-project clients need every scope-consuming route
-// widened to a project list, which is a larger, separate change.
+// for a real client login with no changes of its own. A client granted
+// several projects sees all of them (projectIds); `projectId` picks which
+// one is "active" for this request via `?projectId=`, so every existing
+// list-scoping consumer keeps working unchanged.
 export async function getClientScope(req: Request): Promise<ClientScope | null> {
   if (!req.clientAccessLinkId) {
     if (!req.userId || !req.roleId || !req.tenantId) return null;
@@ -36,12 +47,15 @@ export async function getClientScope(req: Request): Promise<ClientScope | null> 
     });
     if (role?.name !== "client") return null;
 
-    const grant = await prisma.clientProjectAccess.findFirst({
+    const grants = await prisma.clientProjectAccess.findMany({
       where: { tenantId: req.tenantId, userId: req.userId },
       orderBy: { createdAt: "desc" },
     });
-    if (!grant) return null;
-    return { projectId: grant.projectId, episodeId: null, versionId: null, shotId: null };
+    if (grants.length === 0) return null;
+    const projectIds = grants.map((g) => g.projectId);
+    const requested = typeof req.query.projectId === "string" ? req.query.projectId : null;
+    const projectId = requested && projectIds.includes(requested) ? requested : projectIds[0];
+    return { projectId, projectIds, episodeId: null, versionId: null, shotId: null };
   }
 
   const link = await prisma.clientAccessLink.findFirst({
@@ -50,7 +64,13 @@ export async function getClientScope(req: Request): Promise<ClientScope | null> 
   if (!link) return null;
 
   if (link.projectId) {
-    return { projectId: link.projectId, episodeId: null, versionId: null, shotId: null };
+    return {
+      projectId: link.projectId,
+      projectIds: [link.projectId],
+      episodeId: null,
+      versionId: null,
+      shotId: null,
+    };
   }
 
   if (link.episodeId) {
@@ -59,7 +79,13 @@ export async function getClientScope(req: Request): Promise<ClientScope | null> 
       select: { projectId: true },
     });
     if (!episode) return null;
-    return { projectId: episode.projectId, episodeId: link.episodeId, versionId: null, shotId: null };
+    return {
+      projectId: episode.projectId,
+      projectIds: [episode.projectId],
+      episodeId: link.episodeId,
+      versionId: null,
+      shotId: null,
+    };
   }
 
   if (link.versionId) {
@@ -77,6 +103,7 @@ export async function getClientScope(req: Request): Promise<ClientScope | null> 
     if (!shot) return null;
     return {
       projectId: shot.projectId,
+      projectIds: [shot.projectId],
       episodeId: shot.episodeId,
       versionId: link.versionId,
       shotId: version.entityId,
