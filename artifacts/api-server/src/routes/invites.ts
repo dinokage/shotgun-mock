@@ -161,14 +161,35 @@ invitesRouter.post(
 
       const frontendUrl = process.env.FRONTEND_URL || "http://localhost";
       const inviteUrl = `${frontendUrl}/accept-invite?token=${token}`;
-      await sendInviteEmail({
-        to: email,
-        inviteUrl,
-        roleName: role.name,
-        tenantName: tenant?.name ?? "Forge",
-      });
 
-      return res.status(201).json({ email, roleId, expiresAt: new Date(Date.now() + INVITE_TTL_MS) });
+      // The invite row above is already committed and already valid --
+      // whoever holds inviteUrl can accept it regardless of whether this
+      // email ever arrives. Letting an SMTP failure (bad credentials, the
+      // provider down, a transient network blip) throw past that point used
+      // to 500 the whole request, which read as "nothing happened" to the
+      // admin even though a real, usable invite now exists with no way to
+      // reach it except a raw DB read. Surfacing inviteUrl here instead lets
+      // the admin share it manually the moment sending fails.
+      let emailSent = true;
+      try {
+        await sendInviteEmail({
+          to: email,
+          inviteUrl,
+          roleName: role.name,
+          tenantName: tenant?.name ?? "Forge",
+        });
+      } catch (emailErr) {
+        emailSent = false;
+        req.log.error(emailErr, "Invite created but the email failed to send");
+      }
+
+      return res.status(201).json({
+        email,
+        roleId,
+        expiresAt: new Date(Date.now() + INVITE_TTL_MS),
+        emailSent,
+        ...(emailSent ? {} : { inviteUrl }),
+      });
     } catch (err) {
       req.log.error(err, "Failed to create invite");
       return res.status(500).json({ error: "Internal server error" });

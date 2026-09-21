@@ -327,18 +327,37 @@ tasksRouter.put("/:id", async (req, res) => {
     updates.lastStatusUpdate = new Date();
 
     if (updates.status === "review" || updates.status === "lead-review") {
-      // The one gate missing from this chain: every other transition below
-      // checks who may make it, but the very first one -- an artist
-      // submitting their own work -- had no check at all. Anyone holding
-      // edit_tasks (every leadership role) could move ANY artist's task into
-      // review, which is how a Lead/Producer/Production Head ended up seeing
-      // "Submit for Review" on work that was never theirs to submit. Admin
-      // is still exempt, same as every other gate in this chain -- admin
-      // acts as any role in the approval chain by design.
-      if (
-        existing.assignedTo !== req.userId &&
-        (await roleNameForCaller(req.roleId!, tenantId)) !== "admin"
-      ) {
+      // Two different actions both land here, and they need two different
+      // gates. "pm-review"/"producer-review"/"approved" are statuses only
+      // this API itself ever writes (never a tracksheet import, never user
+      // input), so a plain literal check is enough to tell them apart --
+      // no normalization needed. If the task was already PAST the Lead
+      // (a PM/producer bouncing it back for another look -- review.tsx's
+      // "Send Back to Lead"), that's the PM's own authority being
+      // exercised, not a submission, and requiring the artist's own
+      // session here made every "Send Back to Lead" click 403 no matter
+      // who clicked it. Otherwise this really is the first submission --
+      // an artist handing off their own work -- which keeps the original
+      // assignee-only gate: every other transition below checks who may
+      // make it, but this first one used to have no check at all, letting
+      // anyone holding edit_tasks move ANY artist's task into review.
+      // Admin is exempt from both branches, same as every other gate in
+      // this chain -- admin acts as any role in the approval chain by
+      // design.
+      const isSendBackFromLaterStage = ["pm-review", "producer-review", "approved"].includes(
+        existing.status,
+      );
+      const actorRoleName = await roleNameForCaller(req.roleId!, tenantId);
+      if (isSendBackFromLaterStage) {
+        if (
+          actorRoleName !== "admin" &&
+          !(await canApproveAsProdManager(tenantId, req.userId!, req.roleId!, existing.department))
+        ) {
+          return res.status(403).json({
+            error: "Forbidden: only the Production Manager can send this back to the Lead",
+          });
+        }
+      } else if (existing.assignedTo !== req.userId && actorRoleName !== "admin") {
         return res.status(403).json({
           error: "Forbidden: only the artist this task is assigned to can submit it for review",
         });
@@ -700,7 +719,7 @@ tasksRouter.post("/:id/approval-events", async (req, res) => {
         id: req.params.id,
         ...taskScopeWhere(await getVisibilityScope(req)),
       },
-      select: { department: true, assignedTo: true },
+      select: { department: true, assignedTo: true, status: true },
     });
     if (!approvalTask) return res.status(404).json({ error: "Not found" });
 
@@ -743,6 +762,33 @@ tasksRouter.post("/:id/approval-events", async (req, res) => {
         !(await canApproveAsProdManager(tenantId, userId, roleId, approvalTask.department))
       )
         return res.status(403).json({ error: "Forbidden: missing final approval authority" });
+    } else if (action === "changes-requested" || action === "rejected") {
+      // Previously ungated entirely -- any authenticated tenant member could
+      // write a "rejected"/"changes-requested" event onto any task, real
+      // authority or not, falsifying the exact audit trail this endpoint
+      // exists to protect. Sent from two different stages by two different
+      // authorities: a Lead bouncing lead-review work back to the artist, or
+      // a PM sending pm-review work back to the Lead (review.tsx's "Send
+      // Back to Lead"). review.tsx fires this and the PUT /:id status change
+      // as two independent, unordered mutations (its own comment says so),
+      // so by the time this request lands the task's status may already
+      // reflect the OTHER call having completed first -- checking "current
+      // status" here to infer which of the two actions this was would be
+      // racy (confirmed live: a PM's own Send Back 403'd here because the
+      // status had already flipped to lead-review by the time this ran).
+      // Accepting either Lead or PM authority sidesteps the race entirely --
+      // the real boundary (which transition is actually allowed) is already
+      // correctly enforced by PUT /:id itself; this is just the matching
+      // audit entry for whichever one legitimately happened.
+      const authorized =
+        (await roleNameForCaller(roleId, tenantId)) === "admin" ||
+        (await canApproveAsDeptLead(tenantId, userId, roleId, approvalTask.department)) ||
+        (await canApproveAsProdManager(tenantId, userId, roleId, approvalTask.department));
+      if (!authorized) {
+        return res.status(403).json({
+          error: "Forbidden: missing authority to send this back",
+        });
+      }
     }
 
     const byRole = await roleNameForCaller(roleId, tenantId);

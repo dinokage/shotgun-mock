@@ -144,10 +144,27 @@ export default function AdminPanel() {
     const departmentId = String(formData.get("departmentId") ?? "") || undefined;
     const projectId = String(formData.get("projectId") ?? "") || undefined;
     try {
-      await sendInvite.mutateAsync(
+      const result = await sendInvite.mutateAsync(
         isClientInvite ? { email, roleId, projectId } : { email, roleId, departmentId },
       );
-      toast({ title: "Invite sent", description: `Sent to ${email}` });
+      if (result.emailSent) {
+        toast({ title: "Invite sent", description: `Sent to ${email}` });
+      } else {
+        // The invite itself is real and accept-able -- only the email
+        // failed (most often bad SMTP credentials). Copying the link
+        // straight to the clipboard means the admin still has it even
+        // after this toast disappears.
+        try {
+          await navigator.clipboard.writeText(result.inviteUrl ?? "");
+        } catch {
+          // Clipboard access can be denied by the browser -- the toast
+          // below still names the invite as created either way.
+        }
+        toast({
+          title: "Invite created, but the email failed to send",
+          description: `The invite for ${email} exists and works -- its link was copied to your clipboard so you can share it directly. Check the studio's SMTP settings to fix email delivery.`,
+        });
+      }
       setInviteOpen(false);
       setInviteRoleId("");
       refetchInvites();

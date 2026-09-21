@@ -44,10 +44,16 @@ export function useSendInvite() {
        * ClientProjectAccess to this project the moment they accept. */
       projectId?: string;
     }) =>
-      apiClient.post<{ email: string; roleId: string; expiresAt: string }>(
-        "/invites",
-        body,
-      ),
+      apiClient.post<{
+        email: string;
+        roleId: string;
+        expiresAt: string;
+        emailSent: boolean;
+        /** Only present when emailSent is false -- share this with the
+         * invitee directly, since the email that would normally carry it
+         * never went out. */
+        inviteUrl?: string;
+      }>("/invites", body),
   });
 }
 
