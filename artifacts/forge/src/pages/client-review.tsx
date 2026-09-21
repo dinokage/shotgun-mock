@@ -1158,7 +1158,7 @@ export default function ClientReview() {
             {shotNotes.length > 0 && (
               <div className="space-y-3">
                 <div className="text-xs font-semibold text-zinc-500 tracking-wide">
-                  YOUR NOTES
+                  NOTES &amp; REPLIES
                 </div>
                 <AnimatePresence initial={false}>
                   {[...shotNotes].reverse().map((note) => (
@@ -1168,12 +1168,19 @@ export default function ClientReview() {
                       initial={{ opacity: 0, y: -6 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.2 }}
-                      className="rounded-lg border border-white/10 bg-zinc-900/60 p-3"
+                      className={cn(
+                        "rounded-lg border p-3",
+                        note.authorRole === "staff"
+                          ? "border-accent-scope/30 bg-accent-scope/5"
+                          : "border-white/10 bg-zinc-900/60",
+                      )}
                     >
                       <div className="flex items-center justify-between gap-2 mb-2">
                         <span className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-200">
                           <User className="w-3 h-3 text-zinc-500" />
-                          {note.authorName}
+                          {note.authorRole === "staff"
+                            ? `${note.authorName} (Studio)`
+                            : note.authorName}
                         </span>
                         <span className="text-[10px] text-zinc-500 timecode">
                           {new Date(note.createdAt).toLocaleString()}
@@ -1192,23 +1199,30 @@ export default function ClientReview() {
                           </span>
                         )}
                       </div>
-                      <div
-                        className={cn(
-                          "inline-flex items-center gap-1.5 text-[11px] px-1.5 py-0.5 rounded",
-                          note.transferred
-                            ? "bg-status-green/10 text-status-green"
-                            : "bg-status-orange/10 text-status-orange",
-                        )}
-                      >
-                        {note.transferred ? (
+                      {note.authorRole === "staff" ? (
+                        <div className="inline-flex items-center gap-1.5 text-[11px] px-1.5 py-0.5 rounded bg-accent-scope/10 text-accent-scope">
                           <Send className="w-3 h-3" />
-                        ) : (
-                          <Clock className="w-3 h-3" />
-                        )}
-                        {note.transferred
-                          ? "Seen by studio team"
-                          : "Awaiting studio review"}
-                      </div>
+                          Reply from the studio
+                        </div>
+                      ) : (
+                        <div
+                          className={cn(
+                            "inline-flex items-center gap-1.5 text-[11px] px-1.5 py-0.5 rounded",
+                            note.transferred
+                              ? "bg-status-green/10 text-status-green"
+                              : "bg-status-orange/10 text-status-orange",
+                          )}
+                        >
+                          {note.transferred ? (
+                            <Send className="w-3 h-3" />
+                          ) : (
+                            <Clock className="w-3 h-3" />
+                          )}
+                          {note.transferred
+                            ? "Seen by studio team"
+                            : "Awaiting studio review"}
+                        </div>
+                      )}
                     </motion.div>
                   ))}
                 </AnimatePresence>

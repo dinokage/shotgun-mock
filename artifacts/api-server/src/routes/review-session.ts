@@ -573,6 +573,7 @@ interface ClientNoteRow {
   frame: number;
   text: string;
   authorName: string;
+  authorRole: string;
   annotations: unknown;
   transferred: boolean;
   transferredAt: Date | null;
@@ -592,6 +593,7 @@ function clientNoteDTO(
     frame: row.frame,
     text: row.text,
     authorName: row.authorName,
+    authorRole: row.authorRole,
     annotations: asObjectArray(row.annotations, MAX_ANNOTATIONS),
     transferred: row.transferred,
     transferredAt: row.transferredAt ? row.transferredAt.toISOString() : null,
@@ -671,8 +673,12 @@ reviewSessionRouter.post("/client-notes", async (req, res) => {
 
     // The author is never taken from the request body. A redeemed link is
     // attributed to whoever the producer shared it with (its clientEmail);
-    // a signed-in 'client'-role account is attributed to that account.
+    // a signed-in 'client'-role account is attributed to that account. A
+    // staff session (any employee, not client-access) posts a reply into
+    // this same thread instead -- see the authorRole branch below.
     let authorName: string;
+    let authorRole: "client" | "staff" = "client";
+    let authorUserId: string | null = null;
     let clientAccessLinkId: string | null = null;
     if (req.clientAccessLinkId) {
       const scope = await getClientScope(req);
@@ -693,6 +699,21 @@ reviewSessionRouter.post("/client-notes", async (req, res) => {
         select: { name: true },
       });
       authorName = user?.name || "Client Reviewer";
+      authorUserId = req.userId;
+      if (!(await isClientRole(req))) {
+        // A staff reply -- gated the same way transferring a note already
+        // is, so posting into a client's thread requires the same real
+        // authority as moderating it, not just any authenticated session.
+        const grant = await prisma.tenantRoleCapability.findFirst({
+          where: { roleId: req.roleId!, capabilityId: "submit_reviews" },
+        });
+        if (!grant) {
+          return res
+            .status(403)
+            .json({ error: "Forbidden: missing authority to reply to a client" });
+        }
+        authorRole = "staff";
+      }
     }
 
     const created = await prisma.clientNote.create({
@@ -704,30 +725,37 @@ reviewSessionRouter.post("/client-notes", async (req, res) => {
         frame: clampFrame(frame),
         text: body,
         authorName,
+        authorRole,
+        authorUserId,
         clientAccessLinkId,
+        // A staff reply needs no moderation -- it's already from the studio,
+        // so it skips the pending queue transfer.tsx's UI otherwise shows.
+        transferred: authorRole === "staff",
         annotations: asObjectArray(annotations, MAX_ANNOTATIONS) as never,
       },
     });
 
-    // A client note sits in moderation until a lead/PM transfers it (see
-    // .../transfer below) -- notify them it's waiting, same as any other
-    // "awaiting your review" fan-out. Not sent to the artist yet: the note
-    // isn't visible to the team until it's actually transferred.
-    const { leadIds, pmIds } = await shotReviewRecipients(tenantId, shotId);
-    await Promise.all(
-      [...new Set([...leadIds, ...pmIds])].map((recipientUserId) =>
-        createNotification({
-          tenantId,
-          recipientUserId,
-          category: "review",
-          title: `Client note on "${shot.name}"`,
-          description: `${authorName} left a note: "${body.slice(0, 140)}${body.length > 140 ? "…" : ""}"`,
-          entityType: "shot",
-          entityId: shotId,
-          actionUrl: `/shots/${shotId}`,
-        }),
-      ),
-    );
+    if (authorRole === "client") {
+      // A client note sits in moderation until a lead/PM transfers it (see
+      // .../transfer below) -- notify them it's waiting, same as any other
+      // "awaiting your review" fan-out. Not sent to the artist yet: the note
+      // isn't visible to the team until it's actually transferred.
+      const { leadIds, pmIds } = await shotReviewRecipients(tenantId, shotId);
+      await Promise.all(
+        [...new Set([...leadIds, ...pmIds])].map((recipientUserId) =>
+          createNotification({
+            tenantId,
+            recipientUserId,
+            category: "review",
+            title: `Client note on "${shot.name}"`,
+            description: `${authorName} left a note: "${body.slice(0, 140)}${body.length > 140 ? "…" : ""}"`,
+            entityType: "shot",
+            entityId: shotId,
+            actionUrl: `/shots/${shotId}`,
+          }),
+        ),
+      );
+    }
 
     return res.status(201).json(clientNoteDTO(created, shot.name, null));
   } catch (err) {

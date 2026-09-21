@@ -46,6 +46,9 @@ export interface ClientNoteDTO {
   frame: number;
   text: string;
   authorName: string;
+  /** "client" or "staff" -- a "staff" row is a reply from the studio back
+   * into this same thread, never a note the client wrote. */
+  authorRole: "client" | "staff";
   annotations: Annotation[];
   transferred: boolean;
   transferredAt: string | null;

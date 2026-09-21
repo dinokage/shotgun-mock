@@ -1410,6 +1410,16 @@ model ClientNote {
   frame              Int       @default(1)
   text               String    @default("")
   authorName         String    @default("") @map("author_name")
+  /** "client" (default, existing rows) or "staff" -- a staff reply posted
+   * from review.tsx's Client tab back to this same thread. Needed because a
+   * staff row must never go through the transferred moderation gate below
+   * (there is nothing to moderate in the studio's own reply) and the
+   * portal needs to render it differently from a client's own note. */
+  authorRole   String  @default("client") @map("author_role")
+  /** Real user id for a staff reply (authorRole "staff") or a signed-in
+   * client account's own note -- null for an anonymous access-link note,
+   * which is attributed by clientAccessLinkId instead. */
+  authorUserId String? @map("author_user_id")
   clientAccessLinkId String?   @map("client_access_link_id")
   annotations        Json      @default("[]")
   transferred        Boolean   @default(false)

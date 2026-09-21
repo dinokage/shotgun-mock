@@ -64,6 +64,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -105,6 +106,7 @@ import {
   useUploadReviewAudio,
   useClientNotes,
   useTransferClientNote,
+  useCreateClientNote,
   type ReviewCommentDTO,
 } from "@/hooks/useReviewSession";
 import {
@@ -838,7 +840,15 @@ export default function Review() {
   // visible team-wide.
   const { data: clientNotes = [] } = useClientNotes(reviewedTaskShotId);
   const transferClientNote = useTransferClientNote(reviewedTaskShotId, versionId);
-  const pendingClientNotes = clientNotes.filter((n) => !n.transferred);
+  const pendingClientNotes = clientNotes.filter(
+    (n) => n.authorRole === "client" && !n.transferred,
+  );
+  // The reply half of this thread: posts back into the same client-notes
+  // list as authorRole "staff" (server-inferred from the session, never
+  // sent here) -- the client sees it on their next portal visit, no
+  // separate messaging system needed.
+  const createClientNoteReply = useCreateClientNote(reviewedTaskShotId);
+  const [clientReplyText, setClientReplyText] = useState("");
 
   const { toast } = useToast();
 
@@ -3472,7 +3482,8 @@ export default function Review() {
                   <p className="text-xs text-muted-foreground leading-relaxed">
                     Notes clients leave in the review portal land here first.
                     Transfer a note to publish it into the Comments stream where
-                    the whole team can see it.
+                    the whole team can see it. Replies you send here go
+                    straight back to the client.
                   </p>
                 </div>
                 <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -3492,14 +3503,21 @@ export default function Review() {
                           transition={{ duration: 0.2 }}
                           className={cn(
                             "rounded-lg border p-3 text-sm",
-                            note.transferred
-                              ? "border-border/50 bg-muted/10 opacity-70"
-                              : "border-amber-500/30 bg-amber-500/5",
+                            note.authorRole === "staff"
+                              ? "border-primary/30 bg-primary/5"
+                              : note.transferred
+                                ? "border-border/50 bg-muted/10 opacity-70"
+                                : "border-amber-500/30 bg-amber-500/5",
                           )}
                         >
                           <div className="flex items-baseline justify-between gap-2 mb-1">
                             <span className="font-medium text-xs">
                               {note.authorName}
+                              {note.authorRole === "staff" && (
+                                <span className="ml-1.5 text-[10px] font-normal text-primary">
+                                  (you / studio)
+                                </span>
+                              )}
                             </span>
                             <span className="text-[10px] font-mono text-muted-foreground">
                               F{String(note.frame).padStart(3, "0")} ·{" "}
@@ -3509,7 +3527,12 @@ export default function Review() {
                           <p className="text-muted-foreground text-sm mb-2">
                             {note.text}
                           </p>
-                          {note.transferred ? (
+                          {note.authorRole === "staff" ? (
+                            <div className="flex items-center gap-1.5 text-[11px] text-primary">
+                              <Send className="w-3 h-3" />
+                              Sent to the client
+                            </div>
+                          ) : note.transferred ? (
                             <div className="flex items-center gap-1.5 text-[11px] text-[#1E7A34]">
                               <CheckCircle2 className="w-3 h-3" />
                               Transferred by {note.transferredByUserName} ·{" "}
@@ -3553,6 +3576,58 @@ export default function Review() {
                     </AnimatePresence>
                   )}
                 </div>
+                {hasSubmitCapability && (
+                  <div className="p-3 border-t border-border shrink-0 flex items-end gap-2">
+                    <Textarea
+                      value={clientReplyText}
+                      onChange={(e) => setClientReplyText(e.target.value)}
+                      placeholder="Reply to the client…"
+                      className="min-h-[36px] h-9 text-sm resize-none py-2"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          if (!clientReplyText.trim() || !reviewedTaskShotId) return;
+                          createClientNoteReply.mutate(
+                            { versionId, frame, text: clientReplyText.trim() },
+                            {
+                              onSuccess: () => setClientReplyText(""),
+                              onError: (err) =>
+                                toast({
+                                  title: "Couldn't send reply",
+                                  description:
+                                    err instanceof Error ? err.message : "Please try again.",
+                                  variant: "destructive",
+                                }),
+                            },
+                          );
+                        }
+                      }}
+                    />
+                    <Button
+                      size="sm"
+                      className="h-9 shrink-0"
+                      disabled={!clientReplyText.trim() || createClientNoteReply.isPending}
+                      onClick={() => {
+                        if (!clientReplyText.trim() || !reviewedTaskShotId) return;
+                        createClientNoteReply.mutate(
+                          { versionId, frame, text: clientReplyText.trim() },
+                          {
+                            onSuccess: () => setClientReplyText(""),
+                            onError: (err) =>
+                              toast({
+                                title: "Couldn't send reply",
+                                description:
+                                  err instanceof Error ? err.message : "Please try again.",
+                                variant: "destructive",
+                              }),
+                          },
+                        );
+                      }}
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                )}
               </TabsContent>
 
               <TabsContent
