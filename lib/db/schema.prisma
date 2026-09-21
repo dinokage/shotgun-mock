@@ -412,6 +412,16 @@ model TaskApprovalEvent {
   action    String
   byUserId  String   @map("by_user_id")
   byRole    String   @map("by_role")
+  /** Only set for "changes-requested"/"rejected" -- which of the two
+   * distinct authorities ("lead" or "pm") the caller asserted and was
+   * checked against. Both a Lead rejecting lead-review work and a PM
+   * sending pm-review work back to the Lead write the same `action`
+   * string, so `byRole` alone doesn't disambiguate an admin exercising
+   * either one -- this does, and is the field POST /:id/approval-events
+   * actually authorizes against (never inferred from current task state,
+   * which is racy against the independent status-change request the
+   * frontend fires alongside this one). */
+  authority String? @map("authority")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
 
   byUser User   @relation(fields: [byUserId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "task_approval_events_by_user_id_users_id_fk")

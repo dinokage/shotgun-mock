@@ -706,9 +706,18 @@ tasksRouter.post("/:id/approval-events", async (req, res) => {
     const tenantId = req.tenantId!;
     const userId = req.userId!;
     const roleId = req.roleId!;
-    const { action } = req.body;
+    const { action, authority } = req.body;
     if (!action || !(APPROVAL_EVENT_ACTIONS as readonly string[]).includes(action))
       return res.status(400).json({ error: "Missing or invalid action" });
+    if (
+      (action === "changes-requested" || action === "rejected") &&
+      authority !== "lead" &&
+      authority !== "pm"
+    ) {
+      return res.status(400).json({
+        error: "authority is required for this action and must be 'lead' or 'pm'",
+      });
+    }
 
     // Scoped, not merely tenant-filtered: writing an approval event onto a
     // task the caller can't see is the same boundary crossing as reading its
@@ -771,22 +780,34 @@ tasksRouter.post("/:id/approval-events", async (req, res) => {
       // a PM sending pm-review work back to the Lead (review.tsx's "Send
       // Back to Lead"). review.tsx fires this and the PUT /:id status change
       // as two independent, unordered mutations (its own comment says so),
-      // so by the time this request lands the task's status may already
-      // reflect the OTHER call having completed first -- checking "current
-      // status" here to infer which of the two actions this was would be
-      // racy (confirmed live: a PM's own Send Back 403'd here because the
-      // status had already flipped to lead-review by the time this ran).
-      // Accepting either Lead or PM authority sidesteps the race entirely --
-      // the real boundary (which transition is actually allowed) is already
-      // correctly enforced by PUT /:id itself; this is just the matching
-      // audit entry for whichever one legitimately happened.
+      // so checking the task's *current* status here to infer which of the
+      // two this was would be racy -- by the time this request lands, the
+      // status may already reflect the OTHER call having completed first
+      // (confirmed live: a PM's own Send Back 403'd because the status had
+      // already flipped to lead-review by the time this ran). Accepting
+      // *either* Lead or PM authority as a fix for that race was flagged by
+      // security review as a real weakening -- it would let a Lead write a
+      // "sent back from pm-review" event they had no actual part in, and
+      // vice versa. Instead the caller must assert which authority they're
+      // exercising (validated above), and only that specific one is
+      // checked -- no fallback to the other, no inference from state that
+      // might already be stale.
+      const actorRoleName = await roleNameForCaller(roleId, tenantId);
       const authorized =
-        (await roleNameForCaller(roleId, tenantId)) === "admin" ||
-        (await canApproveAsDeptLead(tenantId, userId, roleId, approvalTask.department)) ||
-        (await canApproveAsProdManager(tenantId, userId, roleId, approvalTask.department));
+        actorRoleName === "admin" ||
+        (authority === "lead"
+          ? await canApproveAsDeptLead(tenantId, userId, roleId, approvalTask.department)
+          : // "pm" covers both the department's Production Manager and a
+            // real studio-wide producer -- the same pairing the
+            // approved/published gate above already uses, since the
+            // producer-review "Send Back to Production" button (the one
+            // caller that can assert "pm" from that stage) is meant for a
+            // producer account, not only a production_head.
+            actorRoleName === "producer" ||
+            (await canApproveAsProdManager(tenantId, userId, roleId, approvalTask.department)));
       if (!authorized) {
         return res.status(403).json({
-          error: "Forbidden: missing authority to send this back",
+          error: `Forbidden: missing ${authority === "lead" ? "Lead" : "Production Manager"} authority to send this back`,
         });
       }
     }
@@ -795,7 +816,15 @@ tasksRouter.post("/:id/approval-events", async (req, res) => {
     if (!byRole) return res.status(400).json({ error: "Invalid role" });
 
     const created = await prisma.taskApprovalEvent.create({
-      data: { id: crypto.randomUUID(), tenantId, taskId: req.params.id, action, byUserId: userId, byRole },
+      data: {
+        id: crypto.randomUUID(),
+        tenantId,
+        taskId: req.params.id,
+        action,
+        byUserId: userId,
+        byRole,
+        authority: action === "changes-requested" || action === "rejected" ? authority : null,
+      },
     });
 
     // Fire-and-forget: a notification failure should never fail the approval

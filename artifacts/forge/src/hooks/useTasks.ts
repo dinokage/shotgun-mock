@@ -247,6 +247,9 @@ export interface TaskApprovalEventDTO {
     | "published";
   byUserId: string;
   byRole: string;
+  /** Only set for "changes-requested"/"rejected" -- which authority the
+   * caller asserted and was actually checked against server-side. */
+  authority: "lead" | "pm" | null;
   createdAt: string;
 }
 
@@ -265,7 +268,15 @@ export function useTaskApprovalEvents(taskId: string | undefined) {
 export function useAddTaskApprovalEvent(taskId: string | undefined) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: { action: TaskApprovalEventDTO["action"] }) =>
+    mutationFn: (body: {
+      action: TaskApprovalEventDTO["action"];
+      /** Required by the server for "changes-requested"/"rejected" -- which
+       * of the two distinct authorities ("lead" or "pm") this call is
+       * exercising. Never inferred server-side from current task state,
+       * which can be stale by the time this request lands (see the
+       * server-side comment on why). */
+      authority?: "lead" | "pm";
+    }) =>
       apiClient.post<TaskApprovalEventDTO>(
         `/tasks/${taskId}/approval-events`,
         body,

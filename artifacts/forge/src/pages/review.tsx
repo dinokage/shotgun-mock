@@ -824,6 +824,12 @@ export default function Review() {
       | "producer-review"
       | "approved",
     action: ApprovalEvent["action"],
+    // Required by the server for "changes-requested"/"rejected" -- which of
+    // the two distinct authorities this call is exercising (a Lead bouncing
+    // lead-review work, vs a PM sending pm-review work back to the Lead).
+    // Never inferred from current task state server-side, which can be
+    // stale by the time the request lands.
+    authority?: "lead" | "pm",
   ) => {
     if (!currentUser || !taskId) return;
     // Real, persisted mutations (not the legacy local-store approval path,
@@ -834,7 +840,7 @@ export default function Review() {
     // from, and other open views (Kanban, task drawer, dashboards) refetch
     // via the shared "tasks" query cache instead of going stale.
     updateTaskMutation.mutate({ id: taskId, status });
-    addApprovalEventMutation.mutate({ action });
+    addApprovalEventMutation.mutate({ action, authority });
     // The final Production Manager sign-off is what actually forwards a
     // linked shot into the client-facing review queue — client-review.tsx
     // filters shots on exactly this status, same as TaskDrawer.tsx's
@@ -1867,7 +1873,7 @@ export default function Review() {
                       className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white disabled:opacity-40"
                       disabled={reviewWorkflowStatus !== "lead-review"}
                       onClick={() => {
-                        submitApproval("in-progress", "changes-requested");
+                        submitApproval("in-progress", "changes-requested", "lead");
                         toast({ title: "Changes Requested" });
                       }}
                     >
@@ -1896,7 +1902,7 @@ export default function Review() {
                       className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white disabled:opacity-40"
                       disabled={reviewWorkflowStatus !== "pm-review"}
                       onClick={() => {
-                        submitApproval("lead-review", "changes-requested");
+                        submitApproval("lead-review", "changes-requested", "pm");
                         toast({ title: "Sent Back to Lead" });
                       }}
                     >
@@ -1973,7 +1979,7 @@ export default function Review() {
                       className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white disabled:opacity-40"
                       disabled={reviewWorkflowStatus !== "lead-review"}
                       onClick={() => {
-                        submitApproval("in-progress", "changes-requested");
+                        submitApproval("in-progress", "changes-requested", "lead");
                         toast({ title: "Changes Requested" });
                       }}
                     >
@@ -1985,7 +1991,7 @@ export default function Review() {
                       className="bg-[#A03030] hover:bg-[#A03030]/90 text-white disabled:opacity-40"
                       disabled={reviewWorkflowStatus !== "lead-review"}
                       onClick={() => {
-                        submitApproval("in-progress", "rejected");
+                        submitApproval("in-progress", "rejected", "lead");
                         toast({ title: "Rejected" });
                       }}
                     >
@@ -2038,7 +2044,7 @@ export default function Review() {
                       className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white disabled:opacity-40"
                       disabled={reviewWorkflowStatus !== "pm-review"}
                       onClick={() => {
-                        submitApproval("lead-review", "changes-requested");
+                        submitApproval("lead-review", "changes-requested", "pm");
                         toast({
                           title: "Sent Back to Lead",
                           description:
@@ -2084,7 +2090,7 @@ export default function Review() {
                         size="sm"
                         className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white"
                         onClick={() => {
-                          submitApproval("pm-review", "changes-requested");
+                          submitApproval("pm-review", "changes-requested", "pm");
                           toast({ title: "Sent Back to Production" });
                         }}
                       >

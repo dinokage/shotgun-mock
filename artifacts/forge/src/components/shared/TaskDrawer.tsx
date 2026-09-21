@@ -618,6 +618,7 @@ export function TaskDrawer() {
                             });
                             addApprovalEventMutation.mutate({
                               action: "rejected",
+                              authority: "lead",
                             });
                             toast({
                               title: "Review Rejected",
@@ -756,6 +757,7 @@ export function TaskDrawer() {
                           });
                           addApprovalEventMutation.mutate({
                             action: "changes-requested",
+                            authority: "pm",
                           });
                           toast({
                             title: "Sent Back to Lead",
