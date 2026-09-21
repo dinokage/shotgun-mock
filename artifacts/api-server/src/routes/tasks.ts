@@ -332,8 +332,13 @@ tasksRouter.put("/:id", async (req, res) => {
       // submitting their own work -- had no check at all. Anyone holding
       // edit_tasks (every leadership role) could move ANY artist's task into
       // review, which is how a Lead/Producer/Production Head ended up seeing
-      // "Submit for Review" on work that was never theirs to submit.
-      if (existing.assignedTo !== req.userId) {
+      // "Submit for Review" on work that was never theirs to submit. Admin
+      // is still exempt, same as every other gate in this chain -- admin
+      // acts as any role in the approval chain by design.
+      if (
+        existing.assignedTo !== req.userId &&
+        (await roleNameForCaller(req.roleId!, tenantId)) !== "admin"
+      ) {
         return res.status(403).json({
           error: "Forbidden: only the artist this task is assigned to can submit it for review",
         });
@@ -708,8 +713,11 @@ tasksRouter.post("/:id/approval-events", async (req, res) => {
     if (action === "submitted-for-lead-review") {
       // Same gap, same fix as PUT /:id above -- this audit event must not be
       // writable by anyone but the task's own assignee, or the record itself
-      // becomes falsifiable.
-      if (approvalTask.assignedTo !== userId) {
+      // becomes falsifiable. Admin is exempt, same as every other gate here.
+      if (
+        approvalTask.assignedTo !== userId &&
+        (await roleNameForCaller(roleId, tenantId)) !== "admin"
+      ) {
         return res.status(403).json({
           error: "Forbidden: only the artist this task is assigned to can submit it for review",
         });

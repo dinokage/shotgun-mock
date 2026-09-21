@@ -5,6 +5,25 @@ import { denyClientAccess } from "../middleware/rbac";
 import { generateApiToken, hashApiToken } from "../lib/auth";
 import * as crypto from "crypto";
 
+// DCC integration (Maya/Blender/Nuke plugins, and anything else that
+// authenticates with a personal token) is admin-only studio-wide -- Settings
+// hides this tab from everyone else, but that's a UI convenience, not a
+// boundary. Without this, any authenticated non-admin could mint themselves
+// a live bearer token via POST here directly, bypassing the visibility gate
+// entirely (found by a live test: an "artist" account got a 201 and a real
+// token from this endpoint before this check existed).
+async function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  const role = await prisma.tenantRole.findFirst({
+    where: { id: req.roleId!, tenantId: req.tenantId! },
+    select: { name: true },
+  });
+  if (role?.name !== "admin") {
+    res.status(403).json({ error: "Forbidden: DCC integration tokens are admin-only" });
+    return;
+  }
+  next();
+}
+
 /**
  * Self-service personal access tokens for DCC plugins (Maya/Blender/Nuke)
  * and other scripts -- see lib/auth.ts's generateApiToken/hashApiToken and
@@ -17,6 +36,7 @@ export const apiTokensRouter = Router();
 
 apiTokensRouter.use(tenantAuthMiddleware);
 apiTokensRouter.use(denyClientAccess);
+apiTokensRouter.use(requireAdmin);
 
 // Barred from token-authenticated requests: a leaked token could otherwise
 // mint itself unlimited replacements, or revoke sibling tokens, extending
