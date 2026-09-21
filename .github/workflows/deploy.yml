@@ -40,6 +40,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+      - name: Generate Prisma Client
+        run: pnpm --filter "@workspace/db" run prisma:generate
+
       - name: Typecheck
         run: pnpm run typecheck
 
@@ -59,7 +62,7 @@ jobs:
           if [ -z "$DATABASE_URL" ]; then
             echo "DATABASE_URL is not set. Skipping migrations."
           else
-            pnpm --filter "@workspace/db" run generate
+            pnpm --filter "@workspace/db" run prisma:generate
             pnpm --filter "@workspace/db" run migrate
           fi
 
