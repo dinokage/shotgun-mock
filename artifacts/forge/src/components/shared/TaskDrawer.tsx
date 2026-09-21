@@ -561,56 +561,76 @@ export function TaskDrawer() {
                   longer goes straight to 'approved' — it hands off to the
                   department's Production Manager (or the studio's overall
                   production management if the department has none) for a
-                  second, final sign-off before anything reaches the client. */}
+                  second, final sign-off before anything reaches the client.
+                  Always visible to anyone who holds this gate for this
+                  department, not just while the task happens to already be
+                  at review/lead-review -- disabled with an explanation
+                  otherwise, so it never just silently isn't there. */}
               {(currentUser.role === "admin" ||
                 (DEPARTMENT_LEADERSHIP_ROLES.includes(currentUser.role) &&
                   currentUser.departmentId === currentDept?.id)) &&
-                // A tracksheet-imported task's raw status (e.g. uppercase
-                // "REVIEW") never matched this comparison directly -- see
-                // the identical fix in review.tsx's reviewWorkflowStatus.
-                ["review", "lead-review"].includes(
-                  normalizeTaskStatus(task.status),
-                ) && (
-                  <div className="flex w-full gap-2">
-                    <Button
-                      className="flex-1 bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
-                      onClick={() => {
-                        updateTaskMutation.mutate({
-                          id: task.id,
-                          status: "pm-review",
-                        });
-                        addApprovalEventMutation.mutate({
-                          action: "submitted-for-manager-review",
-                        });
-                        toast({
-                          title: "Sent to Production Manager",
-                          description: `${task.title} approved by Lead — awaiting final sign-off.`,
-                        });
-                      }}
-                    >
-                      <CheckCircle2 className="w-4 h-4 mr-2" /> Approve
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="flex-1 text-red-500 hover:bg-red-500/10"
-                      onClick={() => {
-                        updateTaskMutation.mutate({
-                          id: task.id,
-                          status: "in-progress",
-                        });
-                        addApprovalEventMutation.mutate({
-                          action: "rejected",
-                        });
-                        toast({
-                          title: "Review Rejected",
-                          description: `Sent back to team.`,
-                        });
-                      }}
-                    >
-                      <X className="w-4 h-4 mr-2" /> Reject
-                    </Button>
-                  </div>
-                )}
+                normalizeTaskStatus(task.status) !== "approved" &&
+                (() => {
+                  // A tracksheet-imported task's raw status (e.g. uppercase
+                  // "REVIEW") never matched a direct comparison -- see the
+                  // identical fix in review.tsx's reviewWorkflowStatus.
+                  const normalized = normalizeTaskStatus(task.status);
+                  const isLeadsTurn = ["review", "lead-review"].includes(normalized);
+                  const waitingLabel =
+                    normalized === "pm-review"
+                      ? "Already approved — now with the Production Manager."
+                      : "Waiting on the artist to submit this for review.";
+                  return (
+                    <div className="flex w-full flex-col gap-1.5">
+                      {!isLeadsTurn && (
+                        <p className="text-xs text-muted-foreground">
+                          {waitingLabel}
+                        </p>
+                      )}
+                      <div className="flex w-full gap-2">
+                        <Button
+                          className="flex-1 bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white disabled:opacity-40"
+                          disabled={!isLeadsTurn}
+                          onClick={() => {
+                            updateTaskMutation.mutate({
+                              id: task.id,
+                              status: "pm-review",
+                            });
+                            addApprovalEventMutation.mutate({
+                              action: "submitted-for-manager-review",
+                            });
+                            toast({
+                              title: "Sent to Production Manager",
+                              description: `${task.title} approved by Lead — awaiting final sign-off.`,
+                            });
+                          }}
+                        >
+                          <CheckCircle2 className="w-4 h-4 mr-2" /> Approve
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="flex-1 text-red-500 hover:bg-red-500/10 disabled:opacity-40"
+                          disabled={!isLeadsTurn}
+                          onClick={() => {
+                            updateTaskMutation.mutate({
+                              id: task.id,
+                              status: "in-progress",
+                            });
+                            addApprovalEventMutation.mutate({
+                              action: "rejected",
+                            });
+                            toast({
+                              title: "Review Rejected",
+                              description: `Sent back to team.`,
+                            });
+                          }}
+                        >
+                          <X className="w-4 h-4 mr-2" /> Reject
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })()}
 
               {/* Stage 2 — Production Manager's final sign-off, the last gate
                   before anything reaches the client. Gated to the
@@ -621,7 +641,10 @@ export function TaskDrawer() {
                   here is what actually forwards a linked shot into the
                   client-facing review queue (client-review.tsx filters shots
                   on exactly that status), so it keeps the look-before-you-leap
-                  confirm step the old single-gate flow used to have. */}
+                  confirm step the old single-gate flow used to have. Always
+                  visible to anyone who holds this gate, not just while the
+                  task happens to already be at pm-review -- disabled with an
+                  explanation otherwise (same reasoning as Stage 1 above). */}
               {(currentUser.role === "admin" ||
                 (currentUser.role === "production_head" &&
                   canApproveAsProductionManager(
@@ -630,93 +653,121 @@ export function TaskDrawer() {
                     users,
                     departments,
                   ))) &&
-                normalizeTaskStatus(task.status) === "pm-review" &&
-                (clientSendConfirmOpen ? (
-                  <div className="w-full rounded-md border border-accent-tally/30 bg-accent-tally/5 p-3 space-y-3">
-                    <p className="text-sm">
-                      {task.entityType === "shot" ? (
-                        <>
-                          This forwards <b>{shot?.name ?? task.title}</b> to the
-                          external client portal — the client will be able to
-                          view and comment on it immediately.
-                        </>
-                      ) : (
-                        <>
-                          This approves <b>{task.title}</b> internally. It isn't
-                          linked to a shot, so nothing is forwarded to the
-                          client portal.
-                        </>
-                      )}
-                    </p>
-                    <div className="flex gap-2">
+                normalizeTaskStatus(task.status) !== "approved" &&
+                (() => {
+                  const isPMsTurn = normalizeTaskStatus(task.status) === "pm-review";
+                  if (!isPMsTurn) {
+                    return (
+                      <div className="flex w-full flex-col gap-1.5">
+                        <p className="text-xs text-muted-foreground">
+                          Waiting on the department Lead to approve first.
+                        </p>
+                        <div className="flex w-full gap-2">
+                          <Button
+                            className="flex-1 bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white disabled:opacity-40"
+                            disabled
+                          >
+                            <CheckCircle2 className="w-4 h-4 mr-2" /> Approve
+                            & Send to Client
+                          </Button>
+                          <Button
+                            variant="outline"
+                            className="flex-1 text-red-500 hover:bg-red-500/10 disabled:opacity-40"
+                            disabled
+                          >
+                            <X className="w-4 h-4 mr-2" /> Send Back to Lead
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return clientSendConfirmOpen ? (
+                    <div className="w-full rounded-md border border-accent-tally/30 bg-accent-tally/5 p-3 space-y-3">
+                      <p className="text-sm">
+                        {task.entityType === "shot" ? (
+                          <>
+                            This forwards <b>{shot?.name ?? task.title}</b> to the
+                            external client portal — the client will be able to
+                            view and comment on it immediately.
+                          </>
+                        ) : (
+                          <>
+                            This approves <b>{task.title}</b> internally. It isn't
+                            linked to a shot, so nothing is forwarded to the
+                            client portal.
+                          </>
+                        )}
+                      </p>
+                      <div className="flex gap-2">
+                        <Button
+                          className="flex-1 bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white touch-target"
+                          onClick={() => {
+                            updateTaskMutation.mutate({
+                              id: task.id,
+                              status: "approved",
+                            });
+                            addApprovalEventMutation.mutate({
+                              action: "published",
+                            });
+                            if (task.entityType === "shot") {
+                              updateShotStatus(task.entityId, {
+                                status: "client-review",
+                              });
+                              toast({
+                                title: "Sent to Client Review",
+                                description: `${task.title} approved and forwarded to the client portal.`,
+                              });
+                            } else {
+                              toast({
+                                title: "Approved",
+                                description: `Published to production dashboard.`,
+                              });
+                            }
+                            setClientSendConfirmOpen(false);
+                          }}
+                        >
+                          <CheckCircle2 className="w-4 h-4 mr-2" /> Confirm & Send
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="touch-target"
+                          onClick={() => setClientSendConfirmOpen(false)}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex w-full gap-2">
                       <Button
-                        className="flex-1 bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white touch-target"
-                        onClick={() => {
-                          updateTaskMutation.mutate({
-                            id: task.id,
-                            status: "approved",
-                          });
-                          addApprovalEventMutation.mutate({
-                            action: "published",
-                          });
-                          if (task.entityType === "shot") {
-                            updateShotStatus(task.entityId, {
-                              status: "client-review",
-                            });
-                            toast({
-                              title: "Sent to Client Review",
-                              description: `${task.title} approved and forwarded to the client portal.`,
-                            });
-                          } else {
-                            toast({
-                              title: "Approved",
-                              description: `Published to production dashboard.`,
-                            });
-                          }
-                          setClientSendConfirmOpen(false);
-                        }}
+                        className="flex-1 bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
+                        onClick={() => setClientSendConfirmOpen(true)}
                       >
-                        <CheckCircle2 className="w-4 h-4 mr-2" /> Confirm & Send
+                        <CheckCircle2 className="w-4 h-4 mr-2" /> Approve & Send
+                        to Client
                       </Button>
                       <Button
                         variant="outline"
-                        className="touch-target"
-                        onClick={() => setClientSendConfirmOpen(false)}
+                        className="flex-1 text-red-500 hover:bg-red-500/10"
+                        onClick={() => {
+                          updateTaskMutation.mutate({
+                            id: task.id,
+                            status: "review",
+                          });
+                          addApprovalEventMutation.mutate({
+                            action: "changes-requested",
+                          });
+                          toast({
+                            title: "Sent Back to Lead",
+                            description: `${task.title} needs another look before it can go to the client.`,
+                          });
+                        }}
                       >
-                        Cancel
+                        <X className="w-4 h-4 mr-2" /> Send Back to Lead
                       </Button>
                     </div>
-                  </div>
-                ) : (
-                  <div className="flex w-full gap-2">
-                    <Button
-                      className="flex-1 bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
-                      onClick={() => setClientSendConfirmOpen(true)}
-                    >
-                      <CheckCircle2 className="w-4 h-4 mr-2" /> Approve & Send
-                      to Client
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="flex-1 text-red-500 hover:bg-red-500/10"
-                      onClick={() => {
-                        updateTaskMutation.mutate({
-                          id: task.id,
-                          status: "review",
-                        });
-                        addApprovalEventMutation.mutate({
-                          action: "changes-requested",
-                        });
-                        toast({
-                          title: "Sent Back to Lead",
-                          description: `${task.title} needs another look before it can go to the client.`,
-                        });
-                      }}
-                    >
-                      <X className="w-4 h-4 mr-2" /> Send Back to Lead
-                    </Button>
-                  </div>
-                ))}
+                  );
+                })()}
             </div>
 
             {/* Daily Time Logging — /daily-logs, keyed by this task's id

@@ -801,6 +801,21 @@ export default function Review() {
           normalizedTaskStatus === "approved"
         ? normalizedTaskStatus
         : "wip";
+  // The Lead/PM approval controls used to disappear entirely outside their
+  // own stage, which read as "there's no way to do this" rather than "it's
+  // not your turn yet" -- someone with real approval authority had no way
+  // to tell those apart from here. Now the buttons always render (while
+  // canApproveAsX is true and the task isn't fully approved yet); this
+  // explains why they're disabled instead of just hiding them again.
+  const stageWaitingLabel: Record<
+    Exclude<typeof reviewWorkflowStatus, "approved">,
+    string
+  > = {
+    wip: "Waiting on the artist to submit their work.",
+    "lead-review": "Waiting on the department Lead to approve first.",
+    "pm-review": "Already sent to Production Manager for sign-off.",
+    "producer-review": "Already sent to the Producer for final sign-off.",
+  };
   const submitApproval = (
     status:
       | "in-progress"
@@ -1806,11 +1821,12 @@ export default function Review() {
                       <Upload className="w-4 h-4 mr-2" /> Submit
                     </Button>
                   )}
-                {canApproveAsLead && reviewWorkflowStatus === "lead-review" && (
+                {canApproveAsLead && (
                   <>
                     <Button
                       size="sm"
-                      className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
+                      className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white disabled:opacity-40"
+                      disabled={reviewWorkflowStatus !== "lead-review"}
                       onClick={() => {
                         submitApproval(
                           "pm-review",
@@ -1826,7 +1842,8 @@ export default function Review() {
                     </Button>
                     <Button
                       size="sm"
-                      className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white"
+                      className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white disabled:opacity-40"
+                      disabled={reviewWorkflowStatus !== "lead-review"}
                       onClick={() => {
                         submitApproval("in-progress", "changes-requested");
                         toast({ title: "Changes Requested" });
@@ -1836,11 +1853,12 @@ export default function Review() {
                     </Button>
                   </>
                 )}
-                {canApproveAsPM && reviewWorkflowStatus === "pm-review" && (
+                {canApproveAsPM && (
                   <>
                     <Button
                       size="sm"
-                      className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
+                      className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white disabled:opacity-40"
+                      disabled={reviewWorkflowStatus !== "pm-review"}
                       onClick={() => {
                         submitApproval("approved", "published");
                         toast({
@@ -1853,7 +1871,8 @@ export default function Review() {
                     </Button>
                     <Button
                       size="sm"
-                      className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white"
+                      className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white disabled:opacity-40"
+                      disabled={reviewWorkflowStatus !== "pm-review"}
                       onClick={() => {
                         submitApproval("lead-review", "changes-requested");
                         toast({ title: "Sent Back to Lead" });
@@ -1892,20 +1911,27 @@ export default function Review() {
                     </span>
                   ))}
 
-                {/* Lead/Supervisor can only act once the Artist has actually
-                    submitted for Lead review — mirrors the Artist button's
-                    own 'wip' gate above so the UI can't fabricate an
-                    approval step that never happened. Gated to the reviewed
-                    task's own department (canApproveAsLead), matching
-                    TaskDrawer.tsx. Approving here hands off to the
-                    department's Production Manager for final sign-off — see
-                    the pm-review block below — it no longer publishes
-                    straight to production. */}
-                {canApproveAsLead && reviewWorkflowStatus === "lead-review" && (
+                {/* Lead/Supervisor's controls: always visible to anyone who
+                    holds this gate for this department (canApproveAsLead),
+                    not just once the task happens to be at "lead-review" --
+                    a button that only exists sometimes used to read as "you
+                    can't do this at all" rather than "it isn't time yet".
+                    Disabled outside lead-review, with stageWaitingLabel
+                    explaining why, same pattern as the Artist's own
+                    "insert footage" placeholder above. Approving hands off
+                    to the department's Production Manager for final
+                    sign-off -- see the pm-review block below. */}
+                {canApproveAsLead && (
                   <>
+                    {reviewWorkflowStatus !== "lead-review" && (
+                      <span className="text-xs text-muted-foreground mr-1">
+                        {stageWaitingLabel[reviewWorkflowStatus]}
+                      </span>
+                    )}
                     <Button
                       size="sm"
-                      className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
+                      className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white disabled:opacity-40"
+                      disabled={reviewWorkflowStatus !== "lead-review"}
                       onClick={() => {
                         submitApproval(
                           "pm-review",
@@ -1922,7 +1948,8 @@ export default function Review() {
                     </Button>
                     <Button
                       size="sm"
-                      className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white"
+                      className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white disabled:opacity-40"
+                      disabled={reviewWorkflowStatus !== "lead-review"}
                       onClick={() => {
                         submitApproval("in-progress", "changes-requested");
                         toast({ title: "Changes Requested" });
@@ -1933,7 +1960,8 @@ export default function Review() {
                     </Button>
                     <Button
                       size="sm"
-                      className="bg-[#A03030] hover:bg-[#A03030]/90 text-white"
+                      className="bg-[#A03030] hover:bg-[#A03030]/90 text-white disabled:opacity-40"
+                      disabled={reviewWorkflowStatus !== "lead-review"}
                       onClick={() => {
                         submitApproval("in-progress", "rejected");
                         toast({ title: "Rejected" });
@@ -1956,16 +1984,22 @@ export default function Review() {
                     here goes straight to "approved"/published (which forwards
                     the shot into the client-facing review queue, same as the
                     producer-review block below) rather than handing off to a
-                    role nobody holds. The producer-review stage still exists
-                    for tenants that do staff a producer (see below), and the
-                    backend already lets a production_head approve directly
-                    regardless of current status as exactly this kind of
-                    cover -- this just makes the UI match that. */}
-                {canApproveAsPM && reviewWorkflowStatus === "pm-review" && (
+                    role nobody holds. Always visible once canApproveAsPM is
+                    true (not just at pm-review) for the same reason as the
+                    Lead's controls above -- a PM with real authority should
+                    never see "no button" and have to guess whether that
+                    means "not your job" or "not ready yet". */}
+                {canApproveAsPM && (
                   <>
+                    {reviewWorkflowStatus !== "pm-review" && (
+                      <span className="text-xs text-muted-foreground mr-1">
+                        {stageWaitingLabel[reviewWorkflowStatus]}
+                      </span>
+                    )}
                     <Button
                       size="sm"
-                      className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
+                      className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white disabled:opacity-40"
+                      disabled={reviewWorkflowStatus !== "pm-review"}
                       onClick={() => {
                         submitApproval("approved", "published");
                         toast({
@@ -1979,7 +2013,8 @@ export default function Review() {
                     </Button>
                     <Button
                       size="sm"
-                      className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white"
+                      className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white disabled:opacity-40"
+                      disabled={reviewWorkflowStatus !== "pm-review"}
                       onClick={() => {
                         submitApproval("lead-review", "changes-requested");
                         toast({
