@@ -23,6 +23,7 @@ import { apiFetch } from "@/lib/apiClient";
 import { useCreateEpisode, useEpisodes } from "@/hooks/useEpisodes";
 import { useCreateSequence, useSequences } from "@/hooks/useSequences";
 import { useCreateShot, useShots } from "@/hooks/useShots";
+import { useDepartments, type DepartmentDTO } from "@/hooks/useDepartments";
 import { parseWorkbook, getField, parseLooseDate } from "@/lib/excelImport";
 
 interface RowOutcome {
@@ -30,6 +31,74 @@ interface RowOutcome {
   shotCode: string;
   status: "created" | "updated" | "skipped";
   reason?: string;
+}
+
+const GENERIC_STATUS_FIELDS = ["Anim_status", "Layout_status", "Status"];
+
+/** Normalizes a column header the same way SEQ#/SC# matching already does
+ * elsewhere in this file, for comparing it against a department's own
+ * name/abbreviation regardless of spacing, case, or underscores. */
+function normalizeKey(key: string): string {
+  return key.toLowerCase().replace(/[\s_-]+/g, "");
+}
+
+/**
+ * Finds which real department (if any) a column like "Layout_status" or
+ * "Fx status" refers to, by matching whatever's left after stripping
+ * "status" against every department this tenant actually has configured --
+ * rather than a fixed guessed list of department names, which would be
+ * wrong the moment a studio's roster doesn't match it. Exact abbreviation
+ * match is tried first (unambiguous: "roto" against Roto's own "ROTO"),
+ * then a substring match against the department's name words in either
+ * direction (so both "Light_status" -> "Lighting" and a column literally
+ * named "Lighting_status" match). Returns null for a column that isn't a
+ * status column at all, or doesn't match any known department -- both
+ * cases fall through to extraNotes instead of being guessed at.
+ */
+function matchDepartmentColumn(
+  columnKey: string,
+  departments: DepartmentDTO[],
+): DepartmentDTO | null {
+  const normalized = normalizeKey(columnKey);
+  if (!normalized.endsWith("status")) return null;
+  const stem = normalized.slice(0, -"status".length);
+  if (!stem) return null; // bare "Status" -- generic, not department-specific
+
+  const byAbbr = departments.find((d) => normalizeKey(d.abbr) === stem);
+  if (byAbbr) return byAbbr;
+
+  return (
+    departments.find((d) =>
+      d.name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .split(" ")
+        .filter((w) => w.length > 2)
+        .some((w) => stem.includes(w) || w.includes(stem)),
+    ) ?? null
+  );
+}
+
+/** A department-specific artist column ("Layout Artist", "FX_Artist"), for
+ * when a row assigns different people to different departments rather than
+ * one artist for the whole shot. */
+function matchDepartmentArtistColumn(
+  row: Record<string, string>,
+  department: DepartmentDTO,
+): string | null {
+  for (const key of Object.keys(row)) {
+    const normalized = normalizeKey(key);
+    if (!normalized.endsWith("artist")) continue;
+    const stem = normalized.slice(0, -"artist".length);
+    if (!stem) continue;
+    if (
+      normalizeKey(department.abbr) === stem ||
+      department.name.toLowerCase().replace(/[^a-z0-9]+/g, "").includes(stem)
+    ) {
+      return row[key] || null;
+    }
+  }
+  return null;
 }
 
 // A per-episode tracksheet sheet is recognized by its name containing
@@ -64,6 +133,7 @@ export function TracksheetImportDialog({
   const { data: episodes = [] } = useEpisodes(projectId || undefined);
   const { data: sequences = [] } = useSequences(projectId || undefined);
   const { data: shots = [] } = useShots(projectId || undefined);
+  const { data: departments = [] } = useDepartments();
   const createEpisode = useCreateEpisode();
   const createSequence = useCreateSequence();
   const createShot = useCreateShot();
@@ -180,68 +250,112 @@ export function TracksheetImportDialog({
             }
           }
 
-          // Real sheets spread pipeline status across many differently-named
-          // columns per episode (Anim_status, Layout_status, Fx status...).
-          // Rather than guess a rigid per-department task split that would
-          // be wrong as often as right, one task per shot captures the
-          // dominant column present, and every OTHER non-empty column on
-          // the row is preserved verbatim in the description so nothing
-          // in the source sheet is silently lost.
-          const status = getField(row, ["Anim_status", "Layout_status", "Status"]) || "ready";
           // Real sheets put short location/vendor codes here too ("Kol",
           // "Vizag", "os" for outsourced) -- a plain substring match wrongly
           // matched "os" against "Debut Gh-os-h". Requiring every word in
           // the sheet's value to appear as a whole word in the candidate's
           // name avoids that false positive while still matching partial
           // real names ("Yathendra" against "Yathendra Sri Sai Hanuma Pudi").
-          const artistName = getField(row, ["Artist Name", "Artist"]);
-          const artistWords = artistName.toLowerCase().trim().split(/\s+/).filter(Boolean);
-          const assignee = artistWords.length
-            ? users.find((u) => {
-                if (u.role !== "artist") return false;
-                const nameWords = u.name.toLowerCase().split(/\s+/);
-                return artistWords.every((w) => nameWords.includes(w));
-              })
-            : undefined;
+          const resolveArtist = (name: string | null) => {
+            const words = (name || "").toLowerCase().trim().split(/\s+/).filter(Boolean);
+            if (!words.length) return undefined;
+            return users.find((u) => {
+              if (u.role !== "artist") return false;
+              const nameWords = u.name.toLowerCase().split(/\s+/);
+              return words.every((w) => nameWords.includes(w));
+            });
+          };
+          const sharedArtistName = getField(row, ["Artist Name", "Artist"]);
 
           const startDate = parseLooseDate(getField(row, ["Start Date"]));
           const endDate = parseLooseDate(getField(row, ["End Date"]));
 
+          // Real sheets spread pipeline status across many differently-named
+          // columns per episode (Anim_status, Layout_status, Fx status...) --
+          // one real task per department found, so each lands with a real
+          // department a lead can actually see and approve, instead of one
+          // catch-all Animation task no matter how many departments the row
+          // actually names. Falls back to today's single generic task only
+          // when the row has no department-specific column at all (a sheet
+          // with just a bare "Status" column, or one whose column names don't
+          // match anything in this tenant's own department roster).
+          const departmentColumns = Object.keys(row)
+            .map((key) => ({ key, department: matchDepartmentColumn(key, departments) }))
+            .filter(
+              (c): c is { key: string; department: DepartmentDTO } =>
+                !!c.department && !!(row[c.key] || "").trim(),
+            );
+
           const consumedKeys = new Set(
             [...SHOT_CODE_FIELDS, "SEQ#", "Sequence", "FR", "Frames",
-             "Frame Range", "Sec", "Duration", "Anim_status", "Layout_status",
-             "Status", "Artist Name", "Artist", "Start Date", "End Date", "SL#"]
-              .map((c) => c.toLowerCase().replace(/[\s_-]+/g, "")),
+             "Frame Range", "Sec", "Duration", "Artist Name", "Artist",
+             "Start Date", "End Date", "SL#", ...GENERIC_STATUS_FIELDS,
+             ...departmentColumns.map((c) => c.key)]
+              .map(normalizeKey),
           );
+
+          const tasksToCreate: { department: DepartmentDTO | null; status: string; assigneeId: string | null }[] =
+            departmentColumns.length > 0
+              ? departmentColumns.map(({ key, department }) => ({
+                  department,
+                  status: (row[key] || "").trim() || "ready",
+                  assigneeId:
+                    resolveArtist(matchDepartmentArtistColumn(row, department))?.id ??
+                    resolveArtist(sharedArtistName)?.id ??
+                    null,
+                }))
+              : [
+                  {
+                    department: departments.find((d) => normalizeKey(d.abbr) === "anim") ?? null,
+                    status: getField(row, GENERIC_STATUS_FIELDS) || "ready",
+                    assigneeId: resolveArtist(sharedArtistName)?.id ?? null,
+                  },
+                ];
+
           const extraNotes = Object.entries(row)
-            .filter(([k, v]) => v && !consumedKeys.has(k.toLowerCase().replace(/[\s_-]+/g, "")))
+            .filter(([k, v]) => v && !consumedKeys.has(normalizeKey(k)))
             .map(([k, v]) => `${k}: ${v}`)
             .join("; ");
 
-          try {
-            await apiFetch("/tasks", {
-              method: "POST",
-              body: JSON.stringify({
-                entityId: shotId,
-                entityType: "shot",
-                title: `Animation — ${shotCode}`,
-                description: extraNotes || `Imported from ${sheetName}.`,
-                status,
-                priority: "medium",
-                pipelinePhase: "ANIM",
-                startDate,
-                dueDate: endDate,
-                // `duration` comes from the "Sec"/"Duration" column, i.e.
-                // seconds -- dividing by 60 turned a several-minute shot into
-                // a fractional-hour estimate instead of converting seconds to
-                // hours.
-                estimatedHours: duration ? Math.max(duration / 3600, 1) : 8,
-                assignedTo: assignee?.id ?? null,
-              }),
-            });
-            outcomes.push({ sheet: sheetName, shotCode, status: "created" });
-          } catch (err: any) {
-            outcomes.push({ sheet: sheetName, shotCode, status: "skipped", reason: err?.message });
+          for (const task of tasksToCreate) {
+            const label = task.department
+              ? task.department.name
+              : "Animation";
+            try {
+              await apiFetch("/tasks", {
+                method: "POST",
+                body: JSON.stringify({
+                  entityId: shotId,
+                  entityType: "shot",
+                  title: `${label} — ${shotCode}`,
+                  description: extraNotes || `Imported from ${sheetName}.`,
+                  status: task.status,
+                  priority: "medium",
+                  department: task.department?.name ?? null,
+                  pipelinePhase: task.department?.abbr ?? "ANIM",
+                  startDate,
+                  dueDate: endDate,
+                  // `duration` comes from the "Sec"/"Duration" column, i.e.
+                  // seconds -- dividing by 60 turned a several-minute shot into
+                  // a fractional-hour estimate instead of converting seconds to
+                  // hours.
+                  estimatedHours: duration ? Math.max(duration / 3600, 1) : 8,
+                  assignedTo: task.assigneeId,
+                }),
+              });
+              outcomes.push({
+                sheet: sheetName,
+                shotCode: tasksToCreate.length > 1 ? `${shotCode} (${label})` : shotCode,
+                status: "created",
+              });
+            } catch (err: any) {
+              outcomes.push({
+                sheet: sheetName,
+                shotCode: tasksToCreate.length > 1 ? `${shotCode} (${label})` : shotCode,
+                status: "skipped",
+                reason: err?.message,
+              });
+            }
           }
         }
       }
