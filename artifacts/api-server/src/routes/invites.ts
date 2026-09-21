@@ -99,7 +99,7 @@ invitesRouter.post(
   async (req, res) => {
     try {
       const tenantId = req.tenantId!;
-      const { email, roleId, departmentId } = req.body;
+      const { email, roleId, departmentId, projectId } = req.body;
       if (!email || typeof email !== "string" || !roleId)
         return res.status(400).json({ error: "email and roleId are required" });
 
@@ -115,6 +115,21 @@ invitesRouter.post(
           select: { id: true },
         });
         if (!dept) return res.status(400).json({ error: "Invalid departmentId" });
+      }
+
+      // Only meaningful (and only accepted) for a client-role invite -- see
+      // the PendingInvite.projectId schema comment. A non-client role with a
+      // projectId set would silently do nothing on accept, which is worse
+      // than rejecting it outright here.
+      if (projectId) {
+        if (role.name !== "client") {
+          return res.status(400).json({ error: "projectId is only valid for a client invite" });
+        }
+        const project = await prisma.project.findFirst({
+          where: { id: projectId, tenantId },
+          select: { id: true },
+        });
+        if (!project) return res.status(400).json({ error: "Invalid projectId" });
       }
 
       const existingUser = await prisma.user.findFirst({
@@ -137,6 +152,8 @@ invitesRouter.post(
           email,
           roleId,
           departmentId: departmentId ?? null,
+          projectId: projectId ?? null,
+          invitedByUserId: req.userId!,
           token,
           expiresAt: new Date(Date.now() + INVITE_TTL_MS),
         },
@@ -219,6 +236,25 @@ invitesRouter.post("/:token/accept", rateLimitByIp(INVITE_ACCEPT_RULE), async (r
         status: "active",
       },
     });
+
+    // A client invite created with a project pre-selected grants it the
+    // moment the account exists -- otherwise inviting a client is two
+    // disconnected steps (invite here, then separately find them in Client
+    // Access to grant a project). grantedByUserId falls back to the new
+    // user's own id on the rare chance invitedByUserId wasn't captured (an
+    // invite sent before this column existed) -- never null, since every
+    // other ClientProjectAccess row attributes a real granter.
+    if (invite.projectId) {
+      await prisma.clientProjectAccess.create({
+        data: {
+          id: crypto.randomUUID(),
+          tenantId: invite.tenantId,
+          userId,
+          projectId: invite.projectId,
+          grantedByUserId: invite.invitedByUserId ?? userId,
+        },
+      });
+    }
 
     await prisma.pendingInvite.deleteMany({ where: { id: invite.id } });
 

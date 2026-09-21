@@ -236,6 +236,18 @@ model PendingInvite {
   expiresAt    DateTime @map("expires_at") @db.Timestamp(6)
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamp(6)
   departmentId String?  @map("department_id")
+  /** Only meaningful for a "client"-role invite: the project to grant
+   * ClientProjectAccess to the moment they accept, so inviting a client is
+   * one step (email + role + project) instead of "invite, then separately
+   * go find them in Client Access and grant a project" -- no relation
+   * on purpose, same reasoning as invitedByUserId below (validated in
+   * invites.ts, not enforced at the DB level, to avoid touching Project's
+   * and User's models just for this optional metadata). */
+  projectId String? @map("project_id")
+  /** Who sent this invite -- attributes the auto-created ClientProjectAccess
+   * grant on accept (grantedByUserId) to a real person instead of nothing,
+   * since /accept is unauthenticated and has no req.userId of its own. */
+  invitedByUserId String? @map("invited_by_user_id")
 
   department Department? @relation(fields: [departmentId], references: [id], onUpdate: NoAction, map: "pending_invites_department_id_departments_id_fk")
   tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "pending_invites_tenant_id_tenants_id_fk")

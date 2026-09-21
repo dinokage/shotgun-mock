@@ -13,6 +13,7 @@ import { ROLE_LABELS } from "@/data/mockData";
 import { Badge } from "@/components/ui/badge";
 import { useDepartments, useCreateDepartment } from "@/hooks/useDepartments";
 import { useRoles } from "@/hooks/useRoles";
+import { useProjects } from "@/hooks/useProjects";
 import { apiFetch } from "@/lib/apiClient";
 import { useCapability } from "@/hooks/use-capability";
 import { EmployeeImportDialog } from "@/components/admin/EmployeeImportDialog";
@@ -72,9 +73,17 @@ export default function AdminPanel() {
   const { data: users = [], refetch: refetchUsers } = useUsers();
   const { data: departments = [], refetch: refetchDepartments } = useDepartments();
   const { data: roles = [] } = useRoles();
+  const { data: projects = [] } = useProjects();
   const { toast } = useToast();
   const [createOpen, setCreateOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  // Controlled so the invite dialog can swap Department for Project the
+  // moment "client" is picked -- a client has neither a department nor any
+  // use for one, and inviting a client without a project puts them right
+  // back in the two-step flow this whole addition exists to avoid.
+  const [inviteRoleId, setInviteRoleId] = useState("");
+  const isClientInvite =
+    roles.find((r) => r.id === inviteRoleId)?.name === "client";
   const [deptOpen, setDeptOpen] = useState(false);
   const [employeeImportOpen, setEmployeeImportOpen] = useState(false);
   const sendInvite = useSendInvite();
@@ -133,10 +142,14 @@ export default function AdminPanel() {
     const email = String(formData.get("email") ?? "");
     const roleId = String(formData.get("roleId") ?? "");
     const departmentId = String(formData.get("departmentId") ?? "") || undefined;
+    const projectId = String(formData.get("projectId") ?? "") || undefined;
     try {
-      await sendInvite.mutateAsync({ email, roleId, departmentId });
+      await sendInvite.mutateAsync(
+        isClientInvite ? { email, roleId, projectId } : { email, roleId, departmentId },
+      );
       toast({ title: "Invite sent", description: `Sent to ${email}` });
       setInviteOpen(false);
+      setInviteRoleId("");
       refetchInvites();
     } catch (err: any) {
       toast({
@@ -406,7 +419,12 @@ export default function AdminPanel() {
               </div>
               <div>
                 <Label htmlFor="invite-roleId">Role</Label>
-                <Select name="roleId" required>
+                <Select
+                  name="roleId"
+                  required
+                  value={inviteRoleId}
+                  onValueChange={setInviteRoleId}
+                >
                   <SelectTrigger id="invite-roleId">
                     <SelectValue placeholder="Select a role" />
                   </SelectTrigger>
@@ -419,21 +437,39 @@ export default function AdminPanel() {
                   </SelectContent>
                 </Select>
               </div>
-              <div>
-                <Label htmlFor="invite-departmentId">Department</Label>
-                <Select name="departmentId">
-                  <SelectTrigger id="invite-departmentId">
-                    <SelectValue placeholder="None — assign later" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {departments.map((d) => (
-                      <SelectItem key={d.id} value={d.id}>
-                        {d.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {isClientInvite ? (
+                <div>
+                  <Label htmlFor="invite-projectId">Project</Label>
+                  <Select name="projectId">
+                    <SelectTrigger id="invite-projectId">
+                      <SelectValue placeholder="None — grant access later" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {projects.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : (
+                <div>
+                  <Label htmlFor="invite-departmentId">Department</Label>
+                  <Select name="departmentId">
+                    <SelectTrigger id="invite-departmentId">
+                      <SelectValue placeholder="None — assign later" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {departments.map((d) => (
+                        <SelectItem key={d.id} value={d.id}>
+                          {d.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <Button
                 type="submit"
                 className="w-full"

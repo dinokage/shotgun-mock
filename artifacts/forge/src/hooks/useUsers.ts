@@ -36,7 +36,14 @@ export function useUsers() {
 }
 export function useSendInvite() {
   return useMutation({
-    mutationFn: (body: { email: string; roleId: string; departmentId?: string }) =>
+    mutationFn: (body: {
+      email: string;
+      roleId: string;
+      departmentId?: string;
+      /** Only meaningful for a "client"-role invite -- grants
+       * ClientProjectAccess to this project the moment they accept. */
+      projectId?: string;
+    }) =>
       apiClient.post<{ email: string; roleId: string; expiresAt: string }>(
         "/invites",
         body,
