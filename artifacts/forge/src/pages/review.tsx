@@ -849,6 +849,28 @@ export default function Review() {
     // a per-browser-only store nothing else reads from anymore.
   };
 
+  // Until DCC integration ships, artists don't sign into this app at all --
+  // the department Lead pulls the render from wherever the artist actually
+  // delivered it and uploads it here themselves. A Lead uploading on someone
+  // else's behalf has already implicitly reviewed what they chose to bring
+  // in, so it skips the lead-review step entirely and goes straight to
+  // Production Manager sign-off, rather than waiting on the Lead to also
+  // "approve" the exact file they just personally selected. The artist path
+  // (assignee uploading their own work) is untouched, for whenever a real
+  // artist account does use this directly.
+  const autoSubmitOnUpload = (): "lead-review" | "pm-review" | null => {
+    if (reviewWorkflowStatus !== "wip") return null;
+    if (canSubmitReview) {
+      submitApproval("lead-review", "submitted-for-lead-review");
+      return "lead-review";
+    }
+    if (canApproveAsLead) {
+      submitApproval("pm-review", "submitted-for-manager-review");
+      return "pm-review";
+    }
+    return null;
+  };
+
   // Client feedback moderation: notes a client leaves in the client portal
   // land in a holding area here rather than the shared comment stream — an
   // internal reviewer has to explicitly "transfer" a note before it becomes
@@ -2264,24 +2286,25 @@ export default function Review() {
                             mediaUrl: uploaded.url,
                             taskId,
                           });
-                          // A wip-stage upload is the artist handing off
-                          // real footage -- previously this only attached
-                          // the file, leaving a second, separate "Submit"
-                          // click as the only thing that actually notified
-                          // the lead/PM (routes/tasks.ts's
-                          // submitted-for-lead-review notification). Most
-                          // often this replaces changes-requested footage,
-                          // so re-surfacing it to the lead automatically is
-                          // exactly the moment that notification exists for.
-                          if (reviewWorkflowStatus === "wip" && canSubmitReview) {
-                            submitApproval("lead-review", "submitted-for-lead-review");
-                          }
+                          // A wip-stage upload is someone handing off real
+                          // footage -- previously this only attached the
+                          // file, leaving a second, separate "Submit" click
+                          // as the only thing that actually notified the
+                          // lead/PM (routes/tasks.ts's notification handlers
+                          // for both transitions). Most often this replaces
+                          // changes-requested footage, so re-surfacing it
+                          // automatically is exactly the moment those exist
+                          // for. See autoSubmitOnUpload above: the artist's
+                          // own upload still goes to lead-review as before;
+                          // a Lead (or admin) uploading someone else's work
+                          // skips straight to pm-review, since bringing in
+                          // the file *is* their review of it.
+                          const nextStage = autoSubmitOnUpload();
                           toast({
                             title: `${nextNumber} Uploaded`,
-                            description:
-                              reviewWorkflowStatus === "wip" && canSubmitReview
-                                ? `"${file.name}" is now the version under review and has been submitted for Lead review. ${existingVersion.versionNumber} and its notes stay available in Compare.`
-                                : `"${file.name}" is now the version under review. ${existingVersion.versionNumber} and its notes stay available in Compare.`,
+                            description: nextStage
+                              ? `"${file.name}" is now the version under review and has been submitted for ${nextStage === "lead-review" ? "Lead" : "Production Manager"} review. ${existingVersion.versionNumber} and its notes stay available in Compare.`
+                              : `"${file.name}" is now the version under review. ${existingVersion.versionNumber} and its notes stay available in Compare.`,
                           });
                         } else {
                           await updateVersion.mutateAsync({
@@ -2290,16 +2313,14 @@ export default function Review() {
                           });
                           // First footage on this task -- same auto-submit
                           // as above, so uploading alone is enough to reach
-                          // the lead/PM without a separate manual step.
-                          if (reviewWorkflowStatus === "wip" && canSubmitReview) {
-                            submitApproval("lead-review", "submitted-for-lead-review");
-                          }
+                          // whoever needs to act next without a separate
+                          // manual step.
+                          const nextStage = autoSubmitOnUpload();
                           toast({
                             title: "Media Inserted",
-                            description:
-                              reviewWorkflowStatus === "wip" && canSubmitReview
-                                ? `Now reviewing "${file.name}" — submitted for Lead review.`
-                                : `Now reviewing "${file.name}". Visible to the whole team.`,
+                            description: nextStage
+                              ? `Now reviewing "${file.name}" — submitted for ${nextStage === "lead-review" ? "Lead" : "Production Manager"} review.`
+                              : `Now reviewing "${file.name}". Visible to the whole team.`,
                           });
                         }
                       } catch (err) {
