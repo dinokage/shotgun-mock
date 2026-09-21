@@ -11,8 +11,12 @@ sidebar (press N).
 
 Get a token from Forge: Settings -> API Tokens -> Generate Token.
 
-One-directional: this creates a shot in Forge. It never reads or writes
-anything back into your Blender scene.
+Mostly one-directional: this creates a shot in Forge and never writes
+anything back into your Blender scene. It does read the scene's own
+Frame Start/Frame End (Output Properties) to pre-fill the new shot's
+frame range and duration, since that's real spec the scene already has
+and typing it in twice invites it going stale. Still editable in the
+panel before you hit Create Shot.
 """
 
 bl_info = {
@@ -99,6 +103,11 @@ class ForgeSettings(bpy.types.PropertyGroup):
     episode: bpy.props.EnumProperty(name="Episode", items=_episode_items)
     sequence: bpy.props.EnumProperty(name="Sequence", items=_sequence_items)
     shot_name: bpy.props.StringProperty(name="Shot Name", default="")
+    frame_range: bpy.props.StringProperty(
+        name="Frame Range",
+        description="Pre-filled from this scene's Frame Start/Frame End -- editable",
+        default="",
+    )
 
 
 class FORGE_OT_save_settings(bpy.types.Operator):
@@ -189,6 +198,18 @@ class FORGE_OT_create_shot(bpy.types.Operator):
             body["episodeId"] = s.episode
         if s.sequence:
             body["sequenceId"] = s.sequence
+        frame_range = s.frame_range.strip()
+        if frame_range:
+            body["frameRange"] = frame_range
+            try:
+                lo, hi = frame_range.split("-", 1)
+                body["duration"] = max(1, int(hi) - int(lo) + 1)
+            except (ValueError, IndexError):
+                # Hand-edited into something that doesn't parse as "N-M" --
+                # still send it as the frame range label, just skip deriving
+                # a duration the server treats as optional either way.
+                pass
+        body["notes"] = "Created from Blender (scene: %s)" % (bpy.data.filepath or "untitled")
 
         try:
             _request("POST", "/shots", body)
@@ -231,6 +252,9 @@ class FORGE_PT_panel(bpy.types.Panel):
         layout.operator("forge.refresh_sequences", icon="FILE_REFRESH")
         layout.separator()
         layout.prop(s, "shot_name")
+        if not s.frame_range:
+            s.frame_range = "%d-%d" % (context.scene.frame_start, context.scene.frame_end)
+        layout.prop(s, "frame_range")
         layout.operator("forge.create_shot", icon="ADD")
 
 

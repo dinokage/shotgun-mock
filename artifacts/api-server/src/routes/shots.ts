@@ -88,7 +88,25 @@ shotsRouter.get("/", async (req, res) => {
 shotsRouter.post("/", requireCapability("create_tasks"), async (req, res) => {
   try {
     const tenantId = req.tenantId!;
-    const { projectId, name, episodeId, sequenceId, assigneeId } = req.body;
+    const {
+      projectId,
+      name,
+      episodeId,
+      sequenceId,
+      assigneeId,
+      // Accepted at creation time (previously PATCH-only) so a DCC plugin
+      // creating a shot from an open scene can hand over its real spec in
+      // the same call -- frame range/duration read straight from the
+      // scene's own timeline, notes carrying whatever else that app's
+      // scene state is worth recording (resolution, fps, camera) since
+      // none of those have a dedicated column of their own. Never
+      // required: every one of these already has a sane schema default,
+      // so a plain "just the name" caller (the browser UI's own Add Shot
+      // dialog) behaves exactly as before.
+      frameRange,
+      duration,
+      notes,
+    } = req.body;
     if (!projectId || !name)
       return res.status(400).json({ error: "Missing projectId or name" });
 
@@ -110,6 +128,9 @@ shotsRouter.post("/", requireCapability("create_tasks"), async (req, res) => {
         episodeId: episodeId || null,
         sequenceId: sequenceId || null,
         assigneeId: assigneeId || null,
+        ...(typeof frameRange === "string" && frameRange ? { frameRange } : {}),
+        ...(typeof duration === "number" && duration > 0 ? { duration } : {}),
+        ...(typeof notes === "string" && notes ? { notes } : {}),
       },
     });
     return res.status(201).json(created);

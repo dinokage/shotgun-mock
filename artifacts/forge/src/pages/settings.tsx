@@ -194,6 +194,7 @@ export default function Settings() {
   const canManagePipeline = useCapability("manage_pipeline");
   const canManageLicenses = useCapability("manage_licenses");
   const canManageIntegrations = useCapability("manage_integrations");
+  const canUseDccTokens = useCapability("create_tasks");
 
   const profileSetting = useStudioSetting<StudioProfileValue>(
     "studio_profile",
@@ -499,17 +500,18 @@ export default function Settings() {
     | "members"
     | "licenses"
     | "deployment";
-  // DCC plugin integration is early enough (three plugin scripts, a new
-  // bearer-token auth path) that it's restricted to admin only for now,
-  // rather than every employee self-issuing API access -- a deliberate
-  // narrowing from how it first shipped, not the original design.
-  const isAdmin = currentUser?.role === "admin";
+  // DCC plugin integration (Maya/Blender/Nuke/Houdini) is for everyone who
+  // can already create a shot through the API a plugin calls, matching
+  // routes/shots.ts's and routes/api-tokens.ts's own create_tasks gate --
+  // artists, leads, and admin, not admin alone. Was admin-only for a
+  // stretch of this project's early rollout; deliberately reversed once the
+  // plugins were built out for real artist use, not just admin testing.
   const visibleTabs = useMemo<TabId[]>(() => {
     const tabs: TabId[] = [];
     if (canManageRoles) tabs.push("profile");
     if (canManageRoles) tabs.push("security");
     tabs.push("notifications");
-    if (isAdmin) tabs.push("tokens");
+    if (canUseDccTokens) tabs.push("tokens");
     if (canManageIntegrations) tabs.push("developer");
     if (canManagePipeline) tabs.push("pipelines");
     if (canManageMembers) tabs.push("members");
@@ -518,7 +520,7 @@ export default function Settings() {
     return tabs;
   }, [
     canManageRoles,
-    isAdmin,
+    canUseDccTokens,
     canManageIntegrations,
     canManagePipeline,
     canManageMembers,
@@ -547,9 +549,10 @@ export default function Settings() {
             <TabsTrigger value="security">Security & SSO</TabsTrigger>
           )}
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
-          {/* DCC plugin integration (Maya/Blender/Nuke) is early enough that
-              it's admin-only for now, not self-service for every employee. */}
-          {isAdmin && <TabsTrigger value="tokens">API Tokens</TabsTrigger>}
+          {/* DCC plugin integration (Maya/Blender/Nuke/Houdini) -- anyone
+              who can already create a shot through the API a plugin calls
+              gets a way to issue their own token for it. */}
+          {canUseDccTokens && <TabsTrigger value="tokens">API Tokens</TabsTrigger>}
           {/* Ungated on purpose: every role, including an artist who sees no
               other tab here, needs a way back to the walkthrough. */}
           <TabsTrigger value="help">Help</TabsTrigger>
@@ -891,7 +894,7 @@ export default function Settings() {
           </Card>
         </TabsContent>
 
-        {isAdmin && (
+        {canUseDccTokens && (
         <TabsContent value="tokens" className="space-y-6 animate-in fade-in">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between border-b border-border pb-4">
@@ -899,13 +902,14 @@ export default function Settings() {
                 <CardTitle className="flex items-center gap-2">
                   Personal Access Tokens
                   <Badge variant="outline" className="text-[10px]">
-                    Admin only, early access
+                    Early access
                   </Badge>
                 </CardTitle>
                 <CardDescription>
-                  For DCC plugins (Maya, Blender, Nuke) and scripts running on
-                  your own machine. A token acts as you, with exactly your own
-                  permissions -- generate one, paste it into the plugin's
+                  For DCC plugins (Maya, Blender, Nuke, Houdini) and scripts
+                  running on your own machine. A token acts as you, with
+                  exactly your own permissions -- generate one, paste it into
+                  the plugin's
                   settings once. Restricted to admin for now while DCC
                   integration is still new.
                 </CardDescription>

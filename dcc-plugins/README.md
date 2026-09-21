@@ -1,12 +1,17 @@
 # Forge DCC Plugins
 
-Create a shot in Forge directly from Maya, Blender, or Nuke, into an
-existing Project → Episode → Sequence, without switching to the browser.
+Create a shot in Forge directly from Maya, Blender, Nuke, or Houdini, into
+an existing Project → Episode → Sequence, along with that shot's real spec
+(frame range, duration), without switching to the browser.
 
 Each plugin is a single, dependency-free Python file (stdlib `urllib`
 only — no `requests`, since Blender in particular doesn't ship it
-reliably). One-directional: the plugin creates a shot in Forge; Forge
-never pushes anything back into the DCC tool.
+reliably). Mostly one-directional: the plugin creates a shot in Forge and
+pre-fills its frame range/duration by reading the current scene's own
+timeline (Maya's Range Slider, Blender's Frame Start/End, Nuke's
+first_frame/last_frame, Houdini's Playbar range) — Forge never pushes
+anything back into the DCC tool, and the pre-filled fields stay editable
+before you submit.
 
 ## Getting a token
 
@@ -34,13 +39,30 @@ one you use in the browser, no trailing slash.
 - **Nuke**: see `nuke/forge_shot_creator.py` — drop it in your
   `~/.nuke/` folder and add `import forge_shot_creator` to your
   `menu.py`. A "Forge" menu appears with "Create Shot...".
+- **Houdini**: see `houdini/forge_shot_creator.py` — Shelf → right-click →
+  New Tool..., paste the file's contents into the Script tab, save. Click
+  the shelf button to run.
 
 ## What it does and doesn't do
 
 - Creates a shot into a Project/Episode/Sequence you already picked, that
   already exists in Forge. It does not create projects, episodes, or
   sequences.
+- Pre-fills the shot's frame range (and the derived frame-count duration)
+  from the current scene's own timeline, editable before you submit.
 - Always an explicit action you trigger — nothing runs automatically on
   file save.
 - The shot then behaves exactly like one created through the web app's own
-  Add Shot dialog (same validation, same visibility rules).
+  Add Shot dialog (same validation, same visibility rules), and needs
+  `create_tasks` (any artist, lead, or admin token already has it).
+
+## Verification status
+
+Each plugin's HTTP calls and the Forge-side endpoints they hit are
+exercised end-to-end against a real, live Forge server as part of this
+project's own testing. The DCC-side code itself (the `maya.cmds`/`bpy`/
+`nuke`/`hou` calls) is written against each application's real, stable,
+documented Python API, but has not been run inside an actual installed
+copy of that application — do one quick smoke test per tool (connect,
+create one real test shot) before relying on this for a client-facing
+demo, and report anything that doesn't match what's described here.

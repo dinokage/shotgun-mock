@@ -14,8 +14,12 @@ A "Forge" menu appears with "Create Shot...".
 
 Get a token from Forge: Settings -> API Tokens -> Generate Token.
 
-One-directional: this creates a shot in Forge. It never reads or writes
-anything back into your Nuke script.
+Mostly one-directional: this creates a shot in Forge and never writes
+anything back into your Nuke script. It does read the script's own
+first_frame/last_frame (Project Settings) to pre-fill the new shot's
+frame range and duration, since that's real spec the script already has
+and typing it in twice invites it going stale. Still editable in the
+Shot Name panel before you hit OK.
 
 Built as a short sequence of native nuke.Panel() dialogs (project, then
 episode, then sequence, then name) rather than one combined cascading
@@ -154,20 +158,34 @@ def create_shot():
                 if not nuke.ask("No sequence selected. Create the shot without one?"):
                     return
 
+    default_range = "%d-%d" % (
+        int(nuke.root()["first_frame"].value()),
+        int(nuke.root()["last_frame"].value()),
+    )
     p = nuke.Panel("Shot Name")
     p.addSingleLineInput("Shot Name", "")
+    p.addSingleLineInput("Frame Range", default_range)
     if not p.show():
         return
     name = p.value("Shot Name").strip()
     if not name:
         nuke.message("Enter a shot name.")
         return
+    frame_range = p.value("Frame Range").strip()
 
     body = {"projectId": project["id"], "name": name}
     if episode:
         body["episodeId"] = episode["id"]
     if sequence:
         body["sequenceId"] = sequence["id"]
+    if frame_range:
+        body["frameRange"] = frame_range
+        try:
+            lo, hi = frame_range.split("-", 1)
+            body["duration"] = max(1, int(hi) - int(lo) + 1)
+        except (ValueError, IndexError):
+            pass
+    body["notes"] = "Created from Nuke (script: %s)" % (nuke.root().name() or "untitled")
 
     try:
         _request(config, "POST", "/shots", body)

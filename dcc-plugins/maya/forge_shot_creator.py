@@ -13,8 +13,13 @@ Install: drop this file in your Maya scripts/ folder. In the Script Editor
 
 Get a token from Forge: Settings -> API Tokens -> Generate Token.
 
-One-directional: this creates a shot in Forge. It never reads or writes
-anything back into your Maya scene.
+Mostly one-directional: this creates a shot in Forge and never writes
+anything back into your Maya scene. It does read the scene's own playback
+range (Range Slider min/max, not the full animation range -- the same
+field the Render Settings frame range defaults from) to pre-fill the new
+shot's frame range and duration, since that's real spec the scene already
+has and typing it in twice invites it going stale. Both fields stay
+editable in the dialog before you hit Create.
 """
 
 import json
@@ -142,11 +147,24 @@ def _refresh_sequence_menu(*_args):
         cmds.menuItem(label=name, parent="forgeSequenceMenu")
 
 
+def _scene_frame_range():
+    """The Range Slider's min/max -- the same field Render Settings' own
+    frame range defaults from, so it's what an artist already thinks of as
+    "this shot's frames" rather than the (often much wider) full animation
+    range. Returns (frameRangeString, durationInFrames)."""
+    start = int(round(cmds.playbackOptions(query=True, minTime=True)))
+    end = int(round(cmds.playbackOptions(query=True, maxTime=True)))
+    if end < start:
+        start, end = end, start
+    return "%d-%d" % (start, end), max(1, end - start + 1)
+
+
 def _create_shot(*_args):
     project_id = _selected_id("forgeProjectMenu", _state.projects)
     episode_id = _selected_id("forgeEpisodeMenu", _state.episodes)
     sequence_id = _selected_id("forgeSequenceMenu", _state.sequences)
     name = cmds.textField("forgeShotNameField", query=True, text=True).strip()
+    frame_range = cmds.textField("forgeFrameRangeField", query=True, text=True).strip()
 
     if not project_id:
         cmds.confirmDialog(title="Forge", message="Pick a project first.", button=["OK"])
@@ -160,6 +178,18 @@ def _create_shot(*_args):
         body["episodeId"] = episode_id
     if sequence_id:
         body["sequenceId"] = sequence_id
+    if frame_range:
+        body["frameRange"] = frame_range
+        try:
+            lo, hi = frame_range.split("-", 1)
+            body["duration"] = max(1, int(hi) - int(lo) + 1)
+        except (ValueError, IndexError):
+            # Hand-edited into something that doesn't parse as "N-M" --
+            # still send it as the frame range label, just skip deriving a
+            # duration from it rather than fail the whole submission over a
+            # field the server treats as optional either way.
+            pass
+    body["notes"] = "Created from Maya (scene: %s)" % (cmds.file(query=True, sceneName=True) or "untitled")
 
     try:
         _request(_state.config, "POST", "/shots", body)
@@ -184,7 +214,7 @@ def show():
     if cmds.window(WINDOW_NAME, exists=True):
         cmds.deleteUI(WINDOW_NAME)
 
-    cmds.window(WINDOW_NAME, title="Forge Shot Creator", widthHeight=(360, 260))
+    cmds.window(WINDOW_NAME, title="Forge Shot Creator", widthHeight=(360, 300))
     cmds.columnLayout(adjustableColumn=True, rowSpacing=8, columnAttach=("both", 12))
     cmds.separator(height=8, style="none")
 
@@ -220,6 +250,10 @@ def show():
 
     cmds.text(label="Shot Name", align="left")
     cmds.textField("forgeShotNameField", placeholderText="e.g. SC010_SH020")
+
+    cmds.text(label="Frame Range (from this scene's Range Slider)", align="left")
+    default_range, _duration = _scene_frame_range()
+    cmds.textField("forgeFrameRangeField", text=default_range)
 
     cmds.separator(height=8, style="none")
     cmds.button(label="Create Shot", command=_create_shot, height=32)

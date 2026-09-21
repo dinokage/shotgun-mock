@@ -8,6 +8,11 @@ out-tsc
 .expo
 .expo-shared
 
+# Python (dcc-plugins/) -- bytecode cache from syntax-checking the DCC
+# plugin scripts locally; never meaningful to commit.
+__pycache__/
+*.pyc
+
 # Turborepo local cache/metadata -- untracked, and including it in a
 # package's own hashed inputs would make every run invalidate the next
 # run's cache (each run rewrites .turbo/, changing the hash it's hashed
