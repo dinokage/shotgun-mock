@@ -2219,18 +2219,42 @@ export default function Review() {
                             mediaUrl: uploaded.url,
                             taskId,
                           });
+                          // A wip-stage upload is the artist handing off
+                          // real footage -- previously this only attached
+                          // the file, leaving a second, separate "Submit"
+                          // click as the only thing that actually notified
+                          // the lead/PM (routes/tasks.ts's
+                          // submitted-for-lead-review notification). Most
+                          // often this replaces changes-requested footage,
+                          // so re-surfacing it to the lead automatically is
+                          // exactly the moment that notification exists for.
+                          if (reviewWorkflowStatus === "wip" && canSubmitReview) {
+                            submitApproval("lead-review", "submitted-for-lead-review");
+                          }
                           toast({
                             title: `${nextNumber} Uploaded`,
-                            description: `"${file.name}" is now the version under review. ${existingVersion.versionNumber} and its notes stay available in Compare.`,
+                            description:
+                              reviewWorkflowStatus === "wip" && canSubmitReview
+                                ? `"${file.name}" is now the version under review and has been submitted for Lead review. ${existingVersion.versionNumber} and its notes stay available in Compare.`
+                                : `"${file.name}" is now the version under review. ${existingVersion.versionNumber} and its notes stay available in Compare.`,
                           });
                         } else {
                           await updateVersion.mutateAsync({
                             id: versionId,
                             mediaUrl: uploaded.url,
                           });
+                          // First footage on this task -- same auto-submit
+                          // as above, so uploading alone is enough to reach
+                          // the lead/PM without a separate manual step.
+                          if (reviewWorkflowStatus === "wip" && canSubmitReview) {
+                            submitApproval("lead-review", "submitted-for-lead-review");
+                          }
                           toast({
                             title: "Media Inserted",
-                            description: `Now reviewing "${file.name}". Visible to the whole team.`,
+                            description:
+                              reviewWorkflowStatus === "wip" && canSubmitReview
+                                ? `Now reviewing "${file.name}" — submitted for Lead review.`
+                                : `Now reviewing "${file.name}". Visible to the whole team.`,
                           });
                         }
                       } catch (err) {
