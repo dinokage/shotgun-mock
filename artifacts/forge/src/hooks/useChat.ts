@@ -50,6 +50,12 @@ export function useChatChannels() {
     queryKey: ["chat-channels"],
     queryFn: () => apiClient.get<ChatChannelDTO[]>("/chat/channels"),
     staleTime: 10000,
+    // No websocket in this app -- without polling, a channel someone else
+    // posts into (or a new DM/group someone opens with you) never appears
+    // until something else happens to trigger a refetch (a window refocus,
+    // navigating away and back). This is the same 10s cadence App.tsx
+    // already uses for its own cross-user staleness fix (fetchMe()).
+    refetchInterval: 10000,
   });
 }
 
@@ -76,6 +82,13 @@ export function useChatMessages(channelId: string | null) {
         ? lastPage.messages[0].createdAt
         : undefined,
     staleTime: 5000,
+    // Same reasoning as useChatChannels' refetchInterval -- no websocket, so
+    // without this an open channel never shows another person's message
+    // until something else triggers a refetch. The first (most recent) page
+    // has no "before" cursor, so each poll genuinely re-fetches the latest
+    // messages; older already-loaded pages just re-fetch their same fixed
+    // window, which is redundant but harmless.
+    refetchInterval: 4000,
   });
 
   const messages = (query.data?.pages ?? [])
