@@ -748,7 +748,12 @@ class CheckLayoutStatusCheck(SanityCheck):
                 )
             shot = shots[0]
             status = shot.get("internalReviewStatus", "")
-            if status in ("approved", "done"):
+            # The real internalReviewStatus value set is "pending" |
+            # "approved" | "rejected" | "changes-requested" |
+            # "not-submitted" (see Shot.internalReviewStatus in
+            # lib/db/schema.prisma) -- "done" was never a real value here,
+            # so that branch could never actually pass.
+            if status == "approved":
                 return self.passed(f"Layout status is '{status}' — animation publish allowed.")
             return self.failed(
                 f"Layout task status is '{status}' — must be 'approved' before animating.",
