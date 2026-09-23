@@ -53,11 +53,18 @@ function guessDepartment(sourceDept: string, departments: DepartmentDTO[]): Depa
   const d = sourceDept.trim().toLowerCase();
   if (!d) return undefined;
   // Exact/substring match against real department names first ("Texturing"
-  // -> "Texturing / LookDev"), then fall back to abbreviation match.
+  // -> "Texturing / LookDev"), then abbreviation, exact then substring
+  // ("VFX Comp" -> "VFX", "Fx" -> department abbr "FX") -- the exact-only
+  // abbr check below on its own missed most real sheets, since a roster's
+  // Dept column is almost never just the bare abbreviation by itself.
   return (
     departments.find((dept) => dept.name.toLowerCase() === d) ||
     departments.find((dept) => dept.name.toLowerCase().includes(d) || d.includes(dept.name.toLowerCase())) ||
-    departments.find((dept) => dept.abbr.toLowerCase() === d)
+    departments.find((dept) => dept.abbr.toLowerCase() === d) ||
+    departments.find((dept) => {
+      const abbr = dept.abbr.toLowerCase();
+      return abbr.length > 1 && (d.includes(abbr) || abbr.includes(d));
+    })
   );
 }
 
@@ -216,6 +223,33 @@ export function EmployeeImportDialog({
           </>
         ) : (
           <div className="space-y-3">
+            <div className="flex items-center gap-2 text-sm border-b border-border/50 pb-3">
+              <span className="text-muted-foreground shrink-0">
+                Set department for all unclassified rows:
+              </span>
+              <Select
+                value=""
+                onValueChange={(v) =>
+                  setRows((prev) =>
+                    prev.map((r) => (r.departmentId ? r : { ...r, departmentId: v })),
+                  )
+                }
+              >
+                <SelectTrigger className="w-56">
+                  <SelectValue placeholder="Bulk-select a department…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {departments.map((d: DepartmentDTO) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span className="text-xs text-muted-foreground shrink-0">
+                {rows.filter((r) => !r.departmentId).length} of {rows.length} still unset
+              </span>
+            </div>
             <div className="max-h-96 overflow-y-auto space-y-2">
               {rows.map((row, i) => (
                 <div
