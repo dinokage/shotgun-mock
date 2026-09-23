@@ -121,10 +121,13 @@ def publish_shot(
         notes:          Optional publish notes.
 
     Returns:
-        The API response dict from POST /api/dcc/publish.
+        The result dict from ForgeAPIClient.dcc_publish() (a Version plus
+        the PublishLog entry it created).
 
     Raises:
-        RuntimeError:   When any check FAILs (publish blocked).
+        RuntimeError:   When any check FAILs (publish blocked), or when the
+                        episode/seq/shot fragments don't resolve to exactly
+                        one shot.
         ForgeAPIError:  On API communication errors.
     """
     # 1. Run checks if needed
@@ -170,7 +173,7 @@ def publish_shot(
             except Exception:
                 pass
 
-    # 5. Authenticate and publish
+    # 5. Authenticate and resolve the shot
     client = ForgeAPIClient(
         get_forge_url(),
         get_forge_email(),
@@ -181,10 +184,28 @@ def publish_shot(
     if not client.login():
         raise ForgeAPIError(401, "Could not authenticate with the Forge portal.")
 
+    # episode_no/seq_no/shot_no are the human-readable fragments an artist
+    # types in the launcher UI (e.g. "EP01"/"SQ010"/"SH010") -- every real
+    # API call below (create_version, update_shot_status, publish-logs)
+    # needs the shot's actual id, so this has to resolve one before it can
+    # do anything else. This step never existed before: the old code built
+    # a payload straight from the fragments and posted it to a
+    # /api/dcc/publish endpoint that was never actually implemented.
+    matches = client.get_shots(episode_no, seq_no, shot_no)
+    if len(matches) == 0:
+        raise RuntimeError(
+            f"No shot found matching {episode_no}/{seq_no}/{shot_no} -- "
+            "check the episode/sequence/shot codes and try again."
+        )
+    if len(matches) > 1:
+        raise RuntimeError(
+            f"{len(matches)} shots matched {episode_no}/{seq_no}/{shot_no} -- "
+            "be more specific."
+        )
+    shot_id = matches[0]["id"]
+
     payload = {
-        "episodeNo": episode_no,
-        "seqNo": seq_no,
-        "shotNo": shot_no,
+        "shotId": shot_id,
         "publishType": publish_type,
         "cache": cache,
         "filePath": file_path,

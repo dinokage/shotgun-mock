@@ -132,7 +132,9 @@ class ForgeAPIClient:
     ) -> List[Dict]:
         """
         Search shots by episode / sequence / shot number fragments.
-        Maps to: GET /api/dcc/shots
+        Maps to: GET /api/shots (episode/seq/shot are optional filters on
+        the same endpoint the web app uses, not a separate DCC-only route --
+        there was never a /api/dcc namespace on the server).
         """
         params: Dict[str, str] = {}
         if episode_no:
@@ -141,7 +143,7 @@ class ForgeAPIClient:
             params["seq"] = seq_no
         if shot_no:
             params["shot"] = shot_no
-        return self._get("dcc/shots", params=params)
+        return self._get("shots", params=params)
 
     def create_version(
         self,
@@ -173,33 +175,96 @@ class ForgeAPIClient:
         """
         return self._put(f"shots/{shot_id}", {"internalReviewStatus": status})
 
-    def run_remote_sanity(self, shot_id: str, publish_type: str) -> Dict:
+    @staticmethod
+    def _to_validation_log(sanity_results: List[Dict]) -> List[Dict]:
         """
-        Request the server to run / store a sanity check result set.
-        Maps to: POST /api/sanity/check
+        Convert this package's CheckResult.to_dict() shape
+        ({name, description, status, message, details}) into the shape
+        PublishLog.validation_log actually validates server-side
+        ({name, passed: bool, detail?}) -- see
+        artifacts/api-server/src/routes/publishing.ts's
+        validateValidationLog().
+        """
+        return [
+            {
+                "name": c.get("name", ""),
+                "passed": c.get("status") == "passed",
+                "detail": c.get("message", "") or "",
+            }
+            for c in sanity_results
+        ]
+
+    def run_remote_sanity(
+        self, shot_id: str, publish_type: str, sanity_results: Optional[List[Dict]] = None
+    ) -> Dict:
+        """
+        Log a sanity-check result set against a shot, independent of an
+        actual publish (e.g. an artist running checks before they're ready
+        to publish). There is no /api/sanity namespace on the server --
+        publish_logs.validation_log is the one place check results are
+        persisted, so this writes a PublishLog row with no version attached.
+        Maps to: POST /api/publish-logs
         """
         return self._post(
-            "sanity/check", {"shotId": shot_id, "publishType": publish_type}
+            "publish-logs",
+            {
+                "publishKind": "shot",
+                "entityType": "shot",
+                "entityId": shot_id,
+                "status": "validating",
+                "validationLog": self._to_validation_log(sanity_results or []),
+            },
         )
 
     def get_sanity_results(
         self, shot_id: Optional[str] = None, limit: int = 50
     ) -> List[Dict]:
         """
-        Retrieve recent sanity check results.
-        Maps to: GET /api/sanity/results
+        Retrieve recent publish-log entries (each carries its own
+        validationLog) for a shot.
+        Maps to: GET /api/publish-logs
         """
-        params: Dict[str, Any] = {"limit": limit}
+        params: Dict[str, Any] = {"limit": limit, "entityType": "shot"}
         if shot_id:
-            params["shotId"] = shot_id
-        return self._get("sanity/results", params=params)
+            params["entityId"] = shot_id
+        return self._get("publish-logs", params=params)
 
     def dcc_publish(self, payload: Dict) -> Dict:
         """
-        Full DCC publish: create version + update shot status atomically.
-        Maps to: POST /api/dcc/publish
+        Full DCC publish: create a Version, update the shot's review status,
+        then log the sanity-check results that gated it. There is no atomic
+        composite endpoint on the server for this (no /api/dcc namespace
+        exists) -- these are three real, already-working calls composed
+        here instead of one fabricated POST /api/dcc/publish.
+
+        Expects the payload shape publish.py's publish_shot() builds:
+        shotId, publishType, filePath, versionLabel, sanityResults, notes.
+        `shotId` must already be a resolved Forge shot id (publish_shot()
+        resolves it via get_shots() before calling this).
         """
-        return self._post("dcc/publish", payload)
+        shot_id = payload["shotId"]
+        version = self.create_version(
+            shot_id=shot_id,
+            publish_type=payload.get("publishType", ""),
+            media_url=payload.get("filePath", ""),
+            sanity_results=payload.get("sanityResults", []),
+            version_label=payload.get("versionLabel", "v001"),
+            notes=payload.get("notes", ""),
+        )
+        self.update_shot_status(shot_id, "pending")
+        log_entry = self._post(
+            "publish-logs",
+            {
+                "publishKind": "shot",
+                "entityType": "shot",
+                "entityId": shot_id,
+                "versionId": version.get("id"),
+                "status": "success",
+                "notes": payload.get("notes", ""),
+                "validationLog": self._to_validation_log(payload.get("sanityResults", [])),
+            },
+        )
+        return {"version": version, "publishLog": log_entry}
 
     # ------------------------------------------------------------------
     # Convenience context manager support

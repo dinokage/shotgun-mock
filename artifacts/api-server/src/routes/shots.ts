@@ -42,7 +42,7 @@ shotsRouter.use(tenantAuthMiddleware);
 shotsRouter.get("/", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
-    const { projectId } = req.query;
+    const { projectId, episode, seq, shot } = req.query;
     // A client-access session sees only shots under its granted project
     // (narrowed to one episode, or the one shot behind its granted
     // version, when the link is scoped that tight).
@@ -64,6 +64,20 @@ shotsRouter.get("/", async (req, res) => {
       where: {
         tenantId,
         ...(typeof projectId === "string" ? { projectId } : {}),
+        // Episode/sequence codes are human-readable strings on the related
+        // row, not on Shot itself, so these filter through the relation --
+        // used by the DCC sanity-check tool's shot search (Maya/Blender
+        // launcher looking up a shot by its "EP01 / SQ010 / SH010" code
+        // fragments rather than an internal id it has no way to know).
+        ...(typeof episode === "string" && episode
+          ? { episode: { name: { contains: episode, mode: "insensitive" } } }
+          : {}),
+        ...(typeof seq === "string" && seq
+          ? { sequence: { name: { contains: seq, mode: "insensitive" } } }
+          : {}),
+        ...(typeof shot === "string" && shot
+          ? { name: { contains: shot, mode: "insensitive" } }
+          : {}),
         ...(visibleShotIds ? { id: { in: visibleShotIds } } : {}),
         ...(clientScope
           ? {
