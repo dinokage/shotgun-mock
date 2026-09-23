@@ -156,17 +156,24 @@ class ForgeAPIClient:
     ) -> Dict:
         """
         Create a Version record for a shot.
-        Maps to: POST /api/versions
+        Maps to: POST /api/versions, then PUT /api/versions/:id for notes --
+        confirmed live against the real server that POST silently ignores a
+        `notes` field in its body (only entityId/entityType/versionNumber/
+        mediaUrl/taskId are read on create; notes is only ever set through
+        the PATCHABLE_FIELDS on PUT /:id). Passing notes to POST looked like
+        it worked -- no error -- but every publish note was actually being
+        thrown away.
         """
         payload = {
             "entityId": shot_id,
             "entityType": "shot",
             "versionNumber": version_label,
             "mediaUrl": media_url,
-            "notes": notes,
-            # Extra DCC metadata stored in notes until a proper field exists
         }
-        return self._post("versions", payload)
+        created = self._post("versions", payload)
+        if notes:
+            created = self._put(f"versions/{created['id']}", {"notes": notes})
+        return created
 
     def update_shot_status(self, shot_id: str, status: str) -> Dict:
         """
