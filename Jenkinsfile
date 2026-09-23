@@ -45,12 +45,25 @@ pipeline {
             }
         }
 
+        stage('Test') {
+            steps {
+                sh 'turbo run test'
+            }
+        }
+
         stage('Deploy') {
             // Triggered on changes to the main branch
             when {
                 branch 'main'
             }
             steps {
+                // Compose loads .env automatically from the working directory,
+                // but .env is gitignored and never provisioned by `checkout
+                // scm` -- it has to already exist on this agent. Without this
+                // guard, a missing file fails late and confusingly inside
+                // Compose's `${POSTGRES_PASSWORD:?...}` required-var syntax
+                // instead of with a clear message naming the actual problem.
+                sh 'test -f .env || (echo "Missing .env on this Jenkins agent -- Deploy cannot run without it." && exit 1)'
                 echo 'Deploying Forge via Docker Compose...'
                 // --scale api=3: replica count isn't declared in
                 // docker-compose.yml (no deploy.replicas), only ever reached

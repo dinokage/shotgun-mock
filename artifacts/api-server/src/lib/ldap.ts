@@ -1,4 +1,5 @@
 import { Client } from 'ldapts';
+import * as crypto from 'crypto';
 
 export interface LdapUser {
   email: string;
@@ -65,6 +66,18 @@ export async function ldapLogin(username: string, password: string): Promise<Lda
     });
 
     if (searchEntries.length === 0) {
+      // Unknown username -- without this, an unknown user returns after one
+      // network round-trip (bind + search) while a known user with a wrong
+      // password costs two (bind + search + a second bind below), making
+      // response time an oracle for valid AD usernames. Spend a decoy bind
+      // against the service account's own DN with a random password so both
+      // paths cost the same, mirroring the decoy-hash approach the regular
+      // password-login route already uses for the same reason.
+      try {
+        await client.bind(bindDN, crypto.randomBytes(16).toString('hex'));
+      } catch {
+        // Expected to fail -- the point is the time spent, not the result.
+      }
       return null;
     }
 

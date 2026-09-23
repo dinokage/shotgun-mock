@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { cn, isTempAnnotationId } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { isTempAnnotationId } from "@/hooks/useReviews";
 import type {
   Annotation,
   AnnotationTool,

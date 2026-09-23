@@ -750,18 +750,35 @@ authRouter.post(
         // LDAP-only, so local-password login must never succeed. A random UUID
         // is not a valid argon2 hash, so verifyPassword() returns false without
         // doing any argon2 work.
-        user = await prisma.user.create({
-          data: {
-            id: crypto.randomUUID(),
-            tenantId: tenant.id,
-            roleId: roleRow.id,
-            name: ldapUser.name,
-            email: ldapUser.email.toLowerCase(),
-            hashedPassword: crypto.randomUUID(), // sentinel; never verified
-            status: "active",
-            tokenVersion: 0,
-          },
-        });
+        try {
+          user = await prisma.user.create({
+            data: {
+              id: crypto.randomUUID(),
+              tenantId: tenant.id,
+              roleId: roleRow.id,
+              name: ldapUser.name,
+              email: ldapUser.email.toLowerCase(),
+              hashedPassword: crypto.randomUUID(), // sentinel; never verified
+              status: "active",
+              tokenVersion: 0,
+            },
+          });
+        } catch (err) {
+          // Two concurrent first-ever logins for the same new AD user can
+          // both pass the `if (!user)` check above and both reach this
+          // create -- the loser hits a unique-constraint violation on email
+          // rather than a real error. Treat that as a race, not a failure:
+          // whichever request won gets to have provisioned the row, so just
+          // fetch it instead of 500ing the loser.
+          if ((err as { code?: string })?.code === "P2002") {
+            user = await prisma.user.findFirst({
+              where: { email: { equals: ldapUser.email, mode: "insensitive" } },
+            });
+            if (!user) throw err;
+          } else {
+            throw err;
+          }
+        }
       } else {
         if (user.status !== "active") {
           return res.status(403).json({

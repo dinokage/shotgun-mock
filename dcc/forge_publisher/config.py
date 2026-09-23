@@ -56,7 +56,16 @@ def save_prefs(url: str, email: str, password: str, api_token: str = "") -> None
     data = {"url": url, "email": email, "password": password}
     if api_token:
         data["api_token"] = api_token
-    with open(_PREFS_PATH, "w", encoding="utf-8") as fh:
+    # Written owner-only (0600): a plain open(..., "w") leaves the password
+    # readable by every other account on a shared workstation, which a
+    # render-farm or studio login machine often is -- same fix already
+    # applied to dcc-plugins/*/forge_shot_creator.py's _save_config. os.open
+    # with O_CREAT sets the mode atomically at creation instead of racing a
+    # separate chmod after the fact.
+    if _PREFS_PATH.exists():
+        os.chmod(_PREFS_PATH, 0o600)
+    fd = os.open(_PREFS_PATH, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as fh:
         json.dump(data, fh, indent=2)
     # Invalidate cached prefs
     if hasattr(_prefs, "_cache"):
