@@ -5,6 +5,7 @@ import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability, denyClientAccess } from "../middleware/rbac";
 import { sendClientAccessEmail } from "../lib/mailer";
 import { getClientScope } from "../lib/clientScope";
+import { generateAccessCode } from "../lib/accessCode";
 import * as crypto from "crypto";
 import { rateLimitByIp } from "../lib/rateLimit";
 
@@ -14,17 +15,6 @@ import { rateLimitByIp } from "../lib/rateLimit";
 const REDEEM_RULE = { name: "client-redeem:ip", limit: 15, windowSeconds: 600 };
 
 export const clientAccessRouter = Router();
-
-// Deliberately excludes visually ambiguous characters (0/O, 1/I/L) -- a
-// client has to type this by hand from an email or chat message.
-const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-function generateAccessCode(length = 8): string {
-  let code = "";
-  for (let i = 0; i < length; i++) {
-    code += CODE_ALPHABET[crypto.randomInt(CODE_ALPHABET.length)];
-  }
-  return code;
-}
 
 // Unauthenticated on purpose -- a client has no Forge account, only the
 // code. Declared before the tenantAuthMiddleware below so it's matched

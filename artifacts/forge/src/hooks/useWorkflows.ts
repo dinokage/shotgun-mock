@@ -135,6 +135,21 @@ export function useDeleteWorkflow() {
   });
 }
 
+// Starts a real run: creates the WorkflowRun row and executes the graph
+// synchronously against `shotId` server-side (see workflows.ts's executor).
+// The response is the run's outcome, already either "completed" or
+// "running" (paused at an Internal Review gate) -- there's nothing to poll
+// for immediately after this resolves.
+export function useCreateWorkflowRun(workflowId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (shotId: string) =>
+      apiClient.post<WorkflowRunDTO>(`/workflows/${workflowId}/runs`, { shotId }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["workflow-runs", workflowId ?? "none"] }),
+  });
+}
+
 export function useWorkflowRuns(workflowId: string | undefined) {
   return useQuery<WorkflowRunDTO[]>({
     queryKey: ["workflow-runs", workflowId ?? "none"],

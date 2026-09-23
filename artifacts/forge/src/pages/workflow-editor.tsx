@@ -56,17 +56,28 @@ import {
   useWorkflows,
   useCreateWorkflow,
   useUpdateWorkflow,
+  useCreateWorkflowRun,
   type WorkflowNode as StoredWorkflowNode,
   type WorkflowNodeData,
   type WorkflowNodeKind,
 } from "@/hooks/useWorkflows";
 import { useCapability } from "@/hooks/use-capability";
+import { useProjects } from "@/hooks/useProjects";
+import { useShots } from "@/hooks/useShots";
+import { useToast } from "@/hooks/use-toast";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 // Icon names are persisted as strings (component references aren't
 // serializable to localStorage), and resolved back to components here.
@@ -358,6 +369,13 @@ function WorkflowEditorInner() {
   const { data: workflow } = useWorkflow(workflowId);
   const createWorkflow = useCreateWorkflow();
   const updateWorkflow = useUpdateWorkflow();
+  const createRun = useCreateWorkflowRun(workflowId);
+  const [runDialogOpen, setRunDialogOpen] = useState(false);
+  const [runProjectId, setRunProjectId] = useState("");
+  const [runShotId, setRunShotId] = useState("");
+  const { data: runProjects = [] } = useProjects();
+  const { data: runShots = [] } = useShots(runProjectId || undefined);
+  const { toast } = useToast();
   // Editing pipeline graphs (adding/moving/deleting nodes, wiring edges,
   // saving, resetting) is gated on manage_pipeline rather than left open to
   // anyone who can reach this (already leadership-only) route.
@@ -687,6 +705,32 @@ function WorkflowEditorInner() {
     setTestRunOpen(true);
   }, [nodes, edges]);
 
+  const handleStartRun = useCallback(() => {
+    if (!workflowId || !runShotId) return;
+    createRun.mutate(runShotId, {
+      onSuccess: (run) => {
+        setRunDialogOpen(false);
+        setRunProjectId("");
+        setRunShotId("");
+        toast({
+          title: run.status === "running" ? "Run started -- awaiting approval" : "Run completed",
+          description:
+            run.status === "running"
+              ? `Paused at "${run.currentNode}" for manual approval.`
+              : "Every reachable node finished. Check the run log for details.",
+        });
+        setLocation(`/workflows/run/${workflowId}`);
+      },
+      onError: (err: any) => {
+        toast({
+          title: "Couldn't start run",
+          description: err?.message ?? "Something went wrong.",
+          variant: "destructive",
+        });
+      },
+    });
+  }, [workflowId, runShotId, createRun, toast, setLocation]);
+
   const handleReset = useCallback(() => {
     if (!canManagePipeline) return;
     const starter = createStarterGraph();
@@ -789,6 +833,18 @@ function WorkflowEditorInner() {
           >
             <Play className="w-4 h-4" /> Test Run
           </Button>
+          {workflowId && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() => setRunDialogOpen(true)}
+              disabled={!canManagePipeline}
+              title="Run this workflow for real against a shot"
+            >
+              <Play className="w-4 h-4 text-primary" /> Run
+            </Button>
+          )}
           <Button
             size="sm"
             className="gap-2 w-[136px] justify-center"
@@ -1107,6 +1163,77 @@ function WorkflowEditorInner() {
           </AnimatePresence>
         </div>
       </div>
+
+      <Dialog
+        open={runDialogOpen}
+        onOpenChange={(next) => {
+          setRunDialogOpen(next);
+          if (!next) {
+            setRunProjectId("");
+            setRunShotId("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Play className="w-4 h-4 text-primary" /> Run Workflow
+            </DialogTitle>
+            <DialogDescription>
+              Actually runs "{workflow?.name ?? NEW_WORKFLOW_NAME}" against a
+              real shot -- unlike Test Run, this creates real tasks, may
+              pause for a real approval, and can really share footage with a
+              client. Pick which shot it applies to.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <label className="text-xs text-muted-foreground">Project</label>
+              <Select
+                value={runProjectId}
+                onValueChange={(v) => {
+                  setRunProjectId(v);
+                  setRunShotId("");
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a project" />
+                </SelectTrigger>
+                <SelectContent>
+                  {runProjects.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs text-muted-foreground">Shot</label>
+              <Select value={runShotId} onValueChange={setRunShotId} disabled={!runProjectId}>
+                <SelectTrigger>
+                  <SelectValue placeholder={runProjectId ? "Select a shot" : "Pick a project first"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {runShots.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRunDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleStartRun} disabled={!runShotId || createRun.isPending}>
+              {createRun.isPending ? "Starting…" : "Run"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={testRunOpen} onOpenChange={setTestRunOpen}>
         <DialogContent className="max-w-md">
