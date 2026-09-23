@@ -287,6 +287,7 @@ model Project {
   pipelines         ProjectPipeline[]
   deliveries        Delivery[]
   broadcasts        Broadcast[]
+  chatChannels      ChatChannel[]
 
   @@map("projects")
 }
@@ -842,17 +843,25 @@ model ProjectPipeline {
 model ChatChannel {
   id           String    @id
   tenantId     String    @map("tenant_id")
-  /// "channel" | "group" | "dm"
+  /// "channel" | "group" | "dm" | "client" -- "client" is the one auto-
+  /// provisioned per project the moment a client is granted
+  /// ClientProjectAccess (see client-project-access.ts), membership locked
+  /// to production_head + lead, never artist -- see projectId below.
   kind         String    @default("channel")
   name         String
   description  String    @default("")
   departmentId String?   @map("department_id")
+  /// Set only for kind "client" -- which project this client channel
+  /// belongs to. Nothing else uses this; a "channel"/"group"/"dm" always
+  /// has this null.
+  projectId    String?   @map("project_id")
   createdById  String?   @map("created_by_id")
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
   archivedAt   DateTime? @map("archived_at") @db.Timestamp(6)
 
   tenant    Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "chat_channels_tenant_id_fk")
   createdBy User?               @relation(fields: [createdById], references: [id], onUpdate: NoAction, map: "chat_channels_created_by_id_fk")
+  project   Project?            @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "chat_channels_project_id_projects_id_fk")
   members   ChatChannelMember[]
   messages  ChatMessage[]
 

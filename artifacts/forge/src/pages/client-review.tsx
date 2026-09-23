@@ -18,10 +18,20 @@ import {
   CalendarDays,
   PackageCheck,
   X,
+  Inbox,
+  Paperclip,
+  Camera,
+  Maximize,
+  Minimize,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiClient } from "@/lib/apiClient";
+import {
+  useClientChatChannels,
+  useChatMessages,
+  usePostChatMessage,
+} from "@/hooks/useChat";
 import { useProjectStore } from "@/store/projects";
 import { useLocation } from "wouter";
 import { useAuthStore } from "@/store/auth";
@@ -146,11 +156,66 @@ export default function ClientReview() {
     string | null
   >(null);
   const [ghosting, setGhosting] = useState(false);
+  const [onionSkin, setOnionSkin] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const playerContainerRef = useRef<HTMLDivElement>(null);
   const [draggingElement, setDraggingElement] =
     useState<DraggingElement | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
-  const maxFrames = 240;
+  // 240 is only the pre-load default (matches review.tsx's PROJECT_FPS=24 *
+  // ~10s guess) -- set for real once the video's real duration loads, below.
+  const CLIENT_PROJECT_FPS = 24;
+  const [mediaDurationSec, setMediaDurationSec] = useState<number | null>(null);
+  const maxFrames = mediaDurationSec
+    ? Math.max(1, Math.round(mediaDurationSec * CLIENT_PROJECT_FPS))
+    : 240;
+  // Otherwise a shorter clip briefly inherits the previous, longer one's
+  // real duration until its own metadata loads.
+  useEffect(() => {
+    setMediaDurationSec(null);
+  }, [activeReviewId]);
+
+  useEffect(() => {
+    const onFsChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () => document.removeEventListener("fullscreenchange", onFsChange);
+  }, []);
+
+  const handleToggleFullscreen = () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    } else {
+      playerContainerRef.current?.requestFullscreen().catch(() => {});
+    }
+  };
+
+  // Simpler than review.tsx's version: one video element here, not several
+  // composited clips, so there's no blend-mode/opacity stack to draw.
+  const handleScreenshot = async () => {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth) return;
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const blob: Blob | null = await new Promise((resolve) =>
+        canvas.toBlob(resolve, "image/png"),
+      );
+      if (!blob) return;
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      toast({ title: "Screenshot copied", description: "The current frame is on your clipboard." });
+    } catch (err: any) {
+      toast({
+        title: "Couldn't copy screenshot",
+        description: err?.message ?? "Your browser may not support this.",
+        variant: "destructive",
+      });
+    }
+  };
 
   const versions = useReviewStore((s) => s.versions);
   const projects = useProjectStore((s) => s.projects);
@@ -186,7 +251,7 @@ export default function ClientReview() {
     tasks: { id: string; title: string; dueDate: string; status: string; shotId: string; shotName: string | null; projectId: string | null }[];
     deliveries: { id: string; name: string; expiresAt: string | null; projectId: string | null }[];
   }
-  const [showCalendar, setShowCalendar] = useState(false);
+  const [clientView, setClientView] = useState<"reviews" | "calendar" | "chat">("reviews");
   const { data: calendarData } = useQuery<ClientCalendarData>({
     queryKey: ["client-calendar"],
     queryFn: () => apiClient.get<ClientCalendarData>("/client-access/calendar"),
@@ -220,6 +285,27 @@ export default function ClientReview() {
       .filter((i) => i.date.getTime() >= now - 24 * 60 * 60 * 1000) // keep "today" even if slightly past
       .sort((a, b) => a.date.getTime() - b.date.getTime());
   }, [calendarData]);
+
+  // Chat: a client only ever sees the one "client" channel per project it
+  // has access to (see GET /chat/client-channels) -- production_head and
+  // department leads, never artists, per the studio's own requirement.
+  const { data: chatChannels = [] } = useClientChatChannels();
+  const [activeChatChannelId, setActiveChatChannelId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!activeChatChannelId && chatChannels.length > 0) {
+      setActiveChatChannelId(chatChannels[0].id);
+    }
+  }, [chatChannels, activeChatChannelId]);
+  const { messages: chatMessages } = useChatMessages(activeChatChannelId);
+  const postChatMessage = usePostChatMessage();
+  const [chatInput, setChatInput] = useState("");
+  const chatTotalUnread = chatChannels.reduce((sum, c) => sum + c.unreadCount, 0);
+  const handleSendChat = () => {
+    const body = chatInput.trim();
+    if (!body || !activeChatChannelId) return;
+    setChatInput("");
+    postChatMessage.mutate({ channelId: activeChatChannelId, body });
+  };
   const activeProjectShots = useMemo(
     () =>
       activeProjectShotsRaw.map((s: ShotDTO) => ({
@@ -498,6 +584,7 @@ export default function ClientReview() {
       else if (e.key === "3") setTool("arrow");
       else if (e.key === "4") setTool("rectangle");
       else if (e.key === "5") setTool("text");
+      else if (e.key === "f" || e.key === "F") handleToggleFullscreen();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
@@ -651,120 +738,281 @@ export default function ClientReview() {
     );
   }
 
-  // DASHBOARD VIEW
-  if (!activeReviewId) {
-    return (
-      <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans">
-        <header className="h-16 px-8 flex items-center justify-between border-b border-white/10 bg-zinc-900/50 backdrop-blur-md sticky top-0 z-10">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shadow-lg shadow-primary/20 shrink-0">
-              <div className="w-4 h-4 bg-card rounded-sm" />
-            </div>
-            <div className="leading-tight">
-              <div className="font-bold text-lg tracking-tight">
-                Forge Client Portal
-              </div>
-              <div className="text-[11px] text-zinc-500">
-                External review — no studio login required
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <Button
-              variant={showCalendar ? "secondary" : "ghost"}
-              size="sm"
-              className={showCalendar ? "" : "text-zinc-400 hover:text-white"}
-              onClick={() => setShowCalendar((v) => !v)}
-            >
-              <CalendarDays className="w-4 h-4 mr-2" /> Calendar
-              {upcomingItems.length > 0 && (
-                <Badge variant="outline" className="ml-2 h-5 px-1.5 border-primary/30 text-primary">
-                  {upcomingItems.length}
-                </Badge>
-              )}
-            </Button>
-            <Badge
-              variant="outline"
-              className="border-status-green/30 text-status-green bg-status-green/10 gap-1.5"
-            >
-              <Lock className="w-3 h-3" /> Secure Connection
+  // Left nav shared by every authenticated view (browsing, the player, and
+  // the full-page Calendar/Chat below) -- defined once here so switching
+  // views doesn't lose place in a review, and so Calendar/Chat are reachable
+  // no matter where in the portal a client currently is.
+  const navItemClass = (view: typeof clientView) =>
+    `w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+      clientView === view
+        ? "bg-primary/15 text-primary"
+        : "text-zinc-400 hover:text-white hover:bg-white/5"
+    }`;
+  const sidebar = (
+    <aside className="w-56 shrink-0 h-screen bg-zinc-900/60 border-r border-white/10 flex flex-col">
+      <div className="h-16 px-5 flex items-center gap-2.5 border-b border-white/10 shrink-0">
+        <div className="w-7 h-7 bg-primary rounded-lg flex items-center justify-center shadow-lg shadow-primary/20 shrink-0">
+          <div className="w-3.5 h-3.5 bg-card rounded-sm" />
+        </div>
+        <div className="leading-tight">
+          <div className="font-bold text-sm tracking-tight">Forge</div>
+          <div className="text-[10px] text-zinc-500">Client Portal</div>
+        </div>
+      </div>
+      <nav className="flex-1 p-3 space-y-1">
+        <button className={navItemClass("reviews")} onClick={() => setClientView("reviews")}>
+          <Inbox className="w-4 h-4" /> Reviews
+        </button>
+        <button className={navItemClass("calendar")} onClick={() => setClientView("calendar")}>
+          <CalendarDays className="w-4 h-4" /> Calendar
+          {upcomingItems.length > 0 && (
+            <Badge variant="outline" className="ml-auto h-5 px-1.5 border-primary/30 text-primary">
+              {upcomingItems.length}
             </Badge>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-zinc-400 hover:text-white"
-              onClick={handleLogout}
-            >
-              <LogOut className="w-4 h-4 mr-2" /> Exit
-            </Button>
-          </div>
-        </header>
+          )}
+        </button>
+        <button className={navItemClass("chat")} onClick={() => setClientView("chat")}>
+          <MessageSquare className="w-4 h-4" /> Chat
+          {chatTotalUnread > 0 && (
+            <Badge variant="outline" className="ml-auto h-5 px-1.5 border-primary/30 text-primary">
+              {chatTotalUnread}
+            </Badge>
+          )}
+        </button>
+      </nav>
+      <div className="p-3 border-t border-white/10 space-y-2 shrink-0">
+        <Badge
+          variant="outline"
+          className="w-full justify-center border-status-green/30 text-status-green bg-status-green/10 gap-1.5"
+        >
+          <Lock className="w-3 h-3" /> Secure Connection
+        </Badge>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start text-zinc-400 hover:text-white"
+          onClick={handleLogout}
+        >
+          <LogOut className="w-4 h-4 mr-2" /> Exit
+        </Button>
+      </div>
+    </aside>
+  );
 
-        {showCalendar && (
-          <div className="border-b border-white/10 bg-zinc-900/70 backdrop-blur-md">
-            <div className="max-w-7xl mx-auto px-8 py-5">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2 text-sm font-semibold text-zinc-200">
-                  <CalendarDays className="w-4 h-4 text-primary" /> Upcoming
-                </div>
-                <button
-                  className="text-zinc-500 hover:text-white transition-colors"
-                  onClick={() => setShowCalendar(false)}
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
+  if (clientView === "calendar" || clientView === "chat") {
+    return (
+      <div className="h-screen flex bg-zinc-950 text-zinc-100 font-sans overflow-hidden">
+        {sidebar}
+        {clientView === "calendar" ? (
+          <div className="flex-1 overflow-y-auto">
+            <div className="max-w-5xl mx-auto px-8 py-8">
+              <h1 className="text-2xl font-bold tracking-tight mb-1">Calendar</h1>
+              <p className="text-zinc-400 text-sm mb-6">
+                Upcoming task due dates and delivery windows across every
+                project you have access to.
+              </p>
               {upcomingItems.length === 0 ? (
-                <p className="text-sm text-zinc-500">
-                  Nothing scheduled right now. Check back later, or reach out
-                  below if you're waiting on something specific.
-                </p>
+                <div className="flex flex-col items-center justify-center h-64 border border-white/5 rounded-xl bg-zinc-900/20">
+                  <CalendarDays className="w-12 h-12 text-zinc-600 mb-3 opacity-50" />
+                  <p className="text-zinc-500 text-sm">
+                    Nothing scheduled right now.
+                  </p>
+                </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {upcomingItems.slice(0, 9).map((item) => (
+                <div className="space-y-2">
+                  {upcomingItems.map((item) => (
                     <button
                       key={item.id}
                       onClick={() => {
                         if (item.kind === "task" && item.shotId) {
-                          const shot = shots.find((s) => s.id === item.shotId) ??
+                          const shot =
+                            shots.find((s) => s.id === item.shotId) ??
                             activeProjectShots.find((s) => s.id === item.shotId);
                           if (shot) {
                             setActiveReviewId(shot.id);
+                            setClientView("reviews");
                           }
-                          setShowCalendar(false);
                         }
                       }}
-                      className={`flex items-start gap-3 p-3 rounded-lg border border-white/10 bg-zinc-950/50 text-left transition-colors ${
-                        item.kind === "task" ? "hover:border-primary/50 cursor-pointer" : "cursor-default"
+                      className={`w-full flex items-center gap-4 p-4 rounded-lg border border-white/10 bg-zinc-900/40 text-left transition-colors ${
+                        item.kind === "task"
+                          ? "hover:border-primary/50 cursor-pointer"
+                          : "cursor-default"
                       }`}
                     >
                       {item.kind === "delivery" ? (
-                        <PackageCheck className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                        <PackageCheck className="w-5 h-5 text-amber-400 shrink-0" />
                       ) : (
-                        <CalendarDays className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                        <CalendarDays className="w-5 h-5 text-primary shrink-0" />
                       )}
-                      <div className="min-w-0">
-                        <div className="text-sm font-medium truncate">{item.label}</div>
-                        <div className="text-xs text-zinc-500 mt-0.5">
-                          {item.date.toLocaleDateString(undefined, {
-                            weekday: "short",
-                            month: "short",
-                            day: "numeric",
-                          })}
-                        </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium">{item.label}</div>
+                      </div>
+                      <div className="text-xs text-zinc-500 shrink-0">
+                        {item.date.toLocaleDateString(undefined, {
+                          weekday: "short",
+                          month: "short",
+                          day: "numeric",
+                        })}
                       </div>
                     </button>
                   ))}
                 </div>
               )}
-              <p className="text-xs text-zinc-600 mt-4">
-                Need an update on something? Open the shot from here, or a
-                pending review below, and leave a note — the team gets it
-                right away.
+              <p className="text-xs text-zinc-600 mt-6">
+                Need an update on something? Open Chat to message the
+                production team directly, or open a task above to leave a
+                note on that shot.
               </p>
             </div>
           </div>
+        ) : (
+          <div className="flex-1 flex overflow-hidden">
+            <div className="w-64 shrink-0 border-r border-white/10 bg-zinc-900/30 overflow-y-auto">
+              <div className="h-16 px-5 flex items-center border-b border-white/10">
+                <h2 className="text-sm font-semibold">Chat</h2>
+              </div>
+              {chatChannels.length === 0 ? (
+                <p className="text-xs text-zinc-500 p-4">
+                  No chat channel yet -- your studio contact sets this up
+                  once you're granted project access.
+                </p>
+              ) : (
+                <div className="p-2 space-y-1">
+                  {chatChannels.map((c) => (
+                    <button
+                      key={c.id}
+                      onClick={() => setActiveChatChannelId(c.id)}
+                      className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg text-left text-sm transition-colors ${
+                        activeChatChannelId === c.id
+                          ? "bg-primary/15 text-primary"
+                          : "text-zinc-300 hover:bg-white/5"
+                      }`}
+                    >
+                      <span className="truncate">{c.name}</span>
+                      {c.unreadCount > 0 && (
+                        <Badge className="h-5 px-1.5 shrink-0">{c.unreadCount}</Badge>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {!activeChatChannelId ? (
+                <div className="flex-1 flex items-center justify-center text-zinc-500 text-sm">
+                  Select a channel to start messaging.
+                </div>
+              ) : (
+                <>
+                  <div className="h-16 px-6 flex items-center border-b border-white/10 shrink-0">
+                    <h2 className="text-sm font-semibold">
+                      {chatChannels.find((c) => c.id === activeChatChannelId)?.name}
+                    </h2>
+                  </div>
+                  <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+                    {chatMessages.length === 0 ? (
+                      <p className="text-sm text-zinc-500 text-center mt-8">
+                        No messages yet -- say hello.
+                      </p>
+                    ) : (
+                      chatMessages.map((m) => {
+                        const mine = m.authorId === currentUser?.id;
+                        return (
+                          <div
+                            key={m.id}
+                            className={`flex ${mine ? "justify-end" : "justify-start"}`}
+                          >
+                            <div
+                              className={`max-w-[70%] rounded-xl px-4 py-2 ${
+                                mine
+                                  ? "bg-primary text-primary-foreground"
+                                  : "bg-zinc-800 text-zinc-100"
+                              }`}
+                            >
+                              {!mine && (
+                                <div className="text-xs font-semibold text-zinc-400 mb-0.5">
+                                  {m.authorName ?? "Team"}
+                                </div>
+                              )}
+                              {m.body && (
+                                <div className="text-sm whitespace-pre-wrap">{m.body}</div>
+                              )}
+                              {m.attachmentUrl && (
+                                <a
+                                  href={m.attachmentUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="flex items-center gap-1.5 text-xs underline mt-1 opacity-90"
+                                >
+                                  <Paperclip className="w-3 h-3" />
+                                  {m.attachmentName ?? "Attachment"}
+                                </a>
+                              )}
+                              <div
+                                className={`text-[10px] mt-1 ${mine ? "text-primary-foreground/70" : "text-zinc-500"}`}
+                              >
+                                {new Date(m.createdAt).toLocaleTimeString(undefined, {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                  <div className="p-4 border-t border-white/10 shrink-0">
+                    <div className="flex items-end gap-2 bg-zinc-900/60 border border-white/10 rounded-xl p-2">
+                      <textarea
+                        value={chatInput}
+                        onChange={(e) => setChatInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSendChat();
+                          }
+                        }}
+                        placeholder="Message the production team..."
+                        className="flex-1 max-h-32 min-h-[40px] bg-transparent border-0 focus:ring-0 outline-none p-2 resize-none text-[15px]"
+                        rows={1}
+                      />
+                      <Button
+                        onClick={handleSendChat}
+                        disabled={!chatInput.trim()}
+                        size="icon"
+                        className="h-9 w-9 shrink-0 rounded-lg"
+                      >
+                        <Send className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         )}
+      </div>
+    );
+  }
+
+  // DASHBOARD VIEW
+  if (!activeReviewId) {
+    return (
+      <div className="h-screen flex bg-zinc-950 text-zinc-100 font-sans overflow-hidden">
+        {sidebar}
+        <div className="flex-1 overflow-y-auto">
+        <header className="h-16 px-8 flex items-center justify-between border-b border-white/10 bg-zinc-900/50 backdrop-blur-md sticky top-0 z-10">
+          <div className="leading-tight">
+            <div className="font-bold text-lg tracking-tight">
+              Your Reviews
+            </div>
+            <div className="text-[11px] text-zinc-500">
+              {isExplicitClient ? tenantName : "External review — no studio login required"}
+            </div>
+          </div>
+        </header>
 
         <main className="p-8 max-w-7xl mx-auto space-y-8">
           <div className="flex items-center justify-between gap-4">
@@ -990,6 +1238,7 @@ export default function ClientReview() {
             </div>
           )}
         </main>
+        </div>
       </div>
     );
   }
@@ -1083,7 +1332,10 @@ export default function ClientReview() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* Main Player */}
-        <div className="flex-1 relative flex flex-col items-center justify-center p-4">
+        <div
+          ref={playerContainerRef}
+          className="flex-1 relative flex flex-col items-center justify-center p-4 bg-black"
+        >
           <div
             className="relative w-full max-w-5xl aspect-video bg-zinc-900 bg-cover bg-center rounded-lg overflow-hidden shadow-2xl border border-white/5"
             style={{ backgroundImage: `url(${activeVersionPoster})` }}
@@ -1104,6 +1356,15 @@ export default function ClientReview() {
                 className="absolute inset-0 w-full h-full object-contain pointer-events-none"
                 muted
                 playsInline
+                // The timeline follows the real footage instead of a fixed
+                // 240-frame guess, same fix as review.tsx's own player --
+                // without this, any clip not coincidentally ~10s long either
+                // couldn't be scrubbed to its true end (longer clips) or left
+                // most of the scrubber dead (shorter ones).
+                onLoadedMetadata={(e) => {
+                  const d = e.currentTarget.duration;
+                  if (Number.isFinite(d) && d > 0) setMediaDurationSec(d);
+                }}
               />
             )}
 
@@ -1121,6 +1382,7 @@ export default function ClientReview() {
               currentUserId={currentUser?.id}
               selectionRingClassName="border-emerald-500 ring-2 ring-emerald-500/50"
               ghosting={ghosting}
+              onionSkin={onionSkin}
             />
 
             {/* Play overlay if paused */}
@@ -1163,6 +1425,28 @@ export default function ClientReview() {
               onToggle={() => setGhosting(!ghosting)}
               variant="client"
             />
+            <button
+              onClick={() => setOnionSkin((v) => !v)}
+              title="Toggle Onion Skinning"
+              className={`p-1.5 rounded-md transition-colors ${onionSkin ? "text-primary bg-primary/15" : "text-zinc-400 hover:text-white hover:bg-white/10"}`}
+            >
+              <Layers className="w-4 h-4" />
+            </button>
+            <div className="w-px h-6 bg-white/10" />
+            <button
+              onClick={handleScreenshot}
+              title="Copy Screenshot to Clipboard"
+              className="p-1.5 rounded-md text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              <Camera className="w-4 h-4" />
+            </button>
+            <button
+              onClick={handleToggleFullscreen}
+              title="Toggle Fullscreen (F)"
+              className="p-1.5 rounded-md text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+            </button>
           </div>
 
           {/* Scrubber */}

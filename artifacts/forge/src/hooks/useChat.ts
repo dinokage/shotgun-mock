@@ -31,6 +31,10 @@ export interface ChatMessageDTO {
   id: string;
   channelId: string;
   authorId: string | null;
+  /** Resolved server-side (GET /channels/:id/messages) so the client
+   * portal, which has no access to the staff roster, can still show who
+   * sent a message. Populated for every caller, not just clients. */
+  authorName?: string | null;
   body: string;
   attachmentUrl: string | null;
   attachmentName: string | null;
@@ -55,6 +59,24 @@ export function useChatChannels() {
     // until something else happens to trigger a refetch (a window refocus,
     // navigating away and back). This is the same 10s cadence App.tsx
     // already uses for its own cross-user staleness fix (fetchMe()).
+    refetchInterval: 10000,
+  });
+}
+
+// The client portal's equivalent of useChatChannels -- hits
+// /chat/client-channels instead of /chat/channels (the server-side route a
+// client session is actually allowed to call; see chat.ts). Only ever
+// returns channels the caller is already an explicit member of -- for a
+// client this is exactly their one "client" channel per project they have
+// access to, never a department channel or "Everyone". useChatMessages and
+// usePostChatMessage below are unchanged and reused as-is: once a client is
+// a real member of a channel, reading/posting in it goes through the same
+// membership-gated routes as any other member.
+export function useClientChatChannels() {
+  return useQuery<ChatChannelDTO[]>({
+    queryKey: ["client-chat-channels"],
+    queryFn: () => apiClient.get<ChatChannelDTO[]>("/chat/client-channels"),
+    staleTime: 10000,
     refetchInterval: 10000,
   });
 }

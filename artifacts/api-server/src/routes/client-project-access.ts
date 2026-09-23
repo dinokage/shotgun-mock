@@ -26,6 +26,74 @@ async function projectInTenant(id: string, tenantId: string) {
   return !!row;
 }
 
+// Finds or creates the one "client" channel for this project, and keeps its
+// staff side current: every production_head + lead in the tenant, added
+// (never removed here -- a role change shouldn't silently evict someone
+// mid-conversation) each time this runs, so a lead hired after the channel
+// first existed still ends up reachable. Deliberately never includes
+// artist or producer -- see the explicit "production head and the leads...
+// not the artists" requirement this was built for. Every client with a
+// live ClientProjectAccess grant on this project is a member too.
+async function ensureClientProjectChannel(tenantId: string, projectId: string): Promise<string> {
+  const project = await prisma.project.findFirst({
+    where: { id: projectId, tenantId },
+    select: { name: true },
+  });
+
+  let channel = await prisma.chatChannel.findFirst({
+    where: { tenantId, projectId, kind: "client" },
+  });
+  if (!channel) {
+    channel = await prisma.chatChannel.create({
+      data: {
+        id: crypto.randomUUID(),
+        tenantId,
+        kind: "client",
+        name: `Client — ${project?.name ?? "Project"}`,
+        description: "Direct line to the Production Head and department Leads for this project.",
+        projectId,
+      },
+    });
+  }
+
+  const staffRoles = await prisma.tenantRole.findMany({
+    where: { tenantId, name: { in: ["production_head", "lead"] } },
+    select: { id: true },
+  });
+  const staff = staffRoles.length
+    ? await prisma.user.findMany({
+        where: { tenantId, roleId: { in: staffRoles.map((r) => r.id) }, status: { not: "inactive" } },
+        select: { id: true },
+      })
+    : [];
+  const clients = await prisma.clientProjectAccess.findMany({
+    where: { tenantId, projectId },
+    select: { userId: true },
+  });
+
+  const wantedIds = new Set([...staff.map((s) => s.id), ...clients.map((c) => c.userId)]);
+  const existing = await prisma.chatChannelMember.findMany({
+    where: { tenantId, channelId: channel.id },
+    select: { userId: true },
+  });
+  const existingIds = new Set(existing.map((m) => m.userId));
+  const toAdd = [...wantedIds].filter((id) => !existingIds.has(id));
+
+  if (toAdd.length) {
+    await prisma.chatChannelMember.createMany({
+      data: toAdd.map((userId) => ({
+        id: crypto.randomUUID(),
+        tenantId,
+        channelId: channel!.id,
+        userId,
+      })),
+      skipDuplicates: true,
+    });
+  }
+
+  return channel.id;
+}
+
 function dto(row: {
   id: string;
   userId: string;
@@ -121,6 +189,11 @@ clientProjectAccessRouter.post(
         },
       });
 
+      // Every grant (new or re-granted) keeps the client project channel's
+      // membership current -- covers both "first grant, channel doesn't
+      // exist yet" and "channel exists, a new lead joined since."
+      await ensureClientProjectChannel(tenantId, projectId);
+
       // Granting access wrote a row a signed-in client could immediately act
       // on (see every other project-scoped route's clientScope check), but
       // nothing ever told them it existed -- they'd only find out by logging
@@ -175,10 +248,29 @@ clientProjectAccessRouter.delete(
   async (req, res) => {
     try {
       const tenantId = req.tenantId!;
-      const deleted = await prisma.clientProjectAccess.deleteMany({
+      const grant = await prisma.clientProjectAccess.findFirst({
+        where: { id: req.params.id as string, tenantId },
+        select: { userId: true, projectId: true },
+      });
+      if (!grant) return res.status(404).json({ error: "Not found" });
+
+      await prisma.clientProjectAccess.deleteMany({
         where: { id: req.params.id as string, tenantId },
       });
-      if (deleted.count === 0) return res.status(404).json({ error: "Not found" });
+
+      // Revoking project access should also revoke the ability to message
+      // that project's team -- otherwise a removed client keeps a working
+      // line into the client channel indefinitely.
+      const channel = await prisma.chatChannel.findFirst({
+        where: { tenantId, projectId: grant.projectId, kind: "client" },
+        select: { id: true },
+      });
+      if (channel) {
+        await prisma.chatChannelMember.deleteMany({
+          where: { tenantId, channelId: channel.id, userId: grant.userId },
+        });
+      }
+
       return res.status(204).end();
     } catch (err) {
       req.log.error(err, "Failed to revoke client project access");

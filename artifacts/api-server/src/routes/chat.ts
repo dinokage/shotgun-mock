@@ -10,9 +10,20 @@ import * as crypto from "crypto";
 export const chatRouter = Router();
 
 chatRouter.use(tenantAuthMiddleware);
-// Team chat is internal studio conversation -- an external client redeeming
-// an access code has no business reading or posting in it.
-chatRouter.use(denyClientAccess);
+// No blanket denyClientAccess here (there used to be one). A client can now
+// be a member of exactly one channel: the "client" kind auto-provisioned
+// per project by client-project-access.ts's ensureClientProjectChannel,
+// whose membership is locked to production_head + lead -- never artist, per
+// explicit requirement. Once a client is a real member of that channel,
+// reading/posting/marking-read in it is exactly as safe as for any other
+// member: requireMembership below doesn't check role, only whether the
+// caller is actually in the channel. denyClientAccess is instead applied
+// per-route below, only to the routes that assume an internal caller:
+// full channel discovery (which would otherwise auto-join a client into
+// every department channel + "Everyone"), ad-hoc channel/DM creation, and
+// join/leave. See GET /client-channels for the client-safe equivalent of
+// discovery -- it only ever returns channels the caller is already an
+// explicit member of, never auto-joins anything.
 
 // Mirrors LEADERSHIP_ROLES in artifacts/forge/src/store/permissions.ts, which
 // is what chat.tsx already used to decide who sees every department channel
@@ -211,10 +222,60 @@ function messageDTO(m: {
   };
 }
 
+// The client-safe equivalent of GET /channels below -- deliberately does
+// NOT call ensureStandingChannels/ensureStandingMemberships or
+// canJoinChannel, and only ever returns channels the caller is already an
+// explicit ChatChannelMember of. A client reaches exactly its own "client"
+// channel(s) this way; nothing here can surface a department channel,
+// "Everyone", or another project's client channel.
+chatRouter.get("/client-channels", async (req, res) => {
+  try {
+    const tenantId = req.tenantId!;
+    const userId = req.userId;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+    const memberships = await prisma.chatChannelMember.findMany({
+      where: { tenantId, userId },
+      select: { lastReadAt: true, channel: true },
+    });
+
+    const dtos = await Promise.all(
+      memberships
+        .filter((m) => !m.channel.archivedAt)
+        .map(async (m) => {
+          const unreadCount = await prisma.chatMessage.count({
+            where: {
+              tenantId,
+              channelId: m.channel.id,
+              deletedAt: null,
+              authorId: { not: userId },
+              ...(m.lastReadAt ? { createdAt: { gt: m.lastReadAt } } : {}),
+            },
+          });
+          return {
+            id: m.channel.id,
+            kind: m.channel.kind,
+            name: m.channel.name,
+            description: m.channel.description,
+            projectId: m.channel.projectId,
+            createdAt: m.channel.createdAt,
+            isMember: true,
+            unreadCount,
+          };
+        }),
+    );
+
+    return res.json(dtos);
+  } catch (err) {
+    req.log.error(err, "Failed to list client chat channels");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // Lists every channel the caller can act on: the ones they're a member of
 // (with an unread count driven by lastReadAt) plus the public channels they
 // are allowed to join but haven't.
-chatRouter.get("/channels", async (req, res) => {
+chatRouter.get("/channels", denyClientAccess, async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const userId = req.userId;
@@ -273,7 +334,7 @@ chatRouter.get("/channels", async (req, res) => {
 
 // Creates a named channel or a private group. DMs go through /channels/dm
 // below, which is get-or-create rather than create.
-chatRouter.post("/channels", async (req, res) => {
+chatRouter.post("/channels", denyClientAccess, async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const userId = req.userId;
@@ -351,7 +412,7 @@ chatRouter.post("/channels", async (req, res) => {
 // Get-or-create the 1:1 channel between the caller and one other user. The
 // pair is matched on membership rather than a derived id so the same channel
 // is found regardless of who opened it first.
-chatRouter.post("/channels/dm", async (req, res) => {
+chatRouter.post("/channels/dm", denyClientAccess, async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const userId = req.userId;
@@ -420,7 +481,7 @@ chatRouter.post("/channels/dm", async (req, res) => {
   }
 });
 
-chatRouter.post("/channels/:id/join", async (req, res) => {
+chatRouter.post("/channels/:id/join", denyClientAccess, async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const userId = req.userId;
@@ -448,7 +509,7 @@ chatRouter.post("/channels/:id/join", async (req, res) => {
   }
 });
 
-chatRouter.post("/channels/:id/leave", async (req, res) => {
+chatRouter.post("/channels/:id/leave", denyClientAccess, async (req, res) => {
   try {
     const tenantId = req.tenantId!;
     const userId = req.userId;
@@ -504,8 +565,21 @@ chatRouter.get("/channels/:id/messages", async (req, res) => {
 
     const hasMore = rows.length > limit;
     const page = hasMore ? rows.slice(0, limit) : rows;
+
+    // The client portal has no access to the staff roster (GET /users is
+    // internal-only), so it has no other way to show who sent a message --
+    // resolved here, once per page, rather than leaving every caller to
+    // fetch the roster itself just to label a chat transcript.
+    const authorIds = [...new Set(page.map((m) => m.authorId).filter((id): id is string => !!id))];
+    const authors = authorIds.length
+      ? await prisma.user.findMany({ where: { id: { in: authorIds } }, select: { id: true, name: true } })
+      : [];
+    const nameById = new Map(authors.map((a) => [a.id, a.name]));
+
     return res.json({
-      messages: page.reverse().map(messageDTO),
+      messages: page
+        .reverse()
+        .map((m) => ({ ...messageDTO(m), authorName: m.authorId ? nameById.get(m.authorId) ?? null : null })),
       hasMore,
     });
   } catch (err) {
