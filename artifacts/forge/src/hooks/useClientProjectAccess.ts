@@ -10,6 +10,10 @@ export interface ClientProjectAccessDTO {
   projectName: string | null;
   grantedByUserId: string;
   createdAt: string;
+  /** Only meaningful on the POST response -- whether the "you now have
+   * access" email actually sent (false on a re-grant, since no email is
+   * sent for those, or if SMTP isn't configured/failed). */
+  emailSent?: boolean;
 }
 
 // Tenant-wide list -- callers filter to the project they care about. There's

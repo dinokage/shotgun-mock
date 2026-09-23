@@ -92,6 +92,29 @@ export async function sendPasswordResetEmail(params: {
   });
 }
 
+export async function sendProjectAccessGrantedEmail(params: {
+  to: string;
+  projectName: string;
+  tenantName: string;
+  loginUrl: string;
+}) {
+  const { to, projectName, tenantName, loginUrl } = params;
+  const fromName = process.env.SMTP_FROM_NAME || "Forge";
+  const fromAddress = process.env.SMTP_USER;
+  const transport = getTransport();
+  await transport.sendMail({
+    from: `"${fromName}" <${fromAddress}>`,
+    to,
+    subject: sanitizeHeaderValue(`${tenantName} gave you access to "${projectName}"`),
+    text: `${tenantName} gave your account access to "${projectName}" on Forge.\n\nSign in to view it: ${loginUrl}\n\nUse your existing Forge login -- no new account needed.`,
+    html: `
+      <p><strong>${escapeHtml(tenantName)}</strong> gave your account access to <strong>${escapeHtml(projectName)}</strong> on Forge.</p>
+      <p><a href="${loginUrl}">Sign in to view it</a></p>
+      <p style="color:#666;font-size:12px">Use your existing Forge login -- no new account needed. If the button doesn't work, copy this link: ${loginUrl}</p>
+    `,
+  });
+}
+
 export async function sendClientAccessEmail(params: {
   to: string;
   reviewUrl: string;

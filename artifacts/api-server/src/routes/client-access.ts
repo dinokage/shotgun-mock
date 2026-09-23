@@ -4,6 +4,7 @@ import { signSession } from "../lib/auth";
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability, denyClientAccess } from "../middleware/rbac";
 import { sendClientAccessEmail } from "../lib/mailer";
+import { getClientScope } from "../lib/clientScope";
 import * as crypto from "crypto";
 import { rateLimitByIp } from "../lib/rateLimit";
 
@@ -81,6 +82,75 @@ clientAccessRouter.post("/redeem", rateLimitByIp(REDEEM_RULE), async (req, res) 
     });
   } catch (err) {
     console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Read-only calendar for a client session (either a real signed-in `client`
+// account or a redeemed ClientAccessLink) -- upcoming task due dates for the
+// shots it can see, plus any non-draft deliveries for its project(s). Placed
+// here, before the denyClientAccess boundary below, specifically because
+// this route is FOR client sessions, unlike everything after that comment.
+// Only ever returns title/date/status -- never assignee, description,
+// estimated hours, or anything else an internal task carries that a client
+// was never meant to see.
+clientAccessRouter.get("/calendar", tenantAuthMiddleware, async (req, res) => {
+  try {
+    const scope = await getClientScope(req);
+    if (!scope) return res.status(403).json({ error: "Not a client session" });
+
+    const shots = await prisma.shot.findMany({
+      where: {
+        tenantId: req.tenantId!,
+        projectId: { in: scope.projectIds },
+        ...(scope.shotId ? { id: scope.shotId } : {}),
+      },
+      select: { id: true, name: true, projectId: true },
+    });
+    const shotIds = shots.map((s) => s.id);
+    const shotById = new Map(shots.map((s) => [s.id, s]));
+
+    const tasks = shotIds.length
+      ? await prisma.task.findMany({
+          where: {
+            tenantId: req.tenantId!,
+            entityType: "shot",
+            entityId: { in: shotIds },
+            dueDate: { not: null },
+          },
+          select: { id: true, entityId: true, title: true, dueDate: true, status: true },
+        })
+      : [];
+
+    const deliveries = await prisma.delivery.findMany({
+      where: {
+        tenantId: req.tenantId!,
+        projectId: { in: scope.projectIds },
+        revokedAt: null,
+        status: { not: "draft" },
+      },
+      select: { id: true, name: true, expiresAt: true, projectId: true },
+    });
+
+    return res.json({
+      tasks: tasks.map((t) => ({
+        id: t.id,
+        title: t.title,
+        dueDate: t.dueDate,
+        status: t.status,
+        shotId: t.entityId,
+        shotName: shotById.get(t.entityId)?.name ?? null,
+        projectId: shotById.get(t.entityId)?.projectId ?? null,
+      })),
+      deliveries: deliveries.map((d) => ({
+        id: d.id,
+        name: d.name,
+        expiresAt: d.expiresAt,
+        projectId: d.projectId,
+      })),
+    });
+  } catch (err) {
+    req.log.error(err, "Failed to load client calendar");
     return res.status(500).json({ error: "Internal server error" });
   }
 });

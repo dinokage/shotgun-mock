@@ -2,6 +2,8 @@ import { Router } from "express";
 import { prisma } from "@workspace/db";
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability, denyClientAccess } from "../middleware/rbac";
+import { createNotification } from "./notifications";
+import { sendProjectAccessGrantedEmail } from "../lib/mailer";
 import * as crypto from "crypto";
 
 /**
@@ -93,6 +95,14 @@ clientProjectAccessRouter.post(
         return res.status(400).json({ error: "Invalid projectId" });
       }
 
+      // Checked before the upsert so the notification below only fires for
+      // a genuinely new grant, not every time an admin re-grants access
+      // that already existed (the upsert itself treats that as a no-op).
+      const alreadyGranted = await prisma.clientProjectAccess.findFirst({
+        where: { userId, projectId },
+        select: { id: true },
+      });
+
       const created = await prisma.clientProjectAccess.upsert({
         where: { userId_projectId: { userId, projectId } },
         // Already granted: treat re-granting as a no-op success rather than
@@ -110,7 +120,48 @@ clientProjectAccessRouter.post(
           project: { select: { name: true } },
         },
       });
-      return res.status(201).json(dto(created));
+
+      // Granting access wrote a row a signed-in client could immediately act
+      // on (see every other project-scoped route's clientScope check), but
+      // nothing ever told them it existed -- they'd only find out by logging
+      // back in and noticing a new project in their own picker.
+      let emailSent = false;
+      if (!alreadyGranted) {
+        await createNotification({
+          tenantId,
+          recipientUserId: userId,
+          category: "workflow",
+          title: `You now have access to "${created.project?.name ?? "a project"}"`,
+          description: `You can now view and review work on "${created.project?.name ?? "this project"}".`,
+          entityType: "project",
+          entityId: projectId,
+          actionUrl: "/client-review",
+        });
+
+        // Non-fatal, same pattern as client-access.ts's "Share with Client"
+        // email: the grant itself already succeeded (the row and the in-app
+        // notification above are both real), so a missing/misconfigured SMTP
+        // setup shouldn't turn a working grant into a 500.
+        if (created.user?.email) {
+          try {
+            const tenant = await prisma.tenant.findUnique({
+              where: { id: tenantId },
+              select: { name: true },
+            });
+            await sendProjectAccessGrantedEmail({
+              to: created.user.email,
+              projectName: created.project?.name ?? "a project",
+              tenantName: tenant?.name ?? "Forge",
+              loginUrl: `${process.env.FRONTEND_URL || "http://localhost"}/login`,
+            });
+            emailSent = true;
+          } catch (err) {
+            req.log.error(err, "Failed to send project access granted email");
+          }
+        }
+      }
+
+      return res.status(201).json({ ...dto(created), emailSent });
     } catch (err) {
       req.log.error(err, "Failed to grant client project access");
       return res.status(500).json({ error: "Internal server error" });

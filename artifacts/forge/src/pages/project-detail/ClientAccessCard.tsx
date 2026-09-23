@@ -39,12 +39,16 @@ export default function ClientAccessCard({ project }: { project: any }) {
   const handleGrant = async () => {
     if (!selectedClientId) return;
     try {
-      await grantAccess.mutateAsync({
+      const result = await grantAccess.mutateAsync({
         userId: selectedClientId,
         projectId: project.id,
       });
       setSelectedClientId("");
-      toast({ title: "Client access granted" });
+      toast(
+        result.emailSent
+          ? { title: "Client access granted", description: "They've been emailed to let them know." }
+          : { title: "Client access granted" },
+      );
     } catch (err: any) {
       toast({
         title: "Couldn't grant access",

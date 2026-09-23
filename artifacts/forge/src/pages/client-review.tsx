@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
   Play,
@@ -14,6 +15,9 @@ import {
   Building2,
   User,
   PenTool,
+  CalendarDays,
+  PackageCheck,
+  X,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
@@ -171,6 +175,51 @@ export default function ClientReview() {
   const { data: activeProjectShotsRaw = [] } = useShotsQuery(
     isExplicitClient && activeReviewProjectId ? activeReviewProjectId : undefined,
   );
+
+  // Task due dates + upcoming delivery expirations across every project this
+  // session can see (not just the one currently being browsed) -- the whole
+  // point is "what's coming up," which shouldn't require picking a project
+  // first. Scoped server-side via getClientScope, same as everything else on
+  // this page; never returns assignee/description/hours, only what a client
+  // should actually see.
+  interface ClientCalendarData {
+    tasks: { id: string; title: string; dueDate: string; status: string; shotId: string; shotName: string | null; projectId: string | null }[];
+    deliveries: { id: string; name: string; expiresAt: string | null; projectId: string | null }[];
+  }
+  const [showCalendar, setShowCalendar] = useState(false);
+  const { data: calendarData } = useQuery<ClientCalendarData>({
+    queryKey: ["client-calendar"],
+    queryFn: () => apiClient.get<ClientCalendarData>("/client-access/calendar"),
+    enabled: clientAuthenticated || isExplicitClient,
+    staleTime: 30000,
+  });
+  const upcomingItems = useMemo(() => {
+    if (!calendarData) return [];
+    const now = Date.now();
+    const items: { id: string; label: string; date: Date; kind: "task" | "delivery"; shotId?: string }[] = [];
+    for (const t of calendarData.tasks) {
+      if (!t.dueDate) continue;
+      items.push({
+        id: `task-${t.id}`,
+        label: `${t.shotName ?? "Shot"} — ${t.title || "Task"} due`,
+        date: new Date(t.dueDate),
+        kind: "task",
+        shotId: t.shotId,
+      });
+    }
+    for (const d of calendarData.deliveries) {
+      if (!d.expiresAt) continue;
+      items.push({
+        id: `delivery-${d.id}`,
+        label: `Delivery "${d.name}" expires`,
+        date: new Date(d.expiresAt),
+        kind: "delivery",
+      });
+    }
+    return items
+      .filter((i) => i.date.getTime() >= now - 24 * 60 * 60 * 1000) // keep "today" even if slightly past
+      .sort((a, b) => a.date.getTime() - b.date.getTime());
+  }, [calendarData]);
   const activeProjectShots = useMemo(
     () =>
       activeProjectShotsRaw.map((s: ShotDTO) => ({
@@ -621,6 +670,19 @@ export default function ClientReview() {
             </div>
           </div>
           <div className="flex items-center gap-4">
+            <Button
+              variant={showCalendar ? "secondary" : "ghost"}
+              size="sm"
+              className={showCalendar ? "" : "text-zinc-400 hover:text-white"}
+              onClick={() => setShowCalendar((v) => !v)}
+            >
+              <CalendarDays className="w-4 h-4 mr-2" /> Calendar
+              {upcomingItems.length > 0 && (
+                <Badge variant="outline" className="ml-2 h-5 px-1.5 border-primary/30 text-primary">
+                  {upcomingItems.length}
+                </Badge>
+              )}
+            </Button>
             <Badge
               variant="outline"
               className="border-status-green/30 text-status-green bg-status-green/10 gap-1.5"
@@ -637,6 +699,72 @@ export default function ClientReview() {
             </Button>
           </div>
         </header>
+
+        {showCalendar && (
+          <div className="border-b border-white/10 bg-zinc-900/70 backdrop-blur-md">
+            <div className="max-w-7xl mx-auto px-8 py-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-zinc-200">
+                  <CalendarDays className="w-4 h-4 text-primary" /> Upcoming
+                </div>
+                <button
+                  className="text-zinc-500 hover:text-white transition-colors"
+                  onClick={() => setShowCalendar(false)}
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              {upcomingItems.length === 0 ? (
+                <p className="text-sm text-zinc-500">
+                  Nothing scheduled right now. Check back later, or reach out
+                  below if you're waiting on something specific.
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {upcomingItems.slice(0, 9).map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => {
+                        if (item.kind === "task" && item.shotId) {
+                          const shot = shots.find((s) => s.id === item.shotId) ??
+                            activeProjectShots.find((s) => s.id === item.shotId);
+                          if (shot) {
+                            setActiveReviewId(shot.id);
+                          }
+                          setShowCalendar(false);
+                        }
+                      }}
+                      className={`flex items-start gap-3 p-3 rounded-lg border border-white/10 bg-zinc-950/50 text-left transition-colors ${
+                        item.kind === "task" ? "hover:border-primary/50 cursor-pointer" : "cursor-default"
+                      }`}
+                    >
+                      {item.kind === "delivery" ? (
+                        <PackageCheck className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                      ) : (
+                        <CalendarDays className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                      )}
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium truncate">{item.label}</div>
+                        <div className="text-xs text-zinc-500 mt-0.5">
+                          {item.date.toLocaleDateString(undefined, {
+                            weekday: "short",
+                            month: "short",
+                            day: "numeric",
+                          })}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-zinc-600 mt-4">
+                Need an update on something? Open the shot from here, or a
+                pending review below, and leave a note — the team gets it
+                right away.
+              </p>
+            </div>
+          </div>
+        )}
 
         <main className="p-8 max-w-7xl mx-auto space-y-8">
           <div className="flex items-center justify-between gap-4">
