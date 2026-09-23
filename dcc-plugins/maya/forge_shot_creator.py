@@ -46,8 +46,16 @@ def _load_config():
 def _save_config(config):
     # Not encrypted -- same trust level as a password saved in a DCC tool's
     # own preferences file, which this deliberately mirrors rather than
-    # inventing a new, unaudited secret-storage scheme for one plugin.
-    with open(CONFIG_PATH, "w") as f:
+    # inventing a new, unaudited secret-storage scheme for one plugin. Still
+    # written owner-only (0600): a plain open(..., "w") leaves the token
+    # readable by every other account on a shared workstation, which a
+    # render-farm or studio login machine often is -- flagged by security
+    # review. os.open with O_CREAT lets us set the mode atomically at
+    # creation instead of racing a separate chmod after the fact.
+    if os.path.exists(CONFIG_PATH):
+        os.chmod(CONFIG_PATH, 0o600)
+    fd = os.open(CONFIG_PATH, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
         json.dump(config, f)
 
 
