@@ -550,6 +550,7 @@ export default function EpisodesTab({ project }: { project: any }) {
     const selectedShot = filteredShots.find((s) => s.id === selectedShotId) ?? null;
 
     return (
+      <>
       <div className="flex h-full overflow-hidden border border-border rounded-lg bg-card/50">
         <div className="flex-1 flex flex-col min-w-0">
           <LevelToolbar
@@ -563,6 +564,15 @@ export default function EpisodesTab({ project }: { project: any }) {
             setFilter={setShotFilter}
             availableDepts={depts}
             availableArtists={artistsList}
+            onAdd={
+              canCreate
+                ? () => {
+                    setNewItemName("");
+                    setAddDialogLevel("shots");
+                  }
+                : undefined
+            }
+            addLabel="Add Shot"
           />
           <ScrollArea className="flex-1 p-4">
             {filteredShots.length === 0 ? (
@@ -712,6 +722,8 @@ export default function EpisodesTab({ project }: { project: any }) {
           </div>
         )}
       </div>
+      {addItemDialog}
+      </>
     );
   }
 

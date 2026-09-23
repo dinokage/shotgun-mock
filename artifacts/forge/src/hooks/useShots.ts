@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/apiClient";
+import { useAuthStore } from "@/store/auth";
 
 export interface ShotDTO {
   id: string;
@@ -39,7 +40,14 @@ export function useCreateShot() {
   return useMutation({
     mutationFn: (body: { projectId: string; name: string; episodeId?: string; sequenceId?: string; assigneeId?: string }) =>
       apiClient.post<ShotDTO>("/shots", body),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shots"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["shots"] });
+      // DashboardTab/EpisodesTab/AssetsTab/the Tracking Grid all read shots
+      // from useShotStore (Zustand), not this React Query cache -- without
+      // this they wouldn't see a newly-created shot until the app's own
+      // 10-second background poll caught up.
+      useAuthStore.getState().fetchMe();
+    },
   });
 }
 
@@ -48,6 +56,9 @@ export function useUpdateShot() {
   return useMutation({
     mutationFn: ({ id, ...body }: { id: string } & Partial<ShotDTO>) =>
       apiClient.put<ShotDTO>(`/shots/${id}`, body),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shots"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["shots"] });
+      useAuthStore.getState().fetchMe();
+    },
   });
 }

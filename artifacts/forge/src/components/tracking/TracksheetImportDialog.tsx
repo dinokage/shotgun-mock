@@ -19,10 +19,12 @@ import { UploadCloud } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useProjectStore } from "@/store/projects";
 import { useUserStore } from "@/store/users";
+import { useAuthStore } from "@/store/auth";
 import { apiFetch } from "@/lib/apiClient";
-import { useCreateEpisode, useEpisodes } from "@/hooks/useEpisodes";
-import { useCreateSequence, useSequences } from "@/hooks/useSequences";
-import { useCreateShot, useShots } from "@/hooks/useShots";
+import { useQueryClient } from "@tanstack/react-query";
+import { useEpisodes, type EpisodeDTO } from "@/hooks/useEpisodes";
+import { useSequences, type SequenceDTO } from "@/hooks/useSequences";
+import { useShots, type ShotDTO } from "@/hooks/useShots";
 import { useDepartments, type DepartmentDTO } from "@/hooks/useDepartments";
 import { parseWorkbook, getField, parseLooseDate } from "@/lib/excelImport";
 
@@ -127,16 +129,15 @@ export function TracksheetImportDialog({
   const users = useUserStore((s) => s.users);
   const [projectId, setProjectId] = useState("");
   const [importing, setImporting] = useState(false);
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [results, setResults] = useState<RowOutcome[] | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const queryClient = useQueryClient();
 
   const { data: episodes = [] } = useEpisodes(projectId || undefined);
   const { data: sequences = [] } = useSequences(projectId || undefined);
   const { data: shots = [] } = useShots(projectId || undefined);
   const { data: departments = [] } = useDepartments();
-  const createEpisode = useCreateEpisode();
-  const createSequence = useCreateSequence();
-  const createShot = useCreateShot();
 
   const handleFile = async (file: File) => {
     if (!projectId) {
@@ -161,6 +162,11 @@ export function TracksheetImportDialog({
 
     try {
       const sheets = await parseWorkbook(file);
+      const totalRows = Object.values(sheets).reduce(
+        (sum, rows) => sum + rows.filter((row) => getField(row, SHOT_CODE_FIELDS)).length,
+        0,
+      );
+      setProgress({ done: 0, total: totalRows });
       for (const [sheetName, rows] of Object.entries(sheets)) {
         const episodeMatch = sheetName.match(EPISODE_SHEET_PATTERN);
         let episodeName: string;
@@ -182,7 +188,17 @@ export function TracksheetImportDialog({
         let episodeId = episodeCache.get(episodeName.toLowerCase());
         if (!episodeId) {
           try {
-            const created = await createEpisode.mutateAsync({ projectId, name: episodeName });
+            // Direct apiFetch, not the useCreateEpisode/useCreateSequence/
+            // useCreateShot mutation hooks -- each of those invalidates (and,
+            // for shots, refetches) its whole list on every single success.
+            // Calling them once per row turned an N-row import into O(N^2)
+            // work (a growing shots list refetched after every new shot),
+            // which is what actually made large tracksheets look hung. One
+            // combined refresh happens after the whole loop finishes instead.
+            const created = await apiFetch<EpisodeDTO>("/episodes", {
+              method: "POST",
+              body: JSON.stringify({ projectId, name: episodeName }),
+            });
             episodeId = created.id;
             episodeCache.set(episodeName.toLowerCase(), episodeId);
           } catch (err: any) {
@@ -203,10 +219,9 @@ export function TracksheetImportDialog({
           let sequenceId = sequenceCache.get(`${episodeId}::${seqName.toLowerCase()}`);
           if (!sequenceId) {
             try {
-              const created = await createSequence.mutateAsync({
-                projectId,
-                episodeId,
-                name: seqName,
+              const created = await apiFetch<SequenceDTO>("/sequences", {
+                method: "POST",
+                body: JSON.stringify({ projectId, episodeId, name: seqName }),
               });
               sequenceId = created.id;
               sequenceCache.set(`${episodeId}::${seqName.toLowerCase()}`, sequenceId);
@@ -216,27 +231,41 @@ export function TracksheetImportDialog({
             }
           }
 
+          const frameRange = getField(row, ["FR", "Frames", "Frame Range"]);
+          const durationRaw = getField(row, ["Sec", "Duration"]);
+          const duration = Math.round(parseFloat(durationRaw)) || undefined;
+
           let shotId = shotCache.get(shotCode.toLowerCase());
+          let isNewShot = false;
           if (!shotId) {
             try {
-              const created = await createShot.mutateAsync({
-                projectId,
-                episodeId,
-                sequenceId,
-                name: shotCode,
+              // frameRange/duration go straight into the create call now
+              // that the server accepts them there -- avoids a second
+              // round-trip per brand-new shot (still needed as a separate
+              // PUT below for a shot this same tracksheet already created
+              // via an earlier row/sheet, since that's an update not a create).
+              const created = await apiFetch<ShotDTO>("/shots", {
+                method: "POST",
+                body: JSON.stringify({
+                  projectId,
+                  episodeId,
+                  sequenceId,
+                  name: shotCode,
+                  ...(frameRange ? { frameRange } : {}),
+                  ...(duration ? { duration } : {}),
+                }),
               });
               shotId = created.id;
+              isNewShot = true;
               shotCache.set(shotCode.toLowerCase(), shotId);
             } catch (err: any) {
               outcomes.push({ sheet: sheetName, shotCode, status: "skipped", reason: `shot: ${err?.message}` });
               continue;
             }
           }
+          setProgress((p) => ({ ...p, done: p.done + 1 }));
 
-          const frameRange = getField(row, ["FR", "Frames", "Frame Range"]);
-          const durationRaw = getField(row, ["Sec", "Duration"]);
-          const duration = Math.round(parseFloat(durationRaw)) || undefined;
-          if (frameRange || duration) {
+          if (!isNewShot && (frameRange || duration)) {
             try {
               await apiFetch(`/shots/${shotId}`, {
                 method: "PUT",
@@ -361,6 +390,20 @@ export function TracksheetImportDialog({
       }
 
       setResults(outcomes);
+
+      // One combined refresh after the whole file is done, instead of the
+      // per-row invalidation this loop used to trigger. fetchMe() re-hydrates
+      // every Zustand-backed store the app actually reads shots/tasks from
+      // (Dashboard tab, Episodes tab, Shots & Assets tab, Tracking Grid all
+      // read useShotStore/useTasksStore directly, not React Query) -- without
+      // this, freshly-imported rows stayed invisible in every one of those
+      // views until the next 10-second background poll tick.
+      await Promise.all([
+        useAuthStore.getState().fetchMe(),
+        queryClient.invalidateQueries({ queryKey: ["episodes", projectId] }),
+        queryClient.invalidateQueries({ queryKey: ["sequences", projectId] }),
+      ]);
+
       const created = outcomes.filter((o) => o.status === "created").length;
       if (outcomes.length === 0) {
         // Every sheet was skipped as non-shot data. Silently reporting
@@ -398,6 +441,7 @@ export function TracksheetImportDialog({
         if (!next) {
           setProjectId("");
           setResults(null);
+          setProgress({ done: 0, total: 0 });
         }
       }}
     >
@@ -451,7 +495,11 @@ export function TracksheetImportDialog({
           >
             <UploadCloud className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
             <p className="text-sm font-medium">
-              {importing ? "Importing…" : "Upload Tracksheet (.xlsx)"}
+              {importing
+                ? progress.total > 0
+                  ? `Importing… (${progress.done}/${progress.total} rows)`
+                  : "Importing…"
+                : "Upload Tracksheet (.xlsx)"}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
               {projectId ? "Click to browse" : "Choose a project above first"}

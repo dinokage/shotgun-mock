@@ -6,6 +6,8 @@ import { useReviewStore } from "@/store/reviews";
 import { useUserStore } from "@/store/users";
 import { useCreateShot } from "@/hooks/useShots";
 import { useCreateAsset } from "@/hooks/useAssets";
+import { useEpisodes } from "@/hooks/useEpisodes";
+import { useSequences } from "@/hooks/useSequences";
 import { useCapability } from "@/hooks/use-capability";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
@@ -19,6 +21,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Popover,
   PopoverContent,
@@ -56,11 +65,24 @@ export default function AssetsTab({ project }: { project: any }) {
   const noteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [newName, setNewName] = useState("");
+  const [newShotEpisodeId, setNewShotEpisodeId] = useState("");
+  const [newShotSequenceId, setNewShotSequenceId] = useState("");
   const canCreateShot = useCapability("create_tasks");
   const canCreateAsset = useCapability("manage_pipeline");
   const createShot = useCreateShot();
   const createAsset = useCreateAsset();
   const { toast } = useToast();
+
+  // A shot created here with no episode/sequence is invisible in the
+  // Episodes tab's drill-down (episode -> sequence -> shot) since that view
+  // filters strictly on episodeId/sequenceId -- this is the cascading picker
+  // that was missing, matching how the Episodes tab's own "Add Shot" dialog
+  // already scopes creation to whichever level you're drilled into.
+  const { data: shotEpisodes = [] } = useEpisodes(view === "shots" ? project.id : undefined);
+  const { data: shotSequences = [] } = useSequences(
+    view === "shots" && newShotEpisodeId ? project.id : undefined,
+    newShotEpisodeId || undefined,
+  );
 
   const allItems =
     view === "shots"
@@ -129,9 +151,22 @@ export default function AssetsTab({ project }: { project: any }) {
   const handleCreate = async () => {
     const name = newName.trim();
     if (!name) return;
+    if (view === "shots" && (!newShotEpisodeId || !newShotSequenceId)) {
+      toast({
+        title: "Pick an episode and sequence first",
+        description: "A shot needs to belong to a sequence to show up in the Episodes tab and Tracking Grid.",
+        variant: "destructive",
+      });
+      return;
+    }
     try {
       if (view === "shots") {
-        await createShot.mutateAsync({ projectId: project.id, name });
+        await createShot.mutateAsync({
+          projectId: project.id,
+          name,
+          episodeId: newShotEpisodeId,
+          sequenceId: newShotSequenceId,
+        });
       } else {
         await createAsset.mutateAsync({ projectId: project.id, name });
       }
@@ -140,6 +175,8 @@ export default function AssetsTab({ project }: { project: any }) {
         description: `"${name}" was added to this project.`,
       });
       setNewName("");
+      setNewShotEpisodeId("");
+      setNewShotSequenceId("");
       setAddOpen(false);
     } catch (err: any) {
       toast({
@@ -292,6 +329,8 @@ export default function AssetsTab({ project }: { project: any }) {
                 className="h-9 gap-1.5"
                 onClick={() => {
                   setNewName("");
+                  setNewShotEpisodeId("");
+                  setNewShotSequenceId("");
                   setAddOpen(true);
                 }}
               >
@@ -489,27 +528,100 @@ export default function AssetsTab({ project }: { project: any }) {
         </div>
       )}
 
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+      <Dialog
+        open={addOpen}
+        onOpenChange={(next) => {
+          setAddOpen(next);
+          if (!next) {
+            setNewShotEpisodeId("");
+            setNewShotSequenceId("");
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
               Add {view === "shots" ? "Shot" : "Asset"}
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-2 py-2">
-            <Label htmlFor="new-item-name">Name</Label>
-            <Input
-              id="new-item-name"
-              autoFocus
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder={view === "shots" ? "seq-010-sh-020" : "hero_character"}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && newName.trim() && !isCreating) {
-                  handleCreate();
-                }
-              }}
-            />
+          <div className="space-y-4 py-2">
+            {view === "shots" && (
+              <>
+                <div className="space-y-2">
+                  <Label>Episode</Label>
+                  <Select
+                    value={newShotEpisodeId}
+                    onValueChange={(v) => {
+                      setNewShotEpisodeId(v);
+                      setNewShotSequenceId("");
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select an episode" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {shotEpisodes.length === 0 ? (
+                        <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                          No episodes yet -- add one in the Episodes tab first.
+                        </div>
+                      ) : (
+                        shotEpisodes.map((ep) => (
+                          <SelectItem key={ep.id} value={ep.id}>
+                            {ep.name}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Sequence</Label>
+                  <Select
+                    value={newShotSequenceId}
+                    onValueChange={setNewShotSequenceId}
+                    disabled={!newShotEpisodeId}
+                  >
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={
+                          newShotEpisodeId ? "Select a sequence" : "Pick an episode first"
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {shotSequences.length === 0 ? (
+                        <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                          No sequences yet in this episode -- add one in the Episodes tab first.
+                        </div>
+                      ) : (
+                        shotSequences.map((sq) => (
+                          <SelectItem key={sq.id} value={sq.id}>
+                            {sq.name}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="new-item-name">
+                {view === "shots" ? "Shot Name" : "Name"}
+              </Label>
+              <Input
+                id="new-item-name"
+                autoFocus={view !== "shots"}
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder={view === "shots" ? "seq-010-sh-020" : "hero_character"}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newName.trim() && !isCreating) {
+                    handleCreate();
+                  }
+                }}
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddOpen(false)}>
@@ -517,7 +629,11 @@ export default function AssetsTab({ project }: { project: any }) {
             </Button>
             <Button
               onClick={handleCreate}
-              disabled={!newName.trim() || isCreating}
+              disabled={
+                !newName.trim() ||
+                isCreating ||
+                (view === "shots" && (!newShotEpisodeId || !newShotSequenceId))
+              }
             >
               {isCreating ? "Adding..." : "Add"}
             </Button>
