@@ -67,26 +67,41 @@ LAYOUT_CHECKS = [
 ]
 
 # ---------------------------------------------------------------------------
-# Animation publish (08_animation) — layout checks + animation-specific
+# Animation publish (08_animation) — same as the layout list minus Scene
+# Collection Structure (layout-only, checked once before animation starts),
+# plus three animation-specific checks folded in at the positions the studio's
+# real Shot Publish tool uses. Exact order/membership taken directly from a
+# screenshot of that tool's 08_animation check list -- the previous version
+# of this list was a smaller, differently-ordered guess that didn't match
+# what the studio's tool actually runs.
 # ---------------------------------------------------------------------------
 ANIMATION_CHECKS = [
-    # Shared with layout
     CameraNamespaceCheck,
     UnwantedReferenceCheck,
-    InvalidReferenceFileCheck,
     FrameRangeCheck,
-    CurrentTimeUnitCheck,
     WhitespaceInFileNameCheck,
+    DoubleNamespaceCheck,
+    CheckRigPathCheck,
+    AudioNamingConventionsCheck,
+    CurrentTimeUnitCheck,
+    AnimaticsExistsCheck,
+    AnimaticsPathExistsCheck,
+    InvalidReferenceFileCheck,
     ReferenceFromCorrectDriveCheck,
     NamespaceExistsCheck,
-    DoubleNamespaceCheck,
-    CheckRenderLayersCheck,
-    CheckRefFilepathCheck,
-    MultipleHideLayerCheck,
+    CheckMeshKeysCheck,
+    ImportedReferenceCheck,
     # Animation-specific
     CheckImportedTransformsCheck,
     CheckTransformNodeKeysCheck,
+    MultipleHideLayerCheck,
+    CheckRefFilepathCheck,
+    CamViewUnwantedReferencesCheck,
     CheckLayoutStatusCheck,
+    CheckRenderLayersCheck,
+    CacheSetDoesNotExistCheck,
+    CheckPropPathCheck,
+    CheckSetPathCheck,
 ]
 
 # ---------------------------------------------------------------------------
