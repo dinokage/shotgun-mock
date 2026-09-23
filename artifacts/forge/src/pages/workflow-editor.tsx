@@ -17,6 +17,7 @@ import {
   Handle,
   Position,
   Panel,
+  MarkerType,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { motion, AnimatePresence } from "framer-motion";
@@ -252,7 +253,8 @@ const WorkflowNode = ({ data, selected }: NodeProps<StoredWorkflowNode>) => {
       <Handle
         type="target"
         position={Position.Top}
-        className="w-16 !bg-primary/50 transition-transform hover:scale-125"
+        title="Drag a connection from another node's bottom handle here to feed this node"
+        className="w-16 !h-2.5 !bg-primary/50 !border-2 !border-background transition-transform hover:scale-125"
       />
       <div className="flex items-center gap-2 mb-2">
         <div
@@ -268,7 +270,8 @@ const WorkflowNode = ({ data, selected }: NodeProps<StoredWorkflowNode>) => {
       <Handle
         type="source"
         position={Position.Bottom}
-        className="w-16 !bg-primary transition-transform hover:scale-125"
+        title="Drag from here to another node's top handle to connect them"
+        className="w-16 !h-2.5 !bg-primary !border-2 !border-background transition-transform hover:scale-125"
       />
     </motion.div>
   );
@@ -469,9 +472,16 @@ function WorkflowEditorInner() {
           {
             ...params,
             id: `e-${params.source}-${params.target}-${Math.random().toString(36).slice(2, 7)}`,
-            type: "smoothstep",
+            type: "default",
             animated: true,
-            style: { strokeWidth: 2 },
+            // Explicit stroke -- without one, a finished edge fell back to
+            // React Flow's own default gray (rgb(177,177,183)), which reads
+            // as nearly invisible against this canvas's dark background and
+            // is why connecting two nodes looked like nothing had happened.
+            // markerEnd was missing outright, so even a visible edge gave no
+            // way to tell which end was the source vs. target.
+            style: { strokeWidth: 2.5, stroke: "hsl(var(--primary))" },
+            markerEnd: { type: MarkerType.ArrowClosed, color: "hsl(var(--primary))", width: 22, height: 22 },
           },
           eds,
         ),
@@ -822,15 +832,16 @@ function WorkflowEditorInner() {
             onNodeClick={(_, node) => setSelectedNode(node)}
             onPaneClick={() => setSelectedNode(null)}
             nodeTypes={nodeTypes}
-            connectionLineType={ConnectionLineType.SmoothStep}
+            connectionLineType={ConnectionLineType.Bezier}
             connectionLineStyle={{
               stroke: "hsl(var(--primary))",
               strokeWidth: 2.5,
             }}
             defaultEdgeOptions={{
-              type: "smoothstep",
+              type: "default",
               animated: true,
-              style: { strokeWidth: 2 },
+              style: { strokeWidth: 2.5, stroke: "hsl(var(--primary))" },
+              markerEnd: { type: MarkerType.ArrowClosed, color: "hsl(var(--primary))", width: 22, height: 22 },
             }}
             nodesDraggable={canManagePipeline}
             nodesConnectable={canManagePipeline}
