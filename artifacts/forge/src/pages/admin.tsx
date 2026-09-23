@@ -115,6 +115,9 @@ export default function AdminPanel() {
 
   async function handleCreate(formData: FormData) {
     const roleId = String(formData.get("roleId") ?? "");
+    let departmentId = formData.get("departmentId") || null;
+    if (departmentId === "none") departmentId = null;
+
     try {
       await apiFetch("/users", {
         method: "POST",
@@ -123,7 +126,7 @@ export default function AdminPanel() {
           name: formData.get("name"),
           password: formData.get("password"),
           roleId,
-          departmentId: formData.get("departmentId") || null,
+          departmentId,
         }),
       });
       toast({ title: "User created" });
@@ -141,8 +144,11 @@ export default function AdminPanel() {
   async function handleInvite(formData: FormData) {
     const email = String(formData.get("email") ?? "");
     const roleId = String(formData.get("roleId") ?? "");
-    const departmentId = String(formData.get("departmentId") ?? "") || undefined;
-    const projectId = String(formData.get("projectId") ?? "") || undefined;
+    let departmentId = String(formData.get("departmentId") ?? "") || undefined;
+    if (departmentId === "none") departmentId = undefined;
+    let projectId = String(formData.get("projectId") ?? "") || undefined;
+    if (projectId === "none") projectId = undefined;
+
     try {
       const result = await sendInvite.mutateAsync(
         isClientInvite ? { email, roleId, projectId } : { email, roleId, departmentId },
@@ -462,6 +468,7 @@ export default function AdminPanel() {
                       <SelectValue placeholder="None — grant access later" />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="none">None — grant access later</SelectItem>
                       {projects.map((p) => (
                         <SelectItem key={p.id} value={p.id}>
                           {p.name}
@@ -478,6 +485,7 @@ export default function AdminPanel() {
                       <SelectValue placeholder="None — assign later" />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="none">None — assign later</SelectItem>
                       {departments.map((d) => (
                         <SelectItem key={d.id} value={d.id}>
                           {d.name}
@@ -546,6 +554,7 @@ export default function AdminPanel() {
                     <SelectValue placeholder="None" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
                     {departments.map((d) => (
                       <SelectItem key={d.id} value={d.id}>
                         {d.name}
@@ -662,9 +671,9 @@ export default function AdminPanel() {
                     <TableCell>
                       <Select
                         key={`${u.id}-${u.departmentId ?? "none"}`}
-                        defaultValue={u.departmentId ?? ""}
+                        defaultValue={u.departmentId ?? "none"}
                         onValueChange={(val) =>
-                          handleReassignDepartment(u.id, val)
+                          handleReassignDepartment(u.id, val === "none" ? "" : val)
                         }
                       >
                         <SelectTrigger
@@ -674,6 +683,7 @@ export default function AdminPanel() {
                           <SelectValue placeholder="None" />
                         </SelectTrigger>
                         <SelectContent>
+                          <SelectItem value="none">None</SelectItem>
                           {departments.map((d) => (
                             <SelectItem key={d.id} value={d.id}>
                               {d.name}

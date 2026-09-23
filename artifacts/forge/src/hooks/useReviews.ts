@@ -40,6 +40,7 @@ export function useAnnotations(versionId: string | undefined) {
 export function useCreateAnnotation(
   versionId: string | undefined,
   onFailure?: (message: string) => void,
+  currentUserId?: string,
 ) {
   const queryClient = useQueryClient();
   const key = keyFor(versionId);
@@ -53,7 +54,9 @@ export function useCreateAnnotation(
       const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       queryClient.setQueryData<Annotation[]>(key, [
         ...previous,
-        { ...(annotation as Annotation), id: tempId },
+        // Inject currentUserId so the eraser ownership check passes immediately
+        // on a freshly drawn mark before the server responds with createdById.
+        { ...(annotation as Annotation), id: tempId, createdById: currentUserId },
       ]);
       return { previous, tempId };
     },

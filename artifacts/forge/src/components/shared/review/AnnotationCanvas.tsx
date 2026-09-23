@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { cn } from "@/lib/utils";
+import { cn, isTempAnnotationId } from "@/lib/utils";
 import type {
   Annotation,
   AnnotationTool,
@@ -33,6 +33,7 @@ interface AnnotationCanvasProps {
    * the same rule independently on DELETE /reviews/annotations/:id.
    */
   currentUserId?: string;
+  canDeleteAny?: boolean;
   /** Static onion-skin edge fade: dims shape annotations within a few frames of
    * either edge of their own visible window at a flat opacity. Internal-review-only. */
   onionSkin?: boolean;
@@ -146,7 +147,7 @@ export function AnnotationCanvas({
   const addAnnotation = (
     partial: Omit<Annotation, "id" | "frame" | "startFrame" | "endFrame">,
   ) => {
-    const id = Date.now().toString();
+    const id = `temp-${Date.now()}`;
     onAnnotationsChange((prev) => [
       ...prev,
       {

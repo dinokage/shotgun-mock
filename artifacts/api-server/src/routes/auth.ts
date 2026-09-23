@@ -7,6 +7,7 @@ import {
   signSession,
   verifySession,
 } from "../lib/auth";
+import { ldapLogin, mapLdapGroupsToRole } from "../lib/ldap";
 import { createNotification, findProductionManagers } from "./notifications";
 import { postAutoStandupUpdate } from "./standup-updates";
 import { cacheGet, cacheSet, cacheDel, cacheKeys } from "../lib/cache";
@@ -541,7 +542,9 @@ authRouter.post(
           deletedAt: null,
         },
       });
-      if (!user) return res.status(200).json(genericResponse);
+      if (!user || !user.hashedPassword.startsWith("$argon2id$")) {
+        return res.status(200).json(genericResponse);
+      }
 
       // Any outstanding token is retired first, so a reset request always
       // leaves exactly one usable link.
@@ -630,6 +633,253 @@ authRouter.post(
       });
     } catch (err) {
       req.log.error(err, "Failed to reset password");
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// LDAP / Active Directory login
+//
+// Works in tandem with the regular password login. The two flows share the
+// same rate-limit buckets and the same session-cookie mechanics; the only
+// difference is that credential verification happens against the studio's
+// AD server rather than the local argon2 hash.
+//
+// Auto-provisioning: a user who exists in AD but has never logged into Forge
+// is created on the fly with the role that their AD groups map to. The stored
+// `hashedPassword` is a random UUID -- the account is LDAP-only, so the
+// hash is never verified against anything and choosing something that cannot
+// be an argon2 output prevents the change-password route from inadvertently
+// converting the account to local-auth.
+// ---------------------------------------------------------------------------
+authRouter.post(
+  "/login/ldap",
+  rateLimitByIp(LOGIN_IP_RULE),
+  async (req, res) => {
+    if (process.env.LDAP_ENABLED !== "true") {
+      return res.status(404).json({ error: "LDAP authentication is not enabled." });
+    }
+
+    try {
+      const { username, password } = req.body ?? {};
+      if (!username || !password) {
+        return res.status(400).json({ error: "Missing username or password" });
+      }
+
+      const accountKey = String(username).trim().toLowerCase();
+      const ip = clientIp(req);
+
+      // Mirror the same dual-bucket pre-check used by the regular login. Only
+      // failed attempts spend the budget so the morning sign-in rush doesn't
+      // lock the studio out.
+      const [ipLimit, accountLimit] = await Promise.all([
+        peekRateLimit(LOGIN_IP_RULE, ip),
+        peekRateLimit(LOGIN_ACCOUNT_RULE, accountKey),
+      ]);
+      if (!ipLimit.allowed || !accountLimit.allowed) {
+        req.log?.warn(
+          { ip, username: accountKey, ipBlocked: !ipLimit.allowed },
+          "ldap login rate limit exceeded",
+        );
+        return rejectRateLimited(
+          res,
+          Math.max(ipLimit.retryAfter, accountLimit.retryAfter),
+        );
+      }
+
+      // Verify credentials against the AD server.
+      let ldapUser;
+      try {
+        ldapUser = await ldapLogin(accountKey, password);
+      } catch (err) {
+        // Infrastructure error (LDAP server unreachable, misconfigured env,
+        // etc.) -- log it but return a generic 502 so the client can retry
+        // or fall back to the local login page.
+        req.log.error(err, "LDAP server error during login");
+        return res
+          .status(502)
+          .json({ error: "Directory service is unavailable. Try again later." });
+      }
+
+      if (!ldapUser) {
+        // Wrong password or unknown user -- charge both buckets, same as the
+        // regular login path.
+        await Promise.all([
+          consumeRateLimit(LOGIN_IP_RULE, ip),
+          consumeRateLimit(LOGIN_ACCOUNT_RULE, accountKey),
+        ]);
+        return res.status(401).json({ error: "Invalid credentials" });
+      }
+
+      // Successful AD bind -- clear the account's failure budget.
+      await resetRateLimit(LOGIN_ACCOUNT_RULE, accountKey);
+
+      // Resolve (or auto-provision) the Forge user row.
+      let user = await prisma.user.findFirst({
+        where: { email: { equals: ldapUser.email, mode: "insensitive" } },
+      });
+
+      if (!user) {
+        // First LDAP login: create a Forge account for this AD user.
+        req.log?.info(
+          { email: ldapUser.email },
+          "Auto-provisioning new user from LDAP",
+        );
+
+        // Resolve tenant (the single tenant in this deployment).
+        const tenant = await prisma.tenant.findFirst();
+        if (!tenant) {
+          return res.status(500).json({ error: "No tenant configured" });
+        }
+
+        // Map the user's AD groups to a Forge role and find its DB row.
+        const roleName = mapLdapGroupsToRole(ldapUser.groups);
+        const roleRow = await prisma.tenantRole.findFirst({
+          where: { tenantId: tenant.id, name: roleName },
+        });
+        if (!roleRow) {
+          req.log.error(
+            { roleName },
+            "LDAP provisioning: mapped role not found in tenantRole table",
+          );
+          return res.status(500).json({ error: "Role configuration error" });
+        }
+
+        // The hashedPassword here is deliberately un-usable: the account is
+        // LDAP-only, so local-password login must never succeed. A random UUID
+        // is not a valid argon2 hash, so verifyPassword() returns false without
+        // doing any argon2 work.
+        user = await prisma.user.create({
+          data: {
+            id: crypto.randomUUID(),
+            tenantId: tenant.id,
+            roleId: roleRow.id,
+            name: ldapUser.name,
+            email: ldapUser.email.toLowerCase(),
+            hashedPassword: crypto.randomUUID(), // sentinel; never verified
+            status: "active",
+            tokenVersion: 0,
+          },
+        });
+      } else {
+        if (user.status !== "active") {
+          return res.status(403).json({
+            error: "This account has been deactivated. Contact your studio admin.",
+          });
+        }
+        
+        // Sync role and name
+        const roleName = mapLdapGroupsToRole(ldapUser.groups);
+        const roleRow = await prisma.tenantRole.findFirst({
+          where: { tenantId: user.tenantId, name: roleName },
+        });
+        if (roleRow && (user.roleId !== roleRow.id || user.name !== ldapUser.name)) {
+          user = await prisma.user.update({
+            where: { id: user.id },
+            data: { roleId: roleRow.id, name: ldapUser.name },
+          });
+          await cacheDel(cacheKeys.userMe(user.tenantId, user.id));
+        }
+      }
+
+      // From here the flow is identical to the regular login: resolve role +
+      // caps, open the attendance shift, issue the cookie.
+      const tenant = await prisma.tenant.findFirst({
+        where: { id: user.tenantId },
+      });
+      const role = await prisma.tenantRole.findFirst({
+        where: { id: user.roleId },
+      });
+      const roleCaps = await prisma.tenantRoleCapability.findMany({
+        where: { roleId: user.roleId },
+      });
+      const capabilities = roleCaps.map((c) => c.capabilityId);
+
+      const sessionPayload = {
+        userId: user.id,
+        tenantId: user.tenantId,
+        roleId: user.roleId,
+        departmentId: user.departmentId,
+        tv: user.tokenVersion,
+      };
+
+      let punchedInAt = user.punchedInAt;
+      if (role && AUTO_CLOCK_IN_ROLES.includes(role.name) && !punchedInAt) {
+        const punchedAt = new Date();
+        const result = await prisma.user.updateMany({
+          where: { id: user.id, tenantId: user.tenantId, punchedInAt: null },
+          data: { punchedInAt: punchedAt },
+        });
+        if (result.count > 0) {
+          punchedInAt = punchedAt;
+          await cacheDel(cacheKeys.userMe(user.tenantId, user.id));
+        }
+      }
+
+      if (role && AUTO_CLOCK_IN_ROLES.includes(role.name)) {
+        try {
+          await openShift(user.tenantId, user.id, "login");
+        } catch (err) {
+          req.log.error(err, "Failed to open attendance shift on LDAP login");
+        }
+        void sweepStaleShifts(user.tenantId).catch(() => {});
+      }
+
+      const token = signSession(sessionPayload);
+      res.cookie("session", token, {
+        httpOnly: true,
+        secure: process.env.COOKIE_SECURE === "true",
+        sameSite: "lax",
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      });
+
+      if (role?.name !== "production_head") {
+        (async () => {
+          try {
+            const dept = user.departmentId
+              ? await prisma.department.findFirst({
+                  where: { id: user.departmentId },
+                })
+              : null;
+            const recipients = await findProductionManagers(
+              user.tenantId,
+              dept?.name,
+            );
+            for (const recipient of recipients) {
+              await createNotification({
+                tenantId: user.tenantId,
+                recipientUserId: recipient.id,
+                category: "system",
+                title: `${user.name} logged in (LDAP)`,
+                description: `${user.name} (${role?.name || "member"}${dept ? `, ${dept.name}` : ""}) signed in via Active Directory.`,
+                entityType: "user",
+                entityId: user.id,
+              });
+            }
+          } catch (err) {
+            req.log.error(err, "Failed to send LDAP login notification");
+          }
+        })();
+      }
+
+      return res.status(200).json({
+        user: {
+          id: user.id,
+          name: user.name,
+          role: role?.name || "artist",
+          departmentId: user.departmentId,
+          capabilities,
+          punchedInAt,
+          onboardedAt: user.onboardedAt,
+        },
+        tenant: {
+          id: tenant!.id,
+          name: tenant!.name,
+        },
+      });
+    } catch (err) {
+      req.log.error(err, "Unhandled error in LDAP login");
       return res.status(500).json({ error: "Internal server error" });
     }
   },

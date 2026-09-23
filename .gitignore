@@ -21,6 +21,12 @@ __pycache__/
 
 # dependencies
 node_modules
+# pnpm's content-addressable package cache -- tens of thousands of small
+# files. Missing here made every `git status`/`git stash -u`/`git add .`
+# scan and hash the whole store, several minutes of real work for what
+# should be an instant operation (confirmed: this is very likely what left
+# an earlier `git add .` hung indefinitely, holding .git/index.lock).
+.pnpm-store
 
 # IDEs and editors
 /.idea

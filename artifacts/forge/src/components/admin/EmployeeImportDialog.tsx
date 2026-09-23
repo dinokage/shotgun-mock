@@ -232,13 +232,14 @@ export function EmployeeImportDialog({
                     onChange={(e) => updateRow(i, { email: e.target.value })}
                   />
                   <Select
-                    value={row.departmentId}
-                    onValueChange={(v) => updateRow(i, { departmentId: v })}
+                    value={row.departmentId || "none"}
+                    onValueChange={(v) => updateRow(i, { departmentId: v === "none" ? "" : v })}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="None" />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
                       {departments.map((d: DepartmentDTO) => (
                         <SelectItem key={d.id} value={d.id}>
                           {d.name}

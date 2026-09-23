@@ -106,20 +106,24 @@ app.use(
     const resolveTenant = req.tenantId
       ? Promise.resolve(req.tenantId)
       : resolveSoleTenantId();
-    void resolveTenant.then((tenantId) =>
-      captureError({
-        source: "api",
-        kind: err.name || "Error",
-        message: err.message || String(err),
-        stack: err.stack,
-        path: req.originalUrl?.split("?")[0],
-        method: req.method,
-        statusCode: status,
-        tenantId,
-        userId: req.userId ?? null,
-        context: { requestId: (req as { id?: unknown }).id },
-      }),
-    );
+    void resolveTenant
+      .then((tenantId) =>
+        captureError({
+          source: "api",
+          kind: err.name || "Error",
+          message: err.message || String(err),
+          stack: err.stack,
+          path: req.originalUrl?.split("?")[0],
+          method: req.method,
+          statusCode: status,
+          tenantId,
+          userId: req.userId ?? null,
+          context: { requestId: (req as { id?: unknown }).id },
+        }),
+      )
+      .catch((resolveErr) => {
+        req.log?.error({ resolveErr }, "Failed to capture unhandled error");
+      });
     req.log?.error({ err }, "unhandled error");
     if (res.headersSent) return;
     res.status(status).json({ error: "Internal server error" });
@@ -135,15 +139,20 @@ process.on("unhandledRejection", (reason) => {
   // deployment's tenant where that is unambiguous; reads are scoped strictly
   // per tenant, so without this a background crash would be recorded and then
   // visible to nobody.
-  void resolveSoleTenantId().then((tenantId) =>
-    captureError({
-      source: "api",
-      kind: `UnhandledRejection: ${err.name}`,
-      message: err.message,
-      stack: err.stack,
-      tenantId,
-    }),
-  );
+  void resolveSoleTenantId()
+    .then((tenantId) =>
+      captureError({
+        source: "api",
+        kind: `UnhandledRejection: ${err.name}`,
+        message: err.message,
+        stack: err.stack,
+        tenantId,
+      })
+    )
+    .catch((resolveErr) => {
+      console.error("Failed to capture unhandled rejection:", resolveErr);
+      console.error("Original rejection:", err);
+    });
 });
 
 export default app;

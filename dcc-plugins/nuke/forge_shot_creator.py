@@ -193,7 +193,11 @@ def create_shot():
             body["duration"] = max(1, int(hi) - int(lo) + 1)
         except (ValueError, IndexError):
             pass
-    body["notes"] = "Created from Nuke (script: %s)" % (nuke.root().name() or "untitled")
+    try:
+        script_name = nuke.root().name()
+    except ValueError:
+        script_name = "untitled"
+    body["notes"] = "Created from Nuke (script: %s)" % script_name
 
     try:
         _request(config, "POST", "/shots", body)

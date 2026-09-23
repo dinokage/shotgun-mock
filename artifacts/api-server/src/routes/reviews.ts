@@ -289,14 +289,19 @@ const ANNOTATION_PATCHABLE_FIELDS = [
 // session owns one created through the same link it redeemed
 // (createdByClientAccessLinkId) -- links are code-based, not per-person, so
 // any redemption of the same link can edit/delete that link's annotations.
-function isAnnotationOwner(
+async function isAnnotationOwner(
   req: import("express").Request,
   existing: { createdById: string | null; createdByClientAccessLinkId: string | null },
-): boolean {
+): Promise<boolean> {
   if (req.clientAccessLinkId) {
     return existing.createdByClientAccessLinkId === req.clientAccessLinkId;
   }
-  return !!req.userId && existing.createdById === req.userId;
+  if (!!req.userId && existing.createdById === req.userId) return true;
+  if (!req.roleId) return false;
+  const grant = await prisma.tenantRoleCapability.findFirst({
+    where: { roleId: req.roleId, capabilityId: "approve_reviews" },
+  });
+  return !!grant;
 }
 
 reviewsRouter.put("/annotations/:id", requireCapability("submit_reviews"), async (req, res) => {
@@ -305,7 +310,7 @@ reviewsRouter.put("/annotations/:id", requireCapability("submit_reviews"), async
     const id = req.params.id as string;
     const existing = await prisma.annotation.findFirst({ where: { tenantId, id } });
     if (!existing) return res.status(404).json({ error: "Not found" });
-    if (!isAnnotationOwner(req, existing)) return res.status(403).json({ error: "Forbidden" });
+    if (!(await isAnnotationOwner(req, existing))) return res.status(403).json({ error: "Forbidden" });
 
     const updates: Record<string, unknown> = {};
     for (const field of ANNOTATION_PATCHABLE_FIELDS) {
@@ -325,7 +330,7 @@ reviewsRouter.delete("/annotations/:id", requireCapability("submit_reviews"), as
     const id = req.params.id as string;
     const existing = await prisma.annotation.findFirst({ where: { tenantId, id } });
     if (!existing) return res.status(404).json({ error: "Not found" });
-    if (!isAnnotationOwner(req, existing)) return res.status(403).json({ error: "Forbidden" });
+    if (!(await isAnnotationOwner(req, existing))) return res.status(403).json({ error: "Forbidden" });
 
     await prisma.annotation.deleteMany({ where: { tenantId, id } });
     return res.status(204).send();

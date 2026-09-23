@@ -165,6 +165,12 @@ services:
       # Outside /app/prod so uploaded files survive a rebuild/redeploy --
       # /app/prod is entirely replaced by each image build.
       - UPLOAD_DIR=/app/uploads
+      # LDAP / Active Directory authentication
+      - LDAP_URL=${LDAP_URL:-ldap://10.1.8.251}
+      - LDAP_BIND_DN=${LDAP_BIND_DN}
+      - LDAP_BIND_PASSWORD=${LDAP_BIND_PASSWORD}
+      - LDAP_BASE_DN=${LDAP_BASE_DN}
+      - LDAP_ENABLED=${LDAP_ENABLED:-false}
     # Shared named volume, not a per-container one: whichever replica accepts
     # an upload must write where every other replica can later serve it from.
     volumes:

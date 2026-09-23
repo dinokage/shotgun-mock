@@ -594,7 +594,7 @@ export default function Review() {
       variant: "destructive",
     });
   };
-  const createAnnotation = useCreateAnnotation(versionId, reportAnnotationFailure);
+  const createAnnotation = useCreateAnnotation(versionId, reportAnnotationFailure, currentUser?.id);
   const updateAnnotation = useUpdateAnnotation(versionId, reportAnnotationFailure);
   const deleteAnnotation = useDeleteAnnotation(versionId, reportAnnotationFailure);
   // Bridges the shared AnnotationCanvas's raw dispatch-style API (and this

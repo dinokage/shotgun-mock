@@ -1,0 +1,7 @@
+# Shell scripts must always check out with LF, even on Windows -- a script
+# with CRLF line endings breaks the moment it runs inside a Linux container
+# (`sh script.sh` chokes on the trailing \r, e.g. "illegal option -" on a
+# perfectly valid `set -eu`). This is the exact bug that silently crash-
+# looped the db-backup sidecar: ops/db-backup/backup.sh and restore.sh both
+# checked out CRLF and never produced a single successful backup.
+*.sh text eol=lf
