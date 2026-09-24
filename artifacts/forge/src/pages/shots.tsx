@@ -316,9 +316,7 @@ export default function Shots() {
               </thead>
               <tbody>
                 {filtered.slice(0, listVisible).map((shot) => {
-                  const assignee = users.find(
-                    (u) => u.id === shot.assigneeId,
-                  );
+                  const assignee = users.find((u) => u.id === shot.assigneeId);
                   return (
                     <tr
                       key={shot.id}
@@ -336,7 +334,10 @@ export default function Shots() {
                         {sequenceName(shot.sequenceId || "")}
                       </td>
                       <td className="p-4">
-                        <StatusBadge status={shot.status} className="text-[10px]" />
+                        <StatusBadge
+                          status={shot.status}
+                          className="text-[10px]"
+                        />
                       </td>
                       <td className="p-4 text-muted-foreground">
                         {assignee?.name}

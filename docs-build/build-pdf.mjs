@@ -20,7 +20,9 @@ const CHROME = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 
 const [, , inFile, outFile, docTitle, classification] = process.argv;
 if (!inFile || !outFile) {
-  console.error('Usage: build-pdf.mjs <input.html> <output.pdf> "<title>" "<classification>"');
+  console.error(
+    'Usage: build-pdf.mjs <input.html> <output.pdf> "<title>" "<classification>"',
+  );
   process.exit(1);
 }
 
@@ -43,7 +45,8 @@ let logoUsed = "none";
 for (const [file, mime] of LOGO_TYPES) {
   const p = path.join(here, file);
   if (fs.existsSync(p)) {
-    logoDataUri = `data:${mime};base64,` + fs.readFileSync(p).toString("base64");
+    logoDataUri =
+      `data:${mime};base64,` + fs.readFileSync(p).toString("base64");
     logoUsed = file;
     break;
   }
@@ -78,7 +81,9 @@ const footerTemplate = `
 const browser = await chromium.launch({ executablePath: CHROME });
 const page = await browser.newPage();
 const abs = path.resolve(inFile);
-await page.goto("file:///" + abs.replace(/\\/g, "/"), { waitUntil: "networkidle" });
+await page.goto("file:///" + abs.replace(/\\/g, "/"), {
+  waitUntil: "networkidle",
+});
 // Webfonts resolve after networkidle in some cases; this makes the wait explicit
 // rather than hoping the race lands the right way on every run.
 await page.evaluate(() => document.fonts.ready);
@@ -104,10 +109,13 @@ try {
 } catch (err) {
   if (err.code === "EBUSY" || err.code === "EPERM") {
     console.error(
-      "\n  CANNOT REPLACE: " + path.basename(outFile) +
-      "\n  That file is open in another application (a PDF viewer holds a lock on it)." +
-      "\n  Close it and run this again. The new version is waiting at:" +
-      "\n    " + tmpFile + "\n",
+      "\n  CANNOT REPLACE: " +
+        path.basename(outFile) +
+        "\n  That file is open in another application (a PDF viewer holds a lock on it)." +
+        "\n  Close it and run this again. The new version is waiting at:" +
+        "\n    " +
+        tmpFile +
+        "\n",
     );
     process.exitCode = 2;
   } else {

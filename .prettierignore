@@ -1,0 +1,24 @@
+# Orval-generated API client code (see lib/api-spec's `codegen` script and
+# the CI "Drift Check"). Regenerates byte-for-byte from openapi.yaml
+# regardless of formatting, so there is nothing for prettier to fix here --
+# letting it touch these files would just make the Drift Check compare
+# freshly-generated (unformatted) output against a prettier-reformatted
+# committed version and flag phantom drift on every run.
+lib/api-zod/src/generated/
+lib/api-client-react/src/generated/
+
+# Prisma's generated client -- not committed (see .gitignore), listed here
+# too in case it's ever present locally when lint runs.
+lib/db/generated/
+
+# Codegen'd mockup-sandbox components -- same reasoning as the orval output
+# above, regenerates regardless of formatting.
+artifacts/mockup-sandbox/src/.generated/
+
+# pnpm's lockfile is machine-generated; formatting it is never useful and
+# prettier's own YAML handling doesn't match pnpm's writer anyway.
+pnpm-lock.yaml
+
+# Historical planning/audit docs from earlier sessions -- kept as-is
+# intentionally, not meant to be reformatted.
+docs/superpowers/

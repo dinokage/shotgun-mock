@@ -202,7 +202,9 @@ export function TaskTemplatesTab() {
 
   const handleCreate = async () => {
     try {
-      const created = await createTemplate.mutateAsync({ name: "New Template" });
+      const created = await createTemplate.mutateAsync({
+        name: "New Template",
+      });
       setSelectedId(created.id);
     } catch (err) {
       fail("Could not create template")(err);

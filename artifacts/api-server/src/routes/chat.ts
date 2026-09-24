@@ -306,7 +306,9 @@ chatRouter.get("/channels", denyClientAccess, async (req, res) => {
                 channelId: c.id,
                 deletedAt: null,
                 authorId: { not: userId },
-                ...(own.lastReadAt ? { createdAt: { gt: own.lastReadAt } } : {}),
+                ...(own.lastReadAt
+                  ? { createdAt: { gt: own.lastReadAt } }
+                  : {}),
               },
             })
           : 0;
@@ -342,7 +344,9 @@ chatRouter.post("/channels", denyClientAccess, async (req, res) => {
 
     const { kind, name, description, departmentId, memberIds } = req.body;
     if (kind !== "channel" && kind !== "group")
-      return res.status(400).json({ error: "kind must be 'channel' or 'group'" });
+      return res
+        .status(400)
+        .json({ error: "kind must be 'channel' or 'group'" });
     if (typeof name !== "string" || !name.trim())
       return res.status(400).json({ error: "name is required" });
 
@@ -500,7 +504,9 @@ chatRouter.post("/channels/:id/join", denyClientAccess, async (req, res) => {
 
     const roleName = await callerRoleName(req.roleId!);
     if (!canJoinChannel(channel, roleName, req.departmentId))
-      return res.status(403).json({ error: "Forbidden: channel is not open to you" });
+      return res
+        .status(403)
+        .json({ error: "Forbidden: channel is not open to you" });
 
     await prisma.chatChannelMember.createMany({
       data: [{ id: crypto.randomUUID(), tenantId, channelId, userId }],
@@ -541,9 +547,12 @@ chatRouter.get("/channels/:id/messages", async (req, res) => {
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
     const gate = await requireMembership(tenantId, req.params.id, userId);
-    if (gate.status === 404) return res.status(404).json({ error: "Not found" });
+    if (gate.status === 404)
+      return res.status(404).json({ error: "Not found" });
     if (gate.status === 403)
-      return res.status(403).json({ error: "Forbidden: not a member of this channel" });
+      return res
+        .status(403)
+        .json({ error: "Forbidden: not a member of this channel" });
 
     const rawLimit = Number(req.query.limit);
     const limit = Math.min(
@@ -575,16 +584,24 @@ chatRouter.get("/channels/:id/messages", async (req, res) => {
     // internal-only), so it has no other way to show who sent a message --
     // resolved here, once per page, rather than leaving every caller to
     // fetch the roster itself just to label a chat transcript.
-    const authorIds = [...new Set(page.map((m) => m.authorId).filter((id): id is string => !!id))];
+    const authorIds = [
+      ...new Set(
+        page.map((m) => m.authorId).filter((id): id is string => !!id),
+      ),
+    ];
     const authors = authorIds.length
-      ? await prisma.user.findMany({ where: { id: { in: authorIds } }, select: { id: true, name: true } })
+      ? await prisma.user.findMany({
+          where: { id: { in: authorIds } },
+          select: { id: true, name: true },
+        })
       : [];
     const nameById = new Map(authors.map((a) => [a.id, a.name]));
 
     return res.json({
-      messages: page
-        .reverse()
-        .map((m) => ({ ...messageDTO(m), authorName: m.authorId ? nameById.get(m.authorId) ?? null : null })),
+      messages: page.reverse().map((m) => ({
+        ...messageDTO(m),
+        authorName: m.authorId ? (nameById.get(m.authorId) ?? null) : null,
+      })),
       hasMore,
     });
   } catch (err) {
@@ -601,15 +618,20 @@ chatRouter.post("/channels/:id/messages", async (req, res) => {
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
     const gate = await requireMembership(tenantId, req.params.id, userId);
-    if (gate.status === 404) return res.status(404).json({ error: "Not found" });
+    if (gate.status === 404)
+      return res.status(404).json({ error: "Not found" });
     if (gate.status === 403)
-      return res.status(403).json({ error: "Forbidden: not a member of this channel" });
+      return res
+        .status(403)
+        .json({ error: "Forbidden: not a member of this channel" });
 
     const { body, attachmentUrl, attachmentName } = req.body;
     const text = typeof body === "string" ? body.trim() : "";
     const url = typeof attachmentUrl === "string" ? attachmentUrl : null;
     if (!text && !url)
-      return res.status(400).json({ error: "Message body or attachment is required" });
+      return res
+        .status(400)
+        .json({ error: "Message body or attachment is required" });
     // Only a URL this API itself minted is accepted. The client renders
     // attachments in <img>/<video>/<a>, so letting an arbitrary string
     // through would turn every message into an attacker-controlled fetch
@@ -658,9 +680,12 @@ chatRouter.post("/channels/:id/attachments", async (req, res) => {
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
     const gate = await requireMembership(tenantId, req.params.id, userId);
-    if (gate.status === 404) return res.status(404).json({ error: "Not found" });
+    if (gate.status === 404)
+      return res.status(404).json({ error: "Not found" });
     if (gate.status === 403)
-      return res.status(403).json({ error: "Forbidden: not a member of this channel" });
+      return res
+        .status(403)
+        .json({ error: "Forbidden: not a member of this channel" });
 
     chatUpload.single("file")(req, res, (err) => {
       if (err) return res.status(400).json({ error: err.message });
@@ -719,7 +744,9 @@ chatRouter.post("/channels/:id/read", async (req, res) => {
       data: { lastReadAt: new Date() },
     });
     if (updated.count === 0)
-      return res.status(403).json({ error: "Forbidden: not a member of this channel" });
+      return res
+        .status(403)
+        .json({ error: "Forbidden: not a member of this channel" });
 
     return res.status(204).send();
   } catch (err) {

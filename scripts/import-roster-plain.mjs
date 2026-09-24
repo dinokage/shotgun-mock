@@ -18,7 +18,11 @@ function guessRoleName(designation) {
   const d = designation.toLowerCase();
   if (d.includes("head")) return "production_head";
   if (d.includes("supervisor") || d.includes("lead")) return "lead";
-  if (d.includes("producer") || d.includes("coordinator") || d.includes("manager"))
+  if (
+    d.includes("producer") ||
+    d.includes("coordinator") ||
+    d.includes("manager")
+  )
     return "producer";
   return "artist";
 }
@@ -86,13 +90,13 @@ async function main() {
   await client.connect();
 
   const rolesRes = await client.query(
-    'SELECT id, name FROM tenant_roles WHERE tenant_id = $1',
+    "SELECT id, name FROM tenant_roles WHERE tenant_id = $1",
     [TENANT_ID],
   );
   const roleIdByName = new Map(rolesRes.rows.map((r) => [r.name, r.id]));
 
   const deptsRes = await client.query(
-    'SELECT id, name, abbr FROM departments WHERE tenant_id = $1',
+    "SELECT id, name, abbr FROM departments WHERE tenant_id = $1",
     [TENANT_ID],
   );
   const departments = deptsRes.rows;
@@ -103,18 +107,24 @@ async function main() {
     return (
       departments.find((dept) => dept.name.toLowerCase() === d) ||
       departments.find(
-        (dept) => dept.name.toLowerCase().includes(d) || d.includes(dept.name.toLowerCase()),
+        (dept) =>
+          dept.name.toLowerCase().includes(d) ||
+          d.includes(dept.name.toLowerCase()),
       ) ||
       departments.find((dept) => dept.abbr.toLowerCase() === d)
     );
   }
 
   const existingRes = await client.query(
-    'SELECT email, name FROM users WHERE tenant_id = $1',
+    "SELECT email, name FROM users WHERE tenant_id = $1",
     [TENANT_ID],
   );
-  const existingNames = new Set(existingRes.rows.map((u) => u.name.toLowerCase()));
-  const usedEmails = new Set(existingRes.rows.map((u) => u.email.toLowerCase()));
+  const existingNames = new Set(
+    existingRes.rows.map((u) => u.name.toLowerCase()),
+  );
+  const usedEmails = new Set(
+    existingRes.rows.map((u) => u.email.toLowerCase()),
+  );
 
   const rows = parseRoster(ROSTER_PATH);
   const hashedPassword = await argon2.hash(TEMP_PASSWORD);
@@ -142,18 +152,36 @@ async function main() {
     await client.query(
       `INSERT INTO users (id, tenant_id, role_id, department_id, email, hashed_password, name, title, status)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active')`,
-      [id, TENANT_ID, roleId, dept?.id ?? null, email, hashedPassword, row.name, row.sourceDesignation || null],
+      [
+        id,
+        TENANT_ID,
+        roleId,
+        dept?.id ?? null,
+        email,
+        hashedPassword,
+        row.name,
+        row.sourceDesignation || null,
+      ],
     );
     existingNames.add(row.name.toLowerCase());
     created++;
-    createdRows.push({ name: row.name, email, role: roleName, dept: dept?.name ?? "(none)" });
+    createdRows.push({
+      name: row.name,
+      email,
+      role: roleName,
+      dept: dept?.name ?? "(none)",
+    });
   }
 
-  console.log(`Created ${created} real accounts, skipped ${skipped} (already existed or unmapped).`);
+  console.log(
+    `Created ${created} real accounts, skipped ${skipped} (already existed or unmapped).`,
+  );
   console.log(`Shared temporary password: ${TEMP_PASSWORD}`);
   console.log("");
   for (const r of createdRows) {
-    console.log(`${r.name.padEnd(28)} ${r.email.padEnd(38)} ${r.role.padEnd(16)} ${r.dept}`);
+    console.log(
+      `${r.name.padEnd(28)} ${r.email.padEnd(38)} ${r.role.padEnd(16)} ${r.dept}`,
+    );
   }
   await client.end();
 }

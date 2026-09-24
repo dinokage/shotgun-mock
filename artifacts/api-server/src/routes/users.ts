@@ -87,12 +87,15 @@ router.get("/", async (req, res) => {
     // only off the role name, so a revoked client kept reading the roster
     // until its 7-day JWT expired, while every getClientScope-based route
     // had already gone empty.
-    if (req.clientAccessLinkId && !(await getClientScope(req))) return res.json([]);
+    if (req.clientAccessLinkId && !(await getClientScope(req)))
+      return res.json([]);
 
     const rows = await prisma.user.findMany({
       where: {
         tenantId,
-        ...(isClient ? { role: { name: { in: STUDIO_LEADERSHIP_ROLES } } } : {}),
+        ...(isClient
+          ? { role: { name: { in: STUDIO_LEADERSHIP_ROLES } } }
+          : {}),
       },
       select: {
         id: true,
@@ -137,7 +140,8 @@ router.get("/", async (req, res) => {
         !!scope &&
         (scope.kind === "all" ||
           isSelf ||
-          (scope.kind === "department" && u.departmentId === scope.departmentId));
+          (scope.kind === "department" &&
+            u.departmentId === scope.departmentId));
       return {
         ...u,
         role: u.role?.name ?? null,
@@ -236,8 +240,13 @@ router.patch("/me", async (req, res) => {
     if (title !== undefined) data.title = title;
     if (avatar !== undefined) data.avatar = avatar;
     if (capacity !== undefined) {
-      if (capacity !== null && (typeof capacity !== "number" || capacity < 0 || capacity > 100)) {
-        return res.status(400).json({ error: "capacity must be a number between 0 and 100, or null" });
+      if (
+        capacity !== null &&
+        (typeof capacity !== "number" || capacity < 0 || capacity > 100)
+      ) {
+        return res.status(400).json({
+          error: "capacity must be a number between 0 and 100, or null",
+        });
       }
       data.capacity = capacity;
     }
@@ -251,7 +260,9 @@ router.patch("/me", async (req, res) => {
       data,
     });
     if (result.count === 0) return res.status(404).json({ error: "Not found" });
-    const updated = await prisma.user.findFirstOrThrow({ where: { id: userId, tenantId } });
+    const updated = await prisma.user.findFirstOrThrow({
+      where: { id: userId, tenantId },
+    });
 
     await cacheDel(cacheKeys.userMe(tenantId, userId));
     const { hashedPassword: _omit, ...user } = updated;
@@ -281,7 +292,9 @@ router.post("/me/punch-in", async (req, res) => {
       data: { punchedInAt: new Date() },
     });
     if (result.count === 0) return res.status(404).json({ error: "Not found" });
-    const updated = await prisma.user.findFirstOrThrow({ where: { id: userId, tenantId } });
+    const updated = await prisma.user.findFirstOrThrow({
+      where: { id: userId, tenantId },
+    });
 
     // The header clock used to set only `punchedInAt`, so hours clocked here
     // never reached attendance_records -- only sign-in did. Same role rule
@@ -318,7 +331,9 @@ router.post("/me/punch-out", async (req, res) => {
       data: { punchedInAt: null },
     });
     if (result.count === 0) return res.status(404).json({ error: "Not found" });
-    const updated = await prisma.user.findFirstOrThrow({ where: { id: userId, tenantId } });
+    const updated = await prisma.user.findFirstOrThrow({
+      where: { id: userId, tenantId },
+    });
 
     // No role check needed: closeShift is a no-op when nothing is open.
     try {
@@ -351,8 +366,11 @@ router.post("/me/avatar", (req, res) => {
         where: { id: userId, tenantId },
         data: { avatar: url },
       });
-      if (result.count === 0) return res.status(404).json({ error: "Not found" });
-      const updated = await prisma.user.findFirstOrThrow({ where: { id: userId, tenantId } });
+      if (result.count === 0)
+        return res.status(404).json({ error: "Not found" });
+      const updated = await prisma.user.findFirstOrThrow({
+        where: { id: userId, tenantId },
+      });
 
       await cacheDel(cacheKeys.userMe(tenantId, userId));
       const { hashedPassword: _omit, ...user } = updated;
@@ -397,7 +415,9 @@ router.patch("/:id", requireCapability("manage_members"), async (req, res) => {
     const userId = req.params.id as string;
     const { roleId, departmentId, status, password } = req.body;
 
-    const existing = await prisma.user.findFirst({ where: { tenantId, id: userId } });
+    const existing = await prisma.user.findFirst({
+      where: { tenantId, id: userId },
+    });
     if (!existing) return res.status(404).json({ error: "Not found" });
 
     // Two ways to lock the studio out of its own administration: an admin
@@ -450,7 +470,9 @@ router.patch("/:id", requireCapability("manage_members"), async (req, res) => {
         });
       }
       if (typeof password !== "string" || password.length < 6) {
-        return res.status(400).json({ error: "password must be at least 6 characters" });
+        return res
+          .status(400)
+          .json({ error: "password must be at least 6 characters" });
       }
     }
 
@@ -474,7 +496,8 @@ router.patch("/:id", requireCapability("manage_members"), async (req, res) => {
         const dept = await prisma.department.findFirst({
           where: { id: departmentId, tenantId },
         });
-        if (!dept) return res.status(400).json({ error: "Invalid departmentId" });
+        if (!dept)
+          return res.status(400).json({ error: "Invalid departmentId" });
       }
       data.departmentId = departmentId;
     }
@@ -484,7 +507,9 @@ router.patch("/:id", requireCapability("manage_members"), async (req, res) => {
     // would deactivate the account anyway but read as a typo in the roster.
     if (status !== undefined) {
       if (status !== "active" && status !== "inactive")
-        return res.status(400).json({ error: "status must be 'active' or 'inactive'" });
+        return res
+          .status(400)
+          .json({ error: "status must be 'active' or 'inactive'" });
       data.status = status;
     }
 
@@ -501,7 +526,9 @@ router.patch("/:id", requireCapability("manage_members"), async (req, res) => {
       data,
     });
 
-    const updated = await prisma.user.findFirstOrThrow({ where: { tenantId, id: userId } });
+    const updated = await prisma.user.findFirstOrThrow({
+      where: { tenantId, id: userId },
+    });
     // roleId/departmentId directly change what GET /auth/me returns for this
     // user (capabilities, departmentId) -- without this, someone the admin
     // just promoted/reassigned would keep seeing their old capabilities

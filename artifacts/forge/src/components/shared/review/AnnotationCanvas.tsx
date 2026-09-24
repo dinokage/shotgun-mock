@@ -612,7 +612,11 @@ export function AnnotationCanvas({
               data-annotation-marker="text"
               placeholder="Type a note, Enter to save"
               className="bg-transparent text-white font-medium focus:outline-none min-w-[160px] px-2 py-1 drop-shadow-md placeholder:text-white/40 placeholder:font-normal border-b border-dashed border-white/30"
-              style={{ color, fontSize: "14px", fontFamily: "Inter, sans-serif" }}
+              style={{
+                color,
+                fontSize: "14px",
+                fontFamily: "Inter, sans-serif",
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   commitDraftText(e.currentTarget.value);

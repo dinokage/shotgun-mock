@@ -67,7 +67,9 @@ interface SessionValidity {
  * hiccups is not a check -- the whole point is that a logged-out,
  * deactivated, or offboarded session stops working.
  */
-async function currentSessionValidity(userId: string): Promise<SessionValidity | null> {
+async function currentSessionValidity(
+  userId: string,
+): Promise<SessionValidity | null> {
   const key = cacheKeys.tokenVersion(userId);
   const cached = await cacheGet<SessionValidity>(key);
   if (cached && typeof cached.tokenVersion === "number") return cached;
@@ -77,7 +79,10 @@ async function currentSessionValidity(userId: string): Promise<SessionValidity |
     select: { tokenVersion: true, status: true },
   });
   if (!user) return null;
-  const validity: SessionValidity = { tokenVersion: user.tokenVersion, status: user.status };
+  const validity: SessionValidity = {
+    tokenVersion: user.tokenVersion,
+    status: user.status,
+  };
   await cacheSet(key, validity, 300);
   return validity;
 }
@@ -122,7 +127,15 @@ async function tryTokenAuth(req: Request, res: Response): Promise<boolean> {
     select: {
       id: true,
       tenantId: true,
-      user: { select: { id: true, roleId: true, departmentId: true, status: true, deletedAt: true } },
+      user: {
+        select: {
+          id: true,
+          roleId: true,
+          departmentId: true,
+          status: true,
+          deletedAt: true,
+        },
+      },
     },
   });
   if (!record || record.user.deletedAt || record.user.status !== "active") {

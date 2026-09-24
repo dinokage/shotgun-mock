@@ -27,7 +27,14 @@ import { useReviewStore } from "@/store/reviews";
 import { useUIStore } from "@/store/ui";
 import { useAuthStore } from "@/store/auth";
 import { useToast } from "@/hooks/use-toast";
-import { ChevronLeft, Film, Package, ListTodo, Users, LogOut } from "lucide-react";
+import {
+  ChevronLeft,
+  Film,
+  Package,
+  ListTodo,
+  Users,
+  LogOut,
+} from "lucide-react";
 
 export default function ShotDetail() {
   const [, params] = useRoute("/shots/:id");
@@ -41,7 +48,9 @@ export default function ShotDetail() {
 
   const shot = liveShots.find((s) => s.id === params?.id);
   const { data: auditLogs = [] } = useAuditLogs(shot?.id);
-  const { data: teamMembers = [] } = useSequenceTeam(shot?.sequenceId ?? undefined);
+  const { data: teamMembers = [] } = useSequenceTeam(
+    shot?.sequenceId ?? undefined,
+  );
   const joinTeam = useJoinSequenceTeam();
   const leaveTeam = useLeaveSequenceTeam();
   const currentUser = useAuthStore((s) => s.currentUser);
@@ -92,17 +101,18 @@ export default function ShotDetail() {
       });
     }
   };
-  const relatedTasks = tasks.filter((t) => getShotId(t) === shot.id).slice(
-    0,
-    5,
-  );
+  const relatedTasks = tasks
+    .filter((t) => getShotId(t) === shot.id)
+    .slice(0, 5);
   const versions = liveVersions
     .filter((v) => v.entityId === shot.id)
     .sort((a, b) => b.versionNumber.localeCompare(a.versionNumber));
   const events = auditLogs.slice(0, 10);
-  const usedAssets = assets.filter((a) =>
-    tasks.some((t) => getShotId(t) === shot.id && getAssetId(t) === a.id),
-  ).slice(0, 5);
+  const usedAssets = assets
+    .filter((a) =>
+      tasks.some((t) => getShotId(t) === shot.id && getAssetId(t) === a.id),
+    )
+    .slice(0, 5);
 
   return (
     <div className="p-6 max-w-[1400px] mx-auto space-y-6">
@@ -269,13 +279,9 @@ export default function ShotDetail() {
                         >
                           <Avatar className="w-5 h-5">
                             <AvatarImage src={m.avatar ?? undefined} />
-                            <AvatarFallback>
-                              {m.name.charAt(0)}
-                            </AvatarFallback>
+                            <AvatarFallback>{m.name.charAt(0)}</AvatarFallback>
                           </Avatar>
-                          <span className="text-xs font-medium">
-                            {m.name}
-                          </span>
+                          <span className="text-xs font-medium">{m.name}</span>
                         </div>
                       ))}
                     </div>
@@ -342,15 +348,15 @@ export default function ShotDetail() {
                           }
                         />
                         <AvatarFallback>
-                          {users.find(
-                            (u) => u.id === v.createdById,
-                          )?.name.charAt(0)}
+                          {users
+                            .find((u) => u.id === v.createdById)
+                            ?.name.charAt(0)}
                         </AvatarFallback>
                       </Avatar>
                       {
-                        users.find((u) => u.id === v.createdById)?.name.split(
-                          " ",
-                        )[0]
+                        users
+                          .find((u) => u.id === v.createdById)
+                          ?.name.split(" ")[0]
                       }
                     </div>
                     <span>{new Date(v.createdAt).toLocaleDateString()}</span>
@@ -431,9 +437,7 @@ export default function ShotDetail() {
                 <div>
                   <div className="text-sm">
                     <span className="font-medium">{user?.name}</span>{" "}
-                    <span className="text-muted-foreground">
-                      {description}
-                    </span>
+                    <span className="text-muted-foreground">{description}</span>
                   </div>
                   <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
                     {ev.createdAt}

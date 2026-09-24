@@ -1,11 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import {
-  Task,
-  TaskStatus,
-  ApprovalEvent,
-  DailyLog,
-} from "@/data/mockData";
+import { Task, TaskStatus, ApprovalEvent, DailyLog } from "@/data/mockData";
 
 interface TaskState {
   tasks: Task[];
@@ -116,9 +111,7 @@ export const useTasksStore = create<TaskState>()(
       claimTask: (id, userId) => {
         set((state) => ({
           tasks: state.tasks.map((t) =>
-            t.id === id
-              ? { ...t, assigneeId: userId, assignedTo: userId }
-              : t,
+            t.id === id ? { ...t, assigneeId: userId, assignedTo: userId } : t,
           ),
         }));
         syncBackend(id, { assignedTo: userId });
@@ -126,9 +119,7 @@ export const useTasksStore = create<TaskState>()(
       revokeAssignment: (id) => {
         set((state) => ({
           tasks: state.tasks.map((t) =>
-            t.id === id
-              ? { ...t, assigneeId: "", assignedTo: null }
-              : t,
+            t.id === id ? { ...t, assigneeId: "", assignedTo: null } : t,
           ),
         }));
         syncBackend(id, { assignedTo: null });

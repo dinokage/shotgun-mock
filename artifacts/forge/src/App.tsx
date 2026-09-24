@@ -95,7 +95,11 @@ function RoleRouteGuard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (currentUser && !allowed) {
-      setLocation(isClient ? "/client-review" : ROLE_LANDING_ROUTE[currentUser.role] ?? "/");
+      setLocation(
+        isClient
+          ? "/client-review"
+          : (ROLE_LANDING_ROUTE[currentUser.role] ?? "/"),
+      );
     }
   }, [currentUser, allowed, isClient, setLocation]);
 

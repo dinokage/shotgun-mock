@@ -46,7 +46,10 @@ export default function ClientAccessCard({ project }: { project: any }) {
       setSelectedClientId("");
       toast(
         result.emailSent
-          ? { title: "Client access granted", description: "They've been emailed to let them know." }
+          ? {
+              title: "Client access granted",
+              description: "They've been emailed to let them know.",
+            }
           : { title: "Client access granted" },
       );
     } catch (err: any) {
@@ -114,7 +117,10 @@ export default function ClientAccessCard({ project }: { project: any }) {
 
         {availableClients.length > 0 ? (
           <div className="flex items-center gap-2 pt-1">
-            <Select value={selectedClientId} onValueChange={setSelectedClientId}>
+            <Select
+              value={selectedClientId}
+              onValueChange={setSelectedClientId}
+            >
               <SelectTrigger className="h-9 flex-1">
                 <SelectValue placeholder="Grant a client access..." />
               </SelectTrigger>

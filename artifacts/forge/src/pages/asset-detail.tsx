@@ -170,13 +170,14 @@ export default function AssetDetail() {
 
   const project = projects.find((p) => p.id === asset.projectId);
   const assignee = users.find((u) => u.id === asset.assigneeId);
-  const relatedTasks = tasks.filter((t) => getAssetId(t) === asset.id).slice(
-    0,
-    5,
-  );
-  const relatedShots = shots.filter((s) =>
-    tasks.some((t) => getShotId(t) === s.id && getAssetId(t) === asset.id),
-  ).slice(0, 5);
+  const relatedTasks = tasks
+    .filter((t) => getAssetId(t) === asset.id)
+    .slice(0, 5);
+  const relatedShots = shots
+    .filter((s) =>
+      tasks.some((t) => getShotId(t) === s.id && getAssetId(t) === asset.id),
+    )
+    .slice(0, 5);
   const versions = allVersions
     .filter((v) => v.entityId === asset.id)
     .slice(0, 8);

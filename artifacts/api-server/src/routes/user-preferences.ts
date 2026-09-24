@@ -106,7 +106,9 @@ trackingViewsRouter.patch("/:id", async (req, res) => {
     const data: { name?: string; isShared?: boolean } = {};
     if (name !== undefined) {
       if (typeof name !== "string" || !name.trim())
-        return res.status(400).json({ error: "name must be a non-empty string" });
+        return res
+          .status(400)
+          .json({ error: "name must be a non-empty string" });
       data.name = name.trim();
     }
     if (isShared !== undefined) {
@@ -208,13 +210,22 @@ notificationPreferencesRouter.put("/:category", async (req, res) => {
 
     const { push, email } = req.body ?? {};
     if (typeof push !== "boolean" || typeof email !== "boolean")
-      return res.status(400).json({ error: "push and email must both be booleans" });
+      return res
+        .status(400)
+        .json({ error: "push and email must both be booleans" });
 
     const saved = await prisma.notificationPreference.upsert({
       // The unique key is [userId, category], and userId comes from the
       // session -- there is no addressable path to another user's row.
       where: { userId_category: { userId, category } },
-      create: { id: crypto.randomUUID(), tenantId, userId, category, push, email },
+      create: {
+        id: crypto.randomUUID(),
+        tenantId,
+        userId,
+        category,
+        push,
+        email,
+      },
       update: { push, email },
       select: { category: true, push: true, email: true },
     });

@@ -7,9 +7,25 @@ import { useUIStore } from "@/store/ui";
 import { apiFetch } from "@/lib/apiClient";
 import { cn } from "@/lib/utils";
 import {
-  LayoutDashboard, ListTodo, Film, Box, MessageSquare, CalendarCheck,
-  Clock, PlayCircle, Users, Grid3x3, CalendarRange, FolderKanban,
-  BarChart3, Truck, Shield, ScrollText, Settings2, Upload, Building2,
+  LayoutDashboard,
+  ListTodo,
+  Film,
+  Box,
+  MessageSquare,
+  CalendarCheck,
+  Clock,
+  PlayCircle,
+  Users,
+  Grid3x3,
+  CalendarRange,
+  FolderKanban,
+  BarChart3,
+  Truck,
+  Shield,
+  ScrollText,
+  Settings2,
+  Upload,
+  Building2,
 } from "lucide-react";
 
 interface Step {
@@ -188,12 +204,45 @@ const STEPS: Record<string, Step> = {
 };
 
 const BY_ROLE: Record<string, string[]> = {
-  artist: ["tasks", "reviews", "shots", "assets", "timesheets", "standup", "chat"],
-  lead: ["production", "tasks", "reviews", "tracking", "scheduling", "timesheets", "standup", "chat"],
-  admin: ["tracking", "reviews", "projects", "scheduling", "people", "roles", "departments", "audit", "settings", "analytics", "deliveries", "publishing"],
+  artist: [
+    "tasks",
+    "reviews",
+    "shots",
+    "assets",
+    "timesheets",
+    "standup",
+    "chat",
+  ],
+  lead: [
+    "production",
+    "tasks",
+    "reviews",
+    "tracking",
+    "scheduling",
+    "timesheets",
+    "standup",
+    "chat",
+  ],
+  admin: [
+    "tracking",
+    "reviews",
+    "projects",
+    "scheduling",
+    "people",
+    "roles",
+    "departments",
+    "audit",
+    "settings",
+    "analytics",
+    "deliveries",
+    "publishing",
+  ],
 };
 
-const ROLE_INTRO: Record<string, { hello: string; role: string; note: string }> = {
+const ROLE_INTRO: Record<
+  string,
+  { hello: string; role: string; note: string }
+> = {
   artist: {
     hello: "You are set up as an artist.",
     role: "Artist",
@@ -303,7 +352,9 @@ export function OnboardingTour() {
     setClosing(true);
     // Update locally first so the panel closes immediately; the /me poll
     // would otherwise take up to ten seconds to reflect it.
-    updateCurrentUser({ onboardedAt: replay ? null : new Date().toISOString() });
+    updateCurrentUser({
+      onboardedAt: replay ? null : new Date().toISOString(),
+    });
     try {
       await apiFetch("/auth/onboarding", {
         method: "POST",
@@ -337,7 +388,8 @@ export function OnboardingTour() {
             left: rect.left - SPOTLIGHT_PAD,
             width: rect.width + SPOTLIGHT_PAD * 2,
             height: rect.height + SPOTLIGHT_PAD * 2,
-            boxShadow: "0 0 0 9999px rgba(0,0,0,0.0), 0 0 24px 4px hsl(var(--primary) / 0.45)",
+            boxShadow:
+              "0 0 0 9999px rgba(0,0,0,0.0), 0 0 24px 4px hsl(var(--primary) / 0.45)",
             background: "hsl(var(--primary) / 0.10)",
           }}
         />
@@ -406,7 +458,9 @@ export function OnboardingTour() {
                 onClick={() => setIndex(i)}
                 className={cn(
                   "h-1.5 rounded-full transition-all",
-                  i === index ? "w-5 bg-primary" : "w-1.5 bg-border hover:bg-muted-foreground",
+                  i === index
+                    ? "w-5 bg-primary"
+                    : "w-1.5 bg-border hover:bg-muted-foreground",
                 )}
               />
             ))}
@@ -418,7 +472,11 @@ export function OnboardingTour() {
                 Skip
               </Button>
             ) : (
-              <Button variant="ghost" size="sm" onClick={() => setIndex(index - 1)}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIndex(index - 1)}
+              >
                 Back
               </Button>
             )}

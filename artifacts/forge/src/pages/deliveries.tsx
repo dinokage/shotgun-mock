@@ -385,7 +385,9 @@ export default function Deliveries() {
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => revokeDelivery.mutate(d.id)}>
+                    <AlertDialogAction
+                      onClick={() => revokeDelivery.mutate(d.id)}
+                    >
                       Revoke
                     </AlertDialogAction>
                   </AlertDialogFooter>
@@ -466,14 +468,13 @@ export default function Deliveries() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-semibold truncate">
-                          {d.name}
-                        </span>
+                        <span className="font-semibold truncate">{d.name}</span>
                         {statusBadge(d)}
                       </div>
                       <div className="text-xs text-muted-foreground mt-0.5 truncate">
-                        {d.projectName ?? "Unknown project"} • {d.clientName ?? "Client"} •{" "}
-                        {d.items.length} shot{d.items.length === 1 ? "" : "s"}
+                        {d.projectName ?? "Unknown project"} •{" "}
+                        {d.clientName ?? "Client"} • {d.items.length} shot
+                        {d.items.length === 1 ? "" : "s"}
                       </div>
                       <div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-1.5 font-mono">
                         <span>code: {d.accessCode}</span>

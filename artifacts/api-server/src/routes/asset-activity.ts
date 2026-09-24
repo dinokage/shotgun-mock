@@ -17,7 +17,10 @@ const ACTIVITY_KINDS = ["dcc_open", "publish"] as const;
 // every assetId arriving from a client is checked against the caller's own
 // tenant. Same pattern as routes/shots.ts / routes/publishing.ts.
 async function assetInTenant(id: string, tenantId: string) {
-  const row = await prisma.asset.findFirst({ where: { id, tenantId }, select: { id: true } });
+  const row = await prisma.asset.findFirst({
+    where: { id, tenantId },
+    select: { id: true },
+  });
   return !!row;
 }
 
@@ -69,7 +72,9 @@ assetActivityRouter.get("/", async (req, res) => {
 
     const parsedLimit = Number(req.query.limit);
     const limit =
-      Number.isInteger(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 200) : 50;
+      Number.isInteger(parsedLimit) && parsedLimit > 0
+        ? Math.min(parsedLimit, 200)
+        : 50;
 
     const rows = await prisma.assetActivity.findMany({
       where: { tenantId, assetId },
@@ -88,35 +93,43 @@ assetActivityRouter.get("/", async (req, res) => {
 // is the least restrictive real capability that still excludes client roles.
 // The Asset's own `publishStatus` is a separate write (PUT /assets/:id, gated
 // on submit_reviews) -- this route only appends the who/when trace.
-assetActivityRouter.post("/", requireCapability("edit_tasks"), async (req, res) => {
-  try {
-    const tenantId = req.tenantId!;
-    const { assetId, kind, app } = req.body ?? {};
+assetActivityRouter.post(
+  "/",
+  requireCapability("edit_tasks"),
+  async (req, res) => {
+    try {
+      const tenantId = req.tenantId!;
+      const { assetId, kind, app } = req.body ?? {};
 
-    if (typeof assetId !== "string" || !assetId)
-      return res.status(400).json({ error: "assetId is required" });
-    if (!ACTIVITY_KINDS.includes(kind))
-      return res.status(400).json({ error: `kind must be one of: ${ACTIVITY_KINDS.join(", ")}` });
-    if (app !== undefined && app !== null && typeof app !== "string")
-      return res.status(400).json({ error: "app must be a string" });
+      if (typeof assetId !== "string" || !assetId)
+        return res.status(400).json({ error: "assetId is required" });
+      if (!ACTIVITY_KINDS.includes(kind))
+        return res
+          .status(400)
+          .json({ error: `kind must be one of: ${ACTIVITY_KINDS.join(", ")}` });
+      if (app !== undefined && app !== null && typeof app !== "string")
+        return res.status(400).json({ error: "app must be a string" });
 
-    if (!(await assetInTenant(assetId, tenantId)))
-      return res.status(400).json({ error: "assetId does not belong to this tenant" });
+      if (!(await assetInTenant(assetId, tenantId)))
+        return res
+          .status(400)
+          .json({ error: "assetId does not belong to this tenant" });
 
-    const created = await prisma.assetActivity.create({
-      data: {
-        id: crypto.randomUUID(),
-        tenantId,
-        assetId,
-        kind,
-        app: typeof app === "string" && app ? app : null,
-        userId: req.userId ?? null,
-      },
-      select: ACTIVITY_SELECT,
-    });
-    return res.status(201).json(toDTO(created));
-  } catch (err) {
-    req.log.error(err, "Failed to record asset activity");
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
+      const created = await prisma.assetActivity.create({
+        data: {
+          id: crypto.randomUUID(),
+          tenantId,
+          assetId,
+          kind,
+          app: typeof app === "string" && app ? app : null,
+          userId: req.userId ?? null,
+        },
+        select: ACTIVITY_SELECT,
+      });
+      return res.status(201).json(toDTO(created));
+    } catch (err) {
+      req.log.error(err, "Failed to record asset activity");
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);

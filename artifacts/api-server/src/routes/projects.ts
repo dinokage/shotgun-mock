@@ -70,7 +70,10 @@ projectsRouter.get("/:id", async (req, res) => {
     // correctly denied by the scopedProjectIds fallback, since a client
     // never holds a task and so is never "visible" there either.
     const isClientCaller = !!req.clientAccessLinkId || clientScope !== null;
-    if (isClientCaller && (!clientScope || !clientScope.projectIds.includes(req.params.id))) {
+    if (
+      isClientCaller &&
+      (!clientScope || !clientScope.projectIds.includes(req.params.id))
+    ) {
       return res.status(404).json({ error: "Not found" });
     }
     // Same scope as GET / above -- leaving the by-id read tenant-wide would
@@ -96,31 +99,35 @@ projectsRouter.get("/:id", async (req, res) => {
 // is approve_reviews), could create or rewrite any project in the tenant.
 // manage_pipeline matches the capability the frontend's own "New Project"
 // affordance is gated on (admin).
-projectsRouter.post("/", requireCapability("manage_pipeline"), async (req, res) => {
-  try {
-    const tenantId = req.tenantId!;
-    const { name, code, type, client, status, startDate, endDate } = req.body;
+projectsRouter.post(
+  "/",
+  requireCapability("manage_pipeline"),
+  async (req, res) => {
+    try {
+      const tenantId = req.tenantId!;
+      const { name, code, type, client, status, startDate, endDate } = req.body;
 
-    if (!name) return res.status(400).json({ error: "Missing name" });
+      if (!name) return res.status(400).json({ error: "Missing name" });
 
-    const created = await prisma.project.create({
-      data: {
-        id: crypto.randomUUID(),
-        tenantId,
-        name,
-        code: code || null,
-        type: type || null,
-        client: client || null,
-        status: status || "active",
-        startDate: startDate ? new Date(startDate) : null,
-        endDate: endDate ? new Date(endDate) : null,
-      },
-    });
-    return res.status(201).json(created);
-  } catch (err) {
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
+      const created = await prisma.project.create({
+        data: {
+          id: crypto.randomUUID(),
+          tenantId,
+          name,
+          code: code || null,
+          type: type || null,
+          client: client || null,
+          status: status || "active",
+          startDate: startDate ? new Date(startDate) : null,
+          endDate: endDate ? new Date(endDate) : null,
+        },
+      });
+      return res.status(201).json(created);
+    } catch (err) {
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
 
 const PROJECT_PATCHABLE_FIELDS = [
   "name",
@@ -132,36 +139,40 @@ const PROJECT_PATCHABLE_FIELDS = [
   "endDate",
 ] as const;
 
-projectsRouter.put("/:id", requireCapability("manage_pipeline"), async (req, res) => {
-  try {
-    const tenantId = req.tenantId!;
-    const projectId = req.params.id as string;
+projectsRouter.put(
+  "/:id",
+  requireCapability("manage_pipeline"),
+  async (req, res) => {
+    try {
+      const tenantId = req.tenantId!;
+      const projectId = req.params.id as string;
 
-    const existing = await prisma.project.findFirst({
-      where: { tenantId, id: projectId },
-    });
-    if (!existing) return res.status(404).json({ error: "Not found" });
+      const existing = await prisma.project.findFirst({
+        where: { tenantId, id: projectId },
+      });
+      if (!existing) return res.status(404).json({ error: "Not found" });
 
-    const updates: Record<string, unknown> = {};
-    for (const field of PROJECT_PATCHABLE_FIELDS) {
-      if (!(field in req.body)) continue;
-      if (field === "startDate" || field === "endDate") {
-        updates[field] = req.body[field] ? new Date(req.body[field]) : null;
-      } else {
-        updates[field] = req.body[field];
+      const updates: Record<string, unknown> = {};
+      for (const field of PROJECT_PATCHABLE_FIELDS) {
+        if (!(field in req.body)) continue;
+        if (field === "startDate" || field === "endDate") {
+          updates[field] = req.body[field] ? new Date(req.body[field]) : null;
+        } else {
+          updates[field] = req.body[field];
+        }
       }
+
+      await prisma.project.updateMany({
+        where: { tenantId, id: projectId },
+        data: updates,
+      });
+
+      const updated = await prisma.project.findFirstOrThrow({
+        where: { tenantId, id: projectId },
+      });
+      return res.json(updated);
+    } catch (err) {
+      return res.status(500).json({ error: "Internal server error" });
     }
-
-    await prisma.project.updateMany({
-      where: { tenantId, id: projectId },
-      data: updates,
-    });
-
-    const updated = await prisma.project.findFirstOrThrow({
-      where: { tenantId, id: projectId },
-    });
-    return res.json(updated);
-  } catch (err) {
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
+  },
+);

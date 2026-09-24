@@ -38,7 +38,9 @@ export interface ClientScope {
 // several projects sees all of them (projectIds); `projectId` picks which
 // one is "active" for this request via `?projectId=`, so every existing
 // list-scoping consumer keeps working unchanged.
-export async function getClientScope(req: Request): Promise<ClientScope | null> {
+export async function getClientScope(
+  req: Request,
+): Promise<ClientScope | null> {
   if (!req.clientAccessLinkId) {
     if (!req.userId || !req.roleId || !req.tenantId) return null;
     const role = await prisma.tenantRole.findFirst({
@@ -53,9 +55,17 @@ export async function getClientScope(req: Request): Promise<ClientScope | null> 
     });
     if (grants.length === 0) return null;
     const projectIds = grants.map((g) => g.projectId);
-    const requested = typeof req.query.projectId === "string" ? req.query.projectId : null;
-    const projectId = requested && projectIds.includes(requested) ? requested : projectIds[0];
-    return { projectId, projectIds, episodeId: null, versionId: null, shotId: null };
+    const requested =
+      typeof req.query.projectId === "string" ? req.query.projectId : null;
+    const projectId =
+      requested && projectIds.includes(requested) ? requested : projectIds[0];
+    return {
+      projectId,
+      projectIds,
+      episodeId: null,
+      versionId: null,
+      shotId: null,
+    };
   }
 
   const link = await prisma.clientAccessLink.findFirst({

@@ -5,7 +5,11 @@ import { useQueries } from "@tanstack/react-query";
 import { useTasksStore } from "@/store/tasks";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { DEPENDENCY_TYPE_LABELS, MILESTONES } from "@/data/mockData";
-import { getAssigneeId, getProjectId, useEntityProjectMap } from "@/lib/taskShape";
+import {
+  getAssigneeId,
+  getProjectId,
+  useEntityProjectMap,
+} from "@/lib/taskShape";
 import { apiClient } from "@/lib/apiClient";
 import type { TaskDependencyDTO } from "@/hooks/useTasks";
 

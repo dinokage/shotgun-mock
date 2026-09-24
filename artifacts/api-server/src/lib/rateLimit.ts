@@ -44,11 +44,7 @@ interface Hit {
 async function hit(key: string, windowSeconds: number): Promise<Hit | null> {
   try {
     await ensureConnected();
-    const results = await redis
-      .multi()
-      .incr(key)
-      .ttl(key)
-      .exec();
+    const results = await redis.multi().incr(key).ttl(key).exec();
     if (!results) return null;
     const count = Number(results[0]?.[1] ?? 0);
     let ttl = Number(results[1]?.[1] ?? -1);
@@ -117,14 +113,20 @@ export async function peekRateLimit(
   try {
     await ensureConnected();
     const key = `rl:${rule.name}:${subject}`;
-    const [countRaw, ttlRaw] = await Promise.all([redis.get(key), redis.ttl(key)]);
+    const [countRaw, ttlRaw] = await Promise.all([
+      redis.get(key),
+      redis.ttl(key),
+    ]);
     const count = Number(countRaw ?? 0);
     return {
       allowed: count < rule.limit,
       retryAfter: Math.max(1, Number(ttlRaw ?? rule.windowSeconds)),
     };
   } catch (err) {
-    console.error(`[ratelimit] peek(${rule.name}) failed:`, (err as Error).message);
+    console.error(
+      `[ratelimit] peek(${rule.name}) failed:`,
+      (err as Error).message,
+    );
     return { allowed: true, retryAfter: 0 };
   }
 }

@@ -146,9 +146,12 @@ attendanceRouter.get("/summary", async (req, res) => {
       }
     >();
     for (const r of rows) {
-      const entry =
-        byUser.get(r.userId) ??
-        { days: new Set<string>(), minutes: 0, openShift: false, inferredDays: 0 };
+      const entry = byUser.get(r.userId) ?? {
+        days: new Set<string>(),
+        minutes: 0,
+        openShift: false,
+        inferredDays: 0,
+      };
       entry.days.add(r.date);
       entry.minutes += r.minutes ?? 0;
       if (!r.clockOutAt) entry.openShift = true;
@@ -224,7 +227,11 @@ attendanceRouter.post("/clock-out", async (req, res) => {
   try {
     await closeShift(req.tenantId!, req.userId!, "manual");
     await prisma.user.updateMany({
-      where: { id: req.userId!, tenantId: req.tenantId!, punchedInAt: { not: null } },
+      where: {
+        id: req.userId!,
+        tenantId: req.tenantId!,
+        punchedInAt: { not: null },
+      },
       data: { punchedInAt: null },
     });
     return res.status(200).json({ message: "Clocked out" });
@@ -260,7 +267,11 @@ attendanceRouter.get("/approvals", async (req, res) => {
     const scope = await getVisibilityScope(req);
     const allowed = await readableUserIds(tenantId, scope);
     const approvals = await prisma.timesheetApproval.findMany({
-      where: { tenantId, date, ...(allowed ? { userId: { in: allowed } } : {}) },
+      where: {
+        tenantId,
+        date,
+        ...(allowed ? { userId: { in: allowed } } : {}),
+      },
       select: { userId: true, date: true, approvedById: true, createdAt: true },
     });
     return res.json({ date, approvals });
@@ -286,9 +297,9 @@ attendanceRouter.post("/approvals", async (req, res) => {
       select: { name: true },
     });
     if (!role || !TIMESHEET_APPROVER_ROLES.includes(role.name)) {
-      return res
-        .status(403)
-        .json({ error: "Only a production head or producer can approve timesheets" });
+      return res.status(403).json({
+        error: "Only a production head or producer can approve timesheets",
+      });
     }
 
     const { userIds, date: rawDate } = req.body ?? {};
@@ -297,13 +308,19 @@ attendanceRouter.post("/approvals", async (req, res) => {
       return res.status(400).json({ error: "date must be YYYY-MM-DD" });
     }
     if (date > studioDate()) {
-      return res.status(400).json({ error: "Hours can't be approved for a day that hasn't happened" });
+      return res.status(400).json({
+        error: "Hours can't be approved for a day that hasn't happened",
+      });
     }
     if (!Array.isArray(userIds) || userIds.length === 0) {
-      return res.status(400).json({ error: "userIds must be a non-empty array" });
+      return res
+        .status(400)
+        .json({ error: "userIds must be a non-empty array" });
     }
     const ids = [
-      ...new Set(userIds.filter((v: unknown): v is string => typeof v === "string")),
+      ...new Set(
+        userIds.filter((v: unknown): v is string => typeof v === "string"),
+      ),
     ].slice(0, 1000);
 
     const people = await prisma.user.findMany({

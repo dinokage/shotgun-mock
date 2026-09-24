@@ -393,7 +393,8 @@ function ProducerDashboard() {
       })
       .slice(0, 4)
       .map((project) => {
-        const progress = progressByProject.get(project.id) ?? NO_PROJECT_PROGRESS;
+        const progress =
+          progressByProject.get(project.id) ?? NO_PROJECT_PROGRESS;
         const variance = getScheduleVariance(project, progress.percent);
         const dueDate = getEffectiveDueDate(project);
         const actualDate =
@@ -509,68 +510,69 @@ function ProducerDashboard() {
                   <div className="space-y-4">
                     {activeProjects.slice(0, 4).map((project, i) => {
                       const progress =
-                        progressByProject.get(project.id) ?? NO_PROJECT_PROGRESS;
+                        progressByProject.get(project.id) ??
+                        NO_PROJECT_PROGRESS;
                       return (
-                      <motion.div key={project.id} {...stagger(i)}>
-                        <Link href={`/projects/${project.id}`}>
-                          <div className="group p-4 rounded-xl border border-border bg-card hover:bg-muted/30 hover:shadow-md transition-all cursor-pointer">
-                            <div className="flex items-center justify-between mb-3">
-                              <div className="flex items-center gap-3">
-                                <div
-                                  className="w-10 h-10 rounded-lg shrink-0 shadow-sm bg-muted"
-                                  style={
-                                    project.thumbnail
-                                      ? { background: project.thumbnail }
-                                      : undefined
-                                  }
-                                />
-                                <div>
-                                  <div className="font-semibold group-hover:text-primary transition-colors">
-                                    {project.name}
-                                  </div>
-                                  <div className="text-xs text-muted-foreground">
-                                    {project.client}
+                        <motion.div key={project.id} {...stagger(i)}>
+                          <Link href={`/projects/${project.id}`}>
+                            <div className="group p-4 rounded-xl border border-border bg-card hover:bg-muted/30 hover:shadow-md transition-all cursor-pointer">
+                              <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-3">
+                                  <div
+                                    className="w-10 h-10 rounded-lg shrink-0 shadow-sm bg-muted"
+                                    style={
+                                      project.thumbnail
+                                        ? { background: project.thumbnail }
+                                        : undefined
+                                    }
+                                  />
+                                  <div>
+                                    <div className="font-semibold group-hover:text-primary transition-colors">
+                                      {project.name}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">
+                                      {project.client}
+                                    </div>
                                   </div>
                                 </div>
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    project.status === "ON_TRACK"
+                                      ? "text-green-500 border-green-500/20 bg-green-500/5"
+                                      : project.status === "AT_RISK"
+                                        ? "text-orange-500 border-orange-500/20 bg-orange-500/5"
+                                        : project.status === "BOTTLENECK"
+                                          ? "text-red-500 border-red-500/20 bg-red-500/5"
+                                          : // Real projects carry their own status vocabulary
+                                            // ("active"), which no health color applies to.
+                                            "text-muted-foreground border-border bg-muted/40"
+                                  }
+                                >
+                                  {project.status.replace("_", " ")}
+                                </Badge>
                               </div>
-                              <Badge
-                                variant="outline"
-                                className={
-                                  project.status === "ON_TRACK"
-                                    ? "text-green-500 border-green-500/20 bg-green-500/5"
-                                    : project.status === "AT_RISK"
-                                      ? "text-orange-500 border-orange-500/20 bg-orange-500/5"
-                                      : project.status === "BOTTLENECK"
-                                        ? "text-red-500 border-red-500/20 bg-red-500/5"
-                                        : // Real projects carry their own status vocabulary
-                                          // ("active"), which no health color applies to.
-                                          "text-muted-foreground border-border bg-muted/40"
-                                }
-                              >
-                                {project.status.replace("_", " ")}
-                              </Badge>
-                            </div>
-                            <div className="space-y-1.5">
-                              <div className="flex justify-between text-xs">
-                                <span className="text-muted-foreground font-medium">
-                                  Progress
-                                </span>
-                                <span className="font-semibold">
-                                  {progress.percent === null
-                                    ? "No tasks yet"
-                                    : `${progress.percent}% · ${progress.done}/${progress.total} tasks`}
-                                </span>
+                              <div className="space-y-1.5">
+                                <div className="flex justify-between text-xs">
+                                  <span className="text-muted-foreground font-medium">
+                                    Progress
+                                  </span>
+                                  <span className="font-semibold">
+                                    {progress.percent === null
+                                      ? "No tasks yet"
+                                      : `${progress.percent}% · ${progress.done}/${progress.total} tasks`}
+                                  </span>
+                                </div>
+                                {progress.percent !== null && (
+                                  <Progress
+                                    value={progress.percent}
+                                    className="h-2 bg-muted"
+                                  />
+                                )}
                               </div>
-                              {progress.percent !== null && (
-                                <Progress
-                                  value={progress.percent}
-                                  className="h-2 bg-muted"
-                                />
-                              )}
                             </div>
-                          </div>
-                        </Link>
-                      </motion.div>
+                          </Link>
+                        </motion.div>
                       );
                     })}
                   </div>
@@ -662,7 +664,9 @@ function ProducerDashboard() {
                         </div>
                       </div>
                       <div className="text-right shrink-0">
-                        <div className={`font-semibold text-sm ${variance.color}`}>
+                        <div
+                          className={`font-semibold text-sm ${variance.color}`}
+                        >
                           {variance.status}
                         </div>
                         <div className="text-xs text-muted-foreground">
@@ -799,8 +803,8 @@ function SupervisorDashboard({ currentUser }: { currentUser: User }) {
   // elsewhere, so this tile now honestly reports "no data" instead of
   // reading the (always-empty, since real TaskDTO has no inline `dailyLogs`
   // array) `t.dailyLogs` field and showing a misleading "0.0".
-  const completedDeptTasks = deptTasks.filter(
-    (t) => isTaskDone(normalizeTaskStatus(t.status)),
+  const completedDeptTasks = deptTasks.filter((t) =>
+    isTaskDone(normalizeTaskStatus(t.status)),
   ).length;
   const deptWorkDays = new Set(
     deptTasks.flatMap((t: any) =>
@@ -808,9 +812,7 @@ function SupervisorDashboard({ currentUser }: { currentUser: User }) {
     ),
   ).size;
   const avgVelocity =
-    deptWorkDays > 0
-      ? (completedDeptTasks / deptWorkDays).toFixed(1)
-      : null;
+    deptWorkDays > 0 ? (completedDeptTasks / deptWorkDays).toFixed(1) : null;
 
   if (!dept && !isStudioWide) return null;
 
@@ -986,7 +988,9 @@ function SupervisorDashboard({ currentUser }: { currentUser: User }) {
                               server-side. It exists now (self-set on each
                               person's own profile), so null genuinely means
                               "hasn't set one yet", not "fully free". */}
-                          {member.capacity != null ? `${member.capacity}% Booked` : "Not set"}
+                          {member.capacity != null
+                            ? `${member.capacity}% Booked`
+                            : "Not set"}
                         </span>
                       </div>
                       <Progress
@@ -1031,11 +1035,10 @@ function ArtistDashboard({ currentUser }: { currentUser: User }) {
   // normal due-date ordering used for the rest, so it can't get buried.
   const activeTasks = useMemo(() => {
     return myTasks
-      .filter(
-        (t) =>
-          ["in-progress", "todo", "not-started", "bottleneck"].includes(
-            normalizeTaskStatus(t.status),
-          ),
+      .filter((t) =>
+        ["in-progress", "todo", "not-started", "bottleneck"].includes(
+          normalizeTaskStatus(t.status),
+        ),
       )
       .sort((a, b) => {
         const aFlagged = ARTIST_ATTENTION_STATUSES.includes(a.status) ? 1 : 0;
@@ -1086,11 +1089,10 @@ function ArtistDashboard({ currentUser }: { currentUser: User }) {
   const mySubmissions = useMemo(
     () =>
       myTasks
-        .filter(
-          (t) =>
-            ["review", "lead-review", "producer-review"].includes(
-              normalizeTaskStatus(t.status),
-            ),
+        .filter((t) =>
+          ["review", "lead-review", "producer-review"].includes(
+            normalizeTaskStatus(t.status),
+          ),
         )
         .sort(
           (a, b) =>
@@ -1176,10 +1178,7 @@ function ArtistDashboard({ currentUser }: { currentUser: User }) {
   // all tasks" case) rather than a per-task `dailyLogs` array that no longer
   // exists on real TaskDTO.
   const { data: myDailyLogs = [] } = useDailyLogsByUser(currentUser.id);
-  const totalHoursLogged = myDailyLogs.reduce(
-    (sum, log) => sum + log.hours,
-    0,
-  );
+  const totalHoursLogged = myDailyLogs.reduce((sum, log) => sum + log.hours, 0);
 
   return (
     <MotionConfig reducedMotion="user">
@@ -1262,7 +1261,10 @@ function ArtistDashboard({ currentUser }: { currentUser: User }) {
                     {nextDeadline.task.title}
                   </div>
                   <div className="text-xs text-muted-foreground timecode">
-                    {formatDueDate(nextDeadline.task.dueDate, { month: "short", day: "numeric" })}
+                    {formatDueDate(nextDeadline.task.dueDate, {
+                      month: "short",
+                      day: "numeric",
+                    })}
                   </div>
                 </div>
               </div>

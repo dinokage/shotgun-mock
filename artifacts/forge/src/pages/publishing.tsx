@@ -96,8 +96,18 @@ export default function Publishing() {
   // real entity list rather than accepting a typed-in name.
   const entityOptions = useMemo(
     () => [
-      ...shots.map((s) => ({ key: `shot:${s.id}`, id: s.id, name: s.name, kind: "shot" as PublishKind })),
-      ...assets.map((a) => ({ key: `asset:${a.id}`, id: a.id, name: a.name, kind: "asset" as PublishKind })),
+      ...shots.map((s) => ({
+        key: `shot:${s.id}`,
+        id: s.id,
+        name: s.name,
+        kind: "shot" as PublishKind,
+      })),
+      ...assets.map((a) => ({
+        key: `asset:${a.id}`,
+        id: a.id,
+        name: a.name,
+        kind: "asset" as PublishKind,
+      })),
     ],
     [shots, assets],
   );
@@ -144,7 +154,9 @@ export default function Publishing() {
     const trimmedNote = versionNoteInput.trim();
 
     // Real checks against the actual selection, not hardcoded pass results.
-    const namingValid = /^[A-Za-z0-9]+_[A-Za-z0-9_]+$/.test(selectedEntity.name);
+    const namingValid = /^[A-Za-z0-9]+_[A-Za-z0-9_]+$/.test(
+      selectedEntity.name,
+    );
     const noteValid = trimmedNote.length >= 10;
     const hasConflict = publishLogs.some(
       (p) =>
@@ -208,11 +220,13 @@ export default function Publishing() {
 
   const handlePublish = async () => {
     if (!selectedEntity) return;
-    const validationLog: PublishValidationEntry[] = validationResults.map((r) => ({
-      name: r.name,
-      passed: r.status === "passed",
-      detail: r.detail,
-    }));
+    const validationLog: PublishValidationEntry[] = validationResults.map(
+      (r) => ({
+        name: r.name,
+        passed: r.status === "passed",
+        detail: r.detail,
+      }),
+    );
 
     try {
       await createPublishLog.mutateAsync({
@@ -239,7 +253,8 @@ export default function Publishing() {
     } catch (err) {
       toast({
         title: "Publish failed",
-        description: err instanceof Error ? err.message : "Could not record the publish.",
+        description:
+          err instanceof Error ? err.message : "Could not record the publish.",
         variant: "destructive",
       });
     }
@@ -278,7 +293,9 @@ export default function Publishing() {
             <Button
               className="gap-2 bg-purple-600 hover:bg-purple-700 text-white"
               disabled={!canPublish}
-              title={canPublish ? undefined : "You don't have permission to publish"}
+              title={
+                canPublish ? undefined : "You don't have permission to publish"
+              }
             >
               <Upload className="w-4 h-4" /> Publish New
             </Button>
@@ -306,7 +323,8 @@ export default function Publishing() {
                     </Select>
                     {entityOptions.length === 0 && (
                       <p className="text-xs text-muted-foreground">
-                        No shots or assets exist yet — create one before publishing.
+                        No shots or assets exist yet — create one before
+                        publishing.
                       </p>
                     )}
                   </div>
@@ -321,7 +339,11 @@ export default function Publishing() {
                   </div>
                 </div>
                 <DialogFooter>
-                  <Button type="submit" className="w-full" disabled={!selectedEntity}>
+                  <Button
+                    type="submit"
+                    className="w-full"
+                    disabled={!selectedEntity}
+                  >
                     Run Pre-Publish Validators
                   </Button>
                 </DialogFooter>
@@ -369,7 +391,9 @@ export default function Publishing() {
                     }
                     onClick={handlePublish}
                   >
-                    {createPublishLog.isPending ? "Publishing…" : "Confirm Publish"}
+                    {createPublishLog.isPending
+                      ? "Publishing…"
+                      : "Confirm Publish"}
                   </Button>
                 </DialogFooter>
               </div>
@@ -539,7 +563,8 @@ export default function Publishing() {
                       </div>
                       <div className="text-xs text-muted-foreground">
                         By {pub.publishedBy?.name ?? "Unknown"} · Size:{" "}
-                        {pub.fileSize} · {new Date(pub.publishedAt).toLocaleString()}
+                        {pub.fileSize} ·{" "}
+                        {new Date(pub.publishedAt).toLocaleString()}
                       </div>
                     </div>
                     <ChevronRight
@@ -561,14 +586,21 @@ export default function Publishing() {
                         ) : (
                           <div className="space-y-1.5">
                             {pub.validationLog.map((check, i) => (
-                              <div key={i} className="flex items-start gap-2 text-sm">
+                              <div
+                                key={i}
+                                className="flex items-start gap-2 text-sm"
+                              >
                                 {check.passed ? (
                                   <CheckCircle2 className="w-3.5 h-3.5 text-green-500 mt-0.5 shrink-0" />
                                 ) : (
                                   <XCircle className="w-3.5 h-3.5 text-red-500 mt-0.5 shrink-0" />
                                 )}
                                 <div>
-                                  <div className={check.passed ? "" : "text-red-500"}>
+                                  <div
+                                    className={
+                                      check.passed ? "" : "text-red-500"
+                                    }
+                                  >
                                     {check.name}
                                   </div>
                                   {check.detail && (
@@ -589,7 +621,8 @@ export default function Publishing() {
                           NOTES
                         </div>
                         <div className="bg-muted/50 rounded-md p-3 font-mono text-xs text-muted-foreground">
-                          {pub.notes || "No note was recorded for this publish."}
+                          {pub.notes ||
+                            "No note was recorded for this publish."}
                         </div>
                       </div>
                     </div>

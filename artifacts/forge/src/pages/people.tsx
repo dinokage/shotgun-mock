@@ -211,7 +211,9 @@ export default function People() {
                           return (
                             <Badge
                               variant={
-                                user.status === "active" ? "default" : "secondary"
+                                user.status === "active"
+                                  ? "default"
+                                  : "secondary"
                               }
                               className={
                                 user.status === "active"
@@ -223,7 +225,10 @@ export default function People() {
                             </Badge>
                           );
                         }
-                        if (!currentUser || !canSeePresence(currentUser, user)) {
+                        if (
+                          !currentUser ||
+                          !canSeePresence(currentUser, user)
+                        ) {
                           return (
                             <Badge
                               variant="secondary"

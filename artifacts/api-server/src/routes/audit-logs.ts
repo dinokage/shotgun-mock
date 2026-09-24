@@ -31,10 +31,7 @@ async function callerIsLeadership(roleId: string, tenantId: string) {
 auditLogsRouter.get("/", async (req, res) => {
   try {
     const tenantId = req.tenantId!;
-    if (
-      !req.roleId ||
-      !(await callerIsLeadership(req.roleId, tenantId))
-    ) {
+    if (!req.roleId || !(await callerIsLeadership(req.roleId, tenantId))) {
       return res
         .status(403)
         .json({ error: "Forbidden: Leadership access required" });
@@ -55,14 +52,20 @@ auditLogsRouter.get("/", async (req, res) => {
       visibleEntityIds(tenantId, scope, "asset"),
     ]);
     const scopedTargetIds =
-      shotIds === null && assetIds === null ? null : [...(shotIds ?? []), ...(assetIds ?? [])];
+      shotIds === null && assetIds === null
+        ? null
+        : [...(shotIds ?? []), ...(assetIds ?? [])];
 
     const rows = await prisma.auditLog.findMany({
       where: {
         tenantId,
         AND: [
-          ...(typeof entityId === "string" ? [{ targetEntityId: entityId }] : []),
-          ...(scopedTargetIds ? [{ targetEntityId: { in: scopedTargetIds } }] : []),
+          ...(typeof entityId === "string"
+            ? [{ targetEntityId: entityId }]
+            : []),
+          ...(scopedTargetIds
+            ? [{ targetEntityId: { in: scopedTargetIds } }]
+            : []),
         ],
       },
       orderBy: { createdAt: "desc" },

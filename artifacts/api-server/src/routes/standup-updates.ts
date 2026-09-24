@@ -176,7 +176,9 @@ standupUpdatesRouter.post("/", async (req, res) => {
     // itself. Files used to be staged in the UI and then silently dropped on
     // post; the composer now uploads each one first and sends the URLs here.
     const urls = Array.isArray(attachmentUrls)
-      ? attachmentUrls.filter((u: unknown): u is string => typeof u === "string").slice(0, 10)
+      ? attachmentUrls
+          .filter((u: unknown): u is string => typeof u === "string")
+          .slice(0, 10)
       : [];
 
     const created = await prisma.standupUpdate.create({

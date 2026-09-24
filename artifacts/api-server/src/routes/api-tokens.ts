@@ -38,7 +38,8 @@ apiTokensRouter.use(requireCapability("create_tasks"));
 function requireCookieAuth(req: Request, res: Response, next: NextFunction) {
   if (req.authMethod !== "cookie") {
     res.status(403).json({
-      error: "This action requires signing in through the app -- an API token can't manage tokens.",
+      error:
+        "This action requires signing in through the app -- an API token can't manage tokens.",
     });
     return;
   }
@@ -51,7 +52,13 @@ apiTokensRouter.get("/", async (req, res) => {
     const rows = await prisma.apiToken.findMany({
       where: { tenantId: req.tenantId!, userId: req.userId! },
       orderBy: { createdAt: "desc" },
-      select: { id: true, label: true, createdAt: true, lastUsedAt: true, revokedAt: true },
+      select: {
+        id: true,
+        label: true,
+        createdAt: true,
+        lastUsedAt: true,
+        revokedAt: true,
+      },
     });
     return res.json(rows);
   } catch (err) {
@@ -91,7 +98,11 @@ apiTokensRouter.post("/", async (req, res) => {
 apiTokensRouter.delete("/:id", async (req, res) => {
   try {
     const existing = await prisma.apiToken.findFirst({
-      where: { id: req.params.id as string, tenantId: req.tenantId!, userId: req.userId! },
+      where: {
+        id: req.params.id as string,
+        tenantId: req.tenantId!,
+        userId: req.userId!,
+      },
       select: { id: true, revokedAt: true },
     });
     if (!existing) return res.status(404).json({ error: "Token not found" });

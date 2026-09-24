@@ -2,10 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/apiClient";
 
 export type StudioSettingKey =
-  | "studio_profile"
-  | "security_policy"
-  | "pipeline_stages"
-  | "pipeline_paths";
+  "studio_profile" | "security_policy" | "pipeline_stages" | "pipeline_paths";
 
 export interface StudioSettingResponse<T> {
   key: StudioSettingKey;
@@ -19,7 +16,8 @@ export interface StudioSettingResponse<T> {
 export function useStudioSetting<T>(key: StudioSettingKey, enabled = true) {
   return useQuery<StudioSettingResponse<T>>({
     queryKey: ["studio-setting", key],
-    queryFn: () => apiClient.get<StudioSettingResponse<T>>(`/studio-settings/${key}`),
+    queryFn: () =>
+      apiClient.get<StudioSettingResponse<T>>(`/studio-settings/${key}`),
     enabled,
     staleTime: 30000,
   });
@@ -29,8 +27,11 @@ export function useSaveStudioSetting<T>(key: StudioSettingKey) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (value: T) =>
-      apiClient.put<StudioSettingResponse<T>>(`/studio-settings/${key}`, { value }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["studio-setting", key] }),
+      apiClient.put<StudioSettingResponse<T>>(`/studio-settings/${key}`, {
+        value,
+      }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["studio-setting", key] }),
   });
 }
 
@@ -67,7 +68,8 @@ export function useApiKeys(enabled = true) {
 export function useCreateApiKey() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: { name: string }) => apiClient.post<CreatedApiKeyDTO>("/api-keys", body),
+    mutationFn: (body: { name: string }) =>
+      apiClient.post<CreatedApiKeyDTO>("/api-keys", body),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["api-keys"] }),
   });
 }
@@ -154,9 +156,14 @@ export function useLicenseServers(enabled = true) {
 export function useCreateLicenseServer() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: { name: string; vendor?: string; host?: string; seatsTotal?: number }) =>
-      apiClient.post<LicenseServerDTO>("/license-servers", body),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["license-servers"] }),
+    mutationFn: (body: {
+      name: string;
+      vendor?: string;
+      host?: string;
+      seatsTotal?: number;
+    }) => apiClient.post<LicenseServerDTO>("/license-servers", body),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["license-servers"] }),
   });
 }
 
@@ -164,6 +171,7 @@ export function useDeleteLicenseServer() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiClient.delete(`/license-servers/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["license-servers"] }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["license-servers"] }),
   });
 }

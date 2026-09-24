@@ -16,7 +16,10 @@ import * as crypto from "crypto";
 // authenticated user could cross-link a version to another tenant's task
 // (IDOR). Same pattern as routes/shots.ts.
 async function taskInTenant(id: string, tenantId: string) {
-  const row = await prisma.task.findFirst({ where: { id, tenantId }, select: { id: true } });
+  const row = await prisma.task.findFirst({
+    where: { id, tenantId },
+    select: { id: true },
+  });
   return !!row;
 }
 
@@ -46,7 +49,9 @@ versionsRouter.get("/", async (req, res) => {
           where: {
             tenantId,
             projectId: clientScope.projectId,
-            ...(clientScope.episodeId ? { episodeId: clientScope.episodeId } : {}),
+            ...(clientScope.episodeId
+              ? { episodeId: clientScope.episodeId }
+              : {}),
           },
           select: { id: true },
         });
@@ -87,118 +92,143 @@ versionsRouter.get("/", async (req, res) => {
 // uploaded" action, not feedback -- once submit_reviews is granted to the
 // client role (for leaving reviews/annotations below), this route would
 // otherwise become reachable by any client-access session too.
-versionsRouter.post("/", denyClientAccess, requireCapability("submit_reviews"), async (req, res) => {
-  try {
-    const tenantId = req.tenantId!;
-    const userId = req.userId!;
-    const { entityId, entityType, versionNumber, mediaUrl, taskId } = req.body;
-    if (!entityId || !entityType)
-      return res
-        .status(400)
-        .json({ error: "Missing entityId or entityType" });
+versionsRouter.post(
+  "/",
+  denyClientAccess,
+  requireCapability("submit_reviews"),
+  async (req, res) => {
+    try {
+      const tenantId = req.tenantId!;
+      const userId = req.userId!;
+      const { entityId, entityType, versionNumber, mediaUrl, taskId } =
+        req.body;
+      if (!entityId || !entityType)
+        return res
+          .status(400)
+          .json({ error: "Missing entityId or entityType" });
 
-    if (taskId && !(await taskInTenant(taskId, tenantId)))
-      return res.status(400).json({ error: "Invalid taskId" });
+      if (taskId && !(await taskInTenant(taskId, tenantId)))
+        return res.status(400).json({ error: "Invalid taskId" });
 
-    if (entityType !== "shot" && entityType !== "asset")
-      return res.status(400).json({ error: "entityType must be 'shot' or 'asset'" });
+      if (entityType !== "shot" && entityType !== "asset")
+        return res
+          .status(400)
+          .json({ error: "entityType must be 'shot' or 'asset'" });
 
-    // Same boundary PUT /:id enforces: holding submit_reviews says you may add
-    // versions, not to which shots. Without this an artist could attach footage
-    // to a shot that never appears in their own list.
-    if (
-      !(await canSeeEntity(tenantId, await getVisibilityScope(req), entityType, entityId))
-    )
-      return res.status(404).json({ error: "Not found" });
+      // Same boundary PUT /:id enforces: holding submit_reviews says you may add
+      // versions, not to which shots. Without this an artist could attach footage
+      // to a shot that never appears in their own list.
+      if (
+        !(await canSeeEntity(
+          tenantId,
+          await getVisibilityScope(req),
+          entityType,
+          entityId,
+        ))
+      )
+        return res.status(404).json({ error: "Not found" });
 
-    const created = await prisma.version.create({
-      data: {
-        id: crypto.randomUUID(),
-        tenantId,
-        entityId,
-        entityType,
-        versionNumber: versionNumber || "v001",
-        // A version can (and, for a fresh task, always does) exist before any
-        // footage has been uploaded -- the Review page creates one as soon as
-        // it opens so annotations/comments/approval-events have somewhere to
-        // attach, then PUTs the real mediaUrl once the artist inserts video.
-        // Requiring mediaUrl here made that first, footage-less version
-        // impossible to create at all (this POST 400'd every time), which
-        // silently broke the whole "import video after finishing the task"
-        // flow before it could start.
-        mediaUrl: mediaUrl || "",
-        taskId: taskId || null,
-        createdById: userId,
-      },
-    });
-    return res.status(201).json(created);
-  } catch (err) {
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
+      const created = await prisma.version.create({
+        data: {
+          id: crypto.randomUUID(),
+          tenantId,
+          entityId,
+          entityType,
+          versionNumber: versionNumber || "v001",
+          // A version can (and, for a fresh task, always does) exist before any
+          // footage has been uploaded -- the Review page creates one as soon as
+          // it opens so annotations/comments/approval-events have somewhere to
+          // attach, then PUTs the real mediaUrl once the artist inserts video.
+          // Requiring mediaUrl here made that first, footage-less version
+          // impossible to create at all (this POST 400'd every time), which
+          // silently broke the whole "import video after finishing the task"
+          // flow before it could start.
+          mediaUrl: mediaUrl || "",
+          taskId: taskId || null,
+          createdById: userId,
+        },
+      });
+      return res.status(201).json(created);
+    } catch (err) {
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
 
 const PATCHABLE_FIELDS = ["status", "notes", "thumbnail", "mediaUrl"] as const;
 
 // denyClientAccess first, same reasoning as POST / above -- a client's
 // feedback goes through reviews/annotations, not by editing the version
 // record's own status/notes/mediaUrl/thumbnail directly.
-versionsRouter.put("/:id", denyClientAccess, requireCapability("submit_reviews"), async (req, res) => {
-  try {
-    const tenantId = req.tenantId!;
-    // Cast needed: requireCapability() + this route's "/:id" typing widens
-    // req.params.id to `string | string[]` for overload resolution, even
-    // though a plain ":id" segment is always a single string at runtime.
-    const versionId = req.params.id as string;
+versionsRouter.put(
+  "/:id",
+  denyClientAccess,
+  requireCapability("submit_reviews"),
+  async (req, res) => {
+    try {
+      const tenantId = req.tenantId!;
+      // Cast needed: requireCapability() + this route's "/:id" typing widens
+      // req.params.id to `string | string[]` for overload resolution, even
+      // though a plain ":id" segment is always a single string at runtime.
+      const versionId = req.params.id as string;
 
-    const existing = await prisma.version.findFirst({ where: { tenantId, id: versionId } });
-    if (!existing) return res.status(404).json({ error: "Not found" });
+      const existing = await prisma.version.findFirst({
+        where: { tenantId, id: versionId },
+      });
+      if (!existing) return res.status(404).json({ error: "Not found" });
 
-    // submit_reviews says what you may change, not which versions. Without
-    // this an artist could rewrite the status, notes or mediaUrl of any
-    // version in the tenant -- including client-facing review media.
-    if (
-      !(await canSeeEntity(
-        tenantId,
-        await getVisibilityScope(req),
-        existing.entityType === "asset" ? "asset" : "shot",
-        existing.entityId,
-      ))
-    )
-      return res.status(404).json({ error: "Not found" });
+      // submit_reviews says what you may change, not which versions. Without
+      // this an artist could rewrite the status, notes or mediaUrl of any
+      // version in the tenant -- including client-facing review media.
+      if (
+        !(await canSeeEntity(
+          tenantId,
+          await getVisibilityScope(req),
+          existing.entityType === "asset" ? "asset" : "shot",
+          existing.entityId,
+        ))
+      )
+        return res.status(404).json({ error: "Not found" });
 
-    const updates: Record<string, unknown> = {};
-    for (const field of PATCHABLE_FIELDS) {
-      if (field in req.body) updates[field] = req.body[field];
-    }
-
-    await prisma.version.updateMany({ where: { tenantId, id: versionId }, data: updates });
-    const updated = await prisma.version.findFirstOrThrow({ where: { tenantId, id: versionId } });
-
-    // Nothing anywhere in this app ever wrote Shot.thumbnail, so every real
-    // shot fell back to the generic placeholder forever -- this is the one
-    // point in the upload flow where a version's real media becomes known,
-    // so it's the natural place to fix that. Only for directly-renderable
-    // image media (PNG/JPEG/GIF/WebP, which includes the EXR-transcoded PNG
-    // proxy uploads.ts's /video handler writes as mediaUrl) -- a raw video
-    // file has no frame-extraction pipeline to derive a still from yet, so
-    // those are deliberately left alone rather than pointing a thumbnail at
-    // something a browser <img> can't decode.
-    if (
-      typeof updates.mediaUrl === "string" &&
-      updates.mediaUrl &&
-      existing.entityType === "shot"
-    ) {
-      const ext = updates.mediaUrl.split(".").pop()?.toLowerCase();
-      if (ext && ["png", "jpg", "jpeg", "gif", "webp"].includes(ext)) {
-        await prisma.shot.updateMany({
-          where: { tenantId, id: existing.entityId },
-          data: { thumbnail: updates.mediaUrl },
-        });
+      const updates: Record<string, unknown> = {};
+      for (const field of PATCHABLE_FIELDS) {
+        if (field in req.body) updates[field] = req.body[field];
       }
-    }
 
-    return res.json(updated);
-  } catch (err) {
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
+      await prisma.version.updateMany({
+        where: { tenantId, id: versionId },
+        data: updates,
+      });
+      const updated = await prisma.version.findFirstOrThrow({
+        where: { tenantId, id: versionId },
+      });
+
+      // Nothing anywhere in this app ever wrote Shot.thumbnail, so every real
+      // shot fell back to the generic placeholder forever -- this is the one
+      // point in the upload flow where a version's real media becomes known,
+      // so it's the natural place to fix that. Only for directly-renderable
+      // image media (PNG/JPEG/GIF/WebP, which includes the EXR-transcoded PNG
+      // proxy uploads.ts's /video handler writes as mediaUrl) -- a raw video
+      // file has no frame-extraction pipeline to derive a still from yet, so
+      // those are deliberately left alone rather than pointing a thumbnail at
+      // something a browser <img> can't decode.
+      if (
+        typeof updates.mediaUrl === "string" &&
+        updates.mediaUrl &&
+        existing.entityType === "shot"
+      ) {
+        const ext = updates.mediaUrl.split(".").pop()?.toLowerCase();
+        if (ext && ["png", "jpg", "jpeg", "gif", "webp"].includes(ext)) {
+          await prisma.shot.updateMany({
+            where: { tenantId, id: existing.entityId },
+            data: { thumbnail: updates.mediaUrl },
+          });
+        }
+      }
+
+      return res.json(updated);
+    } catch (err) {
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);

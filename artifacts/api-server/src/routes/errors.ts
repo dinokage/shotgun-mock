@@ -131,54 +131,63 @@ errorsRouter.get("/", requireCapability("manage_roles"), async (req, res) => {
  * rather than a reverse-chronological wall in which a single noisy fault
  * buries everything else.
  */
-errorsRouter.get("/summary", requireCapability("manage_roles"), async (req, res) => {
-  try {
-    const tenantId = req.tenantId!;
-    const since = new Date(Date.now() - 7 * 86_400_000);
-    const grouped = await prisma.errorEvent.groupBy({
-      by: ["kind", "source"],
-      where: { tenantId, createdAt: { gte: since } },
-      _count: { _all: true },
-      _max: { createdAt: true },
-    });
+errorsRouter.get(
+  "/summary",
+  requireCapability("manage_roles"),
+  async (req, res) => {
+    try {
+      const tenantId = req.tenantId!;
+      const since = new Date(Date.now() - 7 * 86_400_000);
+      const grouped = await prisma.errorEvent.groupBy({
+        by: ["kind", "source"],
+        where: { tenantId, createdAt: { gte: since } },
+        _count: { _all: true },
+        _max: { createdAt: true },
+      });
 
-    const unresolved = await prisma.errorEvent.count({
-      where: { tenantId, resolvedAt: null },
-    });
+      const unresolved = await prisma.errorEvent.count({
+        where: { tenantId, resolvedAt: null },
+      });
 
-    return res.json({
-      since: since.toISOString(),
-      unresolved,
-      groups: grouped
-        .map((g) => ({
-          kind: g.kind,
-          source: g.source,
-          count: g._count._all,
-          lastSeen: g._max.createdAt,
-        }))
-        .sort((a, b) => b.count - a.count),
-    });
-  } catch (err) {
-    req.log.error(err, "Failed to summarise error events");
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
+      return res.json({
+        since: since.toISOString(),
+        unresolved,
+        groups: grouped
+          .map((g) => ({
+            kind: g.kind,
+            source: g.source,
+            count: g._count._all,
+            lastSeen: g._max.createdAt,
+          }))
+          .sort((a, b) => b.count - a.count),
+      });
+    } catch (err) {
+      req.log.error(err, "Failed to summarise error events");
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
 
 /** Marks one error dealt with, so the list can separate new from known. */
-errorsRouter.post("/:id/resolve", requireCapability("manage_roles"), async (req, res) => {
-  try {
-    const tenantId = req.tenantId!;
-    // Express types `req.params.id` as possibly an array (a repeated query
-    // parameter can produce one); coerce so the id is unambiguously a string.
-    const id = String(req.params.id);
-    const updated = await prisma.errorEvent.updateMany({
-      where: { id, tenantId },
-      data: { resolvedAt: new Date() },
-    });
-    if (updated.count === 0) return res.status(404).json({ error: "Not found" });
-    return res.json({ resolved: true });
-  } catch (err) {
-    req.log.error(err, "Failed to resolve error event");
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
+errorsRouter.post(
+  "/:id/resolve",
+  requireCapability("manage_roles"),
+  async (req, res) => {
+    try {
+      const tenantId = req.tenantId!;
+      // Express types `req.params.id` as possibly an array (a repeated query
+      // parameter can produce one); coerce so the id is unambiguously a string.
+      const id = String(req.params.id);
+      const updated = await prisma.errorEvent.updateMany({
+        where: { id, tenantId },
+        data: { resolvedAt: new Date() },
+      });
+      if (updated.count === 0)
+        return res.status(404).json({ error: "Not found" });
+      return res.json({ resolved: true });
+    } catch (err) {
+      req.log.error(err, "Failed to resolve error event");
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);

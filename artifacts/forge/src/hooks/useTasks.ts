@@ -82,10 +82,7 @@ export function useAddChecklistItem(taskId: string | undefined) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: { text: string; position?: number }) =>
-      apiClient.post<TaskChecklistItemDTO>(
-        `/tasks/${taskId}/checklist`,
-        body,
-      ),
+      apiClient.post<TaskChecklistItemDTO>(`/tasks/${taskId}/checklist`, body),
     onSuccess: () =>
       queryClient.invalidateQueries({
         queryKey: ["tasks", taskId ?? "none", "checklist"],
@@ -177,10 +174,7 @@ export function useAddTaskDependency(taskId: string | undefined) {
       type?: string;
       lagDays?: number;
     }) =>
-      apiClient.post<TaskDependencyDTO>(
-        `/tasks/${taskId}/dependencies`,
-        body,
-      ),
+      apiClient.post<TaskDependencyDTO>(`/tasks/${taskId}/dependencies`, body),
     onSuccess: () =>
       queryClient.invalidateQueries({
         queryKey: ["tasks", taskId ?? "none", "dependencies"],
@@ -257,9 +251,7 @@ export function useTaskApprovalEvents(taskId: string | undefined) {
   return useQuery<TaskApprovalEventDTO[]>({
     queryKey: ["tasks", taskId ?? "none", "approval-events"],
     queryFn: async () =>
-      apiClient.get<TaskApprovalEventDTO[]>(
-        `/tasks/${taskId}/approval-events`,
-      ),
+      apiClient.get<TaskApprovalEventDTO[]>(`/tasks/${taskId}/approval-events`),
     enabled: !!taskId,
     staleTime: 5000,
   });
@@ -307,7 +299,8 @@ export interface DailyLogDTO {
 export function useDailyLogs(taskId: string | undefined) {
   return useQuery<DailyLogDTO[]>({
     queryKey: ["daily-logs", taskId ?? "none"],
-    queryFn: async () => apiClient.get<DailyLogDTO[]>(`/daily-logs?taskId=${taskId}`),
+    queryFn: async () =>
+      apiClient.get<DailyLogDTO[]>(`/daily-logs?taskId=${taskId}`),
     enabled: !!taskId,
     staleTime: 5000,
   });
@@ -321,7 +314,8 @@ export function useDailyLogs(taskId: string | undefined) {
 export function useDailyLogsByUser(userId: string | undefined) {
   return useQuery<DailyLogDTO[]>({
     queryKey: ["daily-logs", "user", userId ?? "none"],
-    queryFn: async () => apiClient.get<DailyLogDTO[]>(`/daily-logs?userId=${userId}`),
+    queryFn: async () =>
+      apiClient.get<DailyLogDTO[]>(`/daily-logs?userId=${userId}`),
     enabled: !!userId,
     staleTime: 5000,
   });
@@ -345,10 +339,16 @@ export function useAllDailyLogs() {
 export function useAddDailyLog() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: { taskId: string; date: string; hours: number; note?: string }) =>
-      apiClient.post<DailyLogDTO>("/daily-logs", body),
+    mutationFn: (body: {
+      taskId: string;
+      date: string;
+      hours: number;
+      note?: string;
+    }) => apiClient.post<DailyLogDTO>("/daily-logs", body),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["daily-logs", variables.taskId] });
+      queryClient.invalidateQueries({
+        queryKey: ["daily-logs", variables.taskId],
+      });
       queryClient.invalidateQueries({ queryKey: ["tasks"] }); // actualHours changed
     },
   });

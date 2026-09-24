@@ -20,7 +20,9 @@ interface StageOverride {
 }
 
 function asStringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+  return Array.isArray(value)
+    ? value.filter((v): v is string => typeof v === "string")
+    : [];
 }
 
 // stageOverrides is free-form JSON in the column, so anything read back out
@@ -29,7 +31,9 @@ function asStringArray(value: unknown): string[] {
 function parseOverrides(value: unknown): Record<string, StageOverride> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   const out: Record<string, StageOverride> = {};
-  for (const [stageId, raw] of Object.entries(value as Record<string, unknown>)) {
+  for (const [stageId, raw] of Object.entries(
+    value as Record<string, unknown>,
+  )) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
     const entry = raw as Record<string, unknown>;
     const override: StageOverride = {};
@@ -52,7 +56,12 @@ type StageRow = {
   keepsLocalCopy: boolean;
   reviewAudience: unknown;
   dccPublishKind: string | null;
-  department: { id: string; name: string; abbr: string; color: string | null } | null;
+  department: {
+    id: string;
+    name: string;
+    abbr: string;
+    color: string | null;
+  } | null;
 };
 
 // The template is never forked per project: a project's stage list is always
@@ -64,45 +73,50 @@ function resolveStages(
   overrides: Record<string, StageOverride>,
   taskCounts: Map<string, number>,
 ) {
-  return stages
-    .map((stage) => {
-      const override = overrides[stage.id];
-      const sortOrder = override?.sortOrder ?? stage.sortOrder;
-      const enabled = override?.enabled ?? true;
-      return {
-        id: stage.id,
-        name: stage.name,
-        shortCode: stage.shortCode,
-        templateSortOrder: stage.sortOrder,
-        sortOrder,
-        enabled,
-        // Only a value that actually differs from the template counts as a
-        // divergence -- an override row that restates the template's own
-        // sortOrder is not something the project has deliberately changed.
-        overridden: sortOrder !== stage.sortOrder || !enabled,
-        departmentId: stage.departmentId,
-        department: stage.department,
-        isOptional: stage.isOptional,
-        outputFormats: asStringArray(stage.outputFormats),
-        keepsLocalCopy: stage.keepsLocalCopy,
-        reviewAudience: asStringArray(stage.reviewAudience),
-        dccPublishKind: stage.dccPublishKind,
-        taskCount: taskCounts.get(stage.id) ?? 0,
-      };
-    })
-    // Overrides only carry a sortOrder for the stages actually moved, so ties
-    // against untouched stages fall back to the template's own order (then id)
-    // to keep the resolved list stable between reads.
-    .sort(
-      (a, b) =>
-        a.sortOrder - b.sortOrder ||
-        a.templateSortOrder - b.templateSortOrder ||
-        a.id.localeCompare(b.id),
-    );
+  return (
+    stages
+      .map((stage) => {
+        const override = overrides[stage.id];
+        const sortOrder = override?.sortOrder ?? stage.sortOrder;
+        const enabled = override?.enabled ?? true;
+        return {
+          id: stage.id,
+          name: stage.name,
+          shortCode: stage.shortCode,
+          templateSortOrder: stage.sortOrder,
+          sortOrder,
+          enabled,
+          // Only a value that actually differs from the template counts as a
+          // divergence -- an override row that restates the template's own
+          // sortOrder is not something the project has deliberately changed.
+          overridden: sortOrder !== stage.sortOrder || !enabled,
+          departmentId: stage.departmentId,
+          department: stage.department,
+          isOptional: stage.isOptional,
+          outputFormats: asStringArray(stage.outputFormats),
+          keepsLocalCopy: stage.keepsLocalCopy,
+          reviewAudience: asStringArray(stage.reviewAudience),
+          dccPublishKind: stage.dccPublishKind,
+          taskCount: taskCounts.get(stage.id) ?? 0,
+        };
+      })
+      // Overrides only carry a sortOrder for the stages actually moved, so ties
+      // against untouched stages fall back to the template's own order (then id)
+      // to keep the resolved list stable between reads.
+      .sort(
+        (a, b) =>
+          a.sortOrder - b.sortOrder ||
+          a.templateSortOrder - b.templateSortOrder ||
+          a.id.localeCompare(b.id),
+      )
+  );
 }
 
 async function projectInTenant(id: string, tenantId: string) {
-  const row = await prisma.project.findFirst({ where: { id, tenantId }, select: { id: true } });
+  const row = await prisma.project.findFirst({
+    where: { id, tenantId },
+    select: { id: true },
+  });
   return !!row;
 }
 
@@ -111,8 +125,14 @@ async function projectInTenant(id: string, tenantId: string) {
 // through the project's own shots and assets.
 async function projectEntityIds(tenantId: string, projectId: string) {
   const [shots, assets] = await Promise.all([
-    prisma.shot.findMany({ where: { tenantId, projectId }, select: { id: true } }),
-    prisma.asset.findMany({ where: { tenantId, projectId }, select: { id: true } }),
+    prisma.shot.findMany({
+      where: { tenantId, projectId },
+      select: { id: true },
+    }),
+    prisma.asset.findMany({
+      where: { tenantId, projectId },
+      select: { id: true },
+    }),
   ]);
   return [...shots.map((s) => s.id), ...assets.map((a) => a.id)];
 }
@@ -123,10 +143,16 @@ async function stageTaskCounts(tenantId: string, projectId: string) {
 
   const grouped = await prisma.task.groupBy({
     by: ["pipelineStageId"],
-    where: { tenantId, entityId: { in: entityIds }, pipelineStageId: { not: null } },
+    where: {
+      tenantId,
+      entityId: { in: entityIds },
+      pipelineStageId: { not: null },
+    },
     _count: { _all: true },
   });
-  return new Map(grouped.map((g) => [g.pipelineStageId as string, g._count._all]));
+  return new Map(
+    grouped.map((g) => [g.pipelineStageId as string, g._count._all]),
+  );
 }
 
 const STAGE_SELECT = {
@@ -149,7 +175,9 @@ pipelineTemplatesRouter.get("/", async (req, res) => {
     const templates = await prisma.pipelineTemplate.findMany({
       where: { tenantId },
       orderBy: [{ entityKind: "asc" }, { name: "asc" }],
-      include: { stages: { select: STAGE_SELECT, orderBy: { sortOrder: "asc" } } },
+      include: {
+        stages: { select: STAGE_SELECT, orderBy: { sortOrder: "asc" } },
+      },
     });
 
     return res.json(
@@ -187,7 +215,9 @@ async function loadProjectPipelines(tenantId: string, projectId: string) {
       where: { tenantId, projectId },
       include: {
         template: {
-          include: { stages: { select: STAGE_SELECT, orderBy: { sortOrder: "asc" } } },
+          include: {
+            stages: { select: STAGE_SELECT, orderBy: { sortOrder: "asc" } },
+          },
         },
       },
     }),
@@ -202,9 +232,17 @@ async function loadProjectPipelines(tenantId: string, projectId: string) {
       discipline: binding.template.discipline,
       entityKind: binding.template.entityKind,
       description: binding.template.description,
-      stages: resolveStages(binding.template.stages, parseOverrides(binding.stageOverrides), taskCounts),
+      stages: resolveStages(
+        binding.template.stages,
+        parseOverrides(binding.stageOverrides),
+        taskCounts,
+      ),
     }))
-    .sort((a, b) => a.entityKind.localeCompare(b.entityKind) || a.templateName.localeCompare(b.templateName));
+    .sort(
+      (a, b) =>
+        a.entityKind.localeCompare(b.entityKind) ||
+        a.templateName.localeCompare(b.templateName),
+    );
 }
 
 projectPipelinesRouter.get("/:projectId/pipeline", async (req, res) => {
@@ -214,7 +252,10 @@ projectPipelinesRouter.get("/:projectId/pipeline", async (req, res) => {
     if (!(await projectInTenant(projectId, tenantId)))
       return res.status(404).json({ error: "Project not found" });
 
-    return res.json({ projectId, pipelines: await loadProjectPipelines(tenantId, projectId) });
+    return res.json({
+      projectId,
+      pipelines: await loadProjectPipelines(tenantId, projectId),
+    });
   } catch (err) {
     req.log.error(err, "Failed to resolve project pipeline");
     return res.status(500).json({ error: "Internal server error" });
@@ -243,7 +284,8 @@ projectPipelinesRouter.post(
         where: { id: templateId, tenantId },
         select: { id: true },
       });
-      if (!template) return res.status(400).json({ error: "Invalid templateId" });
+      if (!template)
+        return res.status(400).json({ error: "Invalid templateId" });
 
       // @@unique([projectId, templateId]) makes a re-bind a no-op rather than
       // an error: two producers attaching the same template concurrently
@@ -286,7 +328,10 @@ projectPipelinesRouter.delete(
         where: { tenantId, projectId, templateId },
         select: { id: true },
       });
-      if (!binding) return res.status(404).json({ error: "Template is not bound to this project" });
+      if (!binding)
+        return res
+          .status(404)
+          .json({ error: "Template is not bound to this project" });
 
       const stages = await prisma.pipelineStage.findMany({
         where: { tenantId, templateId },
@@ -335,8 +380,14 @@ projectPipelinesRouter.put(
 
       if (typeof templateId !== "string" || !templateId)
         return res.status(400).json({ error: "templateId is required" });
-      if (!stageOverrides || typeof stageOverrides !== "object" || Array.isArray(stageOverrides))
-        return res.status(400).json({ error: "stageOverrides must be an object keyed by stage id" });
+      if (
+        !stageOverrides ||
+        typeof stageOverrides !== "object" ||
+        Array.isArray(stageOverrides)
+      )
+        return res.status(400).json({
+          error: "stageOverrides must be an object keyed by stage id",
+        });
 
       if (!(await projectInTenant(projectId, tenantId)))
         return res.status(404).json({ error: "Project not found" });
@@ -351,24 +402,32 @@ projectPipelinesRouter.put(
         select: { id: true },
       });
       if (!binding)
-        return res.status(400).json({ error: "templateId is not bound to this project" });
+        return res
+          .status(400)
+          .json({ error: "templateId is not bound to this project" });
 
       const stageIds = Object.keys(stageOverrides);
       const validated: Record<string, StageOverride> = {};
       for (const stageId of stageIds) {
         const raw = (stageOverrides as Record<string, unknown>)[stageId];
         if (!raw || typeof raw !== "object" || Array.isArray(raw))
-          return res.status(400).json({ error: `Invalid override for stage ${stageId}` });
+          return res
+            .status(400)
+            .json({ error: `Invalid override for stage ${stageId}` });
         const entry = raw as Record<string, unknown>;
         const override: StageOverride = {};
         if (entry.sortOrder !== undefined) {
           if (!Number.isInteger(entry.sortOrder))
-            return res.status(400).json({ error: `sortOrder for stage ${stageId} must be an integer` });
+            return res.status(400).json({
+              error: `sortOrder for stage ${stageId} must be an integer`,
+            });
           override.sortOrder = entry.sortOrder as number;
         }
         if (entry.enabled !== undefined) {
           if (typeof entry.enabled !== "boolean")
-            return res.status(400).json({ error: `enabled for stage ${stageId} must be a boolean` });
+            return res.status(400).json({
+              error: `enabled for stage ${stageId} must be a boolean`,
+            });
           override.enabled = entry.enabled;
         }
         validated[stageId] = override;
@@ -382,9 +441,9 @@ projectPipelinesRouter.put(
         if (owned.length !== stageIds.length) {
           const ownedIds = new Set(owned.map((s) => s.id));
           const foreign = stageIds.filter((id) => !ownedIds.has(id));
-          return res
-            .status(400)
-            .json({ error: `Stage ids do not belong to this template: ${foreign.join(", ")}` });
+          return res.status(400).json({
+            error: `Stage ids do not belong to this template: ${foreign.join(", ")}`,
+          });
         }
       }
 

@@ -62,8 +62,16 @@ export function useRollbackEntity() {
 export function useClearAuditRollback() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ entityType, entityId }: { entityType: AuditEntityType; entityId: string }) =>
-      apiClient.delete(`/audit-rollbacks/${entityType}/${encodeURIComponent(entityId)}`),
+    mutationFn: ({
+      entityType,
+      entityId,
+    }: {
+      entityType: AuditEntityType;
+      entityId: string;
+    }) =>
+      apiClient.delete(
+        `/audit-rollbacks/${entityType}/${encodeURIComponent(entityId)}`,
+      ),
     onSuccess: (_data, variables) =>
       invalidateRolledBackEntity(queryClient, variables.entityId),
   });

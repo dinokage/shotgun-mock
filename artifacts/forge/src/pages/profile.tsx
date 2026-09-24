@@ -33,7 +33,11 @@ import { useUpdateProfile, useUploadAvatar } from "@/hooks/useUsers";
 import { useChangePassword } from "@/hooks/usePassword";
 import { ApiError } from "@/lib/apiClient";
 import { useToast } from "@/hooks/use-toast";
-import { getAssigneeId, getProjectId, useEntityProjectMap } from "@/lib/taskShape";
+import {
+  getAssigneeId,
+  getProjectId,
+  useEntityProjectMap,
+} from "@/lib/taskShape";
 import { normalizeTaskStatus } from "@/lib/trackingStatus";
 import { formatDueDate } from "@/lib/taskDates";
 import {
@@ -149,7 +153,9 @@ export default function Profile() {
   // Shared isTaskActive classification (see data/mockData.ts) so this stat and the
   // "Active Tasks" list below always agree with each other and with every other
   // page's active/done rollups for the same underlying task data.
-  const activeTasks = myTasks.filter((t) => isTaskActive(normalizeTaskStatus(t.status)));
+  const activeTasks = myTasks.filter((t) =>
+    isTaskActive(normalizeTaskStatus(t.status)),
+  );
 
   const handleStartEdit = () => {
     setEditName(user.name);
@@ -363,14 +369,20 @@ export default function Profile() {
                   registration -- afterwards there was no way to tell the
                   request was even still pending, or that it had ever been
                   made. */}
-              {isMe && user.requestedRole && user.requestedRole !== user.role && (
-                <Badge
-                  variant="outline"
-                  className="text-amber-500 border-amber-500/40 bg-amber-500/10 text-xs font-normal"
-                >
-                  Requested {ROLE_LABELS[user.requestedRole as keyof typeof ROLE_LABELS] ?? user.requestedRole} — pending approval
-                </Badge>
-              )}
+              {isMe &&
+                user.requestedRole &&
+                user.requestedRole !== user.role && (
+                  <Badge
+                    variant="outline"
+                    className="text-amber-500 border-amber-500/40 bg-amber-500/10 text-xs font-normal"
+                  >
+                    Requested{" "}
+                    {ROLE_LABELS[
+                      user.requestedRole as keyof typeof ROLE_LABELS
+                    ] ?? user.requestedRole}{" "}
+                    — pending approval
+                  </Badge>
+                )}
             </p>
 
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mt-3 text-sm text-muted-foreground">
@@ -412,16 +424,19 @@ export default function Profile() {
                 </Button>
               </Link>
             )}
-            {currentUser && !isMe && canAssignTasks && user.role !== "client" && (
-              <Button
-                onClick={() => {
-                  setCreateTaskDefaultAssigneeId(user.id);
-                  setCreateTaskModalOpen(true);
-                }}
-              >
-                Assign Task
-              </Button>
-            )}
+            {currentUser &&
+              !isMe &&
+              canAssignTasks &&
+              user.role !== "client" && (
+                <Button
+                  onClick={() => {
+                    setCreateTaskDefaultAssigneeId(user.id);
+                    setCreateTaskModalOpen(true);
+                  }}
+                >
+                  Assign Task
+                </Button>
+              )}
           </div>
         </div>
       )}
@@ -492,7 +507,10 @@ export default function Profile() {
                       placeholder="—"
                       onBlur={(e) => {
                         const raw = e.target.value.trim();
-                        const value = raw === "" ? null : Math.max(0, Math.min(100, Number(raw)));
+                        const value =
+                          raw === ""
+                            ? null
+                            : Math.max(0, Math.min(100, Number(raw)));
                         if (value === (user.capacity ?? null)) return;
                         updateProfile.mutate(
                           { capacity: value },
@@ -541,10 +559,7 @@ export default function Profile() {
               </CardHeader>
               {isChangingPassword && (
                 <CardContent>
-                  <form
-                    onSubmit={handleChangePassword}
-                    className="space-y-3"
-                  >
+                  <form onSubmit={handleChangePassword} className="space-y-3">
                     <div className="space-y-1.5">
                       <Label htmlFor="current-password" className="text-xs">
                         Current Password
@@ -682,7 +697,11 @@ export default function Profile() {
                         </div>
                         <div className="flex items-center gap-4 text-xs text-muted-foreground ml-[92px]">
                           <span>
-                            {formatDueDate(task.dueDate, undefined, "No due date")}
+                            {formatDueDate(
+                              task.dueDate,
+                              undefined,
+                              "No due date",
+                            )}
                           </span>
                           <span>•</span>
                           <span style={{ color: dept?.color }}>

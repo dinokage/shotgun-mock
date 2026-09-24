@@ -15,7 +15,14 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, ListOrdered, Plus, RotateCcw, Save, Unlink } from "lucide-react";
+import {
+  GripVertical,
+  ListOrdered,
+  Plus,
+  RotateCcw,
+  Save,
+  Unlink,
+} from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -52,7 +59,8 @@ type DraftStage = ResolvedPipelineStageDTO;
 
 function templateOrder(stages: DraftStage[]) {
   return [...stages].sort(
-    (a, b) => a.templateSortOrder - b.templateSortOrder || a.id.localeCompare(b.id),
+    (a, b) =>
+      a.templateSortOrder - b.templateSortOrder || a.id.localeCompare(b.id),
   );
 }
 
@@ -89,7 +97,14 @@ function StageRow({
   canManage: boolean;
   onToggle: (enabled: boolean) => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
     id: stage.id,
     disabled: !canManage,
   });
@@ -127,8 +142,12 @@ function StageRow({
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-semibold leading-tight">{stage.name}</span>
-          <span className="text-[10px] font-mono text-muted-foreground">{stage.shortCode}</span>
+          <span className="text-sm font-semibold leading-tight">
+            {stage.name}
+          </span>
+          <span className="text-[10px] font-mono text-muted-foreground">
+            {stage.shortCode}
+          </span>
           {stage.isOptional && (
             <Badge variant="outline" className="text-[10px] px-1.5 py-0">
               Optional
@@ -191,7 +210,10 @@ function PipelineBoard({
   const isDirty = useMemo(
     () =>
       !sameOrder(draft, pipeline.stages) ||
-      draft.some((s) => pipeline.stages.find((o) => o.id === s.id)?.enabled !== s.enabled),
+      draft.some(
+        (s) =>
+          pipeline.stages.find((o) => o.id === s.id)?.enabled !== s.enabled,
+      ),
     [draft, pipeline.stages],
   );
 
@@ -208,7 +230,10 @@ function PipelineBoard({
 
   const handleSave = () => {
     updatePipeline.mutate(
-      { templateId: pipeline.templateId, stageOverrides: buildOverrides(draft) },
+      {
+        templateId: pipeline.templateId,
+        stageOverrides: buildOverrides(draft),
+      },
       {
         onSuccess: () =>
           toast({
@@ -218,7 +243,8 @@ function PipelineBoard({
         onError: (err: unknown) =>
           toast({
             title: "Could not save pipeline",
-            description: err instanceof Error ? err.message : "Please try again.",
+            description:
+              err instanceof Error ? err.message : "Please try again.",
             variant: "destructive",
           }),
       },
@@ -258,7 +284,9 @@ function PipelineBoard({
             </Badge>
           </div>
           {pipeline.description && (
-            <p className="text-sm text-muted-foreground mt-1">{pipeline.description}</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              {pipeline.description}
+            </p>
           )}
         </div>
         {canManage && (
@@ -272,7 +300,11 @@ function PipelineBoard({
               <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
               Discard
             </Button>
-            <Button size="sm" disabled={!isDirty || updatePipeline.isPending} onClick={handleSave}>
+            <Button
+              size="sm"
+              disabled={!isDirty || updatePipeline.isPending}
+              onClick={handleSave}
+            >
               <Save className="w-3.5 h-3.5 mr-1.5" />
               {updatePipeline.isPending ? "Saving…" : "Save order"}
             </Button>
@@ -290,8 +322,15 @@ function PipelineBoard({
         )}
       </CardHeader>
       <CardContent>
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={draft.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext
+            items={draft.map((s) => s.id)}
+            strategy={verticalListSortingStrategy}
+          >
             <div className="flex flex-col gap-2">
               {draft.map((stage, index) => (
                 <StageRow
@@ -301,7 +340,9 @@ function PipelineBoard({
                   canManage={canManage}
                   onToggle={(enabled) =>
                     setDraft((current) =>
-                      current.map((s) => (s.id === stage.id ? { ...s, enabled } : s)),
+                      current.map((s) =>
+                        s.id === stage.id ? { ...s, enabled } : s,
+                      ),
                     )
                   }
                 />
@@ -369,7 +410,11 @@ function AttachPipeline({
           ))}
         </SelectContent>
       </Select>
-      <Button size="sm" disabled={!selected || bindPipeline.isPending} onClick={handleAttach}>
+      <Button
+        size="sm"
+        disabled={!selected || bindPipeline.isPending}
+        onClick={handleAttach}
+      >
         <Plus className="w-3.5 h-3.5 mr-1.5" />
         {bindPipeline.isPending ? "Attaching…" : "Attach"}
       </Button>
@@ -383,10 +428,16 @@ export default function PipelineTab({ project }: { project: any }) {
   const { data, isLoading, error } = useProjectPipeline(projectId);
 
   if (isLoading)
-    return <div className="p-6 text-center text-muted-foreground">Loading pipeline…</div>;
+    return (
+      <div className="p-6 text-center text-muted-foreground">
+        Loading pipeline…
+      </div>
+    );
   if (error)
     return (
-      <div className="p-6 text-center text-muted-foreground">Could not load this pipeline.</div>
+      <div className="p-6 text-center text-muted-foreground">
+        Could not load this pipeline.
+      </div>
     );
 
   const pipelines = data?.pipelines ?? [];
@@ -397,16 +448,21 @@ export default function PipelineTab({ project }: { project: any }) {
       <div className="flex items-start justify-between gap-4">
         {canManage ? (
           <p className="text-sm text-muted-foreground">
-            Drag stages to reorder them for this project, and switch optional stages off. Changes
-            apply to this project only — the shared template is untouched.
+            Drag stages to reorder them for this project, and switch optional
+            stages off. Changes apply to this project only — the shared template
+            is untouched.
           </p>
         ) : (
           <p className="text-sm text-muted-foreground">
-            Read-only — changing this pipeline requires the Manage Pipeline permission.
+            Read-only — changing this pipeline requires the Manage Pipeline
+            permission.
           </p>
         )}
         {canManage && projectId && (
-          <AttachPipeline projectId={projectId} boundTemplateIds={boundTemplateIds} />
+          <AttachPipeline
+            projectId={projectId}
+            boundTemplateIds={boundTemplateIds}
+          />
         )}
       </div>
 

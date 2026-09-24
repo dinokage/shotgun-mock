@@ -17,7 +17,9 @@ export async function denyClientAccess(
   next: NextFunction,
 ) {
   if (req.clientAccessLinkId) {
-    res.status(403).json({ error: "Forbidden: not available to client-access sessions" });
+    res
+      .status(403)
+      .json({ error: "Forbidden: not available to client-access sessions" });
     return;
   }
   // A redeemed access link is the usual way a client reaches the API, but not
@@ -30,7 +32,9 @@ export async function denyClientAccess(
       select: { name: true },
     });
     if (role?.name === "client") {
-      res.status(403).json({ error: "Forbidden: not available to client accounts" });
+      res
+        .status(403)
+        .json({ error: "Forbidden: not available to client accounts" });
       return;
     }
   }

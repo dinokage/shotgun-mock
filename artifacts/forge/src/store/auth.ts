@@ -74,9 +74,9 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       //
       // A failed or unavailable digest falls through to fetching everything,
       // so the worst case is the old behaviour rather than a stale screen.
-      const digest = await apiFetch<Record<string, string>>("/sync/digest").catch(
-        () => null,
-      );
+      const digest = await apiFetch<Record<string, string>>(
+        "/sync/digest",
+      ).catch(() => null);
       const needs = (key: "tasks" | "shots" | "assets") =>
         !digest || heavyCache[key].token !== digest[key];
 

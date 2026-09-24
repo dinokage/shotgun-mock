@@ -24,10 +24,29 @@ const ACCOUNTS = {
 // Real name -> pseudonym. Longest-first replacement at run time stops
 // "Dipanjan Das" being partially rewritten by the "Dipanjan Pan" rule.
 const PSEUDONYMS = [
-  "A. Sharma", "B. Nair", "C. Iyer", "D. Rao", "E. Bose", "F. Menon",
-  "G. Pillai", "H. Reddy", "J. Chandra", "K. Varma", "L. Sen", "M. Dutta",
-  "N. Joshi", "P. Kulkarni", "R. Banerjee", "S. Krishnan", "T. Mehta",
-  "U. Ghosh", "V. Anand", "W. Prasad", "X. Roy", "Y. Naidu", "Z. Kapoor",
+  "A. Sharma",
+  "B. Nair",
+  "C. Iyer",
+  "D. Rao",
+  "E. Bose",
+  "F. Menon",
+  "G. Pillai",
+  "H. Reddy",
+  "J. Chandra",
+  "K. Varma",
+  "L. Sen",
+  "M. Dutta",
+  "N. Joshi",
+  "P. Kulkarni",
+  "R. Banerjee",
+  "S. Krishnan",
+  "T. Mehta",
+  "U. Ghosh",
+  "V. Anand",
+  "W. Prasad",
+  "X. Roy",
+  "Y. Naidu",
+  "Z. Kapoor",
 ];
 
 async function maskPage(page, realNames) {
@@ -57,7 +76,10 @@ async function maskPage(page, realNames) {
         return out;
       };
 
-      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      const walker = document.createTreeWalker(
+        document.body,
+        NodeFilter.SHOW_TEXT,
+      );
       const nodes = [];
       while (walker.nextNode()) nodes.push(walker.currentNode);
       for (const n of nodes) {
@@ -79,13 +101,21 @@ async function maskPage(page, realNames) {
       // Avatar fallbacks render the real initial, which both leaks a letter
       // and contradicts the pseudonym beside it. Re-derive each initial from
       // the pseudonym in the same card so the figure reads consistently.
-      const initialEls = [...document.querySelectorAll("span, div")].filter((el) => {
-        const t = (el.textContent || "").trim();
-        return t.length >= 1 && t.length <= 2 && el.children.length === 0 && /^[A-Za-z]{1,2}$/.test(t);
-      });
+      const initialEls = [...document.querySelectorAll("span, div")].filter(
+        (el) => {
+          const t = (el.textContent || "").trim();
+          return (
+            t.length >= 1 &&
+            t.length <= 2 &&
+            el.children.length === 0 &&
+            /^[A-Za-z]{1,2}$/.test(t)
+          );
+        },
+      );
       for (const el of initialEls) {
         let card = el;
-        for (let i = 0; i < 6 && card.parentElement; i++) card = card.parentElement;
+        for (let i = 0; i < 6 && card.parentElement; i++)
+          card = card.parentElement;
         const m = (card.textContent || "").match(/\b([A-Z])\.\s[A-Z][a-z]+/);
         if (m) el.textContent = m[1];
       }
@@ -97,10 +127,12 @@ async function maskPage(page, realNames) {
 async function login(page, who) {
   const acct = ACCOUNTS[who];
   await page.goto(BASE + "/login", { waitUntil: "networkidle" });
-  await page.fill('input[type="email"], input#email, input[name="email"]', acct.email).catch(async () => {
-    const inputs = page.locator("input");
-    await inputs.nth(0).fill(acct.email);
-  });
+  await page
+    .fill('input[type="email"], input#email, input[name="email"]', acct.email)
+    .catch(async () => {
+      const inputs = page.locator("input");
+      await inputs.nth(0).fill(acct.email);
+    });
   const pw = page.locator('input[type="password"]');
   await pw.fill(acct.pw);
   await page.getByRole("button", { name: /sign in/i }).click();
@@ -129,39 +161,53 @@ const realNames = fs
   .filter((s) => s.length > 2);
 
 const browser = await chromium.launch({ executablePath: CHROME });
-const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+const ctx = await browser.newContext({
+  viewport: { width: 1440, height: 900 },
+});
 const page = await ctx.newPage();
 
 const PLAN = [
-  ["artist", [
-    ["/login", "01-signin", true],
-    ["/tasks", "10-artist-tasks"],
-    ["/review", "11-artist-reviews"],
-    ["/shots?mine=1", "12-artist-shots"],
-    ["/timesheets", "13-artist-timesheets"],
-    ["/daily-standup", "14-artist-standup"],
-  ]],
-  ["lead", [
-    ["/production", "20-lead-dashboard"],
-    ["/review", "21-lead-reviews"],
-    ["/tracking", "22-lead-tracking"],
-    ["/scheduling", "23-lead-scheduling"],
-  ]],
-  ["prodhead", [
-    ["/", "30-ph-dashboard"],
-    ["/tracking", "31-ph-tracking"],
-    ["/projects", "32-ph-projects"],
-    ["/people", "33-ph-roster"],
-    ["/analytics", "34-ph-analytics"],
-    ["/delivery", "35-ph-deliveries"],
-  ]],
-  ["admin", [
-    ["/", "40-admin-dashboard"],
-    ["/people", "41-admin-roster"],
-    ["/settings", "42-admin-settings"],
-    ["/audit", "43-admin-audit"],
-    ["/integrations", "44-admin-integrations"],
-  ]],
+  [
+    "artist",
+    [
+      ["/login", "01-signin", true],
+      ["/tasks", "10-artist-tasks"],
+      ["/review", "11-artist-reviews"],
+      ["/shots?mine=1", "12-artist-shots"],
+      ["/timesheets", "13-artist-timesheets"],
+      ["/daily-standup", "14-artist-standup"],
+    ],
+  ],
+  [
+    "lead",
+    [
+      ["/production", "20-lead-dashboard"],
+      ["/review", "21-lead-reviews"],
+      ["/tracking", "22-lead-tracking"],
+      ["/scheduling", "23-lead-scheduling"],
+    ],
+  ],
+  [
+    "prodhead",
+    [
+      ["/", "30-ph-dashboard"],
+      ["/tracking", "31-ph-tracking"],
+      ["/projects", "32-ph-projects"],
+      ["/people", "33-ph-roster"],
+      ["/analytics", "34-ph-analytics"],
+      ["/delivery", "35-ph-deliveries"],
+    ],
+  ],
+  [
+    "admin",
+    [
+      ["/", "40-admin-dashboard"],
+      ["/people", "41-admin-roster"],
+      ["/settings", "42-admin-settings"],
+      ["/audit", "43-admin-audit"],
+      ["/integrations", "44-admin-integrations"],
+    ],
+  ],
 ];
 
 for (const [who, screens] of PLAN) {

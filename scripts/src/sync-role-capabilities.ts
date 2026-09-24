@@ -11,7 +11,9 @@ import { ROLE_CAPABILITIES } from "./roleCapabilities";
 const DRY_RUN = process.argv.includes("--dry");
 
 async function main() {
-  const tenants = await prisma.tenant.findMany({ select: { id: true, name: true } });
+  const tenants = await prisma.tenant.findMany({
+    select: { id: true, name: true },
+  });
 
   for (const tenant of tenants) {
     const roles = await prisma.tenantRole.findMany({
@@ -51,7 +53,10 @@ async function main() {
       }
       if (toAdd.length) {
         await prisma.tenantRoleCapability.createMany({
-          data: toAdd.map((capabilityId) => ({ roleId: role.id, capabilityId })),
+          data: toAdd.map((capabilityId) => ({
+            roleId: role.id,
+            capabilityId,
+          })),
         });
       }
     }

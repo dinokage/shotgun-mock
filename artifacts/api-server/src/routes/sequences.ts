@@ -11,15 +11,24 @@ import * as crypto from "crypto";
 // from the request body needs an explicit tenant-ownership check before a
 // sequence is allowed to link to it.
 async function projectInTenant(id: string, tenantId: string) {
-  const row = await prisma.project.findFirst({ where: { id, tenantId }, select: { id: true } });
+  const row = await prisma.project.findFirst({
+    where: { id, tenantId },
+    select: { id: true },
+  });
   return !!row;
 }
 async function episodeInTenant(id: string, tenantId: string) {
-  const row = await prisma.episode.findFirst({ where: { id, tenantId }, select: { id: true } });
+  const row = await prisma.episode.findFirst({
+    where: { id, tenantId },
+    select: { id: true },
+  });
   return !!row;
 }
 async function sequenceInTenant(id: string, tenantId: string) {
-  const row = await prisma.sequence.findFirst({ where: { id, tenantId }, select: { id: true } });
+  const row = await prisma.sequence.findFirst({
+    where: { id, tenantId },
+    select: { id: true },
+  });
   return !!row;
 }
 
@@ -54,7 +63,9 @@ sequencesRouter.get("/", async (req, res) => {
         ...(clientScope
           ? {
               projectId: clientScope.projectId,
-              ...(clientScope.episodeId ? { episodeId: clientScope.episodeId } : {}),
+              ...(clientScope.episodeId
+                ? { episodeId: clientScope.episodeId }
+                : {}),
             }
           : {}),
       },
@@ -70,25 +81,36 @@ sequencesRouter.get("/", async (req, res) => {
 // are. denyClientAccess here (and on the team routes below) since none of
 // this -- creating sequences, joining a team roster -- has a legitimate
 // client use case, unlike the read above.
-sequencesRouter.post("/", denyClientAccess, requireCapability("create_tasks"), async (req, res) => {
-  try {
-    const tenantId = req.tenantId!;
-    const { projectId, episodeId, name } = req.body;
-    if (!projectId || !name)
-      return res.status(400).json({ error: "Missing projectId or name" });
-    if (!(await projectInTenant(projectId, tenantId)))
-      return res.status(400).json({ error: "Invalid projectId" });
-    if (episodeId && !(await episodeInTenant(episodeId, tenantId)))
-      return res.status(400).json({ error: "Invalid episodeId" });
+sequencesRouter.post(
+  "/",
+  denyClientAccess,
+  requireCapability("create_tasks"),
+  async (req, res) => {
+    try {
+      const tenantId = req.tenantId!;
+      const { projectId, episodeId, name } = req.body;
+      if (!projectId || !name)
+        return res.status(400).json({ error: "Missing projectId or name" });
+      if (!(await projectInTenant(projectId, tenantId)))
+        return res.status(400).json({ error: "Invalid projectId" });
+      if (episodeId && !(await episodeInTenant(episodeId, tenantId)))
+        return res.status(400).json({ error: "Invalid episodeId" });
 
-    const created = await prisma.sequence.create({
-      data: { id: crypto.randomUUID(), tenantId, projectId, episodeId: episodeId || null, name },
-    });
-    return res.status(201).json(created);
-  } catch (err) {
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
+      const created = await prisma.sequence.create({
+        data: {
+          id: crypto.randomUUID(),
+          tenantId,
+          projectId,
+          episodeId: episodeId || null,
+          name,
+        },
+      });
+      return res.status(201).json(created);
+    } catch (err) {
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
 
 // Self-service "who's working this sequence" roster -- an artist joins or
 // leaves on their own, no lead/PM assignment step. Membership is what the

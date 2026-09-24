@@ -78,7 +78,9 @@ export default function AssetsTab({ project }: { project: any }) {
   // filters strictly on episodeId/sequenceId -- this is the cascading picker
   // that was missing, matching how the Episodes tab's own "Add Shot" dialog
   // already scopes creation to whichever level you're drilled into.
-  const { data: shotEpisodes = [] } = useEpisodes(view === "shots" ? project.id : undefined);
+  const { data: shotEpisodes = [] } = useEpisodes(
+    view === "shots" ? project.id : undefined,
+  );
   const { data: shotSequences = [] } = useSequences(
     view === "shots" && newShotEpisodeId ? project.id : undefined,
     newShotEpisodeId || undefined,
@@ -154,7 +156,8 @@ export default function AssetsTab({ project }: { project: any }) {
     if (view === "shots" && (!newShotEpisodeId || !newShotSequenceId)) {
       toast({
         title: "Pick an episode and sequence first",
-        description: "A shot needs to belong to a sequence to show up in the Episodes tab and Tracking Grid.",
+        description:
+          "A shot needs to belong to a sequence to show up in the Episodes tab and Tracking Grid.",
         variant: "destructive",
       });
       return;
@@ -509,7 +512,7 @@ export default function AssetsTab({ project }: { project: any }) {
                 <textarea
                   className="w-full h-24 bg-muted/50 border border-border rounded p-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-primary"
                   placeholder="Add notes..."
-                  value={noteDraft ?? (selectedItem.notes ?? "")}
+                  value={noteDraft ?? selectedItem.notes ?? ""}
                   onChange={(e) => {
                     const notes = e.target.value;
                     setNoteDraft(notes);
@@ -540,9 +543,7 @@ export default function AssetsTab({ project }: { project: any }) {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>
-              Add {view === "shots" ? "Shot" : "Asset"}
-            </DialogTitle>
+            <DialogTitle>Add {view === "shots" ? "Shot" : "Asset"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             {view === "shots" && (
@@ -584,14 +585,17 @@ export default function AssetsTab({ project }: { project: any }) {
                     <SelectTrigger>
                       <SelectValue
                         placeholder={
-                          newShotEpisodeId ? "Select a sequence" : "Pick an episode first"
+                          newShotEpisodeId
+                            ? "Select a sequence"
+                            : "Pick an episode first"
                         }
                       />
                     </SelectTrigger>
                     <SelectContent>
                       {shotSequences.length === 0 ? (
                         <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                          No sequences yet in this episode -- add one in the Episodes tab first.
+                          No sequences yet in this episode -- add one in the
+                          Episodes tab first.
                         </div>
                       ) : (
                         shotSequences.map((sq) => (
@@ -614,7 +618,9 @@ export default function AssetsTab({ project }: { project: any }) {
                 autoFocus={view !== "shots"}
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                placeholder={view === "shots" ? "seq-010-sh-020" : "hero_character"}
+                placeholder={
+                  view === "shots" ? "seq-010-sh-020" : "hero_character"
+                }
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && newName.trim() && !isCreating) {
                     handleCreate();

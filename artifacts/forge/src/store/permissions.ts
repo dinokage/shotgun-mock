@@ -148,4 +148,3 @@ export const LEADERSHIP_ROLES: Role[] = ["admin", "lead"];
 // narrowed that studio-wide data back down to one department in the UI.
 export const STUDIO_LEADERSHIP_ROLES: Role[] = ["admin"];
 export const DEPARTMENT_LEADERSHIP_ROLES: Role[] = ["lead"];
-

@@ -44,7 +44,8 @@ const MIN_PASSWORD_LENGTH = 8;
 // login would hand back the timing signal it exists to remove.
 let decoyHash: Promise<string> | null = null;
 function getDecoyHash(): Promise<string> {
-  if (!decoyHash) decoyHash = hashPassword(crypto.randomBytes(32).toString("hex"));
+  if (!decoyHash)
+    decoyHash = hashPassword(crypto.randomBytes(32).toString("hex"));
   return decoyHash;
 }
 
@@ -79,7 +80,11 @@ export async function revokeSessions(userId: string, tenantId: string) {
 // behind one office IP, so the 9am sign-in rush would trip a shared bucket
 // and lock the team out of its own tool.
 const LOGIN_IP_RULE = { name: "login:ip", limit: 60, windowSeconds: 900 };
-const LOGIN_ACCOUNT_RULE = { name: "login:account", limit: 8, windowSeconds: 900 };
+const LOGIN_ACCOUNT_RULE = {
+  name: "login:account",
+  limit: 8,
+  windowSeconds: 900,
+};
 
 // Self-registration is unauthenticated and creates rows, so it needs its own
 // ceiling independent of login's. Same shared-office-IP reality as login:ip
@@ -109,7 +114,11 @@ const REGISTER_OPTIONS_RULE = {
 // this route. Keyed per-account like login's account bucket: the caller
 // already holds a session, so an IP bucket would just punish everyone
 // sharing that session's network for one bad actor.
-const CHANGE_PASSWORD_RULE = { name: "change-password:account", limit: 8, windowSeconds: 900 };
+const CHANGE_PASSWORD_RULE = {
+  name: "change-password:account",
+  limit: 8,
+  windowSeconds: 900,
+};
 
 authRouter.post("/login", async (req, res) => {
   try {
@@ -178,8 +187,12 @@ authRouter.post("/login", async (req, res) => {
     }
 
     // Resolve tenant and role details
-    const tenant = await prisma.tenant.findFirst({ where: { id: user.tenantId } });
-    const role = await prisma.tenantRole.findFirst({ where: { id: user.roleId } });
+    const tenant = await prisma.tenant.findFirst({
+      where: { id: user.tenantId },
+    });
+    const role = await prisma.tenantRole.findFirst({
+      where: { id: user.roleId },
+    });
     const roleCaps = await prisma.tenantRoleCapability.findMany({
       where: { roleId: user.roleId },
     });
@@ -243,7 +256,9 @@ authRouter.post("/login", async (req, res) => {
       (async () => {
         try {
           const dept = user.departmentId
-            ? await prisma.department.findFirst({ where: { id: user.departmentId } })
+            ? await prisma.department.findFirst({
+                where: { id: user.departmentId },
+              })
             : null;
           const recipients = await findProductionManagers(
             user.tenantId,
@@ -350,9 +365,13 @@ authRouter.post("/logout", async (req, res) => {
 // as a 200 with empty lists rather than a 403 error: it's a lookup a
 // long-gone register page would poll, not an action, and an empty result is
 // the honest answer to "what's available to register into" (nothing).
-authRouter.get("/registration-options", rateLimitByIp(REGISTER_OPTIONS_RULE), async (_req, res) => {
-  return res.json({ departments: [], roles: [] });
-});
+authRouter.get(
+  "/registration-options",
+  rateLimitByIp(REGISTER_OPTIONS_RULE),
+  async (_req, res) => {
+    return res.json({ departments: [], roles: [] });
+  },
+);
 
 // Self-registration is closed studio-wide -- only an admin creates accounts
 // now (Admin Panel's Create Account / Invite Member). This used to be a full
@@ -361,12 +380,16 @@ authRouter.get("/registration-options", rateLimitByIp(REGISTER_OPTIONS_RULE), as
 // after an unconditional return also breaks this file's own null-narrowing
 // checks for no benefit. Re-add from git history if self-registration is
 // ever reopened.
-authRouter.post("/register", rateLimitByIp(REGISTER_RULE), async (_req, res) => {
-  return res.status(403).json({
-    error:
-      "Self-registration is disabled. Ask a studio administrator to create your account or send you an invite.",
-  });
-});
+authRouter.post(
+  "/register",
+  rateLimitByIp(REGISTER_RULE),
+  async (_req, res) => {
+    return res.status(403).json({
+      error:
+        "Self-registration is disabled. Ask a studio administrator to create your account or send you an invite.",
+    });
+  },
+);
 
 // Marks the first-run walkthrough as seen. Deliberately idempotent and
 // deliberately not undoable by accident: `replay` re-arms it so a user can
@@ -376,7 +399,8 @@ authRouter.post("/onboarding", async (req, res) => {
   const token = req.cookies?.session;
   if (!token) return res.status(401).json({ error: "Unauthorized" });
   const session = verifySession(token);
-  if (!session?.userId) return res.status(401).json({ error: "Invalid session" });
+  if (!session?.userId)
+    return res.status(401).json({ error: "Invalid session" });
   if (!(await isSessionStillValid(session.userId, session.tv ?? 0)))
     return res.status(401).json({ error: "Session expired" });
 
@@ -405,7 +429,8 @@ authRouter.get("/me", async (req, res) => {
   if (!session) return res.status(401).json({ error: "Invalid session" });
   // /me is for real-user sessions only; client-access-link sessions carry a
   // null userId and have no users row to look up.
-  if (!session.userId) return res.status(401).json({ error: "Invalid session" });
+  if (!session.userId)
+    return res.status(401).json({ error: "Invalid session" });
 
   // This route verifies the cookie itself rather than going through
   // tenantAuthMiddleware, so it needs the same revocation + deactivation
@@ -430,8 +455,12 @@ authRouter.get("/me", async (req, res) => {
   const user = await prisma.user.findFirst({ where: { id: session.userId } });
   if (!user) return res.status(401).json({ error: "User deleted" });
 
-  const tenant = await prisma.tenant.findFirst({ where: { id: session.tenantId } });
-  const role = await prisma.tenantRole.findFirst({ where: { id: session.roleId } });
+  const tenant = await prisma.tenant.findFirst({
+    where: { id: session.tenantId },
+  });
+  const role = await prisma.tenantRole.findFirst({
+    where: { id: session.roleId },
+  });
   const roleCaps = await prisma.tenantRoleCapability.findMany({
     where: { roleId: session.roleId },
   });
@@ -467,7 +496,11 @@ authRouter.get("/me", async (req, res) => {
 // ---------------------------------------------------------------------------
 
 const RESET_REQUEST_RULE = { name: "pwreset:ip", limit: 5, windowSeconds: 900 };
-const RESET_CONSUME_RULE = { name: "pwreset-consume:ip", limit: 10, windowSeconds: 900 };
+const RESET_CONSUME_RULE = {
+  name: "pwreset-consume:ip",
+  limit: 10,
+  windowSeconds: 900,
+};
 const RESET_TOKEN_TTL_MINUTES = 30;
 
 /** Reset tokens are stored hashed; only the emailed copy is usable. */
@@ -479,7 +512,8 @@ authRouter.post("/change-password", async (req, res) => {
   try {
     const token = req.cookies?.session;
     const session = token ? verifySession(token) : null;
-    if (!session?.userId) return res.status(401).json({ error: "Unauthorized" });
+    if (!session?.userId)
+      return res.status(401).json({ error: "Unauthorized" });
 
     const { currentPassword, newPassword } = req.body ?? {};
     if (!currentPassword || !newPassword)
@@ -491,12 +525,19 @@ authRouter.post("/change-password", async (req, res) => {
         error: `New password must be at least ${MIN_PASSWORD_LENGTH} characters`,
       });
 
-    const guessLimit = await peekRateLimit(CHANGE_PASSWORD_RULE, session.userId);
+    const guessLimit = await peekRateLimit(
+      CHANGE_PASSWORD_RULE,
+      session.userId,
+    );
     if (!guessLimit.allowed)
       return rejectRateLimited(res, guessLimit.retryAfter);
 
     const user = await prisma.user.findFirst({
-      where: { id: session.userId, tenantId: session.tenantId, deletedAt: null },
+      where: {
+        id: session.userId,
+        tenantId: session.tenantId,
+        deletedAt: null,
+      },
     });
     if (!user) return res.status(401).json({ error: "Unauthorized" });
 
@@ -661,7 +702,9 @@ authRouter.post(
   rateLimitByIp(LOGIN_IP_RULE),
   async (req, res) => {
     if (process.env.LDAP_ENABLED !== "true") {
-      return res.status(404).json({ error: "LDAP authentication is not enabled." });
+      return res
+        .status(404)
+        .json({ error: "LDAP authentication is not enabled." });
     }
 
     try {
@@ -700,9 +743,9 @@ authRouter.post(
         // etc.) -- log it but return a generic 502 so the client can retry
         // or fall back to the local login page.
         req.log.error(err, "LDAP server error during login");
-        return res
-          .status(502)
-          .json({ error: "Directory service is unavailable. Try again later." });
+        return res.status(502).json({
+          error: "Directory service is unavailable. Try again later.",
+        });
       }
 
       if (!ldapUser) {
@@ -785,16 +828,20 @@ authRouter.post(
       } else {
         if (user.status !== "active") {
           return res.status(403).json({
-            error: "This account has been deactivated. Contact your studio admin.",
+            error:
+              "This account has been deactivated. Contact your studio admin.",
           });
         }
-        
+
         // Sync role and name
         const roleName = mapLdapGroupsToRole(ldapUser.groups);
         const roleRow = await prisma.tenantRole.findFirst({
           where: { tenantId: user.tenantId, name: roleName },
         });
-        if (roleRow && (user.roleId !== roleRow.id || user.name !== ldapUser.name)) {
+        if (
+          roleRow &&
+          (user.roleId !== roleRow.id || user.name !== ldapUser.name)
+        ) {
           user = await prisma.user.update({
             where: { id: user.id },
             data: { roleId: roleRow.id, name: ldapUser.name },

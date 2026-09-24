@@ -57,7 +57,9 @@ export async function sendInviteEmail(params: {
   await transport.sendMail({
     from: `"${fromName}" <${fromAddress}>`,
     to,
-    subject: sanitizeHeaderValue(`You're invited to join ${tenantName} on Forge`),
+    subject: sanitizeHeaderValue(
+      `You're invited to join ${tenantName} on Forge`,
+    ),
     text: `You've been invited to join ${tenantName} on Forge as ${roleName}.\n\nAccept your invite: ${inviteUrl}\n\nThis link expires in 7 days.`,
     html: `
       <p>You've been invited to join <strong>${escapeHtml(tenantName)}</strong> on Forge as <strong>${escapeHtml(roleName)}</strong>.</p>
@@ -105,7 +107,9 @@ export async function sendProjectAccessGrantedEmail(params: {
   await transport.sendMail({
     from: `"${fromName}" <${fromAddress}>`,
     to,
-    subject: sanitizeHeaderValue(`${tenantName} gave you access to "${projectName}"`),
+    subject: sanitizeHeaderValue(
+      `${tenantName} gave you access to "${projectName}"`,
+    ),
     text: `${tenantName} gave your account access to "${projectName}" on Forge.\n\nSign in to view it: ${loginUrl}\n\nUse your existing Forge login -- no new account needed.`,
     html: `
       <p><strong>${escapeHtml(tenantName)}</strong> gave your account access to <strong>${escapeHtml(projectName)}</strong> on Forge.</p>
@@ -129,7 +133,9 @@ export async function sendClientAccessEmail(params: {
   await transport.sendMail({
     from: `"${fromName}" <${fromAddress}>`,
     to,
-    subject: sanitizeHeaderValue(`${tenantName} shared ${scopeLabel} with you for review`),
+    subject: sanitizeHeaderValue(
+      `${tenantName} shared ${scopeLabel} with you for review`,
+    ),
     text: `${tenantName} has shared ${scopeLabel} with you for review on Forge.\n\nReview it here: ${reviewUrl}\n\nYour access code: ${code}\n\nKeep this code private -- anyone with it can view the shared content.`,
     html: `
       <p><strong>${escapeHtml(tenantName)}</strong> has shared <strong>${escapeHtml(scopeLabel)}</strong> with you for review on Forge.</p>

@@ -7,7 +7,9 @@ import type { DepartmentDTO } from "@/hooks/useDepartments";
  * pipeline at all (pipelineOrder 0 is studio overhead like Production
  * Management and is deliberately left out of the strip).
  */
-export function pipelineDepartmentOrder(departments: DepartmentDTO[]): DepartmentDTO[] {
+export function pipelineDepartmentOrder(
+  departments: DepartmentDTO[],
+): DepartmentDTO[] {
   return departments
     .filter((d) => d.pipelineOrder > 0)
     .sort((a, b) => a.pipelineOrder - b.pipelineOrder);
@@ -25,7 +27,9 @@ export function useReorderDepartments() {
       apiClient.put<DepartmentDTO[]>("/departments/order", { departmentIds }),
     onMutate: async (departmentIds) => {
       await queryClient.cancelQueries({ queryKey: ["departments"] });
-      const previous = queryClient.getQueryData<DepartmentDTO[]>(["departments"]);
+      const previous = queryClient.getQueryData<DepartmentDTO[]>([
+        "departments",
+      ]);
       if (previous) {
         queryClient.setQueryData<DepartmentDTO[]>(
           ["departments"],

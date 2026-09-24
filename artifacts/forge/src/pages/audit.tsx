@@ -114,7 +114,9 @@ export default function AuditLog() {
           toast({
             title: "Rollback failed",
             description:
-              err instanceof ApiError ? err.message : "Could not reach the server.",
+              err instanceof ApiError
+                ? err.message
+                : "Could not reach the server.",
             variant: "destructive",
           }),
       },
@@ -135,7 +137,9 @@ export default function AuditLog() {
           toast({
             title: "Restore failed",
             description:
-              err instanceof ApiError ? err.message : "Could not reach the server.",
+              err instanceof ApiError
+                ? err.message
+                : "Could not reach the server.",
             variant: "destructive",
           }),
       },
@@ -307,8 +311,7 @@ export default function AuditLog() {
                           ) : (
                             <ChevronDown className="w-3 h-3" />
                           )}
-                          {changedFields.length} field(s)
-                          changed
+                          {changedFields.length} field(s) changed
                         </span>
                       )}
                     </div>
@@ -364,8 +367,13 @@ export default function AuditLog() {
                       // does elsewhere on this page.
                       const formatValue = (value: unknown) => {
                         if (value === null || value === undefined) return "—";
-                        if (field === "assigneeId" && typeof value === "string") {
-                          return users.find((u) => u.id === value)?.name ?? value;
+                        if (
+                          field === "assigneeId" &&
+                          typeof value === "string"
+                        ) {
+                          return (
+                            users.find((u) => u.id === value)?.name ?? value
+                          );
                         }
                         return String(value);
                       };

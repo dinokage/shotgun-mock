@@ -147,7 +147,7 @@ process.on("unhandledRejection", (reason) => {
         message: err.message,
         stack: err.stack,
         tenantId,
-      })
+      }),
     )
     .catch((resolveErr) => {
       console.error("Failed to capture unhandled rejection:", resolveErr);

@@ -55,77 +55,96 @@ pluginsRouter.get("/", async (req, res) => {
 // Re-installing something already installed is a no-op rather than a 409: two
 // producers clicking Install concurrently should both end up looking at the
 // same installed plugin.
-pluginsRouter.post("/:pluginId", requireCapability("manage_integrations"), async (req, res) => {
-  try {
-    const tenantId = req.tenantId!;
-    // Cast needed: combining requireCapability() (typed against the generic,
-    // path-agnostic Express Request) with this route's path typing makes TS
-    // widen req.params.pluginId to `string | string[]`.
-    const pluginId = req.params.pluginId as string;
-    if (!PLUGIN_ID_PATTERN.test(pluginId))
-      return res.status(400).json({ error: "pluginId must be a lowercase slug" });
+pluginsRouter.post(
+  "/:pluginId",
+  requireCapability("manage_integrations"),
+  async (req, res) => {
+    try {
+      const tenantId = req.tenantId!;
+      // Cast needed: combining requireCapability() (typed against the generic,
+      // path-agnostic Express Request) with this route's path typing makes TS
+      // widen req.params.pluginId to `string | string[]`.
+      const pluginId = req.params.pluginId as string;
+      if (!PLUGIN_ID_PATTERN.test(pluginId))
+        return res
+          .status(400)
+          .json({ error: "pluginId must be a lowercase slug" });
 
-    const row = await prisma.tenantPlugin.upsert({
-      where: { tenantId_pluginId: { tenantId, pluginId } },
-      create: {
-        id: crypto.randomUUID(),
-        tenantId,
-        pluginId,
-        installed: true,
-        enabled: true,
-        installedById: req.userId!,
-      },
-      update: { installed: true, enabled: true, installedById: req.userId! },
-    });
+      const row = await prisma.tenantPlugin.upsert({
+        where: { tenantId_pluginId: { tenantId, pluginId } },
+        create: {
+          id: crypto.randomUUID(),
+          tenantId,
+          pluginId,
+          installed: true,
+          enabled: true,
+          installedById: req.userId!,
+        },
+        update: { installed: true, enabled: true, installedById: req.userId! },
+      });
 
-    return res.status(201).json(tenantPluginDTO(row));
-  } catch (err) {
-    req.log.error(err, "Failed to install plugin");
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
+      return res.status(201).json(tenantPluginDTO(row));
+    } catch (err) {
+      req.log.error(err, "Failed to install plugin");
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
 
-pluginsRouter.patch("/:pluginId", requireCapability("manage_integrations"), async (req, res) => {
-  try {
-    const tenantId = req.tenantId!;
-    const pluginId = req.params.pluginId as string;
-    const { enabled } = req.body ?? {};
+pluginsRouter.patch(
+  "/:pluginId",
+  requireCapability("manage_integrations"),
+  async (req, res) => {
+    try {
+      const tenantId = req.tenantId!;
+      const pluginId = req.params.pluginId as string;
+      const { enabled } = req.body ?? {};
 
-    if (typeof enabled !== "boolean")
-      return res.status(400).json({ error: "enabled must be a boolean" });
+      if (typeof enabled !== "boolean")
+        return res.status(400).json({ error: "enabled must be a boolean" });
 
-    const existing = await prisma.tenantPlugin.findFirst({
-      where: { tenantId, pluginId, installed: true },
-      select: { id: true },
-    });
-    if (!existing) return res.status(404).json({ error: "Plugin is not installed" });
+      const existing = await prisma.tenantPlugin.findFirst({
+        where: { tenantId, pluginId, installed: true },
+        select: { id: true },
+      });
+      if (!existing)
+        return res.status(404).json({ error: "Plugin is not installed" });
 
-    const row = await prisma.tenantPlugin.update({ where: { id: existing.id }, data: { enabled } });
-    return res.json(tenantPluginDTO(row));
-  } catch (err) {
-    req.log.error(err, "Failed to update plugin");
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
+      const row = await prisma.tenantPlugin.update({
+        where: { id: existing.id },
+        data: { enabled },
+      });
+      return res.json(tenantPluginDTO(row));
+    } catch (err) {
+      req.log.error(err, "Failed to update plugin");
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
 
-pluginsRouter.delete("/:pluginId", requireCapability("manage_integrations"), async (req, res) => {
-  try {
-    const tenantId = req.tenantId!;
-    const pluginId = req.params.pluginId as string;
+pluginsRouter.delete(
+  "/:pluginId",
+  requireCapability("manage_integrations"),
+  async (req, res) => {
+    try {
+      const tenantId = req.tenantId!;
+      const pluginId = req.params.pluginId as string;
 
-    const existing = await prisma.tenantPlugin.findFirst({
-      where: { tenantId, pluginId },
-      select: { id: true },
-    });
-    if (!existing) return res.status(404).json({ error: "Plugin is not installed" });
+      const existing = await prisma.tenantPlugin.findFirst({
+        where: { tenantId, pluginId },
+        select: { id: true },
+      });
+      if (!existing)
+        return res.status(404).json({ error: "Plugin is not installed" });
 
-    // Removing the row is what "uninstalled" means here -- an absent row and a
-    // never-installed plugin have to read identically, or a reinstall would
-    // silently inherit the old enabled flag.
-    await prisma.tenantPlugin.delete({ where: { id: existing.id } });
-    return res.status(204).send();
-  } catch (err) {
-    req.log.error(err, "Failed to uninstall plugin");
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
+      // Removing the row is what "uninstalled" means here -- an absent row and a
+      // never-installed plugin have to read identically, or a reinstall would
+      // silently inherit the old enabled flag.
+      await prisma.tenantPlugin.delete({ where: { id: existing.id } });
+      return res.status(204).send();
+    } catch (err) {
+      req.log.error(err, "Failed to uninstall plugin");
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);

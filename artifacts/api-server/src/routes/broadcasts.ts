@@ -155,17 +155,16 @@ broadcastsRouter.post(
       if (!AUDIENCES.includes(resolvedAudience))
         return res.status(400).json({ error: "Invalid audience" });
 
-      const resolvedSeverity =
-        typeof severity === "string" ? severity : "info";
+      const resolvedSeverity = typeof severity === "string" ? severity : "info";
       if (!SEVERITIES.includes(resolvedSeverity))
         return res.status(400).json({ error: "Invalid severity" });
 
       // A client-facing broadcast with no project has no client portal to
       // land on, and an unvalidated one could land on another tenant's.
       if (resolvedAudience === "internal_and_client" && !projectId)
-        return res
-          .status(400)
-          .json({ error: "projectId is required for a client-facing broadcast" });
+        return res.status(400).json({
+          error: "projectId is required for a client-facing broadcast",
+        });
       if (projectId && !(await projectInTenant(projectId, tenantId)))
         return res.status(400).json({ error: "Invalid projectId" });
 

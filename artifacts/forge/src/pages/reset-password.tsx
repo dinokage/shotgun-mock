@@ -149,8 +149,8 @@ export default function ResetPassword() {
                   />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  At least {MIN_PASSWORD_LENGTH} characters. This link works once
-                  and expires 30 minutes after it was requested.
+                  At least {MIN_PASSWORD_LENGTH} characters. This link works
+                  once and expires 30 minutes after it was requested.
                 </p>
                 <Button
                   type="submit"

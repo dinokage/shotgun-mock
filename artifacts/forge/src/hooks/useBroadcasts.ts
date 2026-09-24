@@ -64,6 +64,7 @@ export function useCreateBroadcast() {
       projectId: string | null;
       severity: Broadcast["severity"];
     }) => apiClient.post<BroadcastDTO>("/broadcasts", body),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["broadcasts"] }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["broadcasts"] }),
   });
 }

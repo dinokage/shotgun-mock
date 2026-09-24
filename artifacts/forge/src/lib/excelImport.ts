@@ -73,7 +73,10 @@ export function parseSpreadsheet(file: File): Promise<ImportRow[]> {
 export function getField(row: ImportRow, candidates: string[]): string {
   const normalizedKeys = Object.keys(row).map((k) => ({
     key: k,
-    norm: k.trim().toLowerCase().replace(/[\s_-]+/g, ""),
+    norm: k
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_-]+/g, ""),
   }));
   for (const candidate of candidates) {
     const normCandidate = candidate.toLowerCase().replace(/[\s_-]+/g, "");
@@ -84,7 +87,9 @@ export function getField(row: ImportRow, candidates: string[]): string {
 }
 
 /** All sheets in a workbook, each parsed the same way as parseSpreadsheet. */
-export function parseWorkbook(file: File): Promise<Record<string, ImportRow[]>> {
+export function parseWorkbook(
+  file: File,
+): Promise<Record<string, ImportRow[]>> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(reader.error);

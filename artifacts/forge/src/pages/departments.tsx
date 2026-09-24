@@ -229,7 +229,9 @@ export default function Departments() {
                               <div className="flex items-center gap-3">
                                 <div
                                   className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-xs shadow-lg"
-                                  style={{ backgroundColor: dept.color ?? undefined }}
+                                  style={{
+                                    backgroundColor: dept.color ?? undefined,
+                                  }}
                                 >
                                   {dept.abbr}
                                 </div>
@@ -258,7 +260,9 @@ export default function Departments() {
                                 <div className="flex items-center gap-2 flex-1 min-w-0">
                                   <Avatar
                                     className="w-7 h-7 border-2"
-                                    style={{ borderColor: dept.color ?? undefined }}
+                                    style={{
+                                      borderColor: dept.color ?? undefined,
+                                    }}
                                   >
                                     <AvatarImage src={supervisor.avatar} />
                                     <AvatarFallback className="text-[10px]">

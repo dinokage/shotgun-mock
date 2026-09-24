@@ -41,7 +41,9 @@ async function main() {
     where: { tenantId: grantedBy.tenantId, name: PROJECT_NAME },
   });
   if (!project) {
-    console.error(`Project "${PROJECT_NAME}" not found in this tenant. Aborting.`);
+    console.error(
+      `Project "${PROJECT_NAME}" not found in this tenant. Aborting.`,
+    );
     process.exit(1);
   }
 
@@ -67,7 +69,9 @@ async function main() {
         tokenVersion: { increment: 1 },
       },
     });
-    console.log(`Existing account ${CLIENT_EMAIL} updated with a fresh password.`);
+    console.log(
+      `Existing account ${CLIENT_EMAIL} updated with a fresh password.`,
+    );
   } else {
     clientUser = await prisma.user.create({
       data: {
@@ -84,7 +88,9 @@ async function main() {
   }
 
   await prisma.clientProjectAccess.upsert({
-    where: { userId_projectId: { userId: clientUser.id, projectId: project.id } },
+    where: {
+      userId_projectId: { userId: clientUser.id, projectId: project.id },
+    },
     update: {},
     create: {
       id: crypto.randomUUID(),
@@ -99,7 +105,9 @@ async function main() {
   console.log(`Client test account ready: ${CLIENT_EMAIL}`);
   console.log(`Granted access to: ${PROJECT_NAME}`);
   console.log("Password set from TEST_CLIENT_PASSWORD.");
-  console.log('Log in normally, then go to /client-review -- signed-in clients bypass the access code.');
+  console.log(
+    "Log in normally, then go to /client-review -- signed-in clients bypass the access code.",
+  );
   console.log("");
 }
 

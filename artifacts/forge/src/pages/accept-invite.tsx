@@ -103,7 +103,11 @@ export default function AcceptInvite() {
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
                   <Label>Email</Label>
-                  <Input value={invite.email} disabled className="bg-background/30" />
+                  <Input
+                    value={invite.email}
+                    disabled
+                    className="bg-background/30"
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="name">Your Name</Label>

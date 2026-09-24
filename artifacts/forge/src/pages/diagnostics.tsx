@@ -51,9 +51,9 @@ export default function Diagnostics() {
       <div>
         <h1 className="text-2xl font-semibold">Diagnostics</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Errors caught across the platform — the API and every browser
-          session. Collected on this server, because the studio has no
-          outbound internet for a hosted service to report to.
+          Errors caught across the platform — the API and every browser session.
+          Collected on this server, because the studio has no outbound internet
+          for a hosted service to report to.
         </p>
       </div>
 
@@ -90,7 +90,9 @@ export default function Diagnostics() {
 
       {summary && summary.groups.length > 0 && (
         <div>
-          <h2 className="text-sm font-medium mb-2">Most frequent, last 7 days</h2>
+          <h2 className="text-sm font-medium mb-2">
+            Most frequent, last 7 days
+          </h2>
           <div className="border border-border rounded-lg divide-y divide-border">
             {summary.groups.slice(0, 8).map((g) => (
               <div
@@ -105,7 +107,9 @@ export default function Diagnostics() {
                   )}
                   {g.source}
                 </Badge>
-                <span className="font-mono text-xs truncate flex-1">{g.kind}</span>
+                <span className="font-mono text-xs truncate flex-1">
+                  {g.kind}
+                </span>
                 <span className="text-muted-foreground text-xs">
                   {g.lastSeen
                     ? `${formatDistanceToNowStrict(new Date(g.lastSeen))} ago`
@@ -121,7 +125,10 @@ export default function Diagnostics() {
       )}
 
       <div className="flex items-center gap-3 flex-wrap">
-        <Tabs value={source} onValueChange={(v) => setSource(v as typeof source)}>
+        <Tabs
+          value={source}
+          onValueChange={(v) => setSource(v as typeof source)}
+        >
           <TabsList>
             <TabsTrigger value="">All sources</TabsTrigger>
             <TabsTrigger value="api">API</TabsTrigger>
@@ -198,7 +205,9 @@ function ErrorRow({
         <Icon className="w-4 h-4 mt-0.5 shrink-0 text-muted-foreground" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-mono text-xs font-semibold">{event.kind}</span>
+            <span className="font-mono text-xs font-semibold">
+              {event.kind}
+            </span>
             {event.statusCode && (
               <Badge variant="outline" className="text-[10px]">
                 {event.statusCode}

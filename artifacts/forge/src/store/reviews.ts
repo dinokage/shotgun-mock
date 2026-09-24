@@ -78,7 +78,11 @@ export const useReviewStore = create<ReviewState>()(
       // through the backend and re-fetched via setReviews/setVersions on
       // login and the 10s poll), so there is nothing genuine to lose.
       version: 4,
-      migrate: () => ({ reviews: [], versions: [], currentVersionOverrides: {} }),
+      migrate: () => ({
+        reviews: [],
+        versions: [],
+        currentVersionOverrides: {},
+      }),
     },
   ),
 );

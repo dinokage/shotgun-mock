@@ -95,7 +95,10 @@ function matchDepartmentArtistColumn(
     if (!stem) continue;
     if (
       normalizeKey(department.abbr) === stem ||
-      department.name.toLowerCase().replace(/[^a-z0-9]+/g, "").includes(stem)
+      department.name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "")
+        .includes(stem)
     ) {
       return row[key] || null;
     }
@@ -154,16 +157,22 @@ export function TracksheetImportDialog({
     // Local caches so we don't re-create the same episode/sequence for
     // every row, or re-query mid-import -- these accumulate real ids
     // returned by the create calls as they happen.
-    const episodeCache = new Map(episodes.map((e) => [e.name.toLowerCase(), e.id]));
+    const episodeCache = new Map(
+      episodes.map((e) => [e.name.toLowerCase(), e.id]),
+    );
     const sequenceCache = new Map(
-      sequences.map((s) => [`${s.episodeId ?? ""}::${s.name.toLowerCase()}`, s.id]),
+      sequences.map((s) => [
+        `${s.episodeId ?? ""}::${s.name.toLowerCase()}`,
+        s.id,
+      ]),
     );
     const shotCache = new Map(shots.map((s) => [s.name.toLowerCase(), s.id]));
 
     try {
       const sheets = await parseWorkbook(file);
       const totalRows = Object.values(sheets).reduce(
-        (sum, rows) => sum + rows.filter((row) => getField(row, SHOT_CODE_FIELDS)).length,
+        (sum, rows) =>
+          sum + rows.filter((row) => getField(row, SHOT_CODE_FIELDS)).length,
         0,
       );
       setProgress({ done: 0, total: totalRows });
@@ -180,7 +189,9 @@ export function TracksheetImportDialog({
           // contains real shot rows first. A studio that keeps everything
           // on one flat sheet (no per-episode split at all) still gets a
           // real import instead of a confusing "0 rows" result.
-          const hasShotRows = rows.some((row) => getField(row, SHOT_CODE_FIELDS));
+          const hasShotRows = rows.some((row) =>
+            getField(row, SHOT_CODE_FIELDS),
+          );
           if (!hasShotRows) continue; // genuinely a reference sheet
           episodeName = "General";
         }
@@ -202,7 +213,12 @@ export function TracksheetImportDialog({
             episodeId = created.id;
             episodeCache.set(episodeName.toLowerCase(), episodeId);
           } catch (err: any) {
-            outcomes.push({ sheet: sheetName, shotCode: "(episode)", status: "skipped", reason: err?.message });
+            outcomes.push({
+              sheet: sheetName,
+              shotCode: "(episode)",
+              status: "skipped",
+              reason: err?.message,
+            });
             continue;
           }
         }
@@ -216,7 +232,9 @@ export function TracksheetImportDialog({
           if (!shotCode) continue; // blank/subtotal row
           const seqName = getField(row, ["SEQ#", "Sequence"]) || "Unassigned";
 
-          let sequenceId = sequenceCache.get(`${episodeId}::${seqName.toLowerCase()}`);
+          let sequenceId = sequenceCache.get(
+            `${episodeId}::${seqName.toLowerCase()}`,
+          );
           if (!sequenceId) {
             try {
               const created = await apiFetch<SequenceDTO>("/sequences", {
@@ -224,9 +242,17 @@ export function TracksheetImportDialog({
                 body: JSON.stringify({ projectId, episodeId, name: seqName }),
               });
               sequenceId = created.id;
-              sequenceCache.set(`${episodeId}::${seqName.toLowerCase()}`, sequenceId);
+              sequenceCache.set(
+                `${episodeId}::${seqName.toLowerCase()}`,
+                sequenceId,
+              );
             } catch (err: any) {
-              outcomes.push({ sheet: sheetName, shotCode, status: "skipped", reason: `sequence: ${err?.message}` });
+              outcomes.push({
+                sheet: sheetName,
+                shotCode,
+                status: "skipped",
+                reason: `sequence: ${err?.message}`,
+              });
               continue;
             }
           }
@@ -259,7 +285,12 @@ export function TracksheetImportDialog({
               isNewShot = true;
               shotCache.set(shotCode.toLowerCase(), shotId);
             } catch (err: any) {
-              outcomes.push({ sheet: sheetName, shotCode, status: "skipped", reason: `shot: ${err?.message}` });
+              outcomes.push({
+                sheet: sheetName,
+                shotCode,
+                status: "skipped",
+                reason: `shot: ${err?.message}`,
+              });
               continue;
             }
           }
@@ -286,7 +317,11 @@ export function TracksheetImportDialog({
           // name avoids that false positive while still matching partial
           // real names ("Yathendra" against "Yathendra Sri Sai Hanuma Pudi").
           const resolveArtist = (name: string | null) => {
-            const words = (name || "").toLowerCase().trim().split(/\s+/).filter(Boolean);
+            const words = (name || "")
+              .toLowerCase()
+              .trim()
+              .split(/\s+/)
+              .filter(Boolean);
             if (!words.length) return undefined;
             return users.find((u) => {
               if (u.role !== "artist") return false;
@@ -309,33 +344,56 @@ export function TracksheetImportDialog({
           // with just a bare "Status" column, or one whose column names don't
           // match anything in this tenant's own department roster).
           const departmentColumns = Object.keys(row)
-            .map((key) => ({ key, department: matchDepartmentColumn(key, departments) }))
+            .map((key) => ({
+              key,
+              department: matchDepartmentColumn(key, departments),
+            }))
             .filter(
               (c): c is { key: string; department: DepartmentDTO } =>
                 !!c.department && !!(row[c.key] || "").trim(),
             );
 
           const consumedKeys = new Set(
-            [...SHOT_CODE_FIELDS, "SEQ#", "Sequence", "FR", "Frames",
-             "Frame Range", "Sec", "Duration", "Artist Name", "Artist",
-             "Start Date", "End Date", "SL#", ...GENERIC_STATUS_FIELDS,
-             ...departmentColumns.map((c) => c.key)]
-              .map(normalizeKey),
+            [
+              ...SHOT_CODE_FIELDS,
+              "SEQ#",
+              "Sequence",
+              "FR",
+              "Frames",
+              "Frame Range",
+              "Sec",
+              "Duration",
+              "Artist Name",
+              "Artist",
+              "Start Date",
+              "End Date",
+              "SL#",
+              ...GENERIC_STATUS_FIELDS,
+              ...departmentColumns.map((c) => c.key),
+            ].map(normalizeKey),
           );
 
-          const tasksToCreate: { department: DepartmentDTO | null; status: string; assigneeId: string | null }[] =
+          const tasksToCreate: {
+            department: DepartmentDTO | null;
+            status: string;
+            assigneeId: string | null;
+          }[] =
             departmentColumns.length > 0
               ? departmentColumns.map(({ key, department }) => ({
                   department,
                   status: (row[key] || "").trim() || "ready",
                   assigneeId:
-                    resolveArtist(matchDepartmentArtistColumn(row, department))?.id ??
+                    resolveArtist(matchDepartmentArtistColumn(row, department))
+                      ?.id ??
                     resolveArtist(sharedArtistName)?.id ??
                     null,
                 }))
               : [
                   {
-                    department: departments.find((d) => normalizeKey(d.abbr) === "anim") ?? null,
+                    department:
+                      departments.find(
+                        (d) => normalizeKey(d.abbr) === "anim",
+                      ) ?? null,
                     status: getField(row, GENERIC_STATUS_FIELDS) || "ready",
                     assigneeId: resolveArtist(sharedArtistName)?.id ?? null,
                   },
@@ -347,9 +405,7 @@ export function TracksheetImportDialog({
             .join("; ");
 
           for (const task of tasksToCreate) {
-            const label = task.department
-              ? task.department.name
-              : "Animation";
+            const label = task.department ? task.department.name : "Animation";
             try {
               await apiFetch("/tasks", {
                 method: "POST",
@@ -374,13 +430,19 @@ export function TracksheetImportDialog({
               });
               outcomes.push({
                 sheet: sheetName,
-                shotCode: tasksToCreate.length > 1 ? `${shotCode} (${label})` : shotCode,
+                shotCode:
+                  tasksToCreate.length > 1
+                    ? `${shotCode} (${label})`
+                    : shotCode,
                 status: "created",
               });
             } catch (err: any) {
               outcomes.push({
                 sheet: sheetName,
-                shotCode: tasksToCreate.length > 1 ? `${shotCode} (${label})` : shotCode,
+                shotCode:
+                  tasksToCreate.length > 1
+                    ? `${shotCode} (${label})`
+                    : shotCode,
                 status: "skipped",
                 reason: err?.message,
               });
@@ -412,7 +474,7 @@ export function TracksheetImportDialog({
         toast({
           title: "No shot rows found",
           description:
-            "None of the sheets in this file had a recognizable shot column (e.g. \"Shot Code\", \"SC#\", or \"Shot\"). Check the file and try again.",
+            'None of the sheets in this file had a recognizable shot column (e.g. "Shot Code", "SC#", or "Shot"). Check the file and try again.',
           variant: "destructive",
         });
       } else {
@@ -449,13 +511,13 @@ export function TracksheetImportDialog({
         <DialogHeader>
           <DialogTitle>Import Tracksheet</DialogTitle>
           <DialogDescription>
-            Import a tracksheet in whatever layout your studio already keeps
-            it in -- one sheet per episode (e.g. "Ep002"), or a single flat
-            sheet with everything on it. Each row creates or reuses an
-            Episode, Sequence, and Shot, plus one task carrying that row's
-            status, artist, and dates. Column names don't need to match
-            exactly (e.g. "Shot", "Shot Name", "Shot Code" all work); sheets
-            with no recognizable shot column are skipped as reference tabs.
+            Import a tracksheet in whatever layout your studio already keeps it
+            in -- one sheet per episode (e.g. "Ep002"), or a single flat sheet
+            with everything on it. Each row creates or reuses an Episode,
+            Sequence, and Shot, plus one task carrying that row's status,
+            artist, and dates. Column names don't need to match exactly (e.g.
+            "Shot", "Shot Name", "Shot Code" all work); sheets with no
+            recognizable shot column are skipped as reference tabs.
           </DialogDescription>
         </DialogHeader>
 
@@ -489,7 +551,9 @@ export function TracksheetImportDialog({
           />
           <div
             className={`border-2 border-dashed border-border rounded-lg p-6 flex flex-col items-center justify-center text-center transition-colors group ${
-              projectId ? "hover:bg-muted/30 cursor-pointer" : "opacity-50 cursor-not-allowed"
+              projectId
+                ? "hover:bg-muted/30 cursor-pointer"
+                : "opacity-50 cursor-not-allowed"
             }`}
             onClick={() => projectId && fileInputRef.current?.click()}
           >
@@ -509,17 +573,24 @@ export function TracksheetImportDialog({
           {results && (
             <div className="space-y-1 border border-border rounded-lg p-3 bg-muted/20 max-h-56 overflow-y-auto">
               <div className="text-sm font-medium border-b border-border/50 pb-1 mb-1">
-                {results.filter((r) => r.status === "created").length}/{results.length} rows imported
+                {results.filter((r) => r.status === "created").length}/
+                {results.length} rows imported
               </div>
               {results.map((r, i) => (
                 <div
                   key={i}
                   className={`text-xs flex items-center justify-between gap-2 ${
-                    r.status === "created" ? "text-emerald-500" : "text-muted-foreground"
+                    r.status === "created"
+                      ? "text-emerald-500"
+                      : "text-muted-foreground"
                   }`}
                 >
-                  <span className="truncate">{r.sheet} / {r.shotCode}</span>
-                  <span className="shrink-0">{r.status === "created" ? "OK" : r.reason}</span>
+                  <span className="truncate">
+                    {r.sheet} / {r.shotCode}
+                  </span>
+                  <span className="shrink-0">
+                    {r.status === "created" ? "OK" : r.reason}
+                  </span>
                 </div>
               ))}
             </div>

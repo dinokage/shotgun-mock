@@ -65,8 +65,9 @@ export function TopBar() {
   // Muted categories (see Settings > Notifications) are hidden here too, same as the full notifications page.
   const visibleNotifs = notifications.filter(
     (n) =>
-      notificationPreferences[n.category as keyof typeof notificationPreferences]
-        ?.push !== false,
+      notificationPreferences[
+        n.category as keyof typeof notificationPreferences
+      ]?.push !== false,
   );
   const unreadNotifs = visibleNotifs.filter((n) => !n.read).length;
 

@@ -74,7 +74,8 @@ export function usePipelineTemplates() {
 export function useProjectPipeline(projectId: string | undefined) {
   return useQuery<ProjectPipelineResponse>({
     queryKey: ["project-pipeline", projectId ?? "none"],
-    queryFn: () => apiFetch<ProjectPipelineResponse>(`/projects/${projectId}/pipeline`),
+    queryFn: () =>
+      apiFetch<ProjectPipelineResponse>(`/projects/${projectId}/pipeline`),
     enabled: !!projectId,
     staleTime: 30000,
   });
@@ -87,12 +88,14 @@ export function useBindProjectPipeline(projectId: string | undefined) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (templateId: string) =>
-      apiClient.post<{ projectId: string; pipeline: ResolvedProjectPipelineDTO | null }>(
-        `/projects/${projectId}/pipeline`,
-        { templateId },
-      ),
+      apiClient.post<{
+        projectId: string;
+        pipeline: ResolvedProjectPipelineDTO | null;
+      }>(`/projects/${projectId}/pipeline`, { templateId }),
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["project-pipeline", projectId ?? "none"] }),
+      queryClient.invalidateQueries({
+        queryKey: ["project-pipeline", projectId ?? "none"],
+      }),
   });
 }
 
@@ -104,7 +107,9 @@ export function useUnbindProjectPipeline(projectId: string | undefined) {
     mutationFn: (templateId: string) =>
       apiClient.delete(`/projects/${projectId}/pipeline/${templateId}`),
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["project-pipeline", projectId ?? "none"] }),
+      queryClient.invalidateQueries({
+        queryKey: ["project-pipeline", projectId ?? "none"],
+      }),
   });
 }
 
@@ -114,12 +119,17 @@ export function useUnbindProjectPipeline(projectId: string | undefined) {
 export function useUpdateProjectPipeline(projectId: string | undefined) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: { templateId: string; stageOverrides: Record<string, StageOverride> }) =>
-      apiClient.put<{ projectId: string; pipeline: ResolvedProjectPipelineDTO | null }>(
-        `/projects/${projectId}/pipeline`,
-        body,
-      ),
+    mutationFn: (body: {
+      templateId: string;
+      stageOverrides: Record<string, StageOverride>;
+    }) =>
+      apiClient.put<{
+        projectId: string;
+        pipeline: ResolvedProjectPipelineDTO | null;
+      }>(`/projects/${projectId}/pipeline`, body),
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["project-pipeline", projectId ?? "none"] }),
+      queryClient.invalidateQueries({
+        queryKey: ["project-pipeline", projectId ?? "none"],
+      }),
   });
 }

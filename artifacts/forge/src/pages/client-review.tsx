@@ -101,7 +101,12 @@ function resolveThumbnailSeed(
     currentVersion: string;
     thumbnailSeed: number;
   },
-  versions: { entityType: string; entityId: string; versionNumber: string; thumbnailSeed: number }[],
+  versions: {
+    entityType: string;
+    entityId: string;
+    versionNumber: string;
+    thumbnailSeed: number;
+  }[],
 ): number {
   const currentVersionRecord = versions.find(
     (v) =>
@@ -206,8 +211,13 @@ export default function ClientReview() {
         canvas.toBlob(resolve, "image/png"),
       );
       if (!blob) return;
-      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-      toast({ title: "Screenshot copied", description: "The current frame is on your clipboard." });
+      await navigator.clipboard.write([
+        new ClipboardItem({ "image/png": blob }),
+      ]);
+      toast({
+        title: "Screenshot copied",
+        description: "The current frame is on your clipboard.",
+      });
     } catch (err: any) {
       toast({
         title: "Couldn't copy screenshot",
@@ -238,7 +248,9 @@ export default function ClientReview() {
   // VERSIONS, so placeholder art still renders when a shot has no matching
   // Version row.
   const { data: activeProjectShotsRaw = [] } = useShotsQuery(
-    isExplicitClient && activeReviewProjectId ? activeReviewProjectId : undefined,
+    isExplicitClient && activeReviewProjectId
+      ? activeReviewProjectId
+      : undefined,
   );
 
   // Task due dates + upcoming delivery expirations across every project this
@@ -248,11 +260,34 @@ export default function ClientReview() {
   // this page; never returns assignee/description/hours, only what a client
   // should actually see.
   interface ClientCalendarData {
-    tasks: { id: string; title: string; dueDate: string; status: string; shotId: string; shotName: string | null; projectId: string | null }[];
-    completedTasks: { id: string; title: string; completedAt: string; status: string; shotId: string; shotName: string | null; projectId: string | null }[];
-    deliveries: { id: string; name: string; expiresAt: string | null; projectId: string | null }[];
+    tasks: {
+      id: string;
+      title: string;
+      dueDate: string;
+      status: string;
+      shotId: string;
+      shotName: string | null;
+      projectId: string | null;
+    }[];
+    completedTasks: {
+      id: string;
+      title: string;
+      completedAt: string;
+      status: string;
+      shotId: string;
+      shotName: string | null;
+      projectId: string | null;
+    }[];
+    deliveries: {
+      id: string;
+      name: string;
+      expiresAt: string | null;
+      projectId: string | null;
+    }[];
   }
-  const [clientView, setClientView] = useState<"reviews" | "calendar" | "chat">("reviews");
+  const [clientView, setClientView] = useState<"reviews" | "calendar" | "chat">(
+    "reviews",
+  );
   const { data: calendarData } = useQuery<ClientCalendarData>({
     queryKey: ["client-calendar"],
     queryFn: () => apiClient.get<ClientCalendarData>("/client-access/calendar"),
@@ -262,7 +297,13 @@ export default function ClientReview() {
   const upcomingItems = useMemo(() => {
     if (!calendarData) return [];
     const now = Date.now();
-    const items: { id: string; label: string; date: Date; kind: "task" | "delivery"; shotId?: string }[] = [];
+    const items: {
+      id: string;
+      label: string;
+      date: Date;
+      kind: "task" | "delivery";
+      shotId?: string;
+    }[] = [];
     for (const t of calendarData.tasks) {
       if (!t.dueDate) continue;
       items.push({
@@ -369,7 +410,9 @@ export default function ClientReview() {
   // has access to (see GET /chat/client-channels) -- production_head and
   // department leads, never artists, per the studio's own requirement.
   const { data: chatChannels = [] } = useClientChatChannels();
-  const [activeChatChannelId, setActiveChatChannelId] = useState<string | null>(null);
+  const [activeChatChannelId, setActiveChatChannelId] = useState<string | null>(
+    null,
+  );
   useEffect(() => {
     if (!activeChatChannelId && chatChannels.length > 0) {
       setActiveChatChannelId(chatChannels[0].id);
@@ -378,7 +421,10 @@ export default function ClientReview() {
   const { messages: chatMessages } = useChatMessages(activeChatChannelId);
   const postChatMessage = usePostChatMessage();
   const [chatInput, setChatInput] = useState("");
-  const chatTotalUnread = chatChannels.reduce((sum, c) => sum + c.unreadCount, 0);
+  const chatTotalUnread = chatChannels.reduce(
+    (sum, c) => sum + c.unreadCount,
+    0,
+  );
   const handleSendChat = () => {
     const body = chatInput.trim();
     if (!body || !activeChatChannelId) return;
@@ -554,7 +600,11 @@ export default function ClientReview() {
   const activeVersionPoster = useMemo(
     () =>
       activeShot
-        ? getPlaceholderThumbnail(resolveThumbnailSeed(activeShot, versions), 1280, 720)
+        ? getPlaceholderThumbnail(
+            resolveThumbnailSeed(activeShot, versions),
+            1280,
+            720,
+          )
         : undefined,
     [activeShot],
   );
@@ -566,7 +616,10 @@ export default function ClientReview() {
   // the placeholder only when the version genuinely has no media yet, so
   // the player still shows *something* rather than a blank frame.
   const hasRealMedia = !!activeVersion?.mediaUrl;
-  const activeMediaExt = activeVersion?.mediaUrl?.split(".").pop()?.toLowerCase();
+  const activeMediaExt = activeVersion?.mediaUrl
+    ?.split(".")
+    .pop()
+    ?.toLowerCase();
   const activeMediaIsImage = ["png", "jpg", "jpeg", "gif", "webp"].includes(
     activeMediaExt || "",
   );
@@ -839,21 +892,36 @@ export default function ClientReview() {
         </div>
       </div>
       <nav className="flex-1 p-3 space-y-1">
-        <button className={navItemClass("reviews")} onClick={() => setClientView("reviews")}>
+        <button
+          className={navItemClass("reviews")}
+          onClick={() => setClientView("reviews")}
+        >
           <Inbox className="w-4 h-4" /> Reviews
         </button>
-        <button className={navItemClass("calendar")} onClick={() => setClientView("calendar")}>
+        <button
+          className={navItemClass("calendar")}
+          onClick={() => setClientView("calendar")}
+        >
           <CalendarDays className="w-4 h-4" /> Calendar
           {upcomingItems.length > 0 && (
-            <Badge variant="outline" className="ml-auto h-5 px-1.5 border-primary/30 text-primary">
+            <Badge
+              variant="outline"
+              className="ml-auto h-5 px-1.5 border-primary/30 text-primary"
+            >
               {upcomingItems.length}
             </Badge>
           )}
         </button>
-        <button className={navItemClass("chat")} onClick={() => setClientView("chat")}>
+        <button
+          className={navItemClass("chat")}
+          onClick={() => setClientView("chat")}
+        >
           <MessageSquare className="w-4 h-4" /> Chat
           {chatTotalUnread > 0 && (
-            <Badge variant="outline" className="ml-auto h-5 px-1.5 border-primary/30 text-primary">
+            <Badge
+              variant="outline"
+              className="ml-auto h-5 px-1.5 border-primary/30 text-primary"
+            >
               {chatTotalUnread}
             </Badge>
           )}
@@ -885,7 +953,9 @@ export default function ClientReview() {
         {clientView === "calendar" ? (
           <div className="flex-1 overflow-y-auto">
             <div className="max-w-5xl mx-auto px-8 py-8">
-              <h1 className="text-2xl font-bold tracking-tight mb-1">Calendar</h1>
+              <h1 className="text-2xl font-bold tracking-tight mb-1">
+                Calendar
+              </h1>
               <p className="text-zinc-400 text-sm mb-6">
                 Task due dates, completed work, and delivery windows across
                 every project you have access to.
@@ -941,14 +1011,16 @@ export default function ClientReview() {
 
               <div className="border border-white/10 rounded-xl overflow-hidden bg-zinc-900/20">
                 <div className="grid grid-cols-7 border-b border-white/10 bg-zinc-900/40">
-                  {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
-                    <div
-                      key={d}
-                      className="px-2 py-2 text-center text-[10px] uppercase tracking-wide text-zinc-500 font-semibold"
-                    >
-                      {d}
-                    </div>
-                  ))}
+                  {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
+                    (d) => (
+                      <div
+                        key={d}
+                        className="px-2 py-2 text-center text-[10px] uppercase tracking-wide text-zinc-500 font-semibold"
+                      >
+                        {d}
+                      </div>
+                    ),
+                  )}
                 </div>
                 {calendarWeeks.weeks.map((week, wi) => (
                   <div
@@ -956,14 +1028,21 @@ export default function ClientReview() {
                     className="grid grid-cols-7 border-b border-white/5 last:border-b-0"
                   >
                     {week.map((day) => {
-                      const inMonth = day.getMonth() === calendarMonth.getMonth();
+                      const inMonth =
+                        day.getMonth() === calendarMonth.getMonth();
                       const key = dayKey(day);
                       const events = calendarEventsByDay.get(key) ?? [];
                       const isToday = key === dayKey(today);
                       const isSelected = key === dayKey(selectedDay);
-                      const dueCount = events.filter((e) => e.kind === "due").length;
-                      const doneCount = events.filter((e) => e.kind === "completed").length;
-                      const deliveryCount = events.filter((e) => e.kind === "delivery").length;
+                      const dueCount = events.filter(
+                        (e) => e.kind === "due",
+                      ).length;
+                      const doneCount = events.filter(
+                        (e) => e.kind === "completed",
+                      ).length;
+                      const deliveryCount = events.filter(
+                        (e) => e.kind === "delivery",
+                      ).length;
                       return (
                         <button
                           key={key}
@@ -990,7 +1069,8 @@ export default function ClientReview() {
                                   className="flex items-center gap-0.5 text-[9px] font-medium text-primary bg-primary/10 rounded px-1"
                                   title={`${dueCount} due`}
                                 >
-                                  <CalendarDays className="w-2.5 h-2.5" /> {dueCount}
+                                  <CalendarDays className="w-2.5 h-2.5" />{" "}
+                                  {dueCount}
                                 </span>
                               )}
                               {doneCount > 0 && (
@@ -998,7 +1078,8 @@ export default function ClientReview() {
                                   className="flex items-center gap-0.5 text-[9px] font-medium text-emerald-400 bg-emerald-400/10 rounded px-1"
                                   title={`${doneCount} completed`}
                                 >
-                                  <CheckCircle2 className="w-2.5 h-2.5" /> {doneCount}
+                                  <CheckCircle2 className="w-2.5 h-2.5" />{" "}
+                                  {doneCount}
                                 </span>
                               )}
                               {deliveryCount > 0 && (
@@ -1006,7 +1087,8 @@ export default function ClientReview() {
                                   className="flex items-center gap-0.5 text-[9px] font-medium text-amber-400 bg-amber-400/10 rounded px-1"
                                   title={`${deliveryCount} delivery`}
                                 >
-                                  <PackageCheck className="w-2.5 h-2.5" /> {deliveryCount}
+                                  <PackageCheck className="w-2.5 h-2.5" />{" "}
+                                  {deliveryCount}
                                 </span>
                               )}
                             </div>
@@ -1042,7 +1124,9 @@ export default function ClientReview() {
                           if (item.kind !== "delivery" && item.shotId) {
                             const shot =
                               shots.find((s) => s.id === item.shotId) ??
-                              activeProjectShots.find((s) => s.id === item.shotId);
+                              activeProjectShots.find(
+                                (s) => s.id === item.shotId,
+                              );
                             if (shot) {
                               setActiveReviewId(shot.id);
                               setClientView("reviews");
@@ -1063,7 +1147,9 @@ export default function ClientReview() {
                           <CalendarDays className="w-5 h-5 text-primary shrink-0" />
                         )}
                         <div className="min-w-0 flex-1">
-                          <div className="text-sm font-medium">{item.label}</div>
+                          <div className="text-sm font-medium">
+                            {item.label}
+                          </div>
                         </div>
                       </button>
                     ))}
@@ -1072,9 +1158,9 @@ export default function ClientReview() {
               </div>
 
               <p className="text-xs text-zinc-600 mt-6">
-                Need an update on something? Open Chat to message the
-                production team directly, or open a task above to leave a
-                note on that shot.
+                Need an update on something? Open Chat to message the production
+                team directly, or open a task above to leave a note on that
+                shot.
               </p>
             </div>
           </div>
@@ -1086,8 +1172,8 @@ export default function ClientReview() {
               </div>
               {chatChannels.length === 0 ? (
                 <p className="text-xs text-zinc-500 p-4">
-                  No chat channel yet -- your studio contact sets this up
-                  once you're granted project access.
+                  No chat channel yet -- your studio contact sets this up once
+                  you're granted project access.
                 </p>
               ) : (
                 <div className="p-2 space-y-1">
@@ -1103,7 +1189,9 @@ export default function ClientReview() {
                     >
                       <span className="truncate">{c.name}</span>
                       {c.unreadCount > 0 && (
-                        <Badge className="h-5 px-1.5 shrink-0">{c.unreadCount}</Badge>
+                        <Badge className="h-5 px-1.5 shrink-0">
+                          {c.unreadCount}
+                        </Badge>
                       )}
                     </button>
                   ))}
@@ -1119,7 +1207,10 @@ export default function ClientReview() {
                 <>
                   <div className="h-16 px-6 flex items-center border-b border-white/10 shrink-0">
                     <h2 className="text-sm font-semibold">
-                      {chatChannels.find((c) => c.id === activeChatChannelId)?.name}
+                      {
+                        chatChannels.find((c) => c.id === activeChatChannelId)
+                          ?.name
+                      }
                     </h2>
                   </div>
                   <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
@@ -1148,7 +1239,9 @@ export default function ClientReview() {
                                 </div>
                               )}
                               {m.body && (
-                                <div className="text-sm whitespace-pre-wrap">{m.body}</div>
+                                <div className="text-sm whitespace-pre-wrap">
+                                  {m.body}
+                                </div>
                               )}
                               {m.attachmentUrl && (
                                 <a
@@ -1164,10 +1257,13 @@ export default function ClientReview() {
                               <div
                                 className={`text-[10px] mt-1 ${mine ? "text-primary-foreground/70" : "text-zinc-500"}`}
                               >
-                                {new Date(m.createdAt).toLocaleTimeString(undefined, {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}
+                                {new Date(m.createdAt).toLocaleTimeString(
+                                  undefined,
+                                  {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  },
+                                )}
                               </div>
                             </div>
                           </div>
@@ -1215,241 +1311,245 @@ export default function ClientReview() {
       <div className="h-screen flex bg-zinc-950 text-zinc-100 font-sans overflow-hidden">
         {sidebar}
         <div className="flex-1 overflow-y-auto">
-        <header className="h-16 px-8 flex items-center justify-between border-b border-white/10 bg-zinc-900/50 backdrop-blur-md sticky top-0 z-10">
-          <div className="leading-tight">
-            <div className="font-bold text-lg tracking-tight">
-              Your Reviews
+          <header className="h-16 px-8 flex items-center justify-between border-b border-white/10 bg-zinc-900/50 backdrop-blur-md sticky top-0 z-10">
+            <div className="leading-tight">
+              <div className="font-bold text-lg tracking-tight">
+                Your Reviews
+              </div>
+              <div className="text-[11px] text-zinc-500">
+                {isExplicitClient
+                  ? tenantName
+                  : "External review — no studio login required"}
+              </div>
             </div>
-            <div className="text-[11px] text-zinc-500">
-              {isExplicitClient ? tenantName : "External review — no studio login required"}
-            </div>
-          </div>
-        </header>
+          </header>
 
-        <main className="p-8 max-w-7xl mx-auto space-y-8">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight">
-                {reviewLevel === "projects" ? (
-                  "Your Projects"
-                ) : reviewLevel === "episodes" && !isExplicitClient ? (
-                  "Pending Reviews"
-                ) : (
-                  <span className="flex items-center gap-2 text-2xl">
-                    <button
-                      className="text-zinc-500 hover:text-white transition-colors"
+          <main className="p-8 max-w-7xl mx-auto space-y-8">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h1 className="text-3xl font-bold tracking-tight">
+                  {reviewLevel === "projects" ? (
+                    "Your Projects"
+                  ) : reviewLevel === "episodes" && !isExplicitClient ? (
+                    "Pending Reviews"
+                  ) : (
+                    <span className="flex items-center gap-2 text-2xl">
+                      <button
+                        className="text-zinc-500 hover:text-white transition-colors"
+                        onClick={() => {
+                          if (reviewLevel === "shots") {
+                            setReviewLevel("sequences");
+                            setActiveReviewSequenceId(null);
+                          } else if (reviewLevel === "sequences") {
+                            setReviewLevel("episodes");
+                            setActiveReviewEpisodeId(null);
+                          } else if (isExplicitClient) {
+                            setReviewLevel("projects");
+                            setActiveReviewProjectId(null);
+                            setActiveReviewEpisodeId(null);
+                          }
+                        }}
+                      >
+                        <ChevronLeft className="w-6 h-6" />
+                      </button>
+                      {reviewLevel === "episodes" && isExplicitClient
+                        ? activeReviewProject?.name
+                        : activeReviewEpisode?.name}
+                      {reviewLevel === "shots" && activeReviewSequence && (
+                        <>
+                          <ChevronRight className="w-4 h-4 text-zinc-600" />
+                          {activeReviewSequence.name}
+                        </>
+                      )}
+                    </span>
+                  )}
+                </h1>
+                <p className="text-zinc-400 mt-2 text-sm">
+                  {reviewLevel === "projects"
+                    ? "Select a project to view its pending deliveries."
+                    : "Please review the following deliveries and provide your feedback or approval."}
+                </p>
+              </div>
+            </div>
+
+            {reviewLevel === "projects" ? (
+              projects.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-64 border border-white/5 rounded-xl bg-zinc-900/20">
+                  <FolderKanban className="w-16 h-16 text-zinc-600 mb-4 opacity-50" />
+                  <h3 className="text-xl font-semibold">No Projects Yet</h3>
+                  <p className="text-zinc-500">
+                    You haven't been granted access to any projects. Contact
+                    your studio producer.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {projects.map((p) => (
+                    <div
+                      key={p.id}
+                      className="group bg-zinc-900 border border-white/10 rounded-xl p-6 hover:border-accent-scope/50 transition-all cursor-pointer flex items-center gap-4"
                       onClick={() => {
-                        if (reviewLevel === "shots") {
-                          setReviewLevel("sequences");
-                          setActiveReviewSequenceId(null);
-                        } else if (reviewLevel === "sequences") {
-                          setReviewLevel("episodes");
-                          setActiveReviewEpisodeId(null);
-                        } else if (isExplicitClient) {
-                          setReviewLevel("projects");
-                          setActiveReviewProjectId(null);
-                          setActiveReviewEpisodeId(null);
-                        }
+                        setActiveReviewProjectId(p.id);
+                        setReviewLevel("episodes");
                       }}
                     >
-                      <ChevronLeft className="w-6 h-6" />
-                    </button>
-                    {reviewLevel === "episodes" && isExplicitClient
-                      ? activeReviewProject?.name
-                      : activeReviewEpisode?.name}
-                    {reviewLevel === "shots" && activeReviewSequence && (
-                      <>
-                        <ChevronRight className="w-4 h-4 text-zinc-600" />
-                        {activeReviewSequence.name}
-                      </>
-                    )}
-                  </span>
-                )}
-              </h1>
-              <p className="text-zinc-400 mt-2 text-sm">
-                {reviewLevel === "projects"
-                  ? "Select a project to view its pending deliveries."
-                  : "Please review the following deliveries and provide your feedback or approval."}
-              </p>
-            </div>
-          </div>
-
-          {reviewLevel === "projects" ? (
-            projects.length === 0 ? (
+                      <div className="w-12 h-12 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0">
+                        <FolderKanban className="w-6 h-6 text-zinc-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-lg truncate">
+                          {p.name}
+                        </div>
+                        {p.type && (
+                          <div className="text-sm text-zinc-500">{p.type}</div>
+                        )}
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
+                    </div>
+                  ))}
+                </div>
+              )
+            ) : pendingReviews.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-64 border border-white/5 rounded-xl bg-zinc-900/20">
-                <FolderKanban className="w-16 h-16 text-zinc-600 mb-4 opacity-50" />
-                <h3 className="text-xl font-semibold">No Projects Yet</h3>
+                <CheckCircle2 className="w-16 h-16 text-status-green mb-4 opacity-50" />
+                <h3 className="text-xl font-semibold">All Caught Up!</h3>
                 <p className="text-zinc-500">
-                  You haven't been granted access to any projects. Contact
-                  your studio producer.
+                  There are no pending reviews at this time.
                 </p>
+              </div>
+            ) : reviewLevel === "episodes" ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {reviewEpisodes
+                  .filter((ep) =>
+                    pendingReviews.some((s) => s.episodeId === ep.id),
+                  )
+                  .map((ep) => {
+                    const count = pendingReviews.filter(
+                      (s) => s.episodeId === ep.id,
+                    ).length;
+                    return (
+                      <div
+                        key={ep.id}
+                        className="group bg-zinc-900 border border-white/10 rounded-xl p-6 hover:border-accent-scope/50 transition-all cursor-pointer flex items-center gap-4"
+                        onClick={() => {
+                          setActiveReviewEpisodeId(ep.id);
+                          setReviewLevel("sequences");
+                        }}
+                      >
+                        <div className="w-12 h-12 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0">
+                          <Film className="w-6 h-6 text-zinc-400" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-lg truncate">
+                            {ep.name}
+                          </div>
+                          <div className="text-sm text-zinc-500">
+                            {count} pending review{count === 1 ? "" : "s"}
+                          </div>
+                        </div>
+                        <ChevronRight className="w-5 h-5 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
+                      </div>
+                    );
+                  })}
+              </div>
+            ) : reviewLevel === "sequences" ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {reviewSequences
+                  .filter(
+                    (sq) =>
+                      sq.episodeId === activeReviewEpisodeId &&
+                      pendingReviews.some((s) => s.sequenceId === sq.id),
+                  )
+                  .map((sq) => {
+                    const count = pendingReviews.filter(
+                      (s) => s.sequenceId === sq.id,
+                    ).length;
+                    return (
+                      <div
+                        key={sq.id}
+                        className="group bg-zinc-900 border border-white/10 rounded-xl p-6 hover:border-accent-scope/50 transition-all cursor-pointer flex items-center gap-4"
+                        onClick={() => {
+                          setActiveReviewSequenceId(sq.id);
+                          setReviewLevel("shots");
+                        }}
+                      >
+                        <div className="w-12 h-12 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0">
+                          <Layers className="w-6 h-6 text-zinc-400" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-lg truncate">
+                            {sq.name}
+                          </div>
+                          <div className="text-sm text-zinc-500">
+                            {count} pending review{count === 1 ? "" : "s"}
+                          </div>
+                        </div>
+                        <ChevronRight className="w-5 h-5 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
+                      </div>
+                    );
+                  })}
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {projects.map((p) => (
-                  <div
-                    key={p.id}
-                    className="group bg-zinc-900 border border-white/10 rounded-xl p-6 hover:border-accent-scope/50 transition-all cursor-pointer flex items-center gap-4"
-                    onClick={() => {
-                      setActiveReviewProjectId(p.id);
-                      setReviewLevel("episodes");
-                    }}
-                  >
-                    <div className="w-12 h-12 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0">
-                      <FolderKanban className="w-6 h-6 text-zinc-400" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-lg truncate">
-                        {p.name}
-                      </div>
-                      {p.type && (
-                        <div className="text-sm text-zinc-500">{p.type}</div>
-                      )}
-                    </div>
-                    <ChevronRight className="w-5 h-5 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
-                  </div>
-                ))}
-              </div>
-            )
-          ) : pendingReviews.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-64 border border-white/5 rounded-xl bg-zinc-900/20">
-              <CheckCircle2 className="w-16 h-16 text-status-green mb-4 opacity-50" />
-              <h3 className="text-xl font-semibold">All Caught Up!</h3>
-              <p className="text-zinc-500">
-                There are no pending reviews at this time.
-              </p>
-            </div>
-          ) : reviewLevel === "episodes" ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {reviewEpisodes
-                .filter((ep) =>
-                  pendingReviews.some((s) => s.episodeId === ep.id),
-                )
-                .map((ep) => {
-                  const count = pendingReviews.filter(
-                    (s) => s.episodeId === ep.id,
-                  ).length;
-                  return (
-                    <div
-                      key={ep.id}
-                      className="group bg-zinc-900 border border-white/10 rounded-xl p-6 hover:border-accent-scope/50 transition-all cursor-pointer flex items-center gap-4"
-                      onClick={() => {
-                        setActiveReviewEpisodeId(ep.id);
-                        setReviewLevel("sequences");
-                      }}
-                    >
-                      <div className="w-12 h-12 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0">
-                        <Film className="w-6 h-6 text-zinc-400" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-lg truncate">
-                          {ep.name}
-                        </div>
-                        <div className="text-sm text-zinc-500">
-                          {count} pending review{count === 1 ? "" : "s"}
-                        </div>
-                      </div>
-                      <ChevronRight className="w-5 h-5 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
-                    </div>
-                  );
-                })}
-            </div>
-          ) : reviewLevel === "sequences" ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {reviewSequences
-                .filter(
-                  (sq) =>
-                    sq.episodeId === activeReviewEpisodeId &&
-                    pendingReviews.some((s) => s.sequenceId === sq.id),
-                )
-                .map((sq) => {
-                  const count = pendingReviews.filter(
-                    (s) => s.sequenceId === sq.id,
-                  ).length;
-                  return (
-                    <div
-                      key={sq.id}
-                      className="group bg-zinc-900 border border-white/10 rounded-xl p-6 hover:border-accent-scope/50 transition-all cursor-pointer flex items-center gap-4"
-                      onClick={() => {
-                        setActiveReviewSequenceId(sq.id);
-                        setReviewLevel("shots");
-                      }}
-                    >
-                      <div className="w-12 h-12 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0">
-                        <Layers className="w-6 h-6 text-zinc-400" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-lg truncate">
-                          {sq.name}
-                        </div>
-                        <div className="text-sm text-zinc-500">
-                          {count} pending review{count === 1 ? "" : "s"}
-                        </div>
-                      </div>
-                      <ChevronRight className="w-5 h-5 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
-                    </div>
-                  );
-                })}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {pendingReviews
-                .filter((s) => s.sequenceId === activeReviewSequenceId)
-                .map((shot) => {
-                const project = projects.find((p) => p.id === shot.projectId);
-                return (
-                  <div
-                    key={shot.id}
-                    className="group bg-zinc-900 border border-white/10 rounded-xl overflow-hidden hover:border-accent-scope/50 hover:shadow-[0_0_20px_hsl(var(--accent-scope)/0.15)] transition-all cursor-pointer flex flex-col"
-                    onClick={() => setActiveReviewId(shot.id)}
-                  >
-                    <div
-                      className="relative aspect-video bg-zinc-800 overflow-hidden bg-cover bg-center"
-                      style={{
-                        backgroundImage: `url(${getPlaceholderThumbnail(resolveThumbnailSeed(shot, versions))})`,
-                      }}
-                    >
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                        <Play className="w-12 h-12 text-white drop-shadow-md" />
-                      </div>
-                      {tenantName && (
-                        <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-black/60 backdrop-blur px-2 py-1 rounded-md text-[11px] font-medium text-zinc-100 border border-white/10">
-                          <Building2 className="w-3 h-3 text-zinc-300" />
-                          <span>{tenantName}</span>
-                        </div>
-                      )}
-                    </div>
-                    <div className="p-5 flex-1 flex flex-col">
-                      <div className="flex justify-between items-start mb-2">
-                        <div>
-                          <div className="font-semibold text-lg">
-                            {shot.name}
+                {pendingReviews
+                  .filter((s) => s.sequenceId === activeReviewSequenceId)
+                  .map((shot) => {
+                    const project = projects.find(
+                      (p) => p.id === shot.projectId,
+                    );
+                    return (
+                      <div
+                        key={shot.id}
+                        className="group bg-zinc-900 border border-white/10 rounded-xl overflow-hidden hover:border-accent-scope/50 hover:shadow-[0_0_20px_hsl(var(--accent-scope)/0.15)] transition-all cursor-pointer flex flex-col"
+                        onClick={() => setActiveReviewId(shot.id)}
+                      >
+                        <div
+                          className="relative aspect-video bg-zinc-800 overflow-hidden bg-cover bg-center"
+                          style={{
+                            backgroundImage: `url(${getPlaceholderThumbnail(resolveThumbnailSeed(shot, versions))})`,
+                          }}
+                        >
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                            <Play className="w-12 h-12 text-white drop-shadow-md" />
                           </div>
-                          <div className="text-sm text-zinc-400">
-                            {project?.name}
-                          </div>
-                        </div>
-                        <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 hover:bg-amber-500/20">
-                          Awaiting Review
-                        </Badge>
-                      </div>
-                      <div className="mt-auto pt-4 flex items-center justify-between text-xs text-zinc-500 border-t border-white/5">
-                        <span>{shot.usdVersion || "v003.usd"}</span>
-                        <span>
-                          Delivered{" "}
-                          {new Date(shot.updatedAt).toLocaleDateString(
-                            undefined,
-                            { month: "short", day: "numeric" },
+                          {tenantName && (
+                            <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-black/60 backdrop-blur px-2 py-1 rounded-md text-[11px] font-medium text-zinc-100 border border-white/10">
+                              <Building2 className="w-3 h-3 text-zinc-300" />
+                              <span>{tenantName}</span>
+                            </div>
                           )}
-                        </span>
+                        </div>
+                        <div className="p-5 flex-1 flex flex-col">
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <div className="font-semibold text-lg">
+                                {shot.name}
+                              </div>
+                              <div className="text-sm text-zinc-400">
+                                {project?.name}
+                              </div>
+                            </div>
+                            <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 hover:bg-amber-500/20">
+                              Awaiting Review
+                            </Badge>
+                          </div>
+                          <div className="mt-auto pt-4 flex items-center justify-between text-xs text-zinc-500 border-t border-white/5">
+                            <span>{shot.usdVersion || "v003.usd"}</span>
+                            <span>
+                              Delivered{" "}
+                              {new Date(shot.updatedAt).toLocaleDateString(
+                                undefined,
+                                { month: "short", day: "numeric" },
+                              )}
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </main>
+                    );
+                  })}
+              </div>
+            )}
+          </main>
         </div>
       </div>
     );
@@ -1489,9 +1589,7 @@ export default function ClientReview() {
               <Building2 className="w-4 h-4 text-white/40" />
               <span>
                 Delivered by{" "}
-                <span className="text-white font-medium">
-                  {tenantName}
-                </span>
+                <span className="text-white font-medium">{tenantName}</span>
               </span>
             </div>
           )}
@@ -1657,7 +1755,11 @@ export default function ClientReview() {
               title="Toggle Fullscreen (F)"
               className="p-1.5 rounded-md text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
             >
-              {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+              {isFullscreen ? (
+                <Minimize className="w-4 h-4" />
+              ) : (
+                <Maximize className="w-4 h-4" />
+              )}
             </button>
           </div>
 

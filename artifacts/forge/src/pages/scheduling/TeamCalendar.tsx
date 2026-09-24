@@ -10,17 +10,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-  DEPENDENCY_TYPE_LABELS,
-  type LeaveEvent,
-} from "@/data/mockData";
+import { DEPENDENCY_TYPE_LABELS, type LeaveEvent } from "@/data/mockData";
 import { useUserStore } from "@/store/users";
 import { useProjectStore } from "@/store/projects";
 import { Search, ZoomIn, ZoomOut } from "lucide-react";
 import { useUIStore } from "@/store/ui";
 import { useTasksStore } from "@/store/tasks";
 import { useToast } from "@/hooks/use-toast";
-import { getAssigneeId, getProjectId, useEntityProjectMap } from "@/lib/taskShape";
+import {
+  getAssigneeId,
+  getProjectId,
+  useEntityProjectMap,
+} from "@/lib/taskShape";
 import {
   addDays,
   getDaysDiff,

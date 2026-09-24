@@ -27,9 +27,12 @@ export function useApproveTimesheets() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (userIds: string[]) =>
-      apiClient.post<{ date: string; approved: number }>("/attendance/approvals", {
-        userIds,
-      }),
+      apiClient.post<{ date: string; approved: number }>(
+        "/attendance/approvals",
+        {
+          userIds,
+        },
+      ),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: KEY }),
   });
 }

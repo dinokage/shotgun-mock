@@ -23,7 +23,8 @@ export function useInstalledPlugins() {
 export function useInstallPlugin() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (pluginId: string) => apiClient.post<TenantPluginDTO>(`/plugins/${pluginId}`, {}),
+    mutationFn: (pluginId: string) =>
+      apiClient.post<TenantPluginDTO>(`/plugins/${pluginId}`, {}),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["plugins"] }),
   });
 }
@@ -39,8 +40,13 @@ export function useUninstallPlugin() {
 export function useSetPluginEnabled() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ pluginId, enabled }: { pluginId: string; enabled: boolean }) =>
-      apiClient.patch<TenantPluginDTO>(`/plugins/${pluginId}`, { enabled }),
+    mutationFn: ({
+      pluginId,
+      enabled,
+    }: {
+      pluginId: string;
+      enabled: boolean;
+    }) => apiClient.patch<TenantPluginDTO>(`/plugins/${pluginId}`, { enabled }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["plugins"] }),
   });
 }

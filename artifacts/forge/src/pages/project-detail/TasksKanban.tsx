@@ -4,7 +4,11 @@ import { useAuthStore } from "@/store/auth";
 import { useUIStore } from "@/store/ui";
 import { TaskStatus } from "@/data/mockData";
 import { useUpdateTask } from "@/hooks/useTasks";
-import { getAssigneeId, getProjectId, useEntityProjectMap } from "@/lib/taskShape";
+import {
+  getAssigneeId,
+  getProjectId,
+  useEntityProjectMap,
+} from "@/lib/taskShape";
 import { normalizeTaskStatus } from "@/lib/trackingStatus";
 import {
   DndContext,
@@ -149,7 +153,11 @@ function SortableTaskCard({
               className={`flex items-center gap-1 text-[10px] ${overdue ? "text-red-500 font-medium" : "text-muted-foreground"}`}
             >
               <Clock className="w-3 h-3" />
-              {formatDueDate(task.dueDate, { month: "short", day: "numeric" }, "No date")}
+              {formatDueDate(
+                task.dueDate,
+                { month: "short", day: "numeric" },
+                "No date",
+              )}
             </div>
           </div>
 
@@ -231,7 +239,11 @@ function ClaimableTaskCard({
             className={`flex items-center gap-1 text-[10px] text-muted-foreground`}
           >
             <Clock className="w-3 h-3" />
-            {formatDueDate(task.dueDate, { month: "short", day: "numeric" }, "No date")}
+            {formatDueDate(
+              task.dueDate,
+              { month: "short", day: "numeric" },
+              "No date",
+            )}
           </div>
           <PriorityChip priority={task.priority} />
         </div>
@@ -319,7 +331,9 @@ export default function KanbanView({
   entityProjectMap?: Record<string, string>;
 }) {
   const storeTasks = useTasksStore((state) => state.tasks);
-  const storeUpdateTaskStatus = useTasksStore((state) => state.updateTaskStatus);
+  const storeUpdateTaskStatus = useTasksStore(
+    (state) => state.updateTaskStatus,
+  );
   const storeUpdateTask = useTasksStore((state) => state.updateTask);
   const storeClaimTask = useTasksStore((state) => state.claimTask);
   const updateTaskMutation = useUpdateTask();

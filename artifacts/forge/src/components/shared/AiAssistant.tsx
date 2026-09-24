@@ -66,7 +66,9 @@ function InsightCard({ insight }: { insight: AIInsight }) {
       <div className="flex items-start gap-2">
         <Icon className={cn("w-4 h-4 mt-0.5 shrink-0", style.className)} />
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium leading-snug">{insight.title}</div>
+          <div className="text-sm font-medium leading-snug">
+            {insight.title}
+          </div>
           {insight.metric && (
             <div className="text-[11px] text-muted-foreground mt-0.5">
               {insight.metric.label}:{" "}
@@ -157,7 +159,9 @@ export function AiAssistant() {
   );
 
   const insights = useMemo(() => generateInsights(ctx), [ctx]);
-  const criticalCount = insights.filter((i) => i.severity === "critical").length;
+  const criticalCount = insights.filter(
+    (i) => i.severity === "critical",
+  ).length;
 
   const ask = (text: string) => {
     const q = text.trim();
@@ -240,8 +244,8 @@ export function AiAssistant() {
                 </p>
                 {insights.length === 0 ? (
                   <div className="text-xs text-muted-foreground py-8 text-center">
-                    Nothing stands out right now — no overdue, stalled or
-                    queued work in your scope.
+                    Nothing stands out right now — no overdue, stalled or queued
+                    work in your scope.
                   </div>
                 ) : (
                   insights.map((i) => <InsightCard key={i.id} insight={i} />)

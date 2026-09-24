@@ -144,8 +144,13 @@ export default function Login() {
                     className="bg-background/50"
                   />
                 </div>
-                <Button type="submit" className="w-full gap-2 mt-2" disabled={isLoading}>
-                  <Lock className="w-4 h-4" /> {isLoading ? "Signing in..." : "Sign In"}
+                <Button
+                  type="submit"
+                  className="w-full gap-2 mt-2"
+                  disabled={isLoading}
+                >
+                  <Lock className="w-4 h-4" />{" "}
+                  {isLoading ? "Signing in..." : "Sign In"}
                 </Button>
               </form>
             ) : (
@@ -177,8 +182,13 @@ export default function Login() {
                     className="bg-background/50"
                   />
                 </div>
-                <Button type="submit" className="w-full gap-2 mt-2" disabled={isLoading}>
-                  <Building2 className="w-4 h-4" /> {isLoading ? "Signing in..." : "Sign In"}
+                <Button
+                  type="submit"
+                  className="w-full gap-2 mt-2"
+                  disabled={isLoading}
+                >
+                  <Building2 className="w-4 h-4" />{" "}
+                  {isLoading ? "Signing in..." : "Sign In"}
                 </Button>
               </form>
             )}

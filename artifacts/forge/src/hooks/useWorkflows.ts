@@ -144,9 +144,13 @@ export function useCreateWorkflowRun(workflowId: string | undefined) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (shotId: string) =>
-      apiClient.post<WorkflowRunDTO>(`/workflows/${workflowId}/runs`, { shotId }),
+      apiClient.post<WorkflowRunDTO>(`/workflows/${workflowId}/runs`, {
+        shotId,
+      }),
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["workflow-runs", workflowId ?? "none"] }),
+      queryClient.invalidateQueries({
+        queryKey: ["workflow-runs", workflowId ?? "none"],
+      }),
   });
 }
 
@@ -173,11 +177,16 @@ export function useWorkflowRunDecision(workflowId: string | undefined) {
       decision: "approve" | "reject";
       reason?: string;
     }) =>
-      apiClient.post<WorkflowRunDTO>(`/workflows/${workflowId}/runs/${runId}/decision`, {
-        decision,
-        reason,
-      }),
+      apiClient.post<WorkflowRunDTO>(
+        `/workflows/${workflowId}/runs/${runId}/decision`,
+        {
+          decision,
+          reason,
+        },
+      ),
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["workflow-runs", workflowId ?? "none"] }),
+      queryClient.invalidateQueries({
+        queryKey: ["workflow-runs", workflowId ?? "none"],
+      }),
   });
 }

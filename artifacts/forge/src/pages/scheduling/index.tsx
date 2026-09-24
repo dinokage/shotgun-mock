@@ -162,69 +162,96 @@ export default function Scheduling() {
       for (const row of rows) {
         const shotName = getField(row, ["Shot Name", "Shot", "Shot Code"]);
         if (!shotName) {
-          results.push({ shotName: "(blank)", status: "skipped", reason: "No shot name in row" });
+          results.push({
+            shotName: "(blank)",
+            status: "skipped",
+            reason: "No shot name in row",
+          });
           continue;
         }
         const shot = importShots.find(
           (s) => s.name.toLowerCase() === shotName.toLowerCase(),
         );
         if (!shot) {
-          results.push({ shotName, status: "skipped", reason: "No matching shot in this project" });
+          results.push({
+            shotName,
+            status: "skipped",
+            reason: "No matching shot in this project",
+          });
           continue;
         }
 
         const deptName = getField(row, ["Department", "Dept"]);
         const dept = deptName
-          ? departments.find((d) => d.name.toLowerCase() === deptName.toLowerCase())
+          ? departments.find(
+              (d) => d.name.toLowerCase() === deptName.toLowerCase(),
+            )
           : undefined;
 
-        const assigneeEmail = getField(row, ["Assignee Email", "Assignee", "Artist Email", "Artist"]);
+        const assigneeEmail = getField(row, [
+          "Assignee Email",
+          "Assignee",
+          "Artist Email",
+          "Artist",
+        ]);
         const assignee = assigneeEmail
-          ? users.find((u) => u.email.toLowerCase() === assigneeEmail.toLowerCase())
+          ? users.find(
+              (u) => u.email.toLowerCase() === assigneeEmail.toLowerCase(),
+            )
           : undefined;
         if (assigneeEmail && !assignee) {
-          results.push({ shotName, status: "skipped", reason: `No user found for "${assigneeEmail}"` });
+          results.push({
+            shotName,
+            status: "skipped",
+            reason: `No user found for "${assigneeEmail}"`,
+          });
           continue;
         }
         if (assignee && assignee.role !== "artist") {
-          results.push({ shotName, status: "skipped", reason: `${assignee.name} is not an artist` });
+          results.push({
+            shotName,
+            status: "skipped",
+            reason: `${assignee.name} is not an artist`,
+          });
           continue;
         }
 
         const priorityRaw = getField(row, ["Priority"]).toLowerCase();
-        const priority = (["low", "medium", "high", "critical"] as const).includes(
-          priorityRaw as any,
-        )
+        const priority = (
+          ["low", "medium", "high", "critical"] as const
+        ).includes(priorityRaw as any)
           ? (priorityRaw as "low" | "medium" | "high" | "critical")
           : "medium";
 
         const dueDateRaw = getField(row, ["Due Date", "Deadline"]);
-        const dueDate = dueDateRaw && !Number.isNaN(Date.parse(dueDateRaw))
-          ? new Date(dueDateRaw).toISOString()
-          : undefined;
+        const dueDate =
+          dueDateRaw && !Number.isNaN(Date.parse(dueDateRaw))
+            ? new Date(dueDateRaw).toISOString()
+            : undefined;
 
         const title = getField(row, ["Task", "Title"]) || shotName;
         const description = getField(row, ["Description", "Notes"]);
 
         try {
-          const created = await apiFetch<{ id: string; status: string; createdAt: string }>(
-            "/tasks",
-            {
-              method: "POST",
-              body: JSON.stringify({
-                entityId: shot.id,
-                entityType: "shot",
-                title,
-                description,
-                priority,
-                department: dept?.name ?? null,
-                pipelinePhase: dept?.abbreviation ?? "MAIN",
-                dueDate,
-                estimatedHours: 8,
-                assignedTo: assignee?.id ?? null,
-              }),
-            },
-          );
+          const created = await apiFetch<{
+            id: string;
+            status: string;
+            createdAt: string;
+          }>("/tasks", {
+            method: "POST",
+            body: JSON.stringify({
+              entityId: shot.id,
+              entityType: "shot",
+              title,
+              description,
+              priority,
+              department: dept?.name ?? null,
+              pipelinePhase: dept?.abbreviation ?? "MAIN",
+              dueDate,
+              estimatedHours: 8,
+              assignedTo: assignee?.id ?? null,
+            }),
+          });
           newlyCreated.push({
             id: created.id,
             title,
@@ -252,7 +279,11 @@ export default function Scheduling() {
           } as any);
           results.push({ shotName, status: "imported" });
         } catch (err: any) {
-          results.push({ shotName, status: "skipped", reason: err?.message || "Failed to create task" });
+          results.push({
+            shotName,
+            status: "skipped",
+            reason: err?.message || "Failed to create task",
+          });
         }
       }
 
@@ -260,7 +291,9 @@ export default function Scheduling() {
         setTasks([...newlyCreated, ...tasks]);
       }
       setImportResults(results);
-      const importedCount = results.filter((r) => r.status === "imported").length;
+      const importedCount = results.filter(
+        (r) => r.status === "imported",
+      ).length;
       toast({
         title: "Import finished",
         description: `${importedCount} of ${results.length} row${results.length === 1 ? "" : "s"} imported.`,
@@ -351,9 +384,9 @@ export default function Scheduling() {
                     </h2>
                     <p className="text-sm text-muted-foreground mt-1">
                       Bulk-create tasks for existing shots in a project.
-                      Expected columns: Shot Name, Department, Assignee
-                      Email, Priority, Due Date, Description (header names
-                      are matched loosely — spacing/case don't matter).
+                      Expected columns: Shot Name, Department, Assignee Email,
+                      Priority, Due Date, Description (header names are matched
+                      loosely — spacing/case don't matter).
                     </p>
                   </div>
 
@@ -416,8 +449,12 @@ export default function Scheduling() {
                   {importResults && (
                     <div className="space-y-2 border border-border rounded-lg p-4 bg-muted/20 max-h-64 overflow-y-auto">
                       <h3 className="text-sm font-medium border-b border-border/50 pb-2">
-                        Results ({importResults.filter((r) => r.status === "imported").length}/
-                        {importResults.length} imported)
+                        Results (
+                        {
+                          importResults.filter((r) => r.status === "imported")
+                            .length
+                        }
+                        /{importResults.length} imported)
                       </h3>
                       {importResults.map((r, i) => (
                         <div

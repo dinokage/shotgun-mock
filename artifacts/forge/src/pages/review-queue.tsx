@@ -22,11 +22,7 @@ import { normalizeTaskStatus, isTracksheetStatus } from "@/lib/trackingStatus";
 const REVIEW_STAGES = ["review", "lead-review", "producer-review", "approved"];
 
 type QueueFilter =
-  | "awaiting-me"
-  | "lead-review"
-  | "producer-review"
-  | "approved"
-  | "all";
+  "awaiting-me" | "lead-review" | "producer-review" | "approved" | "all";
 
 const FILTER_LABELS: Record<QueueFilter, string> = {
   "awaiting-me": "Awaiting Me",
@@ -63,7 +59,9 @@ export default function ReviewQueue() {
         const shotId = getShotId(t);
         const assetId = getAssetId(t);
         const shot = shotId ? shots.find((s) => s.id === shotId) : undefined;
-        const asset = assetId ? assets.find((a) => a.id === assetId) : undefined;
+        const asset = assetId
+          ? assets.find((a) => a.id === assetId)
+          : undefined;
         return {
           task: t,
           stage,
@@ -95,7 +93,9 @@ export default function ReviewQueue() {
       if (status === "review" || status === "lead-review") {
         if (!isLead) return false;
         const dept = departments.find((d) => d.name === r.department);
-        return !currentUser.departmentId || currentUser.departmentId === dept?.id;
+        return (
+          !currentUser.departmentId || currentUser.departmentId === dept?.id
+        );
       }
       return false;
     });
@@ -202,8 +202,8 @@ export default function ReviewQueue() {
                 onClick={() => setFilter("all")}
                 className="text-xs text-primary hover:underline mt-1"
               >
-                {counts.all} review{counts.all === 1 ? "" : "s"} in other
-                stages — view all
+                {counts.all} review{counts.all === 1 ? "" : "s"} in other stages
+                — view all
               </button>
             )}
           </div>

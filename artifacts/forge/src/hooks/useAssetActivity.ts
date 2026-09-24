@@ -43,8 +43,11 @@ export function useAssetActivity(assetId: string | undefined) {
 export function useRecordAssetActivity() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: { assetId: string; kind: AssetActivityKind; app?: string }) =>
-      apiClient.post<AssetActivityDTO>("/asset-activity", body),
+    mutationFn: (body: {
+      assetId: string;
+      kind: AssetActivityKind;
+      app?: string;
+    }) => apiClient.post<AssetActivityDTO>("/asset-activity", body),
     onSuccess: (_data, variables) =>
       queryClient.invalidateQueries({
         queryKey: ["asset-activity", variables.assetId],

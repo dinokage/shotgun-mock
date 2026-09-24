@@ -62,8 +62,8 @@ export default function ForgotPassword() {
               <div className="space-y-4 text-center">
                 <p className="text-sm text-foreground/90">{sentMessage}</p>
                 <p className="text-xs text-muted-foreground">
-                  The link expires in 30 minutes and can only be used once. Check
-                  your spam folder if it doesn't arrive.
+                  The link expires in 30 minutes and can only be used once.
+                  Check your spam folder if it doesn't arrive.
                 </p>
                 <Link
                   href="/login"
@@ -75,8 +75,8 @@ export default function ForgotPassword() {
             ) : (
               <form onSubmit={handleSubmit} className="space-y-4">
                 <p className="text-sm text-muted-foreground">
-                  Enter your work email and we'll send a reset link if it matches
-                  an account.
+                  Enter your work email and we'll send a reset link if it
+                  matches an account.
                 </p>
                 <div className="space-y-2">
                   <Label htmlFor="email">Work Email</Label>

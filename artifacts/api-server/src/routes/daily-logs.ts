@@ -19,15 +19,15 @@ dailyLogsRouter.get("/", async (req, res) => {
     // a lead their department's. Intersected with (not overwritten by) the
     // caller's own ?userId= filter, so narrowing a query can never widen
     // what comes back.
-    const scopeWhere = await dailyLogScopeWhere(tenantId, await getVisibilityScope(req));
+    const scopeWhere = await dailyLogScopeWhere(
+      tenantId,
+      await getVisibilityScope(req),
+    );
     const rows = await prisma.dailyLog.findMany({
       where: {
         tenantId,
         ...(typeof taskId === "string" ? { taskId } : {}),
-        AND: [
-          ...(typeof userId === "string" ? [{ userId }] : []),
-          scopeWhere,
-        ],
+        AND: [...(typeof userId === "string" ? [{ userId }] : []), scopeWhere],
       },
     });
     return res.json(rows);
@@ -44,7 +44,9 @@ dailyLogsRouter.post("/", async (req, res) => {
     if (!taskId || !date || typeof hours !== "number")
       return res.status(400).json({ error: "Missing taskId, date, or hours" });
 
-    const task = await prisma.task.findFirst({ where: { tenantId, id: taskId } });
+    const task = await prisma.task.findFirst({
+      where: { tenantId, id: taskId },
+    });
     if (!task) return res.status(400).json({ error: "Invalid taskId" });
 
     const created = await prisma.dailyLog.create({
@@ -88,7 +90,9 @@ dailyLogsRouter.put("/:id", async (req, res) => {
     // routes/users.ts's PATCH /:id).
     const logId = req.params.id as string;
 
-    const existing = await prisma.dailyLog.findFirst({ where: { tenantId, id: logId } });
+    const existing = await prisma.dailyLog.findFirst({
+      where: { tenantId, id: logId },
+    });
     if (!existing) return res.status(404).json({ error: "Not found" });
     if (existing.userId !== req.userId)
       return res.status(403).json({ error: "Forbidden: not your log entry" });
@@ -103,7 +107,9 @@ dailyLogsRouter.put("/:id", async (req, res) => {
     // contribute to that same total.
     if (typeof updates.hours === "number" && updates.hours !== existing.hours) {
       const delta = updates.hours - existing.hours;
-      const task = await prisma.task.findFirst({ where: { tenantId, id: existing.taskId } });
+      const task = await prisma.task.findFirst({
+        where: { tenantId, id: existing.taskId },
+      });
       if (task) {
         await prisma.task.updateMany({
           where: { tenantId, id: existing.taskId },
@@ -112,8 +118,13 @@ dailyLogsRouter.put("/:id", async (req, res) => {
       }
     }
 
-    await prisma.dailyLog.updateMany({ where: { tenantId, id: logId }, data: updates });
-    const updated = await prisma.dailyLog.findFirstOrThrow({ where: { tenantId, id: logId } });
+    await prisma.dailyLog.updateMany({
+      where: { tenantId, id: logId },
+      data: updates,
+    });
+    const updated = await prisma.dailyLog.findFirstOrThrow({
+      where: { tenantId, id: logId },
+    });
     return res.json(updated);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -125,7 +136,9 @@ dailyLogsRouter.delete("/:id", async (req, res) => {
     const tenantId = req.tenantId!;
     const logId = req.params.id as string;
 
-    const existing = await prisma.dailyLog.findFirst({ where: { tenantId, id: logId } });
+    const existing = await prisma.dailyLog.findFirst({
+      where: { tenantId, id: logId },
+    });
     if (!existing) return res.status(404).json({ error: "Not found" });
     if (existing.userId !== req.userId)
       return res.status(403).json({ error: "Forbidden: not your log entry" });
@@ -133,7 +146,9 @@ dailyLogsRouter.delete("/:id", async (req, res) => {
     // Reverse this entry's contribution to the task's actualHours total
     // before removing it, so deleting a mislogged entry doesn't leave the
     // task's reported hours permanently inflated.
-    const task = await prisma.task.findFirst({ where: { tenantId, id: existing.taskId } });
+    const task = await prisma.task.findFirst({
+      where: { tenantId, id: existing.taskId },
+    });
     if (task) {
       await prisma.task.updateMany({
         where: { tenantId, id: existing.taskId },

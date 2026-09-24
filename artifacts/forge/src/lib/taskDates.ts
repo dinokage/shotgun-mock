@@ -17,7 +17,9 @@ export function formatDueDate(
 ): string {
   const d = parseDueDate(value);
   if (!d) return fallback;
-  return options ? d.toLocaleDateString("en-US", options) : d.toLocaleDateString();
+  return options
+    ? d.toLocaleDateString("en-US", options)
+    : d.toLocaleDateString();
 }
 
 /** True only when a real due date exists and has passed. */

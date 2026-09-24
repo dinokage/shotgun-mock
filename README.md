@@ -18,20 +18,26 @@ app, and a periodic DB backup service.
 ## Running it locally
 
 1. Copy the env template and fill it in:
+
    ```bash
    cp .env.example .env   # or edit .env directly if one already exists
    ```
+
    See **Environment variables** below for what every value means and how to
    generate strong ones.
 
 2. Build and start everything:
+
    ```bash
    docker compose up -d --build
    ```
+
    First run also needs the database migrated and seeded:
+
    ```bash
    docker compose exec api sh -c "cd /app/prod/db && ./node_modules/.bin/tsx src/seed.ts"
    ```
+
    (Migrations run automatically as their own one-shot `migrate` service —
    see the `migrate` service in `docker-compose.yml` — you only need to run
    `seed.ts` once, against a genuinely empty database, to get a tenant, its
@@ -42,12 +48,14 @@ app, and a periodic DB backup service.
 
 To run the API/web apps directly on your machine instead of in Docker (faster
 iteration while developing):
+
 ```bash
 corepack enable
 pnpm install
 pnpm --filter "@workspace/db" run prisma:generate
 pnpm run dev   # runs forge (Vite) + api-server in parallel
 ```
+
 You'll still need Postgres/Redis reachable (e.g. `docker compose up -d db redis`)
 and a `DATABASE_URL`/`REDIS_URL` pointing at them.
 
@@ -56,24 +64,24 @@ and a `DATABASE_URL`/`REDIS_URL` pointing at them.
 All of these live in `.env` at the repo root (gitignored — never commit real
 secrets). Docker Compose reads it automatically.
 
-| Variable | Required | Notes |
-|---|---|---|
-| `POSTGRES_USER` | no (`postgres`) | |
-| `POSTGRES_PASSWORD` | **yes** | Real random value — Compose refuses to start without one. |
-| `POSTGRES_DB` | no (`forge`) | |
-| `JWT_SECRET` | **yes** | Signs session tokens. Real random value — never a fallback baked into source. |
-| `CORS_ORIGIN` | no (`*`) | Set to the real origin(s) the web app is served from once you're not on `*`. |
-| `COOKIE_SECURE` | no (`false`) | **Set to `true` once real HTTPS is terminated in front of this stack.** Left `false`, login silently breaks on any non-localhost origin: the browser drops a `Secure` cookie over plain HTTP, so `POST /auth/login` returns 200 but the very next `GET /auth/me` 401s. |
-| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM_NAME` | no | Only needed for invite/notification emails. No `SMTP_USER`/`SMTP_PASSWORD` default on purpose — unset means those emails fail loudly instead of silently going nowhere. |
-| `FRONTEND_URL` | no (`http://localhost`) | Used to build links inside emails (e.g. accept-invite). Set to the real domain so a clicked link actually works. |
-| `WEB_PORT` | no (`80`) | Host port the web app is published on. |
-| `LDAP_ENABLED` | no (`false`) | Turns on the "Company Login" tab / `POST /auth/login/ldap`. |
-| `LDAP_URL` | if LDAP enabled | e.g. `ldap://10.1.8.251`. |
-| `LDAP_BIND_DN` | if LDAP enabled | The service/bind account's DN, e.g. `CN=svc-forge,DC=example,DC=com`. **Use a dedicated low-privilege bind account, not a domain admin** — this credential only ever needs read access to search users. |
-| `LDAP_BIND_PASSWORD` | if LDAP enabled | See the `$` gotcha below. |
-| `LDAP_BASE_DN` | if LDAP enabled | e.g. `DC=example,DC=com`. |
-| `BACKUP_RETENTION_DAYS` | no (`14`) | How long `db-backup` keeps old dumps. |
-| `BACKUP_INTERVAL_SECONDS` | no (`21600`) | How often `db-backup` runs (default 6h). |
+| Variable                                                                     | Required                | Notes                                                                                                                                                                                                                                                                  |
+| ---------------------------------------------------------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POSTGRES_USER`                                                              | no (`postgres`)         |                                                                                                                                                                                                                                                                        |
+| `POSTGRES_PASSWORD`                                                          | **yes**                 | Real random value — Compose refuses to start without one.                                                                                                                                                                                                              |
+| `POSTGRES_DB`                                                                | no (`forge`)            |                                                                                                                                                                                                                                                                        |
+| `JWT_SECRET`                                                                 | **yes**                 | Signs session tokens. Real random value — never a fallback baked into source.                                                                                                                                                                                          |
+| `CORS_ORIGIN`                                                                | no (`*`)                | Set to the real origin(s) the web app is served from once you're not on `*`.                                                                                                                                                                                           |
+| `COOKIE_SECURE`                                                              | no (`false`)            | **Set to `true` once real HTTPS is terminated in front of this stack.** Left `false`, login silently breaks on any non-localhost origin: the browser drops a `Secure` cookie over plain HTTP, so `POST /auth/login` returns 200 but the very next `GET /auth/me` 401s. |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM_NAME` | no                      | Only needed for invite/notification emails. No `SMTP_USER`/`SMTP_PASSWORD` default on purpose — unset means those emails fail loudly instead of silently going nowhere.                                                                                                |
+| `FRONTEND_URL`                                                               | no (`http://localhost`) | Used to build links inside emails (e.g. accept-invite). Set to the real domain so a clicked link actually works.                                                                                                                                                       |
+| `WEB_PORT`                                                                   | no (`80`)               | Host port the web app is published on.                                                                                                                                                                                                                                 |
+| `LDAP_ENABLED`                                                               | no (`false`)            | Turns on the "Company Login" tab / `POST /auth/login/ldap`.                                                                                                                                                                                                            |
+| `LDAP_URL`                                                                   | if LDAP enabled         | e.g. `ldap://10.1.8.251`.                                                                                                                                                                                                                                              |
+| `LDAP_BIND_DN`                                                               | if LDAP enabled         | The service/bind account's DN, e.g. `CN=svc-forge,DC=example,DC=com`. **Use a dedicated low-privilege bind account, not a domain admin** — this credential only ever needs read access to search users.                                                                |
+| `LDAP_BIND_PASSWORD`                                                         | if LDAP enabled         | See the `$` gotcha below.                                                                                                                                                                                                                                              |
+| `LDAP_BASE_DN`                                                               | if LDAP enabled         | e.g. `DC=example,DC=com`.                                                                                                                                                                                                                                              |
+| `BACKUP_RETENTION_DAYS`                                                      | no (`14`)               | How long `db-backup` keeps old dumps.                                                                                                                                                                                                                                  |
+| `BACKUP_INTERVAL_SECONDS`                                                    | no (`21600`)            | How often `db-backup` runs (default 6h).                                                                                                                                                                                                                               |
 
 **Gotcha — a literal `$` in any `.env` value must be doubled (`$$`).** Docker
 Compose interpolates `.env` values itself before substituting them into
@@ -84,6 +92,7 @@ finds nothing, and silently substitutes an empty string). This mainly bites
 to contain `$`.
 
 Generate strong values for the required secrets with:
+
 ```bash
 openssl rand -base64 32
 ```
@@ -128,6 +137,7 @@ The pipeline: checkout → install → generate Prisma client → lint + typeche
 api=3`.
 
 The Jenkins agent that runs the Deploy stage needs, ahead of time:
+
 - Docker + Docker Compose, and Node/pnpm (via corepack) for the earlier
   stages, which run directly on the agent (not inside a container).
 - A real, production-value `.env` already sitting in the job's working

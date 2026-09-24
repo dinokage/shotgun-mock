@@ -16,12 +16,7 @@ import {
  */
 
 export type AnnotationTool =
-  | "select"
-  | "pen"
-  | "arrow"
-  | "rectangle"
-  | "text"
-  | "eraser";
+  "select" | "pen" | "arrow" | "rectangle" | "text" | "eraser";
 
 export interface Point {
   x: number;

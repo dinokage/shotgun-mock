@@ -12,7 +12,9 @@ import type { TaskStatus } from "@/data/mockData";
 // (TK_01 -> TK_05) and new client/retake permutations keep appearing.
 
 /** The studio's code, unchanged, is what gets displayed; this is what it means. */
-export function normalizeTaskStatus(raw: string | null | undefined): TaskStatus {
+export function normalizeTaskStatus(
+  raw: string | null | undefined,
+): TaskStatus {
   if (!raw) return "not-started";
   const s = raw.trim().toLowerCase();
 

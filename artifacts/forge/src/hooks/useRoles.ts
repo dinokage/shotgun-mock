@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/apiClient";
 
 // POST/PATCH /api/users validate `roleId` against the tenant_roles table by
-// its real (random UUID) id — the role NAME string ("admin", "producer", …)
+// its real (random UUID) id — the role NAME string ("admin", "artist", …)
 // is not a valid roleId. This hook backs the Admin Panel's "create user"
 // role picker so it can submit an actual roleId instead of a name string.
 export interface TenantRoleDTO {

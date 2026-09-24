@@ -22,7 +22,8 @@ function csvCell(value: string): string {
 
 async function main() {
   if (!PASSWORD) throw new Error("RESET_PASSWORD is required");
-  if (PASSWORD.length < 8) throw new Error("RESET_PASSWORD must be at least 8 characters");
+  if (PASSWORD.length < 8)
+    throw new Error("RESET_PASSWORD must be at least 8 characters");
   if (!OUT_PATH) throw new Error("OUT_PATH is required");
 
   const users = await prisma.user.findMany({
@@ -46,7 +47,9 @@ async function main() {
   const hashed = await argon2.hash(PASSWORD);
 
   const rows = [
-    ["Name", "Email", "Role", "Department", "Title", "Status", "Password"].join(","),
+    ["Name", "Email", "Role", "Department", "Title", "Status", "Password"].join(
+      ",",
+    ),
     ...users.map((u) =>
       [
         u.name,

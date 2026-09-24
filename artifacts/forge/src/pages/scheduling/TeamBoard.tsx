@@ -41,7 +41,11 @@ import { useProjectStore } from "@/store/projects";
 import { useTasksStore } from "@/store/tasks";
 import { useUIStore } from "@/store/ui";
 import { useToast } from "@/hooks/use-toast";
-import { getAssigneeId, getProjectId, useEntityProjectMap } from "@/lib/taskShape";
+import {
+  getAssigneeId,
+  getProjectId,
+  useEntityProjectMap,
+} from "@/lib/taskShape";
 import { cn } from "@/lib/utils";
 import { REFERENCE_DATE } from "./utils";
 
@@ -116,7 +120,11 @@ function BoardTaskCard({ task }: { task: Task }) {
             )}
           >
             <Clock className="w-2.5 h-2.5" />
-            {formatDueDate(task.dueDate, { month: "short", day: "numeric" }, "No date")}
+            {formatDueDate(
+              task.dueDate,
+              { month: "short", day: "numeric" },
+              "No date",
+            )}
           </div>
         </div>
       </Card>
@@ -287,7 +295,14 @@ export default function TeamBoard() {
           return false;
         return true;
       }),
-    [tasks, projectFilter, departmentFilter, search, departments, entityProjectMap],
+    [
+      tasks,
+      projectFilter,
+      departmentFilter,
+      search,
+      departments,
+      entityProjectMap,
+    ],
   );
 
   const unassignedTasks = useMemo(

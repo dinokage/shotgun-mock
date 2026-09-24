@@ -34,16 +34,20 @@ async function shotReviewRecipients(
       })
     : null;
   const departmentName = assignee?.departmentId
-    ? (
+    ? ((
         await prisma.department.findFirst({
           where: { id: assignee.departmentId, tenantId },
           select: { name: true },
         })
-      )?.name ?? null
+      )?.name ?? null)
     : null;
   const leads = departmentName
     ? await prisma.user.findMany({
-        where: { tenantId, department: { name: departmentName }, role: { name: "lead" } },
+        where: {
+          tenantId,
+          department: { name: departmentName },
+          role: { name: "lead" },
+        },
         select: { id: true },
       })
     : [];
@@ -93,7 +97,10 @@ const audioUpload = multer({
       cb(null, dir);
     },
     filename: (_req, file, cb) => {
-      cb(null, `${crypto.randomUUID()}${AUDIO_MIME_EXT[baseMimeType(file.mimetype)]}`);
+      cb(
+        null,
+        `${crypto.randomUUID()}${AUDIO_MIME_EXT[baseMimeType(file.mimetype)]}`,
+      );
     },
   }),
   limits: { fileSize: 25 * 1024 * 1024 },
@@ -115,7 +122,10 @@ const MAX_ANNOTATIONS = 200;
 // the referenced row exists, not who owns it -- same pattern as
 // routes/shots.ts and routes/reviews.ts.
 async function versionInTenant(id: string, tenantId: string) {
-  const row = await prisma.version.findFirst({ where: { id, tenantId }, select: { id: true } });
+  const row = await prisma.version.findFirst({
+    where: { id, tenantId },
+    select: { id: true },
+  });
   return !!row;
 }
 
@@ -174,7 +184,10 @@ async function versionVisibleToEmployee(
   versionId: string,
 ): Promise<boolean> {
   const tenantId = req.tenantId!;
-  const scopeWhere = await entityRefScopeWhere(tenantId, await getVisibilityScope(req));
+  const scopeWhere = await entityRefScopeWhere(
+    tenantId,
+    await getVisibilityScope(req),
+  );
   const row = await prisma.version.findFirst({
     where: { id: versionId, tenantId, ...(scopeWhere ?? {}) },
     select: { id: true },
@@ -235,7 +248,8 @@ function presentationDTO(row: {
   isActive: boolean;
   startedAt: Date;
 }) {
-  if (!row.isActive) return { ...INACTIVE_PRESENTATION, versionId: row.versionId };
+  if (!row.isActive)
+    return { ...INACTIVE_PRESENTATION, versionId: row.versionId };
   return {
     isActive: true,
     versionId: row.versionId,
@@ -360,7 +374,9 @@ reviewSessionRouter.post(
         data: { frame: clampFrame(req.body?.frame) },
       });
       if (updated.count === 0)
-        return res.status(409).json({ error: "You are not presenting this version" });
+        return res
+          .status(409)
+          .json({ error: "You are not presenting this version" });
       return res.status(204).send();
     } catch (err) {
       req.log.error(err, "Failed to push presenter frame");
@@ -457,7 +473,9 @@ reviewSessionRouter.get("/comments", denyClientAccess, async (req, res) => {
       orderBy: { createdAt: "asc" },
       include: { transferredBy: { select: { name: true } } },
     });
-    return res.json(rows.map((r) => commentDTO(r, r.transferredBy?.name ?? null)));
+    return res.json(
+      rows.map((r) => commentDTO(r, r.transferredBy?.name ?? null)),
+    );
   } catch (err) {
     req.log.error(err, "Failed to list review comments");
     return res.status(500).json({ error: "Internal server error" });
@@ -485,7 +503,9 @@ reviewSessionRouter.post(
       const body = typeof text === "string" ? text.trim() : "";
       const url = typeof audioUrl === "string" && audioUrl ? audioUrl : null;
       if (!body && !url)
-        return res.status(400).json({ error: "Comment text or a voice note is required" });
+        return res
+          .status(400)
+          .json({ error: "Comment text or a voice note is required" });
       // Only a path this API itself minted is accepted: the client plays
       // audioUrl back in an <audio> element, so an arbitrary string would
       // turn every comment into an attacker-controlled fetch for everyone
@@ -541,26 +561,32 @@ reviewSessionRouter.post(
 // a Content-Type from the same allowlist the upload enforced, plus nosniff --
 // so a file that somehow landed here under another extension can never be
 // rendered as a same-origin document.
-reviewSessionRouter.get("/audio/:tenantId/:filename", denyClientAccess, (req, res) => {
-  const { tenantId, filename } = req.params;
-  if (tenantId !== req.tenantId) return res.status(404).end();
-  // path.basename strips any directory traversal a crafted filename smuggles in.
-  // Cast for the same reason routes/shots.ts casts req.params.id: combining
-  // a middleware typed against the generic Express Request with this route's
-  // own path typing widens the param to `string | string[]`.
-  const safeName = path.basename(filename as string);
-  const ext = path.extname(safeName).toLowerCase();
-  const contentType = Object.entries(AUDIO_MIME_EXT).find(([, e]) => e === ext)?.[0];
-  if (!contentType) return res.status(404).end();
+reviewSessionRouter.get(
+  "/audio/:tenantId/:filename",
+  denyClientAccess,
+  (req, res) => {
+    const { tenantId, filename } = req.params;
+    if (tenantId !== req.tenantId) return res.status(404).end();
+    // path.basename strips any directory traversal a crafted filename smuggles in.
+    // Cast for the same reason routes/shots.ts casts req.params.id: combining
+    // a middleware typed against the generic Express Request with this route's
+    // own path typing widens the param to `string | string[]`.
+    const safeName = path.basename(filename as string);
+    const ext = path.extname(safeName).toLowerCase();
+    const contentType = Object.entries(AUDIO_MIME_EXT).find(
+      ([, e]) => e === ext,
+    )?.[0];
+    if (!contentType) return res.status(404).end();
 
-  const filePath = path.join(UPLOAD_DIR, tenantId, "review-audio", safeName);
-  if (!fs.existsSync(filePath)) return res.status(404).end();
+    const filePath = path.join(UPLOAD_DIR, tenantId, "review-audio", safeName);
+    if (!fs.existsSync(filePath)) return res.status(404).end();
 
-  res.setHeader("Content-Type", contentType);
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("Cache-Control", "private, max-age=3600");
-  return res.sendFile(filePath);
-});
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    return res.sendFile(filePath);
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Client notes (the moderation queue)
@@ -632,7 +658,8 @@ reviewSessionRouter.get("/client-notes", async (req, res) => {
         await getVisibilityScope(req),
         "shot",
       );
-      if (visibleShotIds && !visibleShotIds.includes(shotId)) return res.json([]);
+      if (visibleShotIds && !visibleShotIds.includes(shotId))
+        return res.json([]);
     }
 
     const rows = await prisma.clientNote.findMany({
@@ -647,7 +674,9 @@ reviewSessionRouter.get("/client-notes", async (req, res) => {
       include: { transferredBy: { select: { name: true } } },
     });
     return res.json(
-      rows.map((r) => clientNoteDTO(r, shot.name, r.transferredBy?.name ?? null)),
+      rows.map((r) =>
+        clientNoteDTO(r, shot.name, r.transferredBy?.name ?? null),
+      ),
     );
   } catch (err) {
     req.log.error(err, "Failed to list client notes");
@@ -684,7 +713,10 @@ reviewSessionRouter.post("/client-notes", async (req, res) => {
       const scope = await getClientScope(req);
       if (!scope || !shotInClientScope(shot, scope))
         return res.status(403).json({ error: "Forbidden" });
-      if (versionId && !(await versionInClientScope(tenantId, versionId, scope)))
+      if (
+        versionId &&
+        !(await versionInClientScope(tenantId, versionId, scope))
+      )
         return res.status(403).json({ error: "Forbidden" });
       const link = await prisma.clientAccessLink.findFirst({
         where: { id: req.clientAccessLinkId, tenantId },
@@ -708,9 +740,9 @@ reviewSessionRouter.post("/client-notes", async (req, res) => {
           where: { roleId: req.roleId!, capabilityId: "submit_reviews" },
         });
         if (!grant) {
-          return res
-            .status(403)
-            .json({ error: "Forbidden: missing authority to reply to a client" });
+          return res.status(403).json({
+            error: "Forbidden: missing authority to reply to a client",
+          });
         }
         authorRole = "staff";
       }
@@ -784,10 +816,14 @@ reviewSessionRouter.post(
       if (typeof versionId !== "string" || !versionId)
         return res.status(400).json({ error: "versionId is required" });
 
-      const note = await prisma.clientNote.findFirst({ where: { id: noteId, tenantId } });
+      const note = await prisma.clientNote.findFirst({
+        where: { id: noteId, tenantId },
+      });
       if (!note) return res.status(404).json({ error: "Not found" });
       if (note.transferred)
-        return res.status(409).json({ error: "This note has already been transferred" });
+        return res
+          .status(409)
+          .json({ error: "This note has already been transferred" });
 
       const version = await prisma.version.findFirst({
         where: { id: versionId, tenantId },
@@ -798,7 +834,9 @@ reviewSessionRouter.post(
       // on -- otherwise a caller could file a client's feedback against an
       // unrelated shot's review.
       if (version.entityType !== "shot" || version.entityId !== note.shotId)
-        return res.status(400).json({ error: "Version does not belong to this note's shot" });
+        return res
+          .status(400)
+          .json({ error: "Version does not belong to this note's shot" });
       if (!(await versionVisibleToEmployee(req, versionId)))
         return res.status(403).json({ error: "Forbidden" });
 
@@ -859,7 +897,9 @@ reviewSessionRouter.post(
         });
       }
 
-      return res.status(201).json(commentDTO(comment, transferrer?.name ?? null));
+      return res
+        .status(201)
+        .json(commentDTO(comment, transferrer?.name ?? null));
     } catch (err) {
       req.log.error(err, "Failed to transfer client note");
       return res.status(500).json({ error: "Internal server error" });

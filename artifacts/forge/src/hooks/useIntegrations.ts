@@ -38,15 +38,25 @@ export function useSaveIntegration() {
       autoSync?: boolean;
       config?: Record<string, unknown>;
     }) => apiClient.put<IntegrationDTO>(`/integrations/${provider}`, body),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["integrations"] }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["integrations"] }),
   });
 }
 
 export function useSyncIntegration() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ provider, displayName }: { provider: string; displayName: string }) =>
-      apiClient.post<IntegrationDTO>(`/integrations/${provider}/sync`, { displayName }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["integrations"] }),
+    mutationFn: ({
+      provider,
+      displayName,
+    }: {
+      provider: string;
+      displayName: string;
+    }) =>
+      apiClient.post<IntegrationDTO>(`/integrations/${provider}/sync`, {
+        displayName,
+      }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["integrations"] }),
   });
 }

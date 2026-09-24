@@ -43,7 +43,9 @@ async function main() {
     where: { tenantId: newAdminUser.tenantId, name: "admin" },
   });
   if (!adminRole) {
-    console.error(`No "admin" role found for tenant ${newAdminUser.tenantId}. Aborting.`);
+    console.error(
+      `No "admin" role found for tenant ${newAdminUser.tenantId}. Aborting.`,
+    );
     process.exit(1);
   }
 
@@ -74,7 +76,9 @@ async function main() {
   }
 
   console.log("");
-  console.log(`${NEW_ADMIN_EMAIL} is now admin, with the password from NEW_ADMIN_PASSWORD.`);
+  console.log(
+    `${NEW_ADMIN_EMAIL} is now admin, with the password from NEW_ADMIN_PASSWORD.`,
+  );
   if (oldAdminUser) {
     console.log(
       `${OLD_ADMIN_EMAIL} has been deactivated (signed out everywhere, can't sign back in). ` +

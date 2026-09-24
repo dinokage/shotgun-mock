@@ -25,17 +25,27 @@ function sheetToRows(sheet) {
   if (declaredRef) {
     const decoded = XLSX.utils.decode_range(declaredRef);
     if (decoded.e.r > MAX_IMPORT_ROWS) {
-      range = XLSX.utils.encode_range({ s: decoded.s, e: { r: MAX_IMPORT_ROWS, c: decoded.e.c } });
+      range = XLSX.utils.encode_range({
+        s: decoded.s,
+        e: { r: MAX_IMPORT_ROWS, c: decoded.e.c },
+      });
     }
   }
-  const rows = XLSX.utils.sheet_to_json(sheet, { defval: "", raw: false, ...(range ? { range } : {}) });
+  const rows = XLSX.utils.sheet_to_json(sheet, {
+    defval: "",
+    raw: false,
+    ...(range ? { range } : {}),
+  });
   return rows.filter((row) => Object.values(row).some((v) => v !== ""));
 }
 
 function getField(row, candidates) {
   const normalizedKeys = Object.keys(row).map((k) => ({
     key: k,
-    norm: k.trim().toLowerCase().replace(/[\s_-]+/g, ""),
+    norm: k
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_-]+/g, ""),
   }));
   for (const candidate of candidates) {
     const normCandidate = candidate.toLowerCase().replace(/[\s_-]+/g, "");
@@ -63,10 +73,26 @@ function parseLooseDate(raw) {
 }
 
 const CONSUMED_KEYS = new Set(
-  ["SC#", "SHOT_CODE", "Shot Code", "SEQ#", "Sequence", "FR", "Frames",
-   "Frame Range", "Sec", "Duration", "Anim_status", "Layout_status",
-   "Status", "Artist Name", "Artist", "Start Date", "End Date", "SL#"]
-    .map((c) => c.toLowerCase().replace(/[\s_-]+/g, "")),
+  [
+    "SC#",
+    "SHOT_CODE",
+    "Shot Code",
+    "SEQ#",
+    "Sequence",
+    "FR",
+    "Frames",
+    "Frame Range",
+    "Sec",
+    "Duration",
+    "Anim_status",
+    "Layout_status",
+    "Status",
+    "Artist Name",
+    "Artist",
+    "Start Date",
+    "End Date",
+    "SL#",
+  ].map((c) => c.toLowerCase().replace(/[\s_-]+/g, "")),
 );
 
 async function main() {
@@ -88,21 +114,28 @@ async function main() {
     `SELECT id, name FROM episodes WHERE tenant_id = $1 AND project_id = $2`,
     [TENANT_ID, PROJECT_ID],
   );
-  const episodeCache = new Map(episodesRes.rows.map((e) => [e.name.toLowerCase(), e.id]));
+  const episodeCache = new Map(
+    episodesRes.rows.map((e) => [e.name.toLowerCase(), e.id]),
+  );
 
   const sequencesRes = await client.query(
     `SELECT id, name, episode_id FROM sequences WHERE tenant_id = $1 AND project_id = $2`,
     [TENANT_ID, PROJECT_ID],
   );
   const sequenceCache = new Map(
-    sequencesRes.rows.map((s) => [`${s.episode_id ?? ""}::${s.name.toLowerCase()}`, s.id]),
+    sequencesRes.rows.map((s) => [
+      `${s.episode_id ?? ""}::${s.name.toLowerCase()}`,
+      s.id,
+    ]),
   );
 
   const shotsRes = await client.query(
     `SELECT id, name FROM shots WHERE tenant_id = $1 AND project_id = $2`,
     [TENANT_ID, PROJECT_ID],
   );
-  const shotCache = new Map(shotsRes.rows.map((s) => [s.name.toLowerCase(), s.id]));
+  const shotCache = new Map(
+    shotsRes.rows.map((s) => [s.name.toLowerCase(), s.id]),
+  );
 
   // One task per shot -- keyed by entity_id so re-running this script
   // (e.g. after a matching-logic fix) updates existing rows in place
@@ -138,7 +171,9 @@ async function main() {
       if (!shotCode) continue;
       const seqName = getField(row, ["SEQ#", "Sequence"]) || "Unassigned";
 
-      let sequenceId = sequenceCache.get(`${episodeId}::${seqName.toLowerCase()}`);
+      let sequenceId = sequenceCache.get(
+        `${episodeId}::${seqName.toLowerCase()}`,
+      );
       if (!sequenceId) {
         sequenceId = crypto.randomUUID();
         await client.query(
@@ -166,8 +201,14 @@ async function main() {
       if (frameRange || duration) {
         const sets = [];
         const vals = [];
-        if (frameRange) { sets.push(`frame_range = $${sets.length + 1}`); vals.push(frameRange); }
-        if (duration) { sets.push(`duration = $${sets.length + 1}`); vals.push(duration); }
+        if (frameRange) {
+          sets.push(`frame_range = $${sets.length + 1}`);
+          vals.push(frameRange);
+        }
+        if (duration) {
+          sets.push(`duration = $${sets.length + 1}`);
+          vals.push(duration);
+        }
         sets.push(`updated_at = now()`);
         vals.push(shotId, TENANT_ID);
         await client.query(
@@ -176,11 +217,16 @@ async function main() {
         );
       }
 
-      const status = getField(row, ["Anim_status", "Layout_status", "Status"]) || "ready";
+      const status =
+        getField(row, ["Anim_status", "Layout_status", "Status"]) || "ready";
       // Whole-word match only -- a plain substring match wrongly matched
       // the location/vendor code "os" (outsourced) against "Debut Gh-os-h".
       const artistName = getField(row, ["Artist Name", "Artist"]);
-      const artistWords = artistName.toLowerCase().trim().split(/\s+/).filter(Boolean);
+      const artistWords = artistName
+        .toLowerCase()
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
       const assignee = artistWords.length
         ? artists.find((u) => {
             const nameWords = u.name.toLowerCase().split(/\s+/);
@@ -193,7 +239,10 @@ async function main() {
       const endDate = parseLooseDate(getField(row, ["End Date"]));
 
       const extraNotes = Object.entries(row)
-        .filter(([k, v]) => v && !CONSUMED_KEYS.has(k.toLowerCase().replace(/[\s_-]+/g, "")))
+        .filter(
+          ([k, v]) =>
+            v && !CONSUMED_KEYS.has(k.toLowerCase().replace(/[\s_-]+/g, "")),
+        )
         .map(([k, v]) => `${k}: ${v}`)
         .join("; ");
 
@@ -207,14 +256,35 @@ async function main() {
         await client.query(
           `UPDATE tasks SET title=$1, description=$2, status=$3, start_date=$4, due_date=$5, estimated_hours=$6, assigned_to=$7
            WHERE id = $8 AND tenant_id = $9`,
-          [taskTitle, taskDescription, status, startDate, endDate, estimatedHours, assignedTo, existingTaskId, TENANT_ID],
+          [
+            taskTitle,
+            taskDescription,
+            status,
+            startDate,
+            endDate,
+            estimatedHours,
+            assignedTo,
+            existingTaskId,
+            TENANT_ID,
+          ],
         );
       } else {
         const taskId = crypto.randomUUID();
         await client.query(
           `INSERT INTO tasks (id, tenant_id, entity_id, entity_type, title, description, status, priority, pipeline_phase, start_date, due_date, estimated_hours, assigned_to)
            VALUES ($1,$2,$3,'shot',$4,$5,$6,'medium','ANIM',$7,$8,$9,$10)`,
-          [taskId, TENANT_ID, shotId, taskTitle, taskDescription, status, startDate, endDate, estimatedHours, assignedTo],
+          [
+            taskId,
+            TENANT_ID,
+            shotId,
+            taskTitle,
+            taskDescription,
+            status,
+            startDate,
+            endDate,
+            estimatedHours,
+            assignedTo,
+          ],
         );
         taskCache.set(shotId, taskId);
       }
@@ -226,7 +296,9 @@ async function main() {
   console.log(`\nTotal rows imported: ${outcomes.length}`);
   console.log(`Shots created: ${outcomes.filter((o) => o.shotCreated).length}`);
   console.log(`Tasks created: ${outcomes.length}`);
-  console.log(`Rows with a matched artist assignee: ${assignedCount} / ${outcomes.length}`);
+  console.log(
+    `Rows with a matched artist assignee: ${assignedCount} / ${outcomes.length}`,
+  );
   await client.end();
 }
 

@@ -37,8 +37,7 @@ export function usePostStandupUpdate() {
       taskId?: string | null;
       hours?: number;
       attachmentUrls?: string[];
-    }) =>
-      apiClient.post<StandupUpdateDTO>("/standup-updates", body),
+    }) => apiClient.post<StandupUpdateDTO>("/standup-updates", body),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ["standup-updates"] }),
   });

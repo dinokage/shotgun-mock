@@ -58,7 +58,10 @@ export async function cacheDel(...keys: string[]): Promise<void> {
     await ensureConnected();
     await redis.del(...keys);
   } catch (err) {
-    console.error(`[cache] del(${keys.join(",")}) failed:`, (err as Error).message);
+    console.error(
+      `[cache] del(${keys.join(",")}) failed:`,
+      (err as Error).message,
+    );
   }
 }
 
@@ -74,12 +77,21 @@ export async function cacheDelPattern(pattern: string): Promise<void> {
     await ensureConnected();
     let cursor = "0";
     do {
-      const [next, keys] = await redis.scan(cursor, "MATCH", pattern, "COUNT", 100);
+      const [next, keys] = await redis.scan(
+        cursor,
+        "MATCH",
+        pattern,
+        "COUNT",
+        100,
+      );
       cursor = next;
       if (keys.length > 0) await redis.del(...keys);
     } while (cursor !== "0");
   } catch (err) {
-    console.error(`[cache] delPattern(${pattern}) failed:`, (err as Error).message);
+    console.error(
+      `[cache] delPattern(${pattern}) failed:`,
+      (err as Error).message,
+    );
   }
 }
 
@@ -90,7 +102,8 @@ export const cacheKeys = {
   // scopeKey comes from visibilityScope.ts's scopeCacheKey(): without it a
   // studio-wide role's cached list would be served straight to an artist,
   // which would be a wider leak than the unscoped query it replaced.
-  tasksList: (tenantId: string, scopeKey: string) => `tasks:${tenantId}:${scopeKey}`,
+  tasksList: (tenantId: string, scopeKey: string) =>
+    `tasks:${tenantId}:${scopeKey}`,
   tasksListAllScopes: (tenantId: string) => `tasks:${tenantId}:*`,
   // Checked on every authenticated request, so it is cached to avoid a DB
   // round-trip per call. Deliberately short-lived AND explicitly deleted

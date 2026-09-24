@@ -20,61 +20,68 @@ export const clientAccessRouter = Router();
 // code. Declared before the tenantAuthMiddleware below so it's matched
 // first and never runs through it (router middleware only applies to
 // routes registered after it).
-clientAccessRouter.post("/redeem", rateLimitByIp(REDEEM_RULE), async (req, res) => {
-  try {
-    const { code } = req.body;
-    if (!code || typeof code !== "string")
-      return res.status(400).json({ error: "Missing code" });
+clientAccessRouter.post(
+  "/redeem",
+  rateLimitByIp(REDEEM_RULE),
+  async (req, res) => {
+    try {
+      const { code } = req.body;
+      if (!code || typeof code !== "string")
+        return res.status(400).json({ error: "Missing code" });
 
-    const link = await prisma.clientAccessLink.findFirst({
-      where: {
-        code,
-        revokedAt: null,
-        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
-      },
-    });
-    if (!link) return res.status(401).json({ error: "Invalid or expired code" });
+      const link = await prisma.clientAccessLink.findFirst({
+        where: {
+          code,
+          revokedAt: null,
+          OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+        },
+      });
+      if (!link)
+        return res.status(401).json({ error: "Invalid or expired code" });
 
-    // Every tenant is seeded with a system-default "client" role (Task 6's
-    // sibling task in the admin-bootstrap plan ensures this — for now,
-    // fall back to a 401 if a tenant somehow has none, rather than
-    // fabricating a roleId that doesn't exist and would break every
-    // downstream tenantRoleCapabilities lookup).
-    const clientRole = await prisma.tenantRole.findFirst({
-      where: { tenantId: link.tenantId, name: "client" },
-      select: { id: true },
-    });
-    if (!clientRole)
-      return res.status(500).json({ error: "Tenant has no client role configured" });
+      // Every tenant is seeded with a system-default "client" role (Task 6's
+      // sibling task in the admin-bootstrap plan ensures this — for now,
+      // fall back to a 401 if a tenant somehow has none, rather than
+      // fabricating a roleId that doesn't exist and would break every
+      // downstream tenantRoleCapabilities lookup).
+      const clientRole = await prisma.tenantRole.findFirst({
+        where: { tenantId: link.tenantId, name: "client" },
+        select: { id: true },
+      });
+      if (!clientRole)
+        return res
+          .status(500)
+          .json({ error: "Tenant has no client role configured" });
 
-    const token = signSession({
-      userId: null,
-      tenantId: link.tenantId,
-      roleId: clientRole.id,
-      departmentId: null,
-      clientAccessLinkId: link.id,
-    });
+      const token = signSession({
+        userId: null,
+        tenantId: link.tenantId,
+        roleId: clientRole.id,
+        departmentId: null,
+        clientAccessLinkId: link.id,
+      });
 
-    // Cookie options copied verbatim from routes/auth.ts's login handler so
-    // this session cookie is parsed consistently with the rest of the app.
-    res.cookie("session", token, {
-      httpOnly: true,
-      secure: process.env.COOKIE_SECURE === "true",
-      sameSite: "lax",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
-    return res.json({
-      scope: {
-        projectId: link.projectId,
-        episodeId: link.episodeId,
-        versionId: link.versionId,
-      },
-    });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
+      // Cookie options copied verbatim from routes/auth.ts's login handler so
+      // this session cookie is parsed consistently with the rest of the app.
+      res.cookie("session", token, {
+        httpOnly: true,
+        secure: process.env.COOKIE_SECURE === "true",
+        sameSite: "lax",
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      });
+      return res.json({
+        scope: {
+          projectId: link.projectId,
+          episodeId: link.episodeId,
+          versionId: link.versionId,
+        },
+      });
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
 
 // Read-only calendar for a client session (either a real signed-in `client`
 // account or a redeemed ClientAccessLink) -- upcoming task due dates,
@@ -109,7 +116,13 @@ clientAccessRouter.get("/calendar", tenantAuthMiddleware, async (req, res) => {
             entityId: { in: shotIds },
             dueDate: { not: null },
           },
-          select: { id: true, entityId: true, title: true, dueDate: true, status: true },
+          select: {
+            id: true,
+            entityId: true,
+            title: true,
+            dueDate: true,
+            status: true,
+          },
         })
       : [];
 
@@ -127,7 +140,13 @@ clientAccessRouter.get("/calendar", tenantAuthMiddleware, async (req, res) => {
             entityId: { in: shotIds },
             status: { in: ["approved", "complete"] },
           },
-          select: { id: true, entityId: true, title: true, lastStatusUpdate: true, status: true },
+          select: {
+            id: true,
+            entityId: true,
+            title: true,
+            lastStatusUpdate: true,
+            status: true,
+          },
         })
       : [];
 
@@ -271,20 +290,30 @@ clientAccessRouter.post(
     try {
       const tenantId = req.tenantId!;
       const userId = req.userId!;
-      const { projectId, episodeId, versionId, expiresAt, clientEmail } = req.body;
+      const { projectId, episodeId, versionId, expiresAt, clientEmail } =
+        req.body;
       const scope = { projectId, episodeId, versionId };
-      const scopeCount = [projectId, episodeId, versionId].filter(Boolean).length;
+      const scopeCount = [projectId, episodeId, versionId].filter(
+        Boolean,
+      ).length;
       if (scopeCount !== 1) {
-        return res
-          .status(400)
-          .json({ error: "Provide exactly one of projectId, episodeId, or versionId" });
+        return res.status(400).json({
+          error: "Provide exactly one of projectId, episodeId, or versionId",
+        });
       }
       if (!(await scopeInTenant(tenantId, scope))) {
-        return res.status(400).json({ error: "Invalid project, episode, or version" });
+        return res
+          .status(400)
+          .json({ error: "Invalid project, episode, or version" });
       }
       if (clientEmail !== undefined && clientEmail !== null) {
-        if (typeof clientEmail !== "string" || !EMAIL_PATTERN.test(clientEmail)) {
-          return res.status(400).json({ error: "clientEmail must be a valid email address" });
+        if (
+          typeof clientEmail !== "string" ||
+          !EMAIL_PATTERN.test(clientEmail)
+        ) {
+          return res
+            .status(400)
+            .json({ error: "clientEmail must be a valid email address" });
         }
       }
 

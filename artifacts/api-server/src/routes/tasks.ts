@@ -5,7 +5,12 @@ import { requireCapability, denyClientAccess } from "../middleware/rbac";
 import * as crypto from "crypto";
 import { createNotification, findProductionManagers } from "./notifications";
 import { cacheGet, cacheSet, cacheDelPattern, cacheKeys } from "../lib/cache";
-import { getVisibilityScope, taskScopeWhere, scopeCacheKey, canSeeTask } from "../lib/visibilityScope";
+import {
+  getVisibilityScope,
+  taskScopeWhere,
+  scopeCacheKey,
+  canSeeTask,
+} from "../lib/visibilityScope";
 import { maybeReassignOnSequenceCompletion } from "../lib/sequenceReassignment";
 
 // A DB foreign key only verifies a referenced row exists, not who owns it,
@@ -13,7 +18,10 @@ import { maybeReassignOnSequenceCompletion } from "../lib/sequenceReassignment";
 // tenant-ownership check before use (same pattern already applied in
 // routes/shots.ts, routes/versions.ts, routes/reviews.ts).
 async function userInTenant(id: string, tenantId: string) {
-  const row = await prisma.user.findFirst({ where: { id, tenantId }, select: { id: true } });
+  const row = await prisma.user.findFirst({
+    where: { id, tenantId },
+    select: { id: true },
+  });
   return !!row;
 }
 
@@ -38,7 +46,10 @@ async function assignedToIsArtist(id: string, tenantId: string) {
 // integrity gap, same root cause as the FK-ownership issue elsewhere in
 // this plan).
 async function taskInTenant(id: string, tenantId: string) {
-  const row = await prisma.task.findFirst({ where: { id, tenantId }, select: { id: true } });
+  const row = await prisma.task.findFirst({
+    where: { id, tenantId },
+    select: { id: true },
+  });
   return !!row;
 }
 
@@ -53,7 +64,10 @@ async function taskInTenant(id: string, tenantId: string) {
 // Returns 404 (not 403) at the call sites on purpose -- a task outside the
 // caller's scope should be indistinguishable from one that doesn't exist,
 // which is also what taskInTenant's callers already returned.
-async function callerCanSeeTask(req: import("express").Request, taskId: string) {
+async function callerCanSeeTask(
+  req: import("express").Request,
+  taskId: string,
+) {
   return canSeeTask(req.tenantId!, await getVisibilityScope(req), taskId);
 }
 
@@ -95,11 +109,18 @@ async function canApproveAsDeptLead(
   });
   if (!grant) return false;
 
-  if (!actorRole || !DEPARTMENT_LEADERSHIP_ROLE_NAMES.includes(actorRole.name)) return false;
+  if (!actorRole || !DEPARTMENT_LEADERSHIP_ROLE_NAMES.includes(actorRole.name))
+    return false;
   if (!taskDepartmentName) return false;
 
-  const actor = await prisma.user.findFirst({ where: { id: actorUserId, tenantId }, select: { departmentId: true } });
-  const dept = await prisma.department.findFirst({ where: { tenantId, name: taskDepartmentName }, select: { id: true } });
+  const actor = await prisma.user.findFirst({
+    where: { id: actorUserId, tenantId },
+    select: { departmentId: true },
+  });
+  const dept = await prisma.department.findFirst({
+    where: { tenantId, name: taskDepartmentName },
+    select: { id: true },
+  });
   return !!actor?.departmentId && !!dept?.id && actor.departmentId === dept.id;
 }
 
@@ -115,7 +136,10 @@ async function canApproveAsProdManager(
   actorRoleId: string,
   _taskDepartmentName: string | null,
 ): Promise<boolean> {
-  const actorRole = await prisma.tenantRole.findFirst({ where: { id: actorRoleId, tenantId }, select: { name: true } });
+  const actorRole = await prisma.tenantRole.findFirst({
+    where: { id: actorRoleId, tenantId },
+    select: { name: true },
+  });
   return actorRole?.name === "admin";
 }
 
@@ -127,7 +151,10 @@ async function canApproveAsProdManager(
 // server-side from the caller's own session (req.roleId), never trusted
 // from the client.
 async function roleNameForCaller(roleId: string, tenantId: string) {
-  const row = await prisma.tenantRole.findFirst({ where: { id: roleId, tenantId }, select: { name: true } });
+  const row = await prisma.tenantRole.findFirst({
+    where: { id: roleId, tenantId },
+    select: { name: true },
+  });
   return row?.name;
 }
 
@@ -253,7 +280,9 @@ tasksRouter.put("/:id", async (req, res) => {
     const tenantId = req.tenantId!;
     const taskId = req.params.id;
 
-    const existing = await prisma.task.findFirst({ where: { tenantId, id: taskId } });
+    const existing = await prisma.task.findFirst({
+      where: { tenantId, id: taskId },
+    });
     if (!existing) return res.status(404).json({ error: "Not found" });
 
     // Artists have `edit_tasks` but not `assign_tasks` — the one exception is
@@ -338,15 +367,24 @@ tasksRouter.put("/:id", async (req, res) => {
       if (isSendBackFromLaterStage) {
         if (
           actorRoleName !== "admin" &&
-          !(await canApproveAsProdManager(tenantId, req.userId!, req.roleId!, existing.department))
+          !(await canApproveAsProdManager(
+            tenantId,
+            req.userId!,
+            req.roleId!,
+            existing.department,
+          ))
         ) {
           return res.status(403).json({
             error: "Forbidden: only Admin can send this back to the Lead",
           });
         }
-      } else if (existing.assignedTo !== req.userId && actorRoleName !== "admin") {
+      } else if (
+        existing.assignedTo !== req.userId &&
+        actorRoleName !== "admin"
+      ) {
         return res.status(403).json({
-          error: "Forbidden: only the artist this task is assigned to can submit it for review",
+          error:
+            "Forbidden: only the artist this task is assigned to can submit it for review",
         });
       }
     } else if (updates.status === "producer-review") {
@@ -377,14 +415,26 @@ tasksRouter.put("/:id", async (req, res) => {
     } else if (updates.status === "approved") {
       // Admin is the sole final gate now (migration 0023 removed the
       // separate Producer role).
-      if (!(await canApproveAsProdManager(tenantId, req.userId!, req.roleId!, existing.department)))
+      if (
+        !(await canApproveAsProdManager(
+          tenantId,
+          req.userId!,
+          req.roleId!,
+          existing.department,
+        ))
+      )
         return res.status(403).json({
           error: "Forbidden: only Admin can give final approval",
         });
     }
 
-    await prisma.task.updateMany({ where: { tenantId, id: taskId }, data: updates });
-    const updated = await prisma.task.findFirstOrThrow({ where: { tenantId, id: taskId } });
+    await prisma.task.updateMany({
+      where: { tenantId, id: taskId },
+      data: updates,
+    });
+    const updated = await prisma.task.findFirstOrThrow({
+      where: { tenantId, id: taskId },
+    });
     await cacheDelPattern(cacheKeys.tasksListAllScopes(tenantId));
 
     // Nothing ever told an artist they'd been handed a task -- only
@@ -398,7 +448,10 @@ tasksRouter.put("/:id", async (req, res) => {
       updates.assignedTo &&
       updates.assignedTo !== req.userId
     ) {
-      const assigner = await prisma.user.findFirst({ where: { id: req.userId!, tenantId }, select: { name: true } });
+      const assigner = await prisma.user.findFirst({
+        where: { id: req.userId!, tenantId },
+        select: { name: true },
+      });
       createNotification({
         tenantId,
         recipientUserId: updates.assignedTo as string,
@@ -408,7 +461,9 @@ tasksRouter.put("/:id", async (req, res) => {
         entityType: "task",
         entityId: taskId,
         actionUrl: `/tasks?open=${taskId}`,
-      }).catch((err) => req.log.error(err, "Failed to notify the new assignee"));
+      }).catch((err) =>
+        req.log.error(err, "Failed to notify the new assignee"),
+      );
     }
 
     // Fire-and-forget: a task reaching "approved" is the one authoritative
@@ -442,65 +497,73 @@ tasksRouter.get("/:id/checklist", async (req, res) => {
   }
 });
 
-tasksRouter.post("/:id/checklist", requireCapability("edit_tasks"), async (req, res) => {
-  try {
-    const tenantId = req.tenantId!;
-    // Cast needed: requireCapability() + this route's "/:id" typing widens
-    // req.params.id to `string | string[]` for overload resolution, even
-    // though a plain ":id" segment is always a single string at runtime.
-    const taskId = req.params.id as string;
-    const { text, position } = req.body;
-    if (!text) return res.status(400).json({ error: "Missing text" });
-    if (!(await callerCanSeeTask(req, taskId)))
-      return res.status(404).json({ error: "Not found" });
-    const created = await prisma.taskChecklistItem.create({
-      data: {
-        id: crypto.randomUUID(),
-        tenantId,
-        taskId,
-        text,
-        position: position ?? 0,
-      },
-    });
-    return res.status(201).json(created);
-  } catch (err) {
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
+tasksRouter.post(
+  "/:id/checklist",
+  requireCapability("edit_tasks"),
+  async (req, res) => {
+    try {
+      const tenantId = req.tenantId!;
+      // Cast needed: requireCapability() + this route's "/:id" typing widens
+      // req.params.id to `string | string[]` for overload resolution, even
+      // though a plain ":id" segment is always a single string at runtime.
+      const taskId = req.params.id as string;
+      const { text, position } = req.body;
+      if (!text) return res.status(400).json({ error: "Missing text" });
+      if (!(await callerCanSeeTask(req, taskId)))
+        return res.status(404).json({ error: "Not found" });
+      const created = await prisma.taskChecklistItem.create({
+        data: {
+          id: crypto.randomUUID(),
+          tenantId,
+          taskId,
+          text,
+          position: position ?? 0,
+        },
+      });
+      return res.status(201).json(created);
+    } catch (err) {
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
 
-tasksRouter.put("/:id/checklist/:itemId", requireCapability("edit_tasks"), async (req, res) => {
-  try {
-    const tenantId = req.tenantId!;
-    // Cast needed: requireCapability() + this route's ":itemId" typing
-    // widens req.params.itemId to `string | string[]` for overload
-    // resolution, even though a plain path segment is always one string.
-    const itemId = req.params.itemId as string;
-    const { done, text } = req.body;
-    const existing = await prisma.taskChecklistItem.findFirst({
-      where: { tenantId, id: itemId },
-    });
-    if (!existing) return res.status(404).json({ error: "Not found" });
-    // This route never looked at its own ":id" segment -- the item was found
-    // by item id alone, so any tenant member could tick off a checklist item
-    // on a task they can't even see. Authorize against the item's real
-    // parent task rather than the (spoofable, and previously ignored) path.
-    if (!(await callerCanSeeTask(req, existing.taskId)))
-      return res.status(404).json({ error: "Not found" });
-    const updates: Record<string, unknown> = {};
-    if (typeof done === "boolean") updates.done = done;
-    if (typeof text === "string") updates.text = text;
-    await prisma.taskChecklistItem.updateMany({
-      where: { tenantId, id: itemId },
-      data: updates,
-    });
-    const updated = await prisma.taskChecklistItem.findFirstOrThrow({
-      where: { tenantId, id: itemId },
-    });
-    return res.json(updated);
-  } catch (err) {
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
+tasksRouter.put(
+  "/:id/checklist/:itemId",
+  requireCapability("edit_tasks"),
+  async (req, res) => {
+    try {
+      const tenantId = req.tenantId!;
+      // Cast needed: requireCapability() + this route's ":itemId" typing
+      // widens req.params.itemId to `string | string[]` for overload
+      // resolution, even though a plain path segment is always one string.
+      const itemId = req.params.itemId as string;
+      const { done, text } = req.body;
+      const existing = await prisma.taskChecklistItem.findFirst({
+        where: { tenantId, id: itemId },
+      });
+      if (!existing) return res.status(404).json({ error: "Not found" });
+      // This route never looked at its own ":id" segment -- the item was found
+      // by item id alone, so any tenant member could tick off a checklist item
+      // on a task they can't even see. Authorize against the item's real
+      // parent task rather than the (spoofable, and previously ignored) path.
+      if (!(await callerCanSeeTask(req, existing.taskId)))
+        return res.status(404).json({ error: "Not found" });
+      const updates: Record<string, unknown> = {};
+      if (typeof done === "boolean") updates.done = done;
+      if (typeof text === "string") updates.text = text;
+      await prisma.taskChecklistItem.updateMany({
+        where: { tenantId, id: itemId },
+        data: updates,
+      });
+      const updated = await prisma.taskChecklistItem.findFirstOrThrow({
+        where: { tenantId, id: itemId },
+      });
+      return res.json(updated);
+    } catch (err) {
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
 
 tasksRouter.get("/:id/comments", async (req, res) => {
   try {
@@ -547,7 +610,9 @@ tasksRouter.post("/:id/comments", async (req, res) => {
     // before this -- nobody was ever told they'd been mentioned in one.
     // First-name matching (not a strict @handle syntax) because nothing in
     // this app assigns people a distinct handle to type.
-    const mentionMatches = [...text.matchAll(/@([A-Za-z][\w'-]*)/g)].map((m) => m[1].toLowerCase());
+    const mentionMatches = [...text.matchAll(/@([A-Za-z][\w'-]*)/g)].map((m) =>
+      m[1].toLowerCase(),
+    );
     if (mentionMatches.length > 0) {
       const tenantUsers = await prisma.user.findMany({
         where: { tenantId, deletedAt: null },
@@ -558,8 +623,14 @@ tasksRouter.post("/:id/comments", async (req, res) => {
           u.id !== userId &&
           mentionMatches.includes(u.name.split(" ")[0]?.toLowerCase() ?? ""),
       );
-      const task = await prisma.task.findFirst({ where: { tenantId, id: taskId }, select: { title: true } });
-      const author = await prisma.user.findFirst({ where: { id: userId, tenantId }, select: { name: true } });
+      const task = await prisma.task.findFirst({
+        where: { tenantId, id: taskId },
+        select: { title: true },
+      });
+      const author = await prisma.user.findFirst({
+        where: { id: userId, tenantId },
+        select: { name: true },
+      });
       for (const person of mentioned) {
         await createNotification({
           tenantId,
@@ -570,7 +641,9 @@ tasksRouter.post("/:id/comments", async (req, res) => {
           entityType: "task",
           entityId: taskId,
           actionUrl: `/tasks?open=${taskId}`,
-        }).catch((err) => req.log.error(err, "Failed to notify a mentioned user"));
+        }).catch((err) =>
+          req.log.error(err, "Failed to notify a mentioned user"),
+        );
       }
     }
 
@@ -594,38 +667,42 @@ tasksRouter.get("/:id/dependencies", async (req, res) => {
   }
 });
 
-tasksRouter.post("/:id/dependencies", requireCapability("edit_tasks"), async (req, res) => {
-  try {
-    const tenantId = req.tenantId!;
-    // Cast needed: requireCapability() + this route's "/:id" typing widens
-    // req.params.id to `string | string[]` for overload resolution.
-    const taskId = req.params.id as string;
-    const { dependsOnTaskId, type, lagDays } = req.body;
-    if (!dependsOnTaskId)
-      return res.status(400).json({ error: "Missing dependsOnTaskId" });
-    if (!(await callerCanSeeTask(req, taskId)))
-      return res.status(404).json({ error: "Not found" });
-    // Deliberately only a tenant check for the *upstream* task: pipeline
-    // dependencies legitimately cross departments (a comp task waits on an
-    // animation task the compositor can't see), and the row stores nothing
-    // but an id the caller already supplied.
-    if (!(await taskInTenant(dependsOnTaskId, tenantId)))
-      return res.status(400).json({ error: "Invalid dependsOnTaskId" });
-    const created = await prisma.taskDependency.create({
-      data: {
-        id: crypto.randomUUID(),
-        tenantId,
-        taskId,
-        dependsOnTaskId,
-        type: type || "FS",
-        lagDays: lagDays ?? null,
-      },
-    });
-    return res.status(201).json(created);
-  } catch (err) {
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
+tasksRouter.post(
+  "/:id/dependencies",
+  requireCapability("edit_tasks"),
+  async (req, res) => {
+    try {
+      const tenantId = req.tenantId!;
+      // Cast needed: requireCapability() + this route's "/:id" typing widens
+      // req.params.id to `string | string[]` for overload resolution.
+      const taskId = req.params.id as string;
+      const { dependsOnTaskId, type, lagDays } = req.body;
+      if (!dependsOnTaskId)
+        return res.status(400).json({ error: "Missing dependsOnTaskId" });
+      if (!(await callerCanSeeTask(req, taskId)))
+        return res.status(404).json({ error: "Not found" });
+      // Deliberately only a tenant check for the *upstream* task: pipeline
+      // dependencies legitimately cross departments (a comp task waits on an
+      // animation task the compositor can't see), and the row stores nothing
+      // but an id the caller already supplied.
+      if (!(await taskInTenant(dependsOnTaskId, tenantId)))
+        return res.status(400).json({ error: "Invalid dependsOnTaskId" });
+      const created = await prisma.taskDependency.create({
+        data: {
+          id: crypto.randomUUID(),
+          tenantId,
+          taskId,
+          dependsOnTaskId,
+          type: type || "FS",
+          lagDays: lagDays ?? null,
+        },
+      });
+      return res.status(201).json(created);
+    } catch (err) {
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
 
 tasksRouter.get("/:id/attachments", async (req, res) => {
   try {
@@ -641,31 +718,35 @@ tasksRouter.get("/:id/attachments", async (req, res) => {
   }
 });
 
-tasksRouter.post("/:id/attachments", requireCapability("edit_tasks"), async (req, res) => {
-  try {
-    const tenantId = req.tenantId!;
-    const userId = req.userId!;
-    // Cast needed: requireCapability() + this route's "/:id" typing widens
-    // req.params.id to `string | string[]` for overload resolution.
-    const taskId = req.params.id as string;
-    const { url } = req.body;
-    if (!url) return res.status(400).json({ error: "Missing url" });
-    if (!(await callerCanSeeTask(req, taskId)))
-      return res.status(404).json({ error: "Not found" });
-    const created = await prisma.taskAttachment.create({
-      data: {
-        id: crypto.randomUUID(),
-        tenantId,
-        taskId,
-        url,
-        uploadedById: userId,
-      },
-    });
-    return res.status(201).json(created);
-  } catch (err) {
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
+tasksRouter.post(
+  "/:id/attachments",
+  requireCapability("edit_tasks"),
+  async (req, res) => {
+    try {
+      const tenantId = req.tenantId!;
+      const userId = req.userId!;
+      // Cast needed: requireCapability() + this route's "/:id" typing widens
+      // req.params.id to `string | string[]` for overload resolution.
+      const taskId = req.params.id as string;
+      const { url } = req.body;
+      if (!url) return res.status(400).json({ error: "Missing url" });
+      if (!(await callerCanSeeTask(req, taskId)))
+        return res.status(404).json({ error: "Not found" });
+      const created = await prisma.taskAttachment.create({
+        data: {
+          id: crypto.randomUUID(),
+          tenantId,
+          taskId,
+          url,
+          uploadedById: userId,
+        },
+      });
+      return res.status(201).json(created);
+    } catch (err) {
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
 
 tasksRouter.get("/:id/approval-events", async (req, res) => {
   try {
@@ -687,7 +768,10 @@ tasksRouter.post("/:id/approval-events", async (req, res) => {
     const userId = req.userId!;
     const roleId = req.roleId!;
     const { action, authority } = req.body;
-    if (!action || !(APPROVAL_EVENT_ACTIONS as readonly string[]).includes(action))
+    if (
+      !action ||
+      !(APPROVAL_EVENT_ACTIONS as readonly string[]).includes(action)
+    )
       return res.status(400).json({ error: "Missing or invalid action" });
     if (
       (action === "changes-requested" || action === "rejected") &&
@@ -695,7 +779,8 @@ tasksRouter.post("/:id/approval-events", async (req, res) => {
       authority !== "pm"
     ) {
       return res.status(400).json({
-        error: "authority is required for this action and must be 'lead' or 'pm'",
+        error:
+          "authority is required for this action and must be 'lead' or 'pm'",
       });
     }
 
@@ -727,12 +812,22 @@ tasksRouter.post("/:id/approval-events", async (req, res) => {
         (await roleNameForCaller(roleId, tenantId)) !== "admin"
       ) {
         return res.status(403).json({
-          error: "Forbidden: only the artist this task is assigned to can submit it for review",
+          error:
+            "Forbidden: only the artist this task is assigned to can submit it for review",
         });
       }
     } else if (action === "submitted-for-manager-review") {
-      if (!(await canApproveAsDeptLead(tenantId, userId, roleId, approvalTask.department)))
-        return res.status(403).json({ error: "Forbidden: missing lead-approval authority" });
+      if (
+        !(await canApproveAsDeptLead(
+          tenantId,
+          userId,
+          roleId,
+          approvalTask.department,
+        ))
+      )
+        return res
+          .status(403)
+          .json({ error: "Forbidden: missing lead-approval authority" });
     } else if (action === "submitted-for-producer-review") {
       const isProdManager = await canApproveAsProdManager(
         tenantId,
@@ -742,11 +837,21 @@ tasksRouter.post("/:id/approval-events", async (req, res) => {
       );
       if (!isProdManager && approvalTask.assignedTo !== userId)
         return res.status(403).json({
-          error: "Forbidden: missing authority to send this to the Main Producer",
+          error:
+            "Forbidden: missing authority to send this to the Main Producer",
         });
     } else if (action === "approved" || action === "published") {
-      if (!(await canApproveAsProdManager(tenantId, userId, roleId, approvalTask.department)))
-        return res.status(403).json({ error: "Forbidden: missing final approval authority" });
+      if (
+        !(await canApproveAsProdManager(
+          tenantId,
+          userId,
+          roleId,
+          approvalTask.department,
+        ))
+      )
+        return res
+          .status(403)
+          .json({ error: "Forbidden: missing final approval authority" });
     } else if (action === "changes-requested" || action === "rejected") {
       // Previously ungated entirely -- any authenticated tenant member could
       // write a "rejected"/"changes-requested" event onto any task, real
@@ -772,11 +877,21 @@ tasksRouter.post("/:id/approval-events", async (req, res) => {
       const authorized =
         actorRoleName === "admin" ||
         (authority === "lead"
-          ? await canApproveAsDeptLead(tenantId, userId, roleId, approvalTask.department)
+          ? await canApproveAsDeptLead(
+              tenantId,
+              userId,
+              roleId,
+              approvalTask.department,
+            )
           : // "pm" authority is Admin's now -- canApproveAsProdManager already
             // covers it (migration 0023 removed the separate producer/
             // production_head roles this used to also check by name).
-            await canApproveAsProdManager(tenantId, userId, roleId, approvalTask.department));
+            await canApproveAsProdManager(
+              tenantId,
+              userId,
+              roleId,
+              approvalTask.department,
+            ));
       if (!authorized) {
         return res.status(403).json({
           error: `Forbidden: missing ${authority === "lead" ? "Lead" : "Production Manager"} authority to send this back`,
@@ -795,7 +910,10 @@ tasksRouter.post("/:id/approval-events", async (req, res) => {
         action,
         byUserId: userId,
         byRole,
-        authority: action === "changes-requested" || action === "rejected" ? authority : null,
+        authority:
+          action === "changes-requested" || action === "rejected"
+            ? authority
+            : null,
       },
     });
 
@@ -804,16 +922,28 @@ tasksRouter.post("/:id/approval-events", async (req, res) => {
     // the final publish/reject actions, the artist whose work it concerns).
     (async () => {
       try {
-        const task = await prisma.task.findFirst({ where: { tenantId, id: req.params.id } });
+        const task = await prisma.task.findFirst({
+          where: { tenantId, id: req.params.id },
+        });
         if (!task) return;
-        const actor = await prisma.user.findFirst({ where: { id: userId }, select: { name: true } });
+        const actor = await prisma.user.findFirst({
+          where: { id: userId },
+          select: { name: true },
+        });
         const actorName = actor?.name || "Someone";
 
-        const notify = (recipientUserId: string, title: string, description: string) =>
+        const notify = (
+          recipientUserId: string,
+          title: string,
+          description: string,
+        ) =>
           createNotification({
             tenantId,
             recipientUserId,
-            category: action === "rejected" || action === "changes-requested" ? "workflow" : "review",
+            category:
+              action === "rejected" || action === "changes-requested"
+                ? "workflow"
+                : "review",
             title,
             description,
             entityType: "task",

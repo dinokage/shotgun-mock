@@ -26,7 +26,9 @@ export function useAuditLogs(entityId: string | undefined) {
   return useQuery<AuditLogDTO[]>({
     queryKey: ["audit-logs", entityId],
     queryFn: () =>
-      apiFetch<AuditLogDTO[]>(`/audit-logs?entityId=${encodeURIComponent(entityId!)}`),
+      apiFetch<AuditLogDTO[]>(
+        `/audit-logs?entityId=${encodeURIComponent(entityId!)}`,
+      ),
     enabled: !!entityId,
     staleTime: 10000,
   });

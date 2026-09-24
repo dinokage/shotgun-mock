@@ -248,9 +248,7 @@ function PayrollRow({
       </td>
       <td className="px-4 py-3">
         <div className="text-sm">{member.title}</div>
-        <div className="text-xs text-muted-foreground">
-          {memberDept?.name}
-        </div>
+        <div className="text-xs text-muted-foreground">{memberDept?.name}</div>
       </td>
       <td className="px-4 py-3 text-center">
         {member.punchedInAt ? (
@@ -776,8 +774,7 @@ export default function DailyStandup() {
                     </CardHeader>
                     <CardContent className="space-y-3">
                       {team.map((member) => {
-                        const hasCapacity =
-                          typeof member.capacity === "number";
+                        const hasCapacity = typeof member.capacity === "number";
                         const isOverloaded =
                           hasCapacity && member.capacity > 95;
                         const isAway = member.status !== "active";
@@ -1340,17 +1337,20 @@ export default function DailyStandup() {
                           </p>
                           {update.attachmentUrls?.length > 0 && (
                             <div className="flex flex-wrap gap-1.5 mt-2">
-                              {update.attachmentUrls.map((url: string, i: number) => (
-                                <a
-                                  key={url}
-                                  href={url}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="text-xs px-2 py-1 rounded bg-muted hover:bg-muted/70 text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
-                                >
-                                  <Paperclip className="w-3 h-3" /> Attachment {i + 1}
-                                </a>
-                              ))}
+                              {update.attachmentUrls.map(
+                                (url: string, i: number) => (
+                                  <a
+                                    key={url}
+                                    href={url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-xs px-2 py-1 rounded bg-muted hover:bg-muted/70 text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+                                  >
+                                    <Paperclip className="w-3 h-3" /> Attachment{" "}
+                                    {i + 1}
+                                  </a>
+                                ),
+                              )}
                             </div>
                           )}
                           <Button
@@ -1463,7 +1463,9 @@ export default function DailyStandup() {
                           member={member}
                           memberDept={memberDept}
                           isApproved={isApproved}
-                          onViewLogs={() => handleViewLogs(member.id, member.name)}
+                          onViewLogs={() =>
+                            handleViewLogs(member.id, member.name)
+                          }
                           onHoursComputed={reportMemberHours}
                         />
                       ))}

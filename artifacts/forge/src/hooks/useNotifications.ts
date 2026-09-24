@@ -36,14 +36,17 @@ export function useMarkNotificationRead() {
   return useMutation({
     mutationFn: (id: string) =>
       apiClient.patch<NotificationDTO>(`/notifications/${id}/read`, {}),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["notifications"] }),
   });
 }
 
 export function useMarkAllNotificationsRead() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => apiClient.post<{ ok: true }>("/notifications/read-all", {}),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+    mutationFn: () =>
+      apiClient.post<{ ok: true }>("/notifications/read-all", {}),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["notifications"] }),
   });
 }

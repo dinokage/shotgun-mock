@@ -41,8 +41,14 @@ export function useAssets(projectId?: string) {
 export function useCreateAsset() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: { projectId: string; name: string; type?: string; episodeId?: string; sequenceId?: string; assigneeId?: string }) =>
-      apiClient.post<AssetDTO>("/assets", body),
+    mutationFn: (body: {
+      projectId: string;
+      name: string;
+      type?: string;
+      episodeId?: string;
+      sequenceId?: string;
+      assigneeId?: string;
+    }) => apiClient.post<AssetDTO>("/assets", body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["assets"] });
       // DashboardTab/AssetsTab read assets from useAssetStore (Zustand), not

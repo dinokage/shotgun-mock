@@ -61,7 +61,9 @@ export function TimeClockWidget() {
     : null;
   const myTasks = currentUser
     ? tasks.filter(
-        (t) => getAssigneeId(t) === currentUser.id && isTaskActive(normalizeTaskStatus(t.status)),
+        (t) =>
+          getAssigneeId(t) === currentUser.id &&
+          isTaskActive(normalizeTaskStatus(t.status)),
       )
     : [];
 

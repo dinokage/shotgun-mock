@@ -87,7 +87,9 @@ export function CreateProjectModal() {
   const addDraftShotRow = () =>
     setDraftShots((prev) => [...prev, { episode: "", sequence: "", shot: "" }]);
   const updateDraftShotRow = (i: number, patch: Partial<DraftShot>) =>
-    setDraftShots((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+    setDraftShots((prev) =>
+      prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)),
+    );
   const removeDraftShotRow = (i: number) =>
     setDraftShots((prev) => prev.filter((_, idx) => idx !== i));
 
@@ -287,26 +289,35 @@ export function CreateProjectModal() {
               </div>
               <p className="text-xs text-muted-foreground">
                 Set up the same Episode / Sequence / Shot structure used when
-                assigning tasks — a new project starts with none, so add a
-                few here, or skip this and use "Import Tracksheet" on the
-                Tracking Grid later for bulk import.
+                assigning tasks — a new project starts with none, so add a few
+                here, or skip this and use "Import Tracksheet" on the Tracking
+                Grid later for bulk import.
               </p>
               {draftShots.map((row, i) => (
-                <div key={i} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2">
+                <div
+                  key={i}
+                  className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2"
+                >
                   <Input
                     placeholder="Episode (optional)"
                     value={row.episode}
-                    onChange={(e) => updateDraftShotRow(i, { episode: e.target.value })}
+                    onChange={(e) =>
+                      updateDraftShotRow(i, { episode: e.target.value })
+                    }
                   />
                   <Input
                     placeholder="Sequence (optional)"
                     value={row.sequence}
-                    onChange={(e) => updateDraftShotRow(i, { sequence: e.target.value })}
+                    onChange={(e) =>
+                      updateDraftShotRow(i, { sequence: e.target.value })
+                    }
                   />
                   <Input
                     placeholder="Shot name *"
                     value={row.shot}
-                    onChange={(e) => updateDraftShotRow(i, { shot: e.target.value })}
+                    onChange={(e) =>
+                      updateDraftShotRow(i, { shot: e.target.value })
+                    }
                   />
                   <Button
                     type="button"
@@ -321,8 +332,8 @@ export function CreateProjectModal() {
             </div>
           ) : (
             <p className="text-xs text-muted-foreground pt-2 border-t border-border">
-              Shots aren't added here — ask a producer or lead to add the
-              first shots once the project is created.
+              Shots aren't added here — ask a producer or lead to add the first
+              shots once the project is created.
             </p>
           )}
 

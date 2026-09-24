@@ -48,24 +48,25 @@ const upload = multer({
 // must match its format (see matchesSignature). Video, PNG and JPEG byte
 // streams can't execute as script the way an uploaded HTML/SVG could, which
 // is also why SVG is deliberately absent.
-const REVIEW_MEDIA: Record<string, { mime: string; kind: "video" | "image" }> = {
-  ".mp4": { mime: "video/mp4", kind: "video" },
-  ".m4v": { mime: "video/mp4", kind: "video" },
-  ".mov": { mime: "video/quicktime", kind: "video" },
-  ".webm": { mime: "video/webm", kind: "video" },
-  ".avi": { mime: "video/x-msvideo", kind: "video" },
-  ".png": { mime: "image/png", kind: "image" },
-  ".jpg": { mime: "image/jpeg", kind: "image" },
-  ".jpeg": { mime: "image/jpeg", kind: "image" },
-  // The review player already renders these two as stills; the upload route
-  // refusing them was the only reason they could never get there.
-  ".gif": { mime: "image/gif", kind: "image" },
-  ".webp": { mime: "image/webp", kind: "image" },
-  // Never served inline as-is -- no browser can decode EXR. Listed here only
-  // so fileFilter/reviewMediaExt accept it onto disk; the actual response
-  // (see the /video handler) is a transcoded PNG proxy, not this file.
-  ".exr": { mime: "image/x-exr", kind: "image" },
-};
+const REVIEW_MEDIA: Record<string, { mime: string; kind: "video" | "image" }> =
+  {
+    ".mp4": { mime: "video/mp4", kind: "video" },
+    ".m4v": { mime: "video/mp4", kind: "video" },
+    ".mov": { mime: "video/quicktime", kind: "video" },
+    ".webm": { mime: "video/webm", kind: "video" },
+    ".avi": { mime: "video/x-msvideo", kind: "video" },
+    ".png": { mime: "image/png", kind: "image" },
+    ".jpg": { mime: "image/jpeg", kind: "image" },
+    ".jpeg": { mime: "image/jpeg", kind: "image" },
+    // The review player already renders these two as stills; the upload route
+    // refusing them was the only reason they could never get there.
+    ".gif": { mime: "image/gif", kind: "image" },
+    ".webp": { mime: "image/webp", kind: "image" },
+    // Never served inline as-is -- no browser can decode EXR. Listed here only
+    // so fileFilter/reviewMediaExt accept it onto disk; the actual response
+    // (see the /video handler) is a transcoded PNG proxy, not this file.
+    ".exr": { mime: "image/x-exr", kind: "image" },
+  };
 const MIME_TO_REVIEW_EXT: Record<string, string> = {
   "video/mp4": ".mp4",
   "video/webm": ".webm",
@@ -81,7 +82,10 @@ const MIME_TO_REVIEW_EXT: Record<string, string> = {
 // as a fallback. Filtering on MIME alone rejected real .mov files from
 // Windows machines, which often report none, while accepting anything a
 // client chose to label video/quicktime.
-function reviewMediaExt(file: { originalname: string; mimetype: string }): string | null {
+function reviewMediaExt(file: {
+  originalname: string;
+  mimetype: string;
+}): string | null {
   const ext = path.extname(file.originalname).toLowerCase();
   if (REVIEW_MEDIA[ext]) return ext;
   return MIME_TO_REVIEW_EXT[file.mimetype] ?? null;
@@ -102,9 +106,15 @@ function matchesSignature(filePath: string, ext: string): boolean {
         // ISO base media / QuickTime: a 4-byte box size, then the box type.
         // "ftyp" is standard; older QuickTime files open straight into one of
         // the others.
-        return ["ftyp", "moov", "mdat", "wide", "free", "skip", "pnot"].includes(
-          ascii(4, 8),
-        );
+        return [
+          "ftyp",
+          "moov",
+          "mdat",
+          "wide",
+          "free",
+          "skip",
+          "pnot",
+        ].includes(ascii(4, 8));
       case ".webm":
         return n >= 4 && head.readUInt32BE(0) === 0x1a45dfa3;
       case ".avi":
@@ -114,11 +124,15 @@ function matchesSignature(filePath: string, ext: string): boolean {
           n >= 8 &&
           head
             .subarray(0, 8)
-            .equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+            .equals(
+              Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+            )
         );
       case ".jpg":
       case ".jpeg":
-        return n >= 3 && head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff;
+        return (
+          n >= 3 && head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff
+        );
       case ".gif":
         return ascii(0, 6) === "GIF87a" || ascii(0, 6) === "GIF89a";
       case ".webp":
@@ -160,9 +174,13 @@ const EXR_TRANSCODE_TIMEOUT_MS = 60_000;
 
 /** Channel names oiiotool reports, in "channel list: a, b, c" order. */
 async function exrChannelList(exrPath: string): Promise<string[]> {
-  const { stdout } = await execFileAsync("oiiotool", ["--info", "-v", exrPath], {
-    timeout: EXR_TRANSCODE_TIMEOUT_MS,
-  });
+  const { stdout } = await execFileAsync(
+    "oiiotool",
+    ["--info", "-v", exrPath],
+    {
+      timeout: EXR_TRANSCODE_TIMEOUT_MS,
+    },
+  );
   const match = /channel list:\s*(.+)/.exec(stdout);
   if (!match) return [];
   return match[1].split(",").map((c) => c.trim());
@@ -197,7 +215,10 @@ function pickBeautyChannels(channels: string[]): string[] {
   return channels.slice(0, Math.min(3, channels.length));
 }
 
-async function transcodeExrToPng(exrPath: string, pngPath: string): Promise<void> {
+async function transcodeExrToPng(
+  exrPath: string,
+  pngPath: string,
+): Promise<void> {
   const channels = await exrChannelList(exrPath);
   if (channels.length === 0) {
     throw new Error("Could not read this EXR's channel list");
@@ -256,7 +277,9 @@ uploadsRouter.post(
       if (err) {
         const tooLarge = (err as { code?: string }).code === "LIMIT_FILE_SIZE";
         return res.status(tooLarge ? 413 : 400).json({
-          error: tooLarge ? "Review uploads are limited to 500 MB" : err.message,
+          error: tooLarge
+            ? "Review uploads are limited to 500 MB"
+            : err.message,
         });
       }
       if (!req.file) return res.status(400).json({ error: "No file provided" });
@@ -302,7 +325,8 @@ uploadsRouter.post(
         if (pngSize === 0) {
           fs.rm(pngPath, { force: true }, () => {});
           return res.status(422).json({
-            error: "ffmpeg produced an empty preview for this EXR -- treating it as a failed transcode.",
+            error:
+              "ffmpeg produced an empty preview for this EXR -- treating it as a failed transcode.",
           });
         }
         // The original EXR is kept, not deleted: it's the studio's actual
@@ -362,17 +386,22 @@ uploadsRouter.get("/videos/:tenantId/:filename", (req, res) => {
 // capability check at all. A per-tenant storage quota is a bigger feature
 // (would need tracking total bytes per tenant) and is out of scope here; the
 // per-file 200MB cap above is the only size guard in place for now.
-uploadsRouter.post("/", requireCapability("create_tasks"), upload.single("file"), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: "No file provided" });
-  const tenantId = req.tenantId!;
-  const url = `/api/uploads/files/${tenantId}/${req.file.filename}?name=${encodeURIComponent(req.file.originalname)}`;
-  return res.status(201).json({
-    url,
-    name: req.file.originalname,
-    size: req.file.size,
-    mimeType: req.file.mimetype,
-  });
-});
+uploadsRouter.post(
+  "/",
+  requireCapability("create_tasks"),
+  upload.single("file"),
+  (req, res) => {
+    if (!req.file) return res.status(400).json({ error: "No file provided" });
+    const tenantId = req.tenantId!;
+    const url = `/api/uploads/files/${tenantId}/${req.file.filename}?name=${encodeURIComponent(req.file.originalname)}`;
+    return res.status(201).json({
+      url,
+      name: req.file.originalname,
+      size: req.file.size,
+      mimeType: req.file.mimetype,
+    });
+  },
+);
 
 // Path-scoped by tenantId so one tenant can never guess/access another's
 // uploaded file, even though filenames themselves are already unguessable

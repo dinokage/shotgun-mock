@@ -67,7 +67,11 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-async function loadEntity(entityType: EntityType, id: string, tenantId: string) {
+async function loadEntity(
+  entityType: EntityType,
+  id: string,
+  tenantId: string,
+) {
   return entityType === "asset"
     ? await prisma.asset.findFirst({ where: { id, tenantId } })
     : await prisma.shot.findFirst({ where: { id, tenantId } });
@@ -107,7 +111,9 @@ function computeRollbackPatch(
   const patch: Record<string, unknown> = {};
   for (const event of logs) {
     if (event.createdAt <= rolledBackTo) continue;
-    for (const [field, value] of Object.entries(asRecord(asRecord(event.metadata).before))) {
+    for (const [field, value] of Object.entries(
+      asRecord(asRecord(event.metadata).before),
+    )) {
       patch[field] = value;
     }
   }
@@ -135,7 +141,9 @@ function toDTO(row: RollbackRow) {
 }
 
 function parseEntityType(value: unknown): EntityType | null {
-  return ENTITY_TYPES.includes(value as EntityType) ? (value as EntityType) : null;
+  return ENTITY_TYPES.includes(value as EntityType)
+    ? (value as EntityType)
+    : null;
 }
 
 // `entityType` is optional here: the Time Travel page knows an entity's id
@@ -148,7 +156,9 @@ auditRollbacksRouter.get("/", async (req, res) => {
     if (typeof entityId !== "string" || !entityId)
       return res.status(400).json({ error: "entityId is required" });
     if (entityType !== undefined && !parseEntityType(entityType))
-      return res.status(400).json({ error: `entityType must be one of: ${ENTITY_TYPES.join(", ")}` });
+      return res.status(400).json({
+        error: `entityType must be one of: ${ENTITY_TYPES.join(", ")}`,
+      });
 
     const row = await prisma.auditRollback.findFirst({
       where: {
@@ -170,88 +180,106 @@ auditRollbacksRouter.get("/", async (req, res) => {
 // edit capabilities. Note admin and lead can open the
 // Time Travel page (LeadershipGuard) but hold no manage_pipeline grant, so
 // for them the page is read-only — the UI hides the write controls to match.
-auditRollbacksRouter.post("/", requireCapability("manage_pipeline"), async (req, res) => {
-  try {
-    const tenantId = req.tenantId!;
-    const { entityId, rolledBackTo } = req.body ?? {};
-    const entityType = parseEntityType(req.body?.entityType);
+auditRollbacksRouter.post(
+  "/",
+  requireCapability("manage_pipeline"),
+  async (req, res) => {
+    try {
+      const tenantId = req.tenantId!;
+      const { entityId, rolledBackTo } = req.body ?? {};
+      const entityType = parseEntityType(req.body?.entityType);
 
-    if (!entityType)
-      return res.status(400).json({ error: `entityType must be one of: ${ENTITY_TYPES.join(", ")}` });
-    if (typeof entityId !== "string" || !entityId)
-      return res.status(400).json({ error: "entityId is required" });
-    const target = new Date(rolledBackTo);
-    if (typeof rolledBackTo !== "string" || Number.isNaN(target.getTime()))
-      return res.status(400).json({ error: "rolledBackTo must be an ISO timestamp" });
+      if (!entityType)
+        return res.status(400).json({
+          error: `entityType must be one of: ${ENTITY_TYPES.join(", ")}`,
+        });
+      if (typeof entityId !== "string" || !entityId)
+        return res.status(400).json({ error: "entityId is required" });
+      const target = new Date(rolledBackTo);
+      if (typeof rolledBackTo !== "string" || Number.isNaN(target.getTime()))
+        return res
+          .status(400)
+          .json({ error: "rolledBackTo must be an ISO timestamp" });
 
-    const entity = await loadEntity(entityType, entityId, tenantId);
-    if (!entity) return res.status(404).json({ error: "Entity not found" });
-    let current = entity as unknown as Record<string, unknown>;
+      const entity = await loadEntity(entityType, entityId, tenantId);
+      if (!entity) return res.status(404).json({ error: "Entity not found" });
+      let current = entity as unknown as Record<string, unknown>;
 
-    const existing = await prisma.auditRollback.findUnique({
-      where: { tenantId_entityType_entityId: { tenantId, entityType, entityId } },
-    });
-    const existingSnapshot = filterFields(entityType, asRecord(existing?.snapshot));
-
-    // If this entity is already mid-rollback, its live fields hold an
-    // *intermediate* rolled-back state, not the true latest one — read fresh
-    // values here without restoring first and they'd get baked into the
-    // snapshot below, permanently losing the real latest value and leaving
-    // "Restore latest" only able to undo back to this intermediate point. So
-    // put the true latest values back first, then compute this rollback's
-    // before-values and snapshot from that clean baseline.
-    if (Object.keys(existingSnapshot).length > 0) {
-      await writeFields(entityType, entityId, tenantId, existingSnapshot);
-      current = { ...current, ...existingSnapshot };
-    }
-
-    const logs = await prisma.auditLog.findMany({
-      where: { tenantId, targetEntityId: entityId },
-      orderBy: { createdAt: "desc" },
-      select: { createdAt: true, metadata: true },
-    });
-    const patch = filterFields(entityType, computeRollbackPatch(target, logs));
-    const freshValues = pick(current, Object.keys(patch));
-    // Keep any previously-snapshotted fields the new patch doesn't touch, and
-    // refresh the rest from the just-restored true state.
-    const snapshot = { ...existingSnapshot, ...freshValues };
-
-    if (Object.keys(patch).length > 0) {
-      await writeFields(entityType, entityId, tenantId, patch);
-      recordAuditLog({
-        tenantId,
-        actorUserId: req.userId!,
-        action: "rollback",
-        targetEntityType: entityType,
-        targetEntityId: entityId,
-        before: freshValues,
-        after: patch,
-      }).catch((err) => req.log.error(err, "audit log write failed"));
-    }
-
-    const row = await prisma.auditRollback.upsert({
-      where: { tenantId_entityType_entityId: { tenantId, entityType, entityId } },
-      create: {
-        id: crypto.randomUUID(),
-        tenantId,
+      const existing = await prisma.auditRollback.findUnique({
+        where: {
+          tenantId_entityType_entityId: { tenantId, entityType, entityId },
+        },
+      });
+      const existingSnapshot = filterFields(
         entityType,
-        entityId,
-        rolledBackTo: target,
-        snapshot: JSON.parse(JSON.stringify(snapshot)),
-        createdById: req.userId ?? null,
-      },
-      update: {
-        rolledBackTo: target,
-        snapshot: JSON.parse(JSON.stringify(snapshot)),
-        createdById: req.userId ?? null,
-      },
-    });
-    return res.json(toDTO(row));
-  } catch (err) {
-    req.log.error(err, "Failed to roll back entity");
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
+        asRecord(existing?.snapshot),
+      );
+
+      // If this entity is already mid-rollback, its live fields hold an
+      // *intermediate* rolled-back state, not the true latest one — read fresh
+      // values here without restoring first and they'd get baked into the
+      // snapshot below, permanently losing the real latest value and leaving
+      // "Restore latest" only able to undo back to this intermediate point. So
+      // put the true latest values back first, then compute this rollback's
+      // before-values and snapshot from that clean baseline.
+      if (Object.keys(existingSnapshot).length > 0) {
+        await writeFields(entityType, entityId, tenantId, existingSnapshot);
+        current = { ...current, ...existingSnapshot };
+      }
+
+      const logs = await prisma.auditLog.findMany({
+        where: { tenantId, targetEntityId: entityId },
+        orderBy: { createdAt: "desc" },
+        select: { createdAt: true, metadata: true },
+      });
+      const patch = filterFields(
+        entityType,
+        computeRollbackPatch(target, logs),
+      );
+      const freshValues = pick(current, Object.keys(patch));
+      // Keep any previously-snapshotted fields the new patch doesn't touch, and
+      // refresh the rest from the just-restored true state.
+      const snapshot = { ...existingSnapshot, ...freshValues };
+
+      if (Object.keys(patch).length > 0) {
+        await writeFields(entityType, entityId, tenantId, patch);
+        recordAuditLog({
+          tenantId,
+          actorUserId: req.userId!,
+          action: "rollback",
+          targetEntityType: entityType,
+          targetEntityId: entityId,
+          before: freshValues,
+          after: patch,
+        }).catch((err) => req.log.error(err, "audit log write failed"));
+      }
+
+      const row = await prisma.auditRollback.upsert({
+        where: {
+          tenantId_entityType_entityId: { tenantId, entityType, entityId },
+        },
+        create: {
+          id: crypto.randomUUID(),
+          tenantId,
+          entityType,
+          entityId,
+          rolledBackTo: target,
+          snapshot: JSON.parse(JSON.stringify(snapshot)),
+          createdById: req.userId ?? null,
+        },
+        update: {
+          rolledBackTo: target,
+          snapshot: JSON.parse(JSON.stringify(snapshot)),
+          createdById: req.userId ?? null,
+        },
+      });
+      return res.json(toDTO(row));
+    } catch (err) {
+      req.log.error(err, "Failed to roll back entity");
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
 
 // "Restore latest": put the snapshot back and drop the rollback point.
 auditRollbacksRouter.delete(
@@ -267,21 +295,29 @@ auditRollbacksRouter.delete(
       const entityType = parseEntityType(req.params.entityType as string);
       const entityId = req.params.entityId as string;
       if (!entityType)
-        return res
-          .status(400)
-          .json({ error: `entityType must be one of: ${ENTITY_TYPES.join(", ")}` });
+        return res.status(400).json({
+          error: `entityType must be one of: ${ENTITY_TYPES.join(", ")}`,
+        });
 
       const existing = await prisma.auditRollback.findUnique({
-        where: { tenantId_entityType_entityId: { tenantId, entityType, entityId } },
+        where: {
+          tenantId_entityType_entityId: { tenantId, entityType, entityId },
+        },
       });
-      if (!existing) return res.status(404).json({ error: "No rollback point for this entity" });
+      if (!existing)
+        return res
+          .status(404)
+          .json({ error: "No rollback point for this entity" });
 
       const entity = await loadEntity(entityType, entityId, tenantId);
       if (!entity) return res.status(404).json({ error: "Entity not found" });
 
       const snapshot = filterFields(entityType, asRecord(existing.snapshot));
       if (Object.keys(snapshot).length > 0) {
-        const before = pick(entity as unknown as Record<string, unknown>, Object.keys(snapshot));
+        const before = pick(
+          entity as unknown as Record<string, unknown>,
+          Object.keys(snapshot),
+        );
         await writeFields(entityType, entityId, tenantId, snapshot);
         recordAuditLog({
           tenantId,
@@ -295,7 +331,9 @@ auditRollbacksRouter.delete(
       }
 
       await prisma.auditRollback.delete({
-        where: { tenantId_entityType_entityId: { tenantId, entityType, entityId } },
+        where: {
+          tenantId_entityType_entityId: { tenantId, entityType, entityId },
+        },
       });
       return res.status(204).send();
     } catch (err) {

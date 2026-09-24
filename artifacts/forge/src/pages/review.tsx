@@ -125,7 +125,11 @@ import {
   useDeleteAnnotation,
   isTempAnnotationId,
 } from "@/hooks/useReviews";
-import { useVersions, useCreateVersion, useUpdateVersion } from "@/hooks/useVersions";
+import {
+  useVersions,
+  useCreateVersion,
+  useUpdateVersion,
+} from "@/hooks/useVersions";
 import { useUploadVideo } from "@/hooks/useUploads";
 import { useCreateClientAccessLink } from "@/hooks/useClientAccess";
 
@@ -308,7 +312,9 @@ export default function Review() {
   const addApprovalEventMutation = useAddTaskApprovalEvent(reviewedTask?.id);
   const { data: approvalEvents = [] } = useTaskApprovalEvents(reviewedTask?.id);
   const reviewedTaskShotId = reviewedTask ? getShotId(reviewedTask) : undefined;
-  const reviewedTaskAssetId = reviewedTask ? getAssetId(reviewedTask) : undefined;
+  const reviewedTaskAssetId = reviewedTask
+    ? getAssetId(reviewedTask)
+    : undefined;
   const reviewedShot = reviewedTaskShotId
     ? liveShotsForApproval.find((s) => s.id === reviewedTaskShotId)
     : undefined;
@@ -357,11 +363,18 @@ export default function Review() {
     createVersion.mutate({
       entityId: versionEntityId,
       entityType: versionEntityType,
-      versionNumber: reviewedShot?.currentVersion || reviewedAsset?.version || "v001",
+      versionNumber:
+        reviewedShot?.currentVersion || reviewedAsset?.version || "v001",
       taskId,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per taskId (guarded by versionCreateAttempted), not on every dependency change
-  }, [taskId, versionEntityId, versionEntityType, versionsLoading, existingVersion]);
+  }, [
+    taskId,
+    versionEntityId,
+    versionEntityType,
+    versionsLoading,
+    existingVersion,
+  ]);
   const versionId = existingVersion?.id;
   const createClientAccessLink = useCreateClientAccessLink();
   const uploadVideo = useUploadVideo();
@@ -412,18 +425,16 @@ export default function Review() {
   );
   const canApproveAsLead = Boolean(
     currentUser &&
-      canApproveReview &&
-      (isAdminUser ||
-        (currentUser.role === "lead" &&
-          currentUser.departmentId === reviewedDept?.id)),
+    canApproveReview &&
+    (isAdminUser ||
+      (currentUser.role === "lead" &&
+        currentUser.departmentId === reviewedDept?.id)),
   );
   // The single remaining top-tier sign-off (migration 0023 collapsed the
   // former two-hop Production Manager -> Producer chain into one, since
   // admin is now the only role either of those checks could ever match).
   const canApproveAsAdmin = Boolean(
-    currentUser &&
-      canApproveReview &&
-      isAdminUser,
+    currentUser && canApproveReview && isAdminUser,
   );
   // Presentation Mode: a Lead/Producer broadcasts their playhead to everyone
   // else viewing this version — the internal page and the client portal, on
@@ -455,7 +466,10 @@ export default function Review() {
       const current = Math.abs(rate);
       const next = goingSameWay
         ? SHUTTLE_SPEEDS[
-            Math.min(SHUTTLE_SPEEDS.indexOf(current) + 1, SHUTTLE_SPEEDS.length - 1)
+            Math.min(
+              SHUTTLE_SPEEDS.indexOf(current) + 1,
+              SHUTTLE_SPEEDS.length - 1,
+            )
           ]
         : 1;
       return next * direction;
@@ -561,7 +575,9 @@ export default function Review() {
   const reportAnnotationFailure = (message: string) => {
     const lower = message.toLowerCase();
     const isForbidden =
-      lower.includes("forbidden") || lower.includes("permission") || lower.includes("403");
+      lower.includes("forbidden") ||
+      lower.includes("permission") ||
+      lower.includes("403");
     const isNotFound = lower.includes("not found") || lower.includes("404");
     toast({
       title: "Annotation not saved",
@@ -573,9 +589,19 @@ export default function Review() {
       variant: "destructive",
     });
   };
-  const createAnnotation = useCreateAnnotation(versionId, reportAnnotationFailure, currentUser?.id);
-  const updateAnnotation = useUpdateAnnotation(versionId, reportAnnotationFailure);
-  const deleteAnnotation = useDeleteAnnotation(versionId, reportAnnotationFailure);
+  const createAnnotation = useCreateAnnotation(
+    versionId,
+    reportAnnotationFailure,
+    currentUser?.id,
+  );
+  const updateAnnotation = useUpdateAnnotation(
+    versionId,
+    reportAnnotationFailure,
+  );
+  const deleteAnnotation = useDeleteAnnotation(
+    versionId,
+    reportAnnotationFailure,
+  );
   // Bridges the shared AnnotationCanvas's raw dispatch-style API (and this
   // page's own resize/drag handlers, which were all written against a local
   // useState<Annotation[]>) onto the server-backed list above. Ids added by
@@ -665,7 +691,9 @@ export default function Review() {
     () =>
       annotationPreview
         ? annotations.map((a) =>
-            a.id === annotationPreview.id ? { ...a, ...annotationPreview.patch } : a,
+            a.id === annotationPreview.id
+              ? { ...a, ...annotationPreview.patch }
+              : a,
           )
         : annotations,
     [annotations, annotationPreview],
@@ -725,7 +753,9 @@ export default function Review() {
   useEffect(() => {
     if (VERSIONS.length === 0) return;
     setCompareVersionA((cur) =>
-      VERSIONS.some((v) => v.id === cur) ? cur : VERSIONS[VERSIONS.length - 1].id,
+      VERSIONS.some((v) => v.id === cur)
+        ? cur
+        : VERSIONS[VERSIONS.length - 1].id,
     );
     setCompareVersionB((cur) =>
       VERSIONS.some((v) => v.id === cur) ? cur : VERSIONS[0].id,
@@ -768,10 +798,7 @@ export default function Review() {
   // review-queue.tsx already runs status through before bucketing.
   const normalizedTaskStatus = normalizeTaskStatus(reviewedTask?.status);
   const reviewWorkflowStatus:
-    | "wip"
-    | "lead-review"
-    | "producer-review"
-    | "approved" =
+    "wip" | "lead-review" | "producer-review" | "approved" =
     normalizedTaskStatus === "review" || normalizedTaskStatus === "lead-review"
       ? "lead-review"
       : normalizedTaskStatus === "producer-review" ||
@@ -793,11 +820,7 @@ export default function Review() {
     "producer-review": "Already sent to Admin for final sign-off.",
   };
   const submitApproval = (
-    status:
-      | "in-progress"
-      | "lead-review"
-      | "producer-review"
-      | "approved",
+    status: "in-progress" | "lead-review" | "producer-review" | "approved",
     action: ApprovalEvent["action"],
     // Required by the server for "changes-requested"/"rejected" -- which of
     // the two distinct authorities this call is exercising (a Lead bouncing
@@ -857,7 +880,10 @@ export default function Review() {
   // internal reviewer has to explicitly "transfer" a note before it becomes
   // visible team-wide.
   const { data: clientNotes = [] } = useClientNotes(reviewedTaskShotId);
-  const transferClientNote = useTransferClientNote(reviewedTaskShotId, versionId);
+  const transferClientNote = useTransferClientNote(
+    reviewedTaskShotId,
+    versionId,
+  );
   const pendingClientNotes = clientNotes.filter(
     (n) => n.authorRole === "client" && !n.transferred,
   );
@@ -983,7 +1009,8 @@ export default function Review() {
       f: () => {
         const el = videoCanvasContainerRef.current;
         if (!el) return;
-        if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+        if (document.fullscreenElement)
+          document.exitFullscreen().catch(() => {});
         else el.requestFullscreen().catch(() => {});
       },
       Escape: () => {
@@ -1024,7 +1051,14 @@ export default function Review() {
         if (!viewerMode && !isLockedViewer) setTool("text");
       },
     },
-    [selectedAnnotationId, maxFrames, isLockedViewer, viewerMode, isPlaying, frame],
+    [
+      selectedAnnotationId,
+      maxFrames,
+      isLockedViewer,
+      viewerMode,
+      isPlaying,
+      frame,
+    ],
   );
 
   // Push our playhead out to locked viewers whenever we're presenting.
@@ -1033,7 +1067,10 @@ export default function Review() {
   // out-of-order responses land a stale frame on every viewer.
   useEffect(() => {
     if (!isPresenting) return;
-    const timer = window.setTimeout(() => pushPresenterFrame.mutate(frame), 200);
+    const timer = window.setTimeout(
+      () => pushPresenterFrame.mutate(frame),
+      200,
+    );
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [frame, isPresenting]);
@@ -1208,7 +1245,9 @@ export default function Review() {
           setAnnotationPreview((preview) => {
             if (preview && preview.id === current.id) {
               applyAnnotationsUpdate((prev) =>
-                prev.map((a) => (a.id === preview.id ? { ...a, ...preview.patch } : a)),
+                prev.map((a) =>
+                  a.id === preview.id ? { ...a, ...preview.patch } : a,
+                ),
               );
             }
             return null;
@@ -1261,7 +1300,9 @@ export default function Review() {
           setAnnotationPreview((preview) => {
             if (preview && preview.id === current.id) {
               applyAnnotationsUpdate((prev) =>
-                prev.map((a) => (a.id === preview.id ? { ...a, ...preview.patch } : a)),
+                prev.map((a) =>
+                  a.id === preview.id ? { ...a, ...preview.patch } : a,
+                ),
               );
             }
             return null;
@@ -1342,7 +1383,11 @@ export default function Review() {
               if (nextF < loopStart) nextF = loopEnd;
               videoRefs.current.forEach((v, id) => {
                 const clip = videoClips.find((c) => c.id === id);
-                if (clip && nextF >= clip.startFrame && nextF <= clip.endFrame) {
+                if (
+                  clip &&
+                  nextF >= clip.startFrame &&
+                  nextF <= clip.endFrame
+                ) {
                   v.currentTime = (nextF - clip.startFrame) / PROJECT_FPS;
                 }
               });
@@ -1425,7 +1470,8 @@ export default function Review() {
         onError: (err) => {
           toast({
             title: "Couldn't post comment",
-            description: err instanceof Error ? err.message : "Please try again.",
+            description:
+              err instanceof Error ? err.message : "Please try again.",
             variant: "destructive",
           });
         },
@@ -1651,7 +1697,10 @@ export default function Review() {
           >
             <Link href="/review?queue=1">Queue</Link>
           </Button>
-          <div className="font-medium truncate" title={`FORGE REVIEW — ${versionLabel}`}>
+          <div
+            className="font-medium truncate"
+            title={`FORGE REVIEW — ${versionLabel}`}
+          >
             FORGE REVIEW — {versionLabel}
           </div>
         </div>
@@ -1723,7 +1772,9 @@ export default function Review() {
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-2 py-2">
-                <Label htmlFor="client-share-email">Client email (optional)</Label>
+                <Label htmlFor="client-share-email">
+                  Client email (optional)
+                </Label>
                 <Input
                   id="client-share-email"
                   type="email"
@@ -1779,7 +1830,8 @@ export default function Review() {
                     } catch {
                       toast({
                         title: "Couldn't Generate Link",
-                        description: "Something went wrong creating the client access code.",
+                        description:
+                          "Something went wrong creating the client access code.",
                         variant: "destructive",
                       });
                     }
@@ -1848,7 +1900,11 @@ export default function Review() {
                       className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white disabled:opacity-40"
                       disabled={reviewWorkflowStatus !== "lead-review"}
                       onClick={() => {
-                        submitApproval("in-progress", "changes-requested", "lead");
+                        submitApproval(
+                          "in-progress",
+                          "changes-requested",
+                          "lead",
+                        );
                         toast({ title: "Changes Requested" });
                       }}
                     >
@@ -1877,7 +1933,11 @@ export default function Review() {
                       className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white disabled:opacity-40"
                       disabled={reviewWorkflowStatus !== "producer-review"}
                       onClick={() => {
-                        submitApproval("lead-review", "changes-requested", "pm");
+                        submitApproval(
+                          "lead-review",
+                          "changes-requested",
+                          "pm",
+                        );
                         toast({ title: "Sent Back to Lead" });
                       }}
                     >
@@ -1956,12 +2016,15 @@ export default function Review() {
                       className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white disabled:opacity-40"
                       disabled={reviewWorkflowStatus !== "lead-review"}
                       onClick={() => {
-                        submitApproval("in-progress", "changes-requested", "lead");
+                        submitApproval(
+                          "in-progress",
+                          "changes-requested",
+                          "lead",
+                        );
                         toast({ title: "Changes Requested" });
                       }}
                     >
-                      <MessageSquare className="w-4 h-4 mr-2" /> Request
-                      Changes
+                      <MessageSquare className="w-4 h-4 mr-2" /> Request Changes
                     </Button>
                     <Button
                       size="sm"
@@ -2013,7 +2076,11 @@ export default function Review() {
                       className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white disabled:opacity-40"
                       disabled={reviewWorkflowStatus !== "producer-review"}
                       onClick={() => {
-                        submitApproval("lead-review", "changes-requested", "pm");
+                        submitApproval(
+                          "lead-review",
+                          "changes-requested",
+                          "pm",
+                        );
                         toast({
                           title: "Sent Back to Lead",
                           description:
@@ -2021,8 +2088,8 @@ export default function Review() {
                         });
                       }}
                     >
-                      <MessageSquare className="w-4 h-4 mr-2" /> Send Back
-                      to Lead
+                      <MessageSquare className="w-4 h-4 mr-2" /> Send Back to
+                      Lead
                     </Button>
                   </>
                 )}
@@ -2122,7 +2189,8 @@ export default function Review() {
                       // half-float scanline OpenEXR and tone-mapping it is a
                       // transcode step, not a codec the browser has. Saying so
                       // plainly beats accepting the file and showing black.
-                      const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+                      const ext =
+                        file.name.split(".").pop()?.toLowerCase() ?? "";
                       // EXR is deliberately absent here: the server now
                       // transcodes a single EXR frame to a viewable PNG
                       // proxy on upload (routes/uploads.ts). An EXR
@@ -2173,7 +2241,8 @@ export default function Review() {
                       // real URL is what makes the footage visible to
                       // everyone else (lead, PM, client), not just this tab.
                       videoClips.forEach((c) => {
-                        if (c.src.startsWith("blob:")) URL.revokeObjectURL(c.src);
+                        if (c.src.startsWith("blob:"))
+                          URL.revokeObjectURL(c.src);
                       });
                       setVideoClips([
                         {
@@ -2208,7 +2277,10 @@ export default function Review() {
                             (max, v) =>
                               Math.max(
                                 max,
-                                parseInt(v.versionNumber.replace(/\D/g, ""), 10) || 0,
+                                parseInt(
+                                  v.versionNumber.replace(/\D/g, ""),
+                                  10,
+                                ) || 0,
                               ),
                             0,
                           );
@@ -2694,10 +2766,14 @@ export default function Review() {
                                     size="sm"
                                     disabled={isUploadingVideo}
                                     className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white pointer-events-auto"
-                                    onClick={() => fileInputRef.current?.click()}
+                                    onClick={() =>
+                                      fileInputRef.current?.click()
+                                    }
                                   >
                                     <Upload className="w-4 h-4 mr-2" />
-                                    {isUploadingVideo ? "Uploading..." : "Insert Video"}
+                                    {isUploadingVideo
+                                      ? "Uploading..."
+                                      : "Insert Video"}
                                   </Button>
                                 )}
                               </div>
@@ -2938,7 +3014,6 @@ export default function Review() {
                   ghosting={ghosting}
                   readOnly={!canEdit}
                 />
-
               </div>
 
               {/* Presentation Mode lock indicator */}
@@ -2990,11 +3065,13 @@ export default function Review() {
                     {playbackRate < 0 ? "◀" : "▶"} {Math.abs(playbackRate)}×
                   </span>
                 )}
-                {isPlaying && playbackRate < 0 && Math.abs(playbackRate) === 1 && (
-                  <span className="text-xs font-mono font-semibold text-accent-tally">
-                    ◀ 1×
-                  </span>
-                )}
+                {isPlaying &&
+                  playbackRate < 0 &&
+                  Math.abs(playbackRate) === 1 && (
+                    <span className="text-xs font-mono font-semibold text-accent-tally">
+                      ◀ 1×
+                    </span>
+                  )}
                 {(inPoint !== null || outPoint !== null) && (
                   <span className="text-xs font-mono text-primary flex items-center gap-1.5">
                     ⟦ {inPoint ?? 1} – {outPoint ?? maxFrames} ⟧
@@ -3271,32 +3348,30 @@ export default function Review() {
                         HISTORY
                       </div>
                       <AnimatePresence initial={false}>
-                        {[...approvalEvents]
-                          .reverse()
-                          .map((ev) => (
-                            <motion.div
-                              key={ev.id}
-                              layout
-                              initial={{ opacity: 0, x: -8 }}
-                              animate={{ opacity: 1, x: 0 }}
-                              transition={{ duration: 0.2 }}
-                              className="flex items-start gap-2 text-xs"
-                            >
-                              <ApprovalActionIcon action={ev.action} />
-                              <div className="flex-1 min-w-0">
-                                <span className="text-foreground font-medium">
-                                  {users.find((u) => u.id === ev.byUserId)
-                                    ?.name ?? "Unknown"}
-                                </span>{" "}
-                                <span className="text-muted-foreground">
-                                  {APPROVAL_ACTION_LABEL[ev.action]}
-                                </span>
-                                <div className="text-[10px] text-muted-foreground/70">
-                                  {new Date(ev.createdAt).toLocaleString()}
-                                </div>
+                        {[...approvalEvents].reverse().map((ev) => (
+                          <motion.div
+                            key={ev.id}
+                            layout
+                            initial={{ opacity: 0, x: -8 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="flex items-start gap-2 text-xs"
+                          >
+                            <ApprovalActionIcon action={ev.action} />
+                            <div className="flex-1 min-w-0">
+                              <span className="text-foreground font-medium">
+                                {users.find((u) => u.id === ev.byUserId)
+                                  ?.name ?? "Unknown"}
+                              </span>{" "}
+                              <span className="text-muted-foreground">
+                                {APPROVAL_ACTION_LABEL[ev.action]}
+                              </span>
+                              <div className="text-[10px] text-muted-foreground/70">
+                                {new Date(ev.createdAt).toLocaleString()}
                               </div>
-                            </motion.div>
-                          ))}
+                            </div>
+                          </motion.div>
+                        ))}
                       </AnimatePresence>
                     </div>
                   )}
@@ -3453,8 +3528,8 @@ export default function Review() {
                   <p className="text-xs text-muted-foreground leading-relaxed">
                     Notes clients leave in the review portal land here first.
                     Transfer a note to publish it into the Comments stream where
-                    the whole team can see it. Replies you send here go
-                    straight back to the client.
+                    the whole team can see it. Replies you send here go straight
+                    back to the client.
                   </p>
                 </div>
                 <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -3557,7 +3632,8 @@ export default function Review() {
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && !e.shiftKey) {
                           e.preventDefault();
-                          if (!clientReplyText.trim() || !reviewedTaskShotId) return;
+                          if (!clientReplyText.trim() || !reviewedTaskShotId)
+                            return;
                           createClientNoteReply.mutate(
                             { versionId, frame, text: clientReplyText.trim() },
                             {
@@ -3566,7 +3642,9 @@ export default function Review() {
                                 toast({
                                   title: "Couldn't send reply",
                                   description:
-                                    err instanceof Error ? err.message : "Please try again.",
+                                    err instanceof Error
+                                      ? err.message
+                                      : "Please try again.",
                                   variant: "destructive",
                                 }),
                             },
@@ -3577,9 +3655,13 @@ export default function Review() {
                     <Button
                       size="sm"
                       className="h-9 shrink-0"
-                      disabled={!clientReplyText.trim() || createClientNoteReply.isPending}
+                      disabled={
+                        !clientReplyText.trim() ||
+                        createClientNoteReply.isPending
+                      }
                       onClick={() => {
-                        if (!clientReplyText.trim() || !reviewedTaskShotId) return;
+                        if (!clientReplyText.trim() || !reviewedTaskShotId)
+                          return;
                         createClientNoteReply.mutate(
                           { versionId, frame, text: clientReplyText.trim() },
                           {
@@ -3588,7 +3670,9 @@ export default function Review() {
                               toast({
                                 title: "Couldn't send reply",
                                 description:
-                                  err instanceof Error ? err.message : "Please try again.",
+                                  err instanceof Error
+                                    ? err.message
+                                    : "Please try again.",
                                 variant: "destructive",
                               }),
                           },

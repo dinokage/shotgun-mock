@@ -27,10 +27,7 @@ import { auditRollbacksRouter } from "./audit-rollbacks";
 import { assetActivityRouter } from "./asset-activity";
 import { notificationsRouter } from "./notifications";
 import { standupUpdatesRouter } from "./standup-updates";
-import {
-  standupPlaylistRouter,
-  standupApprovalsRouter,
-} from "./standup-board";
+import { standupPlaylistRouter, standupApprovalsRouter } from "./standup-board";
 import { broadcastsRouter } from "./broadcasts";
 import { pipelineTemplatesRouter, projectPipelinesRouter } from "./pipelines";
 import {

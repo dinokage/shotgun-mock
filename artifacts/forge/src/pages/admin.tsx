@@ -16,12 +16,7 @@ import { useProjects } from "@/hooks/useProjects";
 import { apiFetch } from "@/lib/apiClient";
 import { useCapability } from "@/hooks/use-capability";
 import { EmployeeImportDialog } from "@/components/admin/EmployeeImportDialog";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -70,7 +65,8 @@ export default function AdminPanel() {
   }, [canManageUsers, setLocation]);
 
   const { data: users = [], refetch: refetchUsers } = useUsers();
-  const { data: departments = [], refetch: refetchDepartments } = useDepartments();
+  const { data: departments = [], refetch: refetchDepartments } =
+    useDepartments();
   const { data: roles = [] } = useRoles();
   const { data: projects = [] } = useProjects();
   const { toast } = useToast();
@@ -96,17 +92,24 @@ export default function AdminPanel() {
   const [deptOpen, setDeptOpen] = useState(false);
   const [employeeImportOpen, setEmployeeImportOpen] = useState(false);
   const createDepartment = useCreateDepartment();
-  const { data: invites = [], refetch: refetchInvites } = useInvites(canManageUsers);
+  const { data: invites = [], refetch: refetchInvites } =
+    useInvites(canManageUsers);
   const revokeInvite = useRevokeInvite();
   const currentUserId = useAuthStore((s) => s.currentUser?.id);
-  const [deactivateTarget, setDeactivateTarget] = useState<UserDTO | null>(null);
-  const [resetPasswordTarget, setResetPasswordTarget] = useState<UserDTO | null>(null);
+  const [deactivateTarget, setDeactivateTarget] = useState<UserDTO | null>(
+    null,
+  );
+  const [resetPasswordTarget, setResetPasswordTarget] =
+    useState<UserDTO | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [resettingPassword, setResettingPassword] = useState(false);
   const [bulkResetOpen, setBulkResetOpen] = useState(false);
   const [bulkPassword, setBulkPassword] = useState("");
   const [bulkResetting, setBulkResetting] = useState(false);
-  const [bulkResetProgress, setBulkResetProgress] = useState({ done: 0, total: 0 });
+  const [bulkResetProgress, setBulkResetProgress] = useState({
+    done: 0,
+    total: 0,
+  });
 
   if (!canManageUsers) return null;
 
@@ -202,10 +205,7 @@ export default function AdminPanel() {
     const name = String(formData.get("name") ?? "");
     const abbr = String(formData.get("abbr") ?? "");
     const pipeline = String(formData.get("pipeline") ?? "") as
-      | "PROD"
-      | "3D"
-      | "VFX"
-      | "2D";
+      "PROD" | "3D" | "VFX" | "2D";
     try {
       await createDepartment.mutateAsync({ name, abbr, pipeline });
       toast({ title: "Department created" });
@@ -252,7 +252,8 @@ export default function AdminPanel() {
       });
       toast({
         title: `${user.name} is now ${roleLabel(newRole)}`,
-        description: "They'll be signed out and pick up the new role when they sign back in.",
+        description:
+          "They'll be signed out and pick up the new role when they sign back in.",
       });
     } catch (err: any) {
       toast({
@@ -273,7 +274,8 @@ export default function AdminPanel() {
         body: JSON.stringify({ status }),
       });
       toast({
-        title: status === "inactive" ? "Account deactivated" : "Account reactivated",
+        title:
+          status === "inactive" ? "Account deactivated" : "Account reactivated",
         description:
           status === "inactive"
             ? `${user.name} has been signed out and can no longer sign in.`
@@ -378,198 +380,213 @@ export default function AdminPanel() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Admin Panel</h1>
         <div className="flex gap-2">
-        <Button variant="outline" onClick={() => setEmployeeImportOpen(true)}>
-          Import Employees
-        </Button>
-        <Button
-          variant="outline"
-          className="text-red-500 hover:text-red-600 hover:bg-red-500/10 border-red-500/30"
-          onClick={() => setBulkResetOpen(true)}
-        >
-          Reset All Passwords
-        </Button>
-        <Dialog open={deptOpen} onOpenChange={setDeptOpen}>
-          <DialogTrigger asChild>
-            <Button variant="outline">New Department</Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>New Department</DialogTitle>
-            </DialogHeader>
-            <form
-              className="space-y-3"
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleCreateDepartment(new FormData(e.currentTarget));
-              }}
-            >
-              <div>
-                <Label htmlFor="dept-name">Name</Label>
-                <Input id="dept-name" name="name" placeholder="Animation" required />
-              </div>
-              <div>
-                <Label htmlFor="dept-abbr">Abbreviation</Label>
-                <Input id="dept-abbr" name="abbr" placeholder="ANIM" required />
-              </div>
-              <div>
-                <Label htmlFor="dept-pipeline">Pipeline</Label>
-                <Select name="pipeline" required>
-                  <SelectTrigger id="dept-pipeline">
-                    <SelectValue placeholder="Select a pipeline" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PIPELINES.map((p) => (
-                      <SelectItem key={p} value={p}>
-                        {p}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={createDepartment.isPending}
+          <Button variant="outline" onClick={() => setEmployeeImportOpen(true)}>
+            Import Employees
+          </Button>
+          <Button
+            variant="outline"
+            className="text-red-500 hover:text-red-600 hover:bg-red-500/10 border-red-500/30"
+            onClick={() => setBulkResetOpen(true)}
+          >
+            Reset All Passwords
+          </Button>
+          <Dialog open={deptOpen} onOpenChange={setDeptOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline">New Department</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>New Department</DialogTitle>
+              </DialogHeader>
+              <form
+                className="space-y-3"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleCreateDepartment(new FormData(e.currentTarget));
+                }}
               >
-                {createDepartment.isPending ? "Creating..." : "Create"}
-              </Button>
-            </form>
-          </DialogContent>
-        </Dialog>
-        <Dialog
-          open={createOpen}
-          onOpenChange={(next) => {
-            setCreateOpen(next);
-            if (!next) {
-              setCreateRoleId("");
-              setCreateProjectIds([]);
-            }
-          }}
-        >
-          <DialogTrigger asChild>
-            <Button>New User</Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Create User</DialogTitle>
-            </DialogHeader>
-            <form
-              className="space-y-3"
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleCreate(new FormData(e.currentTarget));
-              }}
-            >
-              <div>
-                <Label htmlFor="name">Name</Label>
-                <Input id="name" name="name" required />
-              </div>
-              <div>
-                <Label htmlFor="email">Email</Label>
-                <Input id="email" name="email" type="email" required />
-              </div>
-              <div>
-                <Label htmlFor="password">Temporary Password</Label>
-                <Input id="password" name="password" type="password" required />
-              </div>
-              <div>
-                <Label htmlFor="roleId">Role</Label>
-                <Select
-                  name="roleId"
-                  required
-                  value={createRoleId}
-                  onValueChange={(v) => {
-                    setCreateRoleId(v);
-                    setCreateProjectIds([]);
-                  }}
-                >
-                  <SelectTrigger id="roleId">
-                    <SelectValue placeholder="Select a role" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {roles.map((r) => (
-                      <SelectItem key={r.id} value={r.id}>
-                        {roleLabel(r.name)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {isCreateClient ? (
                 <div>
-                  <Label>Projects</Label>
-                  <p className="text-xs text-muted-foreground mb-2">
-                    Their episodes, sequences, and shots appear in their
-                    portal for every project checked here.
-                  </p>
-                  <div className="border rounded-md p-2 max-h-40 overflow-y-auto space-y-1">
-                    {projects.length === 0 ? (
-                      <p className="text-xs text-muted-foreground px-1 py-1">
-                        No projects yet.
-                      </p>
-                    ) : (
-                      projects.map((p) => (
-                        <label
-                          key={p.id}
-                          className="flex items-center gap-2 px-1 py-1 text-sm cursor-pointer hover:bg-muted/50 rounded"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={createProjectIds.includes(p.id)}
-                            onChange={(e) =>
-                              setCreateProjectIds((prev) =>
-                                e.target.checked
-                                  ? [...prev, p.id]
-                                  : prev.filter((id) => id !== p.id),
-                              )
-                            }
-                          />
-                          {p.name}
-                        </label>
-                      ))
-                    )}
-                  </div>
+                  <Label htmlFor="dept-name">Name</Label>
+                  <Input
+                    id="dept-name"
+                    name="name"
+                    placeholder="Animation"
+                    required
+                  />
                 </div>
-              ) : (
                 <div>
-                  <Label htmlFor="departmentId">
-                    {createRoleName === "lead"
-                      ? "Department they'll lead"
-                      : "Department"}
-                  </Label>
-                  {createRoleName === "lead" && (
-                    <p className="text-xs text-muted-foreground mb-2">
-                      A Lead's review/send-back authority is scoped to this
-                      department -- pick which one they're leading.
-                    </p>
-                  )}
-                  <Select name="departmentId" required={createDeptRequired}>
-                    <SelectTrigger id="departmentId">
-                      <SelectValue
-                        placeholder={
-                          createDeptRequired ? "Select a department" : "None"
-                        }
-                      />
+                  <Label htmlFor="dept-abbr">Abbreviation</Label>
+                  <Input
+                    id="dept-abbr"
+                    name="abbr"
+                    placeholder="ANIM"
+                    required
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="dept-pipeline">Pipeline</Label>
+                  <Select name="pipeline" required>
+                    <SelectTrigger id="dept-pipeline">
+                      <SelectValue placeholder="Select a pipeline" />
                     </SelectTrigger>
                     <SelectContent>
-                      {!createDeptRequired && (
-                        <SelectItem value="none">None</SelectItem>
-                      )}
-                      {departments.map((d) => (
-                        <SelectItem key={d.id} value={d.id}>
-                          {d.name}
+                      {PIPELINES.map((p) => (
+                        <SelectItem key={p} value={p}>
+                          {p}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-              )}
-              <Button type="submit" className="w-full">
-                Create
-              </Button>
-            </form>
-          </DialogContent>
-        </Dialog>
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={createDepartment.isPending}
+                >
+                  {createDepartment.isPending ? "Creating..." : "Create"}
+                </Button>
+              </form>
+            </DialogContent>
+          </Dialog>
+          <Dialog
+            open={createOpen}
+            onOpenChange={(next) => {
+              setCreateOpen(next);
+              if (!next) {
+                setCreateRoleId("");
+                setCreateProjectIds([]);
+              }
+            }}
+          >
+            <DialogTrigger asChild>
+              <Button>New User</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Create User</DialogTitle>
+              </DialogHeader>
+              <form
+                className="space-y-3"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleCreate(new FormData(e.currentTarget));
+                }}
+              >
+                <div>
+                  <Label htmlFor="name">Name</Label>
+                  <Input id="name" name="name" required />
+                </div>
+                <div>
+                  <Label htmlFor="email">Email</Label>
+                  <Input id="email" name="email" type="email" required />
+                </div>
+                <div>
+                  <Label htmlFor="password">Temporary Password</Label>
+                  <Input
+                    id="password"
+                    name="password"
+                    type="password"
+                    required
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="roleId">Role</Label>
+                  <Select
+                    name="roleId"
+                    required
+                    value={createRoleId}
+                    onValueChange={(v) => {
+                      setCreateRoleId(v);
+                      setCreateProjectIds([]);
+                    }}
+                  >
+                    <SelectTrigger id="roleId">
+                      <SelectValue placeholder="Select a role" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {roles.map((r) => (
+                        <SelectItem key={r.id} value={r.id}>
+                          {roleLabel(r.name)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {isCreateClient ? (
+                  <div>
+                    <Label>Projects</Label>
+                    <p className="text-xs text-muted-foreground mb-2">
+                      Their episodes, sequences, and shots appear in their
+                      portal for every project checked here.
+                    </p>
+                    <div className="border rounded-md p-2 max-h-40 overflow-y-auto space-y-1">
+                      {projects.length === 0 ? (
+                        <p className="text-xs text-muted-foreground px-1 py-1">
+                          No projects yet.
+                        </p>
+                      ) : (
+                        projects.map((p) => (
+                          <label
+                            key={p.id}
+                            className="flex items-center gap-2 px-1 py-1 text-sm cursor-pointer hover:bg-muted/50 rounded"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={createProjectIds.includes(p.id)}
+                              onChange={(e) =>
+                                setCreateProjectIds((prev) =>
+                                  e.target.checked
+                                    ? [...prev, p.id]
+                                    : prev.filter((id) => id !== p.id),
+                                )
+                              }
+                            />
+                            {p.name}
+                          </label>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <Label htmlFor="departmentId">
+                      {createRoleName === "lead"
+                        ? "Department they'll lead"
+                        : "Department"}
+                    </Label>
+                    {createRoleName === "lead" && (
+                      <p className="text-xs text-muted-foreground mb-2">
+                        A Lead's review/send-back authority is scoped to this
+                        department -- pick which one they're leading.
+                      </p>
+                    )}
+                    <Select name="departmentId" required={createDeptRequired}>
+                      <SelectTrigger id="departmentId">
+                        <SelectValue
+                          placeholder={
+                            createDeptRequired ? "Select a department" : "None"
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {!createDeptRequired && (
+                          <SelectItem value="none">None</SelectItem>
+                        )}
+                        {departments.map((d) => (
+                          <SelectItem key={d.id} value={d.id}>
+                            {d.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                <Button type="submit" className="w-full">
+                  Create
+                </Button>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
@@ -674,7 +691,10 @@ export default function AdminPanel() {
                         key={`${u.id}-${u.departmentId ?? "none"}`}
                         defaultValue={u.departmentId ?? "none"}
                         onValueChange={(val) =>
-                          handleReassignDepartment(u.id, val === "none" ? "" : val)
+                          handleReassignDepartment(
+                            u.id,
+                            val === "none" ? "" : val,
+                          )
                         }
                       >
                         <SelectTrigger
@@ -745,8 +765,8 @@ export default function AdminPanel() {
         <CardContent>
           {invites.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No outstanding invites. Invites you send stay here until
-              they're accepted or revoked.
+              No outstanding invites. Invites you send stay here until they're
+              accepted or revoked.
             </p>
           ) : (
             <Table>
@@ -817,7 +837,8 @@ export default function AdminPanel() {
             <Button
               variant="destructive"
               onClick={() =>
-                deactivateTarget && handleSetStatus(deactivateTarget, "inactive")
+                deactivateTarget &&
+                handleSetStatus(deactivateTarget, "inactive")
               }
             >
               Deactivate
@@ -837,7 +858,9 @@ export default function AdminPanel() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Reset password for {resetPasswordTarget?.name}</DialogTitle>
+            <DialogTitle>
+              Reset password for {resetPasswordTarget?.name}
+            </DialogTitle>
             <DialogDescription>
               They'll be signed out everywhere and need this new password to
               sign back in. Share it with them directly — Forge has no way to
@@ -892,15 +915,16 @@ export default function AdminPanel() {
               {users.length - 1 === 1 ? "" : "s"})
             </DialogTitle>
             <DialogDescription>
-              Sets this exact password on every account except your own
-              (change your own from your profile) and signs all of them out
-              everywhere. This can't be undone -- share the new password with
-              your team directly, Forge has no way to show it again after
-              this closes.
+              Sets this exact password on every account except your own (change
+              your own from your profile) and signs all of them out everywhere.
+              This can't be undone -- share the new password with your team
+              directly, Forge has no way to show it again after this closes.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
-            <Label htmlFor="bulk-reset-password">New password for everyone</Label>
+            <Label htmlFor="bulk-reset-password">
+              New password for everyone
+            </Label>
             <Input
               id="bulk-reset-password"
               type="text"

@@ -136,7 +136,10 @@ export function TemplateTaskRow({
           value={draft.estimatedHours}
           onChange={(e) =>
             updateDraft({
-              estimatedHours: Math.max(0, Math.trunc(Number(e.target.value)) || 0),
+              estimatedHours: Math.max(
+                0,
+                Math.trunc(Number(e.target.value)) || 0,
+              ),
             })
           }
           className="h-8 text-xs px-2"

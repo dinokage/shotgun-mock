@@ -5,7 +5,11 @@ import { useAuthStore } from "@/store/auth";
 import { useUIStore } from "@/store/ui";
 import { useTasksStore } from "@/store/tasks";
 import { useAllDailyLogs, useAddDailyLog } from "@/hooks/useTasks";
-import { getAssigneeId, getProjectId, useEntityProjectMap } from "@/lib/taskShape";
+import {
+  getAssigneeId,
+  getProjectId,
+  useEntityProjectMap,
+} from "@/lib/taskShape";
 import { useIsLeadership } from "@/hooks/use-capability";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -411,7 +415,9 @@ export default function Timesheets() {
                         const project = projects.find(
                           (p) =>
                             p.id ===
-                            (task ? getProjectId(task, entityProjectMap) : undefined),
+                            (task
+                              ? getProjectId(task, entityProjectMap)
+                              : undefined),
                         );
                         const user = users.find((u) => u.id === log.userId);
                         const isNew = log.id === justAddedId;

@@ -97,7 +97,8 @@ const QUERY_KEY = ["notification-preferences"];
 export function useNotificationPreferences() {
   const query = useQuery<NotificationPreferenceRow[]>({
     queryKey: QUERY_KEY,
-    queryFn: () => apiFetch<NotificationPreferenceRow[]>("/notification-preferences"),
+    queryFn: () =>
+      apiFetch<NotificationPreferenceRow[]>("/notification-preferences"),
     staleTime: 60000,
   });
 

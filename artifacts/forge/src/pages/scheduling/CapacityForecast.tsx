@@ -136,9 +136,7 @@ export default function CapacityForecast() {
 
   const departments = useMemo(() => {
     return allDepartments
-      .filter(
-        (d) => pipelineFilter === "all" || d.pipeline === pipelineFilter,
-      )
+      .filter((d) => pipelineFilter === "all" || d.pipeline === pipelineFilter)
       .map((dept) => {
         const deptUsers = studioUsers.filter((u) => u.departmentId === dept.id);
         const windowLen = overlapDays(
@@ -154,8 +152,7 @@ export default function CapacityForecast() {
         const leaveDays = 0;
 
         const bookedDays = tasks.reduce((sum, task) => {
-          if (!deptUsers.some((u) => u.id === getAssigneeId(task)))
-            return sum;
+          if (!deptUsers.some((u) => u.id === getAssigneeId(task))) return sum;
           const { startDate, duration } = getTaskWindow(task);
           const overlap = overlapDays(
             deptWindow.start,
@@ -219,8 +216,7 @@ export default function CapacityForecast() {
         const leaveDays = 0;
 
         const bookedDays = tasks.reduce((sum, task) => {
-          if (!deptUsers.some((u) => u.id === getAssigneeId(task)))
-            return sum;
+          if (!deptUsers.some((u) => u.id === getAssigneeId(task))) return sum;
           const { startDate, duration } = getTaskWindow(task);
           const overlap = overlapDays(
             bucket.start,

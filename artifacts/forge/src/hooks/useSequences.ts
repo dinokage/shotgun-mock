@@ -44,7 +44,11 @@ export function useAllSequences() {
 export function useCreateSequence() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: { projectId: string; episodeId?: string; name: string }) =>
+    mutationFn: (body: {
+      projectId: string;
+      episodeId?: string;
+      name: string;
+    }) =>
       apiFetch<SequenceDTO>("/sequences", {
         method: "POST",
         body: JSON.stringify(body),
@@ -72,7 +76,8 @@ export interface SequenceTeamMemberDTO {
 export function useSequenceTeam(sequenceId: string | undefined) {
   return useQuery<SequenceTeamMemberDTO[]>({
     queryKey: ["sequence-team", sequenceId ?? "none"],
-    queryFn: () => apiFetch<SequenceTeamMemberDTO[]>(`/sequences/${sequenceId}/team`),
+    queryFn: () =>
+      apiFetch<SequenceTeamMemberDTO[]>(`/sequences/${sequenceId}/team`),
     enabled: !!sequenceId,
     staleTime: 15000,
   });
@@ -86,7 +91,9 @@ export function useJoinSequenceTeam() {
         method: "POST",
       }),
     onSuccess: (_, sequenceId) =>
-      queryClient.invalidateQueries({ queryKey: ["sequence-team", sequenceId] }),
+      queryClient.invalidateQueries({
+        queryKey: ["sequence-team", sequenceId],
+      }),
   });
 }
 
@@ -96,6 +103,8 @@ export function useLeaveSequenceTeam() {
     mutationFn: (sequenceId: string) =>
       apiFetch(`/sequences/${sequenceId}/team/me`, { method: "DELETE" }),
     onSuccess: (_, sequenceId) =>
-      queryClient.invalidateQueries({ queryKey: ["sequence-team", sequenceId] }),
+      queryClient.invalidateQueries({
+        queryKey: ["sequence-team", sequenceId],
+      }),
   });
 }

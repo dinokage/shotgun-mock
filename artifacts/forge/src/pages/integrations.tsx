@@ -61,12 +61,37 @@ import {
 // so it stays static -- but nothing here says whether a studio has connected
 // any of them: that comes entirely from the integrations table.
 const INTEGRATION_CATALOGUE = [
-  { provider: "maya", name: "Autodesk Maya", category: "3D/Animation", icon: "M" },
+  {
+    provider: "maya",
+    name: "Autodesk Maya",
+    category: "3D/Animation",
+    icon: "M",
+  },
   { provider: "blender", name: "Blender", category: "3D/Animation", icon: "B" },
-  { provider: "nuke", name: "Foundry Nuke", category: "Compositing", icon: "N" },
-  { provider: "houdini", name: "SideFX Houdini", category: "FX/Simulation", icon: "H" },
-  { provider: "premiere", name: "Adobe Premiere Pro", category: "Editing", icon: "Pr" },
-  { provider: "photoshop", name: "Adobe Photoshop", category: "2D/Matte Painting", icon: "Ps" },
+  {
+    provider: "nuke",
+    name: "Foundry Nuke",
+    category: "Compositing",
+    icon: "N",
+  },
+  {
+    provider: "houdini",
+    name: "SideFX Houdini",
+    category: "FX/Simulation",
+    icon: "H",
+  },
+  {
+    provider: "premiere",
+    name: "Adobe Premiere Pro",
+    category: "Editing",
+    icon: "Pr",
+  },
+  {
+    provider: "photoshop",
+    name: "Adobe Photoshop",
+    category: "2D/Matte Painting",
+    icon: "Ps",
+  },
 ];
 
 interface PathConfig {
@@ -368,7 +393,9 @@ export default function IntegrationsHub() {
                         : "outline"
                     }
                     className="flex-1"
-                    disabled={!canManageIntegrations || syncIntegration.isPending}
+                    disabled={
+                      !canManageIntegrations || syncIntegration.isPending
+                    }
                     onClick={() =>
                       handleSync(integration.provider, integration.name)
                     }
@@ -536,7 +563,9 @@ export default function IntegrationsHub() {
                   </div>
                   <Switch
                     checked={settingsIntegration.autoSync}
-                    disabled={!canManageIntegrations || saveIntegration.isPending}
+                    disabled={
+                      !canManageIntegrations || saveIntegration.isPending
+                    }
                     onCheckedChange={(checked) =>
                       handleToggleAutoSync(
                         settingsIntegration.provider,

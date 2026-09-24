@@ -55,9 +55,7 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(
-    "Wiping every tenant-scoped table (cascades from tenants)...",
-  );
+  console.log("Wiping every tenant-scoped table (cascades from tenants)...");
   // Every content/RBAC table in this schema has a tenantId FK with
   // onDelete: "cascade" (verified against every schema file before writing
   // this script) — deleting every tenant row cascades the wipe through

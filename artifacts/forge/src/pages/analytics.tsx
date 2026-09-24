@@ -40,7 +40,12 @@ import { Link } from "wouter";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useMemo, useState } from "react";
 import { useCapability } from "@/hooks/use-capability";
-import { getAssigneeId, getShotId, getProjectId, useEntityProjectMap } from "@/lib/taskShape";
+import {
+  getAssigneeId,
+  getShotId,
+  getProjectId,
+  useEntityProjectMap,
+} from "@/lib/taskShape";
 import { normalizeTaskStatus } from "@/lib/trackingStatus";
 import { useProjectProgress, NO_PROJECT_PROGRESS } from "@/lib/projectProgress";
 
@@ -363,7 +368,12 @@ export default function Analytics() {
       if (!row || !t.dueDate) return;
       const stage = normalizeTaskStatus(t.status);
       if (isTaskDone(stage) || stage === "cancelled") return;
-      const i = bucketIndex(new Date(t.dueDate).getTime(), start, end, bucketMs);
+      const i = bucketIndex(
+        new Date(t.dueDate).getTime(),
+        start,
+        end,
+        bucketMs,
+      );
       if (i < 0) return;
       row.weeks[i] += 1;
     });
@@ -640,7 +650,9 @@ export default function Analytics() {
                                     : "text-foreground"
                                 }
                               >
-                                {burnRate === null ? "no bid hours" : `${burnRate}%`}
+                                {burnRate === null
+                                  ? "no bid hours"
+                                  : `${burnRate}%`}
                               </span>
                             </span>
                             {isOverBudget ? (
@@ -896,7 +908,9 @@ export default function Analytics() {
                   {projects.slice(0, 5).map((proj) => {
                     const progress =
                       projectProgress.get(proj.id) ?? NO_PROJECT_PROGRESS;
-                    const endDate = proj.endDate ? new Date(proj.endDate) : null;
+                    const endDate = proj.endDate
+                      ? new Date(proj.endDate)
+                      : null;
                     const hasEndDate =
                       endDate !== null && !Number.isNaN(endDate.getTime());
                     return (
@@ -1114,7 +1128,9 @@ export default function Analytics() {
                                   : "—"}
                               </td>
                               <td className="py-4 text-right tabular-nums text-muted-foreground">
-                                {hasLogged ? `${hours.actual}h` : "No time logged"}
+                                {hasLogged
+                                  ? `${hours.actual}h`
+                                  : "No time logged"}
                               </td>
                               <td
                                 className={`py-4 text-right tabular-nums ${hasLogged && variance < 0 ? "text-red-500" : "text-muted-foreground"}`}

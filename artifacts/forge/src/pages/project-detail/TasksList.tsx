@@ -1,6 +1,10 @@
 import { useMemo, useState } from "react";
 import { useTasksStore } from "@/store/tasks";
-import { getAssigneeId, getProjectId, useEntityProjectMap } from "@/lib/taskShape";
+import {
+  getAssigneeId,
+  getProjectId,
+  useEntityProjectMap,
+} from "@/lib/taskShape";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { PriorityChip } from "@/components/shared/PriorityChip";
 import { UserAvatar } from "@/components/shared/UserAvatar";
@@ -134,8 +138,7 @@ export default function TasksListView({ projectId }: { projectId: string }) {
       switch (groupBy) {
         case "assignee":
           groupKey =
-            users.find((u) => u.id === getAssigneeId(t))?.name ??
-            "Unassigned";
+            users.find((u) => u.id === getAssigneeId(t))?.name ?? "Unassigned";
           break;
         case "status":
           groupKey = t.status;
@@ -492,7 +495,9 @@ export default function TasksListView({ projectId }: { projectId: string }) {
                                 </Select>
                               ) : (
                                 <div className="flex items-center gap-2 relative">
-                                  <UserAvatar userId={getAssigneeId(task) ?? ""} />
+                                  <UserAvatar
+                                    userId={getAssigneeId(task) ?? ""}
+                                  />
                                   <span>{user?.name}</span>
                                   <div className="absolute right-0 opacity-0 group-hover:opacity-100 bg-muted/80 px-1 rounded text-[10px] text-muted-foreground pointer-events-none">
                                     Click to edit

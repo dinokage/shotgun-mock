@@ -103,11 +103,9 @@ export async function maybeReassignOnSequenceCompletion(
       });
     }
 
-    if (reassignedAny) await cacheDelPattern(cacheKeys.tasksListAllScopes(tenantId));
+    if (reassignedAny)
+      await cacheDelPattern(cacheKeys.tasksListAllScopes(tenantId));
   } catch (err) {
-    console.error(
-      "[sequence-reassignment] failed:",
-      (err as Error).message,
-    );
+    console.error("[sequence-reassignment] failed:", (err as Error).message);
   }
 }

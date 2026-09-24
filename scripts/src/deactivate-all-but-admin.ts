@@ -15,10 +15,17 @@ const DRY_RUN = process.argv.includes("--dry");
 async function main() {
   const targets = await prisma.user.findMany({
     where: { id: { not: KEEP_ACTIVE_ID }, deletedAt: null, status: "active" },
-    select: { id: true, name: true, email: true, role: { select: { name: true } } },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: { select: { name: true } },
+    },
   });
 
-  console.log(`${targets.length} accounts to deactivate (all except the main admin):`);
+  console.log(
+    `${targets.length} accounts to deactivate (all except the main admin):`,
+  );
   const byRole = new Map<string, number>();
   for (const t of targets) {
     const r = t.role.name;

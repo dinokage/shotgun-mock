@@ -111,7 +111,8 @@ function DeliveryMasthead({ delivery }: { delivery: ViewDelivery }) {
       <div>
         <div className="font-semibold text-white">{delivery.name}</div>
         <div className="text-xs text-zinc-500">
-          {delivery.projectName ?? "Project"} • {delivery.clientName ?? "Client"}
+          {delivery.projectName ?? "Project"} •{" "}
+          {delivery.clientName ?? "Client"}
         </div>
       </div>
     </div>
@@ -349,7 +350,8 @@ export default function DeliveryDetail() {
       "",
       `Contents (${delivery.items.length} shot${delivery.items.length === 1 ? "" : "s"}):`,
       ...delivery.items.map(
-        (item, i) => `  ${i + 1}. ${item.fileName} (${item.entityId ?? item.id})`,
+        (item, i) =>
+          `  ${i + 1}. ${item.fileName} (${item.entityId ?? item.id})`,
       ),
       "",
       "This manifest documents the package contents. Individual shots are",

@@ -95,15 +95,17 @@ export default function DepartmentDetail() {
     );
   }
 
-  const team = users.filter((u) => u.departmentId === dept.id).sort((a, b) => {
-    // Sort by role hierarchy
-    const roleWeight = {
-      producer: 3,
-      lead: 2,
-      artist: 1,
-    } as Record<string, number>;
-    return (roleWeight[b.role] || 0) - (roleWeight[a.role] || 0);
-  });
+  const team = users
+    .filter((u) => u.departmentId === dept.id)
+    .sort((a, b) => {
+      // Sort by role hierarchy
+      const roleWeight = {
+        producer: 3,
+        lead: 2,
+        artist: 1,
+      } as Record<string, number>;
+      return (roleWeight[b.role] || 0) - (roleWeight[a.role] || 0);
+    });
 
   const supervisor = team.find((u) => u.id === dept.supervisorId);
   const lead = team.find((u) => u.id === dept.leadId);
@@ -111,8 +113,12 @@ export default function DepartmentDetail() {
   const deptTasks = tasks.filter((t) => t.department === dept.name);
   // Use the shared isTaskDone/isTaskActive classification (same as the Departments overview
   // and Tracking Grid pages) so a department's active/done counts agree everywhere it's shown.
-  const activeTasks = deptTasks.filter((t) => isTaskActive(normalizeTaskStatus(t.status)));
-  const completedTasks = deptTasks.filter((t) => isTaskDone(normalizeTaskStatus(t.status)));
+  const activeTasks = deptTasks.filter((t) =>
+    isTaskActive(normalizeTaskStatus(t.status)),
+  );
+  const completedTasks = deptTasks.filter((t) =>
+    isTaskDone(normalizeTaskStatus(t.status)),
+  );
 
   // Real "Avg Review Cycle" computed from the same underlying task data as the
   // other stat tiles: for every task that has entered or passed review, the
@@ -120,9 +126,13 @@ export default function DepartmentDetail() {
   // lastStatusUpdate), in days. Previously this tile was a hardcoded "1.2d"
   // that never reflected the department's actual data.
   const reviewCycleTasks = deptTasks.filter((t) =>
-    ["review", "lead-review", "producer-review", "approved", "complete"].includes(
-      t.status,
-    ),
+    [
+      "review",
+      "lead-review",
+      "producer-review",
+      "approved",
+      "complete",
+    ].includes(t.status),
   );
   const avgReviewCycleDays =
     reviewCycleTasks.length > 0
@@ -463,7 +473,11 @@ export default function DepartmentDetail() {
                               {task.title}
                             </div>
                             <div className="text-xs text-muted-foreground mt-0.5">
-                              {formatDueDate(task.dueDate, undefined, "No due date")}
+                              {formatDueDate(
+                                task.dueDate,
+                                undefined,
+                                "No due date",
+                              )}
                             </div>
                           </div>
                         </div>

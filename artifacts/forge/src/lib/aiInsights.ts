@@ -404,9 +404,7 @@ function findOverdueInsight(ctx: InsightContext): AIInsight | null {
 function findStalledInsight(ctx: InsightContext): AIInsight | null {
   const STALL_DAYS = 7;
   const stalled = ctx.tasks
-    .filter(
-      (t) => t.status === "in-progress" || t.status === "bottleneck",
-    )
+    .filter((t) => t.status === "in-progress" || t.status === "bottleneck")
     .map((t) => ({ task: t, idle: daysSince(t.lastStatusUpdate) }))
     .filter(
       (r): r is { task: Task; idle: number } => (r.idle ?? 0) >= STALL_DAYS,
@@ -420,7 +418,9 @@ function findStalledInsight(ctx: InsightContext): AIInsight | null {
   for (const { task } of stalled) {
     byPerson.set(task.assigneeId, (byPerson.get(task.assigneeId) ?? 0) + 1);
   }
-  const heaviest = Array.from(byPerson.entries()).sort((a, b) => b[1] - a[1])[0];
+  const heaviest = Array.from(byPerson.entries()).sort(
+    (a, b) => b[1] - a[1],
+  )[0];
 
   return {
     id: "stalled-in-progress",
@@ -554,7 +554,10 @@ function findWorkloadInsight(ctx: InsightContext): AIInsight | null {
     if (!UNRESOLVED_TASK_STATUSES.has(t.status) || !t.assigneeId) continue;
     const entry = load.get(t.assigneeId) ?? { open: 0, remaining: 0 };
     entry.open += 1;
-    entry.remaining += Math.max(0, (t.estimatedHours || 0) - (t.actualHours || 0));
+    entry.remaining += Math.max(
+      0,
+      (t.estimatedHours || 0) - (t.actualHours || 0),
+    );
     load.set(t.assigneeId, entry);
   }
   if (load.size < 3) return null;
@@ -569,7 +572,8 @@ function findWorkloadInsight(ctx: InsightContext): AIInsight | null {
 
   // Only worth surfacing when one person is carrying materially more than the
   // team's middle — otherwise this is just a sorted list.
-  if (median === 0 || top.open < median * 2 || top.open - median < 3) return null;
+  if (median === 0 || top.open < median * 2 || top.open - median < 3)
+    return null;
 
   return {
     id: `workload-${top.userId}`,
@@ -610,7 +614,12 @@ function findIdleCapacityInsight(ctx: InsightContext): AIInsight | null {
     id: "idle-capacity",
     severity: backlog > 0 ? "warning" : "positive",
     title: `${idle.length} ${plural(idle.length, "person", "people")} with no open work`,
-    reasoning: `${idle.map((u) => u.name).slice(0, 4).join(", ")}${idle.length > 4 ? ` and ${idle.length - 4} others` : ""} ${plural(idle.length, "has", "have")} no unresolved tasks assigned${backlog > 0 ? `, while ${backlog} open ${plural(backlog, "task")} ${plural(backlog, "sits", "sit")} unassigned` : ""}.`,
+    reasoning: `${idle
+      .map((u) => u.name)
+      .slice(0, 4)
+      .join(
+        ", ",
+      )}${idle.length > 4 ? ` and ${idle.length - 4} others` : ""} ${plural(idle.length, "has", "have")} no unresolved tasks assigned${backlog > 0 ? `, while ${backlog} open ${plural(backlog, "task")} ${plural(backlog, "sits", "sit")} unassigned` : ""}.`,
     recommendation:
       backlog > 0
         ? "Assign the unassigned backlog to the free capacity before it becomes next week's overdue list."

@@ -274,27 +274,29 @@ export function TaskDrawer() {
                 {task.status.replace("-", " ").toUpperCase()}
               </Badge>
 
-              {task.status === "approved" && nextDept && canEditTasksForHandoff && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-6 text-[10px] bg-accent-tally/10 text-accent-tally border-accent-tally/20 hover:bg-accent-tally/20"
-                  onClick={() => {
-                    updateTaskMutation.mutate({
-                      id: task.id,
-                      department: nextDept.name,
-                      status: "not-started",
-                    });
-                    toast({
-                      title: "Task Handed Off",
-                      description: `${task.title} moved to ${nextDept.name}.`,
-                    });
-                  }}
-                >
-                  Handoff to {nextDept.abbreviation}{" "}
-                  <ArrowRight className="w-3 h-3 ml-1" />
-                </Button>
-              )}
+              {task.status === "approved" &&
+                nextDept &&
+                canEditTasksForHandoff && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 text-[10px] bg-accent-tally/10 text-accent-tally border-accent-tally/20 hover:bg-accent-tally/20"
+                    onClick={() => {
+                      updateTaskMutation.mutate({
+                        id: task.id,
+                        department: nextDept.name,
+                        status: "not-started",
+                      });
+                      toast({
+                        title: "Task Handed Off",
+                        description: `${task.title} moved to ${nextDept.name}.`,
+                      });
+                    }}
+                  >
+                    Handoff to {nextDept.abbreviation}{" "}
+                    <ArrowRight className="w-3 h-3 ml-1" />
+                  </Button>
+                )}
             </div>
             <Button
               variant="ghost"
@@ -574,7 +576,9 @@ export function TaskDrawer() {
                   // "REVIEW") never matched a direct comparison -- see the
                   // identical fix in review.tsx's reviewWorkflowStatus.
                   const normalized = normalizeTaskStatus(task.status);
-                  const isLeadsTurn = ["review", "lead-review"].includes(normalized);
+                  const isLeadsTurn = ["review", "lead-review"].includes(
+                    normalized,
+                  );
                   const waitingLabel =
                     normalized === "producer-review"
                       ? "Already approved — now with Admin."
@@ -647,7 +651,8 @@ export function TaskDrawer() {
               {currentUser.role === "admin" &&
                 normalizeTaskStatus(task.status) !== "approved" &&
                 (() => {
-                  const isPMsTurn = normalizeTaskStatus(task.status) === "producer-review";
+                  const isPMsTurn =
+                    normalizeTaskStatus(task.status) === "producer-review";
                   if (!isPMsTurn) {
                     return (
                       <div className="flex w-full flex-col gap-1.5">
@@ -659,8 +664,8 @@ export function TaskDrawer() {
                             className="flex-1 bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white disabled:opacity-40"
                             disabled
                           >
-                            <CheckCircle2 className="w-4 h-4 mr-2" /> Approve
-                            & Send to Client
+                            <CheckCircle2 className="w-4 h-4 mr-2" /> Approve &
+                            Send to Client
                           </Button>
                           <Button
                             variant="outline"
@@ -678,15 +683,15 @@ export function TaskDrawer() {
                       <p className="text-sm">
                         {task.entityType === "shot" ? (
                           <>
-                            This forwards <b>{shot?.name ?? task.title}</b> to the
-                            external client portal — the client will be able to
-                            view and comment on it immediately.
+                            This forwards <b>{shot?.name ?? task.title}</b> to
+                            the external client portal — the client will be able
+                            to view and comment on it immediately.
                           </>
                         ) : (
                           <>
-                            This approves <b>{task.title}</b> internally. It isn't
-                            linked to a shot, so nothing is forwarded to the
-                            client portal.
+                            This approves <b>{task.title}</b> internally. It
+                            isn't linked to a shot, so nothing is forwarded to
+                            the client portal.
                           </>
                         )}
                       </p>
@@ -718,7 +723,8 @@ export function TaskDrawer() {
                             setClientSendConfirmOpen(false);
                           }}
                         >
-                          <CheckCircle2 className="w-4 h-4 mr-2" /> Confirm & Send
+                          <CheckCircle2 className="w-4 h-4 mr-2" /> Confirm &
+                          Send
                         </Button>
                         <Button
                           variant="outline"
@@ -809,7 +815,11 @@ export function TaskDrawer() {
                       onChange={(e) => setLogNote(e.target.value)}
                     />
                   </div>
-                  <Button size="sm" className="w-full" onClick={handleAddDailyLog}>
+                  <Button
+                    size="sm"
+                    className="w-full"
+                    onClick={handleAddDailyLog}
+                  >
                     Submit Log
                   </Button>
                 </div>
@@ -1094,24 +1104,30 @@ export function TaskDrawer() {
                         No users found.
                       </div>
                     ) : (
-                      users.filter((u) =>
-                        u.name.toLowerCase().includes(mentionQuery),
-                      ).map((u) => (
-                        <div
-                          key={u.id}
-                          className="flex items-center gap-2 p-2 hover:bg-muted rounded cursor-pointer transition-colors"
-                          onClick={() => insertMention(u.name)}
-                        >
-                          <Avatar className="w-5 h-5">
-                            <AvatarImage src={u.avatar} />
-                            <AvatarFallback>{u.name.charAt(0)}</AvatarFallback>
-                          </Avatar>
-                          <span className="text-sm font-medium">{u.name}</span>
-                          <span className="text-xs text-muted-foreground ml-auto">
-                            {u.role}
-                          </span>
-                        </div>
-                      ))
+                      users
+                        .filter((u) =>
+                          u.name.toLowerCase().includes(mentionQuery),
+                        )
+                        .map((u) => (
+                          <div
+                            key={u.id}
+                            className="flex items-center gap-2 p-2 hover:bg-muted rounded cursor-pointer transition-colors"
+                            onClick={() => insertMention(u.name)}
+                          >
+                            <Avatar className="w-5 h-5">
+                              <AvatarImage src={u.avatar} />
+                              <AvatarFallback>
+                                {u.name.charAt(0)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="text-sm font-medium">
+                              {u.name}
+                            </span>
+                            <span className="text-xs text-muted-foreground ml-auto">
+                              {u.role}
+                            </span>
+                          </div>
+                        ))
                     )}
                   </div>
                 )}

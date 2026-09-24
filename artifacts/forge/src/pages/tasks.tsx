@@ -168,7 +168,10 @@ export default function Tasks() {
 
       if (search && !t.title.toLowerCase().includes(search.toLowerCase()))
         return false;
-      if (statusFilter !== "all" && normalizeTaskStatus(t.status) !== statusFilter)
+      if (
+        statusFilter !== "all" &&
+        normalizeTaskStatus(t.status) !== statusFilter
+      )
         return false;
       if (
         projectFilter !== "all" &&
@@ -333,8 +336,8 @@ export default function Tasks() {
                 : "bg-muted/50 text-muted-foreground hover:bg-muted"
             }`}
           >
-            {s === "all" ? "All" : s.replace(/-/g, " ")} (
-            {statusCounts[s] || 0})
+            {s === "all" ? "All" : s.replace(/-/g, " ")} ({statusCounts[s] || 0}
+            )
           </button>
         ))}
       </div>
@@ -411,9 +414,7 @@ export default function Tasks() {
         ) : isMobile ? (
           <div className="rounded-md border border-border overflow-y-auto h-full p-3 space-y-3">
             {filtered.slice(0, 100).map((task) => {
-              const assignee = liveUsers.find(
-                (u) => u.id === task.assignedTo,
-              );
+              const assignee = liveUsers.find((u) => u.id === task.assignedTo);
               const project = liveProjects.find(
                 (p) => p.id === entityProjectMap[task.entityId],
               );
@@ -433,7 +434,8 @@ export default function Tasks() {
                       </div>
                       {entity && (
                         <div className="text-xs text-primary/80 mt-0.5 truncate">
-                          {entity.kind === "shot" ? "Shot" : "Asset"}: {entity.name}
+                          {entity.kind === "shot" ? "Shot" : "Asset"}:{" "}
+                          {entity.name}
                         </div>
                       )}
                       <div className="text-xs text-muted-foreground mt-1.5 flex items-center gap-2 flex-wrap">

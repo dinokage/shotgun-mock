@@ -44,7 +44,10 @@ export function usePublishLogs(filters: PublishLogFilters = {}) {
 
   return useQuery<PublishLogDTO[]>({
     queryKey: ["publish-logs", query],
-    queryFn: () => apiClient.get<PublishLogDTO[]>(`/publish-logs${query ? `?${query}` : ""}`),
+    queryFn: () =>
+      apiClient.get<PublishLogDTO[]>(
+        `/publish-logs${query ? `?${query}` : ""}`,
+      ),
     staleTime: 10000,
   });
 }
@@ -65,8 +68,10 @@ export interface CreatePublishLogBody {
 export function useCreatePublishLog() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: CreatePublishLogBody) => apiClient.post<PublishLogDTO>("/publish-logs", body),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["publish-logs"] }),
+    mutationFn: (body: CreatePublishLogBody) =>
+      apiClient.post<PublishLogDTO>("/publish-logs", body),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["publish-logs"] }),
   });
 }
 
@@ -83,6 +88,7 @@ export function useUpdatePublishLogStatus() {
       fileSize?: string;
       validationLog?: PublishValidationEntry[];
     }) => apiClient.put<PublishLogDTO>(`/publish-logs/${id}`, body),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["publish-logs"] }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["publish-logs"] }),
   });
 }

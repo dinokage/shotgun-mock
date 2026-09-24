@@ -16,7 +16,10 @@ import * as crypto from "crypto";
 // check, any authenticated user could attach a review/annotation to
 // another tenant's version (IDOR). Same pattern as routes/shots.ts.
 async function versionInTenant(id: string, tenantId: string) {
-  const row = await prisma.version.findFirst({ where: { id, tenantId }, select: { id: true } });
+  const row = await prisma.version.findFirst({
+    where: { id, tenantId },
+    select: { id: true },
+  });
   return !!row;
 }
 
@@ -91,7 +94,9 @@ reviewsRouter.get("/", async (req, res) => {
         where: {
           tenantId,
           projectId: clientScope.projectId,
-          ...(clientScope.episodeId ? { episodeId: clientScope.episodeId } : {}),
+          ...(clientScope.episodeId
+            ? { episodeId: clientScope.episodeId }
+            : {}),
         },
         select: { id: true },
       });
@@ -129,48 +134,65 @@ reviewsRouter.get("/", async (req, res) => {
   }
 });
 
-reviewsRouter.post("/", requireCapability("submit_reviews"), async (req, res) => {
-  try {
-    const tenantId = req.tenantId!;
-    const { entityId, entityType, versionId, status, comments, frame } = req.body;
-    if (!entityId || !entityType || !versionId)
-      return res.status(400).json({ error: "Missing entityId, entityType, or versionId" });
-    if (!(await versionInTenant(versionId, tenantId)))
-      return res.status(400).json({ error: "Invalid versionId" });
+reviewsRouter.post(
+  "/",
+  requireCapability("submit_reviews"),
+  async (req, res) => {
+    try {
+      const tenantId = req.tenantId!;
+      const { entityId, entityType, versionId, status, comments, frame } =
+        req.body;
+      if (!entityId || !entityType || !versionId)
+        return res
+          .status(400)
+          .json({ error: "Missing entityId, entityType, or versionId" });
+      if (!(await versionInTenant(versionId, tenantId)))
+        return res.status(400).json({ error: "Invalid versionId" });
 
-    // Exactly one of reviewerId/reviewerClientAccessLinkId is set -- a
-    // client-access session has no real users row (session payload's
-    // userId is always null), so it's attributed by which link it
-    // redeemed instead. requireCapability("submit_reviews") above already
-    // confirmed the caller (employee or client) holds the capability;
-    // this only resolves *which* attribution applies and, for a client,
-    // that the version is actually inside its grant.
-    let reviewerId: string | null = null;
-    let reviewerClientAccessLinkId: string | null = null;
-    if (req.clientAccessLinkId) {
-      const clientScope = await getClientScope(req);
-      if (!clientScope || !(await versionInClientScope(tenantId, versionId, clientScope))) {
-        return res.status(403).json({ error: "Forbidden" });
+      // Exactly one of reviewerId/reviewerClientAccessLinkId is set -- a
+      // client-access session has no real users row (session payload's
+      // userId is always null), so it's attributed by which link it
+      // redeemed instead. requireCapability("submit_reviews") above already
+      // confirmed the caller (employee or client) holds the capability;
+      // this only resolves *which* attribution applies and, for a client,
+      // that the version is actually inside its grant.
+      let reviewerId: string | null = null;
+      let reviewerClientAccessLinkId: string | null = null;
+      if (req.clientAccessLinkId) {
+        const clientScope = await getClientScope(req);
+        if (
+          !clientScope ||
+          !(await versionInClientScope(tenantId, versionId, clientScope))
+        ) {
+          return res.status(403).json({ error: "Forbidden" });
+        }
+        reviewerClientAccessLinkId = req.clientAccessLinkId;
+      } else {
+        if (!(await versionInEmployeeScope(req, tenantId, versionId)))
+          return res.status(404).json({ error: "Not found" });
+        reviewerId = req.userId!;
       }
-      reviewerClientAccessLinkId = req.clientAccessLinkId;
-    } else {
-      if (!(await versionInEmployeeScope(req, tenantId, versionId)))
-        return res.status(404).json({ error: "Not found" });
-      reviewerId = req.userId!;
-    }
 
-    const created = await prisma.review.create({
-      data: {
-        id: crypto.randomUUID(), tenantId, entityId, entityType, versionId,
-        reviewerId, reviewerClientAccessLinkId,
-        status: status || "pending", comments: comments || "", frame: typeof frame === "number" ? frame : null,
-      },
-    });
-    return res.status(201).json(created);
-  } catch (err) {
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
+      const created = await prisma.review.create({
+        data: {
+          id: crypto.randomUUID(),
+          tenantId,
+          entityId,
+          entityType,
+          versionId,
+          reviewerId,
+          reviewerClientAccessLinkId,
+          status: status || "pending",
+          comments: comments || "",
+          frame: typeof frame === "number" ? frame : null,
+        },
+      });
+      return res.status(201).json(created);
+    } catch (err) {
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
 
 reviewsRouter.get("/:versionId/annotations", async (req, res) => {
   try {
@@ -195,7 +217,9 @@ reviewsRouter.get("/:versionId/annotations", async (req, res) => {
             id: version.entityId,
             tenantId,
             projectId: clientScope.projectId,
-            ...(clientScope.episodeId ? { episodeId: clientScope.episodeId } : {}),
+            ...(clientScope.episodeId
+              ? { episodeId: clientScope.episodeId }
+              : {}),
           },
           select: { id: true },
         });
@@ -206,7 +230,10 @@ reviewsRouter.get("/:versionId/annotations", async (req, res) => {
       // inherit that version's entity visibility. Without this an artist
       // could read every note and drawing left on any version in the studio
       // just by knowing a version id.
-      const scopeWhere = await entityRefScopeWhere(tenantId, await getVisibilityScope(req));
+      const scopeWhere = await entityRefScopeWhere(
+        tenantId,
+        await getVisibilityScope(req),
+      );
       if (scopeWhere) {
         const visible = await prisma.version.findFirst({
           where: { id: requestedVersionId, tenantId, ...scopeWhere },
@@ -235,45 +262,81 @@ reviewsRouter.get("/:versionId/annotations", async (req, res) => {
   }
 });
 
-reviewsRouter.post("/:versionId/annotations", requireCapability("submit_reviews"), async (req, res) => {
-  try {
-    const tenantId = req.tenantId!;
-    const versionId = req.params.versionId as string;
-    const { frame, type, color, x, y, w, h, points, text, startFrame, endFrame, fontFamily, fontSize, backgroundColor } = req.body;
-    if (typeof frame !== "number" || !type || !color)
-      return res.status(400).json({ error: "Missing frame, type, or color" });
-    if (!(await versionInTenant(versionId, tenantId)))
-      return res.status(400).json({ error: "Invalid versionId" });
+reviewsRouter.post(
+  "/:versionId/annotations",
+  requireCapability("submit_reviews"),
+  async (req, res) => {
+    try {
+      const tenantId = req.tenantId!;
+      const versionId = req.params.versionId as string;
+      const {
+        frame,
+        type,
+        color,
+        x,
+        y,
+        w,
+        h,
+        points,
+        text,
+        startFrame,
+        endFrame,
+        fontFamily,
+        fontSize,
+        backgroundColor,
+      } = req.body;
+      if (typeof frame !== "number" || !type || !color)
+        return res.status(400).json({ error: "Missing frame, type, or color" });
+      if (!(await versionInTenant(versionId, tenantId)))
+        return res.status(400).json({ error: "Invalid versionId" });
 
-    // Same attribution split as POST / above.
-    let createdById: string | null = null;
-    let createdByClientAccessLinkId: string | null = null;
-    if (req.clientAccessLinkId) {
-      const clientScope = await getClientScope(req);
-      if (!clientScope || !(await versionInClientScope(tenantId, versionId, clientScope))) {
-        return res.status(403).json({ error: "Forbidden" });
+      // Same attribution split as POST / above.
+      let createdById: string | null = null;
+      let createdByClientAccessLinkId: string | null = null;
+      if (req.clientAccessLinkId) {
+        const clientScope = await getClientScope(req);
+        if (
+          !clientScope ||
+          !(await versionInClientScope(tenantId, versionId, clientScope))
+        ) {
+          return res.status(403).json({ error: "Forbidden" });
+        }
+        createdByClientAccessLinkId = req.clientAccessLinkId;
+      } else {
+        if (!(await versionInEmployeeScope(req, tenantId, versionId)))
+          return res.status(404).json({ error: "Not found" });
+        createdById = req.userId!;
       }
-      createdByClientAccessLinkId = req.clientAccessLinkId;
-    } else {
-      if (!(await versionInEmployeeScope(req, tenantId, versionId)))
-        return res.status(404).json({ error: "Not found" });
-      createdById = req.userId!;
-    }
 
-    const created = await prisma.annotation.create({
-      data: {
-        id: crypto.randomUUID(), tenantId, versionId, frame, type, color,
-        x: x ?? 0, y: y ?? 0, w: w ?? null, h: h ?? null, points: points ?? null,
-        text: text ?? null, startFrame: startFrame ?? null, endFrame: endFrame ?? null,
-        fontFamily: fontFamily ?? null, fontSize: fontSize ?? null, backgroundColor: backgroundColor ?? null,
-        createdById, createdByClientAccessLinkId,
-      },
-    });
-    return res.status(201).json(created);
-  } catch (err) {
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
+      const created = await prisma.annotation.create({
+        data: {
+          id: crypto.randomUUID(),
+          tenantId,
+          versionId,
+          frame,
+          type,
+          color,
+          x: x ?? 0,
+          y: y ?? 0,
+          w: w ?? null,
+          h: h ?? null,
+          points: points ?? null,
+          text: text ?? null,
+          startFrame: startFrame ?? null,
+          endFrame: endFrame ?? null,
+          fontFamily: fontFamily ?? null,
+          fontSize: fontSize ?? null,
+          backgroundColor: backgroundColor ?? null,
+          createdById,
+          createdByClientAccessLinkId,
+        },
+      });
+      return res.status(201).json(created);
+    } catch (err) {
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
 
 // Whitelisted patchable fields — every column an in-place annotation edit
 // (resize handle, canvas drag, or the Properties panel's per-field editors)
@@ -281,8 +344,19 @@ reviewsRouter.post("/:versionId/annotations", requireCapability("submit_reviews"
 // createdById/createdAt/type — type is structural (rect/pen/arrow/text),
 // not something a resize/drag/property edit changes.
 const ANNOTATION_PATCHABLE_FIELDS = [
-  "frame", "color", "x", "y", "w", "h", "points", "text",
-  "startFrame", "endFrame", "fontFamily", "fontSize", "backgroundColor",
+  "frame",
+  "color",
+  "x",
+  "y",
+  "w",
+  "h",
+  "points",
+  "text",
+  "startFrame",
+  "endFrame",
+  "fontFamily",
+  "fontSize",
+  "backgroundColor",
 ] as const;
 
 // An employee owns an annotation it created (createdById); a client-access
@@ -291,7 +365,10 @@ const ANNOTATION_PATCHABLE_FIELDS = [
 // any redemption of the same link can edit/delete that link's annotations.
 async function isAnnotationOwner(
   req: import("express").Request,
-  existing: { createdById: string | null; createdByClientAccessLinkId: string | null },
+  existing: {
+    createdById: string | null;
+    createdByClientAccessLinkId: string | null;
+  },
 ): Promise<boolean> {
   if (req.clientAccessLinkId) {
     return existing.createdByClientAccessLinkId === req.clientAccessLinkId;
@@ -304,37 +381,56 @@ async function isAnnotationOwner(
   return !!grant;
 }
 
-reviewsRouter.put("/annotations/:id", requireCapability("submit_reviews"), async (req, res) => {
-  try {
-    const tenantId = req.tenantId!;
-    const id = req.params.id as string;
-    const existing = await prisma.annotation.findFirst({ where: { tenantId, id } });
-    if (!existing) return res.status(404).json({ error: "Not found" });
-    if (!(await isAnnotationOwner(req, existing))) return res.status(403).json({ error: "Forbidden" });
+reviewsRouter.put(
+  "/annotations/:id",
+  requireCapability("submit_reviews"),
+  async (req, res) => {
+    try {
+      const tenantId = req.tenantId!;
+      const id = req.params.id as string;
+      const existing = await prisma.annotation.findFirst({
+        where: { tenantId, id },
+      });
+      if (!existing) return res.status(404).json({ error: "Not found" });
+      if (!(await isAnnotationOwner(req, existing)))
+        return res.status(403).json({ error: "Forbidden" });
 
-    const updates: Record<string, unknown> = {};
-    for (const field of ANNOTATION_PATCHABLE_FIELDS) {
-      if (field in req.body) updates[field] = req.body[field];
+      const updates: Record<string, unknown> = {};
+      for (const field of ANNOTATION_PATCHABLE_FIELDS) {
+        if (field in req.body) updates[field] = req.body[field];
+      }
+      await prisma.annotation.updateMany({
+        where: { tenantId, id },
+        data: updates,
+      });
+      const updated = await prisma.annotation.findFirstOrThrow({
+        where: { tenantId, id },
+      });
+      return res.json(updated);
+    } catch (err) {
+      return res.status(500).json({ error: "Internal server error" });
     }
-    await prisma.annotation.updateMany({ where: { tenantId, id }, data: updates });
-    const updated = await prisma.annotation.findFirstOrThrow({ where: { tenantId, id } });
-    return res.json(updated);
-  } catch (err) {
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
+  },
+);
 
-reviewsRouter.delete("/annotations/:id", requireCapability("submit_reviews"), async (req, res) => {
-  try {
-    const tenantId = req.tenantId!;
-    const id = req.params.id as string;
-    const existing = await prisma.annotation.findFirst({ where: { tenantId, id } });
-    if (!existing) return res.status(404).json({ error: "Not found" });
-    if (!(await isAnnotationOwner(req, existing))) return res.status(403).json({ error: "Forbidden" });
+reviewsRouter.delete(
+  "/annotations/:id",
+  requireCapability("submit_reviews"),
+  async (req, res) => {
+    try {
+      const tenantId = req.tenantId!;
+      const id = req.params.id as string;
+      const existing = await prisma.annotation.findFirst({
+        where: { tenantId, id },
+      });
+      if (!existing) return res.status(404).json({ error: "Not found" });
+      if (!(await isAnnotationOwner(req, existing)))
+        return res.status(403).json({ error: "Forbidden" });
 
-    await prisma.annotation.deleteMany({ where: { tenantId, id } });
-    return res.status(204).send();
-  } catch (err) {
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
+      await prisma.annotation.deleteMany({ where: { tenantId, id } });
+      return res.status(204).send();
+    } catch (err) {
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);

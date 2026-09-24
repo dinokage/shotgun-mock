@@ -97,7 +97,9 @@ async function main() {
     where: { email: { equals: LEAD_EMAIL, mode: "insensitive" } },
   });
   if (!lead) {
-    console.error(`WARNING: ${LEAD_EMAIL} not found -- skipping its password reset.`);
+    console.error(
+      `WARNING: ${LEAD_EMAIL} not found -- skipping its password reset.`,
+    );
   } else {
     await prisma.user.update({
       where: { id: lead.id },
@@ -113,7 +115,9 @@ async function main() {
     where: { email: { equals: PM_EMAIL, mode: "insensitive" } },
   });
   if (!pm) {
-    console.error(`WARNING: ${PM_EMAIL} not found -- skipping its password reset.`);
+    console.error(
+      `WARNING: ${PM_EMAIL} not found -- skipping its password reset.`,
+    );
   } else {
     await prisma.user.update({
       where: { id: pm.id },

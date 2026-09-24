@@ -46,7 +46,10 @@ export function useCreateAnnotation(
   const key = keyFor(versionId);
   return useMutation({
     mutationFn: (annotation: Omit<Annotation, "id">) =>
-      apiClient.post<Annotation>(`/reviews/${versionId}/annotations`, annotation),
+      apiClient.post<Annotation>(
+        `/reviews/${versionId}/annotations`,
+        annotation,
+      ),
     onMutate: async (annotation) => {
       // Stop any in-flight refetch from overwriting the optimistic list.
       await queryClient.cancelQueries({ queryKey: key });
@@ -56,7 +59,11 @@ export function useCreateAnnotation(
         ...previous,
         // Inject currentUserId so the eraser ownership check passes immediately
         // on a freshly drawn mark before the server responds with createdById.
-        { ...(annotation as Annotation), id: tempId, createdById: currentUserId },
+        {
+          ...(annotation as Annotation),
+          id: tempId,
+          createdById: currentUserId,
+        },
       ]);
       return { previous, tempId };
     },

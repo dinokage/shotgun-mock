@@ -634,13 +634,19 @@ export default function TrackingGrid() {
       );
     }
     if (episodeFilter !== "all") {
-      filteredShots = filteredShots.filter((s) => s.episodeId === episodeFilter);
+      filteredShots = filteredShots.filter(
+        (s) => s.episodeId === episodeFilter,
+      );
     }
     if (sequenceFilter !== "all") {
-      filteredShots = filteredShots.filter((s) => s.sequenceId === sequenceFilter);
+      filteredShots = filteredShots.filter(
+        (s) => s.sequenceId === sequenceFilter,
+      );
     }
     if (assigneeFilter !== "all") {
-      filteredShots = filteredShots.filter((s) => s.assigneeId === assigneeFilter);
+      filteredShots = filteredShots.filter(
+        (s) => s.assigneeId === assigneeFilter,
+      );
     }
 
     // Default hierarchical ordering: Project -> Episode -> Sequence -> Shot
@@ -664,7 +670,8 @@ export default function TrackingGrid() {
       const term = search.toLowerCase();
       filteredShots = filteredShots.filter((s) => {
         const projName = projects.find((p) => p.id === s.projectId)?.name || "";
-        const epName = allEpisodes.find((e) => e.id === s.episodeId)?.name || "";
+        const epName =
+          allEpisodes.find((e) => e.id === s.episodeId)?.name || "";
         const seqName =
           allSequences.find((sq) => sq.id === s.sequenceId)?.name || "";
         return (
@@ -794,21 +801,25 @@ export default function TrackingGrid() {
         : liveTasks.filter(
             (t) => getProjectId(t, entityProjectMap) === projectFilter,
           );
-    return departments.map((dept) => {
-      const deptTasks = relevantTasks.filter((t) => t.department === dept.name);
-      const buckets: Record<string, number> = {
-        todo: 0,
-        "in-progress": 0,
-        review: 0,
-        bottleneck: 0,
-        complete: 0,
-        other: 0,
-      };
-      deptTasks.forEach((t) => {
-        buckets[bucketTaskStatus(t.status)]++;
-      });
-      return { dept, total: deptTasks.length, buckets };
-    }).filter((d) => d.total > 0);
+    return departments
+      .map((dept) => {
+        const deptTasks = relevantTasks.filter(
+          (t) => t.department === dept.name,
+        );
+        const buckets: Record<string, number> = {
+          todo: 0,
+          "in-progress": 0,
+          review: 0,
+          bottleneck: 0,
+          complete: 0,
+          other: 0,
+        };
+        deptTasks.forEach((t) => {
+          buckets[bucketTaskStatus(t.status)]++;
+        });
+        return { dept, total: deptTasks.length, buckets };
+      })
+      .filter((d) => d.total > 0);
   }, [liveTasks, projectFilter, departments, entityProjectMap]);
 
   const toggleGroup = (path: string) => {
@@ -890,7 +901,8 @@ export default function TrackingGrid() {
         onError: (err: unknown) => {
           toast({
             title: "Could not save view",
-            description: err instanceof Error ? err.message : "Please try again.",
+            description:
+              err instanceof Error ? err.message : "Please try again.",
             variant: "destructive",
           });
         },
@@ -967,11 +979,9 @@ export default function TrackingGrid() {
 
     const sheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
     sheet["!cols"] = headers.map((h, i) => ({
-      wch: Math.max(
-        h.length,
-        ...rows.map((r) => String(r[i] ?? "").length),
-        8,
-      ) + 2,
+      wch:
+        Math.max(h.length, ...rows.map((r) => String(r[i] ?? "").length), 8) +
+        2,
     }));
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, sheet, "Tracking Grid");
@@ -1125,7 +1135,9 @@ export default function TrackingGrid() {
     >
       <div className="flex justify-between items-start">
         <div>
-          <div className="text-sm font-semibold text-foreground">{row.shot}</div>
+          <div className="text-sm font-semibold text-foreground">
+            {row.shot}
+          </div>
           <div className="text-[10px] text-muted-foreground flex items-center gap-1">
             <span>
               {row.project} • {row.sequence}
@@ -1148,7 +1160,9 @@ export default function TrackingGrid() {
 
       <div className="grid grid-cols-2 gap-2 text-[11px]">
         <div className="bg-card p-2 rounded-sm border border-border">
-          <div className="text-muted-foreground/70 mb-1 text-[9px] uppercase">Internal</div>
+          <div className="text-muted-foreground/70 mb-1 text-[9px] uppercase">
+            Internal
+          </div>
           <select
             className={`w-full bg-transparent outline-none appearance-none cursor-pointer font-semibold ${getReviewColor(row.internalReview).split(" ")[0]}`}
             value={row.internalReview}
@@ -1164,7 +1178,9 @@ export default function TrackingGrid() {
           </select>
         </div>
         <div className="bg-card p-2 rounded-sm border border-border">
-          <div className="text-muted-foreground/70 mb-1 text-[9px] uppercase">Client</div>
+          <div className="text-muted-foreground/70 mb-1 text-[9px] uppercase">
+            Client
+          </div>
           <select
             className={`w-full bg-transparent outline-none appearance-none cursor-pointer font-semibold ${getReviewColor(row.clientReview).split(" ")[0]}`}
             value={row.clientReview}
@@ -1246,7 +1262,9 @@ export default function TrackingGrid() {
                     run: () =>
                       updateShotMutation.mutateAsync({
                         id,
-                        ...("status" in changes ? { status: changes.status } : {}),
+                        ...("status" in changes
+                          ? { status: changes.status }
+                          : {}),
                         ...("notes" in changes ? { notes: changes.notes } : {}),
                       }),
                   });
@@ -1272,7 +1290,9 @@ export default function TrackingGrid() {
               });
               if (saves.length === 0) return;
 
-              const outcomes = await Promise.allSettled(saves.map((s) => s.run()));
+              const outcomes = await Promise.allSettled(
+                saves.map((s) => s.run()),
+              );
               const failedIds = new Set(
                 saves
                   .filter((_, i) => outcomes[i].status === "rejected")
@@ -1299,7 +1319,9 @@ export default function TrackingGrid() {
                 toast({
                   title: `${failedIds.size} row${failedIds.size === 1 ? "" : "s"} didn't save`,
                   description: `${
-                    firstError instanceof Error ? firstError.message : "The server rejected the change."
+                    firstError instanceof Error
+                      ? firstError.message
+                      : "The server rejected the change."
                   } Those rows are still marked unsaved — try again.`,
                   variant: "destructive",
                 });
@@ -1764,9 +1786,7 @@ export default function TrackingGrid() {
                 <div className={`${CELL_CENTER} bg-primary`}>
                   Internal Review
                 </div>
-                <div className={`${CELL_CENTER} bg-primary`}>
-                  Client Review
-                </div>
+                <div className={`${CELL_CENTER} bg-primary`}>Client Review</div>
                 <div className={`${CELL_CENTER} bg-primary`}>
                   Production Notes
                 </div>

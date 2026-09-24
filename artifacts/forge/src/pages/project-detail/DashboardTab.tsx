@@ -111,13 +111,8 @@ export default function DashboardTab({ project }: { project: any }) {
   const upcomingDeadlines = useMemo(
     () =>
       projectTasks
-        .filter(
-          (t) => t.dueDate && !isTaskDone(normalizeTaskStatus(t.status)),
-        )
-        .sort(
-          (a, b) =>
-            byDueDate(a.dueDate, b.dueDate),
-        )
+        .filter((t) => t.dueDate && !isTaskDone(normalizeTaskStatus(t.status)))
+        .sort((a, b) => byDueDate(a.dueDate, b.dueDate))
         .slice(0, 5),
     [projectTasks],
   );

@@ -12,7 +12,14 @@ import { useTasksStore } from "@/store/tasks";
 import { useProjectStore } from "@/store/projects";
 import { useDepartmentStore } from "@/store/departments";
 import { useUserStore } from "@/store/users";
-import { DollarSign, Clock, Users, Briefcase, ListTodo, Lock } from "lucide-react";
+import {
+  DollarSign,
+  Clock,
+  Users,
+  Briefcase,
+  ListTodo,
+  Lock,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { motion, animate } from "framer-motion";
 import { useCapability } from "@/hooks/use-capability";
@@ -87,7 +94,10 @@ export default function FinancialDashboard() {
         (acc, t) => acc + (t.estimatedHours || 0),
         0,
       );
-      const actual = deptTasks.reduce((acc, t) => acc + (t.actualHours || 0), 0);
+      const actual = deptTasks.reduce(
+        (acc, t) => acc + (t.actualHours || 0),
+        0,
+      );
       return {
         ...d,
         estimated,

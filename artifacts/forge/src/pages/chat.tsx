@@ -90,7 +90,10 @@ export default function Chat() {
     () => channels.filter((c) => c.kind === "channel"),
     [channels],
   );
-  const myDMs = useMemo(() => channels.filter((c) => c.kind === "dm"), [channels]);
+  const myDMs = useMemo(
+    () => channels.filter((c) => c.kind === "dm"),
+    [channels],
+  );
   const myTeamGroups = useMemo(
     () => channels.filter((c) => c.kind === "group"),
     [channels],
@@ -121,12 +124,8 @@ export default function Chat() {
   // The transcript is only requested once membership is real — the server
   // refuses to read out a channel the caller hasn't joined, so asking before
   // the join lands would just 403.
-  const {
-    messages,
-    hasNextPage,
-    isFetchingNextPage,
-    fetchNextPage,
-  } = useChatMessages(activeChannel?.isMember ? activeChannelId : null);
+  const { messages, hasNextPage, isFetchingNextPage, fetchNextPage } =
+    useChatMessages(activeChannel?.isMember ? activeChannelId : null);
 
   useEffect(() => {
     if (activeChannel?.isMember && activeChannel.unreadCount > 0) {
@@ -166,7 +165,9 @@ export default function Chat() {
     if (activeChannel.kind === "channel" && !activeChannel.departmentId) {
       source = [...users];
     } else if (activeChannel.kind === "channel") {
-      source = users.filter((u) => u.departmentId === activeChannel.departmentId);
+      source = users.filter(
+        (u) => u.departmentId === activeChannel.departmentId,
+      );
     } else {
       source = users.filter((u) => activeChannel.memberIds.includes(u.id));
     }
@@ -386,29 +387,31 @@ export default function Chat() {
               <Label>Members ({newGroupMemberIds.size} selected)</Label>
               <ScrollArea className="h-56 rounded-md border border-border p-2">
                 <div className="space-y-1">
-                  {users.filter((u) => u.id !== currentUser.id).map((u) => (
-                    <label
-                      key={u.id}
-                      className="flex items-center gap-2.5 p-1.5 rounded hover:bg-muted/50 cursor-pointer"
-                    >
-                      <Checkbox
-                        checked={newGroupMemberIds.has(u.id)}
-                        onCheckedChange={() => toggleGroupMember(u.id)}
-                      />
-                      <Avatar className="w-6 h-6">
-                        <AvatarImage src={u.avatar} />
-                        <AvatarFallback>{u.name.charAt(0)}</AvatarFallback>
-                      </Avatar>
-                      <div className="min-w-0">
-                        <div className="text-sm font-medium truncate">
-                          {u.name}
+                  {users
+                    .filter((u) => u.id !== currentUser.id)
+                    .map((u) => (
+                      <label
+                        key={u.id}
+                        className="flex items-center gap-2.5 p-1.5 rounded hover:bg-muted/50 cursor-pointer"
+                      >
+                        <Checkbox
+                          checked={newGroupMemberIds.has(u.id)}
+                          onCheckedChange={() => toggleGroupMember(u.id)}
+                        />
+                        <Avatar className="w-6 h-6">
+                          <AvatarImage src={u.avatar} />
+                          <AvatarFallback>{u.name.charAt(0)}</AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium truncate">
+                            {u.name}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground truncate">
+                            {u.title}
+                          </div>
                         </div>
-                        <div className="text-[10px] text-muted-foreground truncate">
-                          {u.title}
-                        </div>
-                      </div>
-                    </label>
-                  ))}
+                      </label>
+                    ))}
                 </div>
               </ScrollArea>
             </div>
@@ -464,7 +467,8 @@ export default function Chat() {
                   </EmptyMedia>
                   <EmptyTitle>
                     Welcome to{" "}
-                    {activeChannel ? channelDisplayName(activeChannel) : "chat"}!
+                    {activeChannel ? channelDisplayName(activeChannel) : "chat"}
+                    !
                   </EmptyTitle>
                   <EmptyDescription>
                     This is the start of the conversation.
@@ -505,10 +509,7 @@ export default function Chat() {
                           <span className="text-xs text-muted-foreground">
                             {format(new Date(msg.createdAt), "h:mm a")}
                           </span>
-                          {!!user &&
-                            LEADERSHIP_ROLES.includes(
-                              user.role,
-                            ) && (
+                          {!!user && LEADERSHIP_ROLES.includes(user.role) && (
                             <span className="text-[10px] uppercase font-bold text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded ml-1">
                               {ROLE_LABELS[user.role]}
                             </span>

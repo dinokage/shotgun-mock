@@ -130,7 +130,9 @@ const HANDLERS: Handler[] = [
   },
   {
     // "who is free", "idle", "spare capacity"
-    match: [/who is free|idle|spare capacity|available|nothing assigned|free capacity/],
+    match: [
+      /who is free|idle|spare capacity|available|nothing assigned|free capacity/,
+    ],
     answer: (ctx, tasks) => {
       const busy = new Set(
         tasks
@@ -150,7 +152,9 @@ const HANDLERS: Handler[] = [
         text: `${idle.length} ${s(idle.length, "person", "people")} with no open tasks:\n\n${idle
           .slice(0, 8)
           .map((u) => `• ${u.name}`)
-          .join("\n")}${idle.length > 8 ? `\n…and ${idle.length - 8} more.` : ""}${
+          .join(
+            "\n",
+          )}${idle.length > 8 ? `\n…and ${idle.length - 8} more.` : ""}${
           unassigned > 0
             ? `\n\nThere ${s(unassigned, "is", "are")} also ${unassigned} unassigned open ${s(unassigned, "task")} that could go to them.`
             : ""
@@ -213,7 +217,9 @@ const HANDLERS: Handler[] = [
             (r) =>
               `• ${r.t.title} — ${r.idle} days idle, ${nameOf(ctx, r.t.assigneeId)}`,
           )
-          .join("\n")}${stalled.length > 5 ? `\n\n…and ${stalled.length - 5} more.` : ""}\n\nStalled work looks identical to healthy work on every board here — only the timestamp separates them.`,
+          .join(
+            "\n",
+          )}${stalled.length > 5 ? `\n\n…and ${stalled.length - 5} more.` : ""}\n\nStalled work looks identical to healthy work on every board here — only the timestamp separates them.`,
         href: "/tracking",
         hrefLabel: "Open tracking grid",
       };
@@ -239,7 +245,9 @@ const HANDLERS: Handler[] = [
             (r) =>
               `• ${r.t.title} — ${r.inDays === 0 ? "today" : `in ${r.inDays} ${s(r.inDays, "day")}`}, ${nameOf(ctx, r.t.assigneeId)} (${r.t.status.replace(/-/g, " ")})`,
           )
-          .join("\n")}${soon.length > 6 ? `\n\n…and ${soon.length - 6} more.` : ""}`,
+          .join(
+            "\n",
+          )}${soon.length > 6 ? `\n\n…and ${soon.length - 6} more.` : ""}`,
         href: "/tracking",
         hrefLabel: "Open tracking grid",
       };
@@ -249,7 +257,10 @@ const HANDLERS: Handler[] = [
     // "how is <department> doing" / "department status"
     match: [/department|team status|how is .* doing|per department/],
     answer: (ctx, tasks) => {
-      const byDept = new Map<string, { open: number; overdue: number; review: number }>();
+      const byDept = new Map<
+        string,
+        { open: number; overdue: number; review: number }
+      >();
       for (const t of tasks) {
         if (!OPEN_STATUSES.has(t.status)) continue;
         const key = t.department || "Unassigned";
@@ -260,7 +271,9 @@ const HANDLERS: Handler[] = [
         byDept.set(key, e);
       }
       if (byDept.size === 0)
-        return { text: "No open work in your scope to break down by department." };
+        return {
+          text: "No open work in your scope to break down by department.",
+        };
 
       const ranked = Array.from(byDept.entries()).sort(
         (a, b) => b[1].overdue - a[1].overdue || b[1].open - a[1].open,
@@ -284,7 +297,8 @@ const HANDLERS: Handler[] = [
     answer: (ctx, tasks) => {
       const mine = tasks
         .filter(
-          (t) => t.assigneeId === ctx.currentUserId && OPEN_STATUSES.has(t.status),
+          (t) =>
+            t.assigneeId === ctx.currentUserId && OPEN_STATUSES.has(t.status),
         )
         .sort(
           (a, b) =>
@@ -300,7 +314,9 @@ const HANDLERS: Handler[] = [
             const late = daysSince(t.dueDate) ?? -1;
             return `• ${t.title} — ${t.status.replace(/-/g, " ")}${late > 0 ? `, ${late} ${s(late, "day")} overdue` : ""}`;
           })
-          .join("\n")}${mine.length > 6 ? `\n\n…and ${mine.length - 6} more.` : ""}`,
+          .join(
+            "\n",
+          )}${mine.length > 6 ? `\n\n…and ${mine.length - 6} more.` : ""}`,
         href: "/my-tasks",
         hrefLabel: "Open my tasks",
       };
@@ -312,43 +328,47 @@ const HANDLERS: Handler[] = [
  * Product knowledge. Answers "how do I…" questions about Forge itself, which
  * no amount of querying the production data can cover.
  */
-const HOW_TO: { match: RegExp; text: string; href?: string; hrefLabel?: string }[] =
-  [
-    {
-      match: /submit.*(review|approval)|send.*for review|how.*review my/,
-      text: "Open the shot in Reviews, upload your version with Insert Video, then press Submit for Lead Review in the header. It moves to your lead's queue; they either approve it up to the producer or send it back with notes on the timeline.",
-      href: "/review?queue=1",
-      hrefLabel: "Open reviews",
-    },
-    {
-      match: /annotat|draw|pen tool|markup/,
-      text: "In the review player, pick a tool from the floating toolbar (or press 2 for pen, 3 for arrow, 4 for rectangle, 5 for text; 1 returns to select). Marks are pinned to the frame you drew them on and saved for everyone on that version. Press Escape to deselect.",
-    },
-    {
-      match: /shortcut|hotkey|keyboard/,
-      text: "In the review player: Space plays/pauses, J/K/L shuttle (press J or L again to go faster — 1×, 2×, 4×, 8×), left/right arrows or , and . step one frame, Home and End jump to the ends. Across the app: Ctrl/Cmd+K opens the command palette and ? opens the full shortcut list.",
-    },
-    {
-      match: /clock|attendance|timesheet|hours|punch/,
-      text: "You are clocked in automatically when you sign in, and clocked out when you sign out — artists, leads, producers and production heads only. Each shift is written to its own attendance record with its date and length, so hours survive the sign-out rather than being overwritten.",
-    },
-    {
-      match: /import|excel|tracksheet|spreadsheet|csv/,
-      text: "The Global Tracking Grid takes your tracksheet in the format you already keep it: Import reads your column headings and your own status codes (TK_02_APP, WFF, Client_Tk02_Rtk and so on) and maps them onto pipeline stages, leaving the original code on the card as the source of truth.",
-      href: "/tracking",
-      hrefLabel: "Open tracking grid",
-    },
-    {
-      match: /role|permission|capabilit|rbac|access/,
-      text: "Forge checks a capability per request, not a role name: roles hold capabilities, and what you can see is scoped separately (studio-wide, your department, or your own work). Anyone registering gets artist; anything above that is granted deliberately by an administrator, which is why a requested role shows as pending until it is approved.",
-    },
-    {
-      match: /register|sign ?up|new user|add (a )?(user|person|artist)/,
-      text: "People register themselves at /register — name, work email, password, their department and the role they are asking for. The account is always created as an artist; if they asked for more, an administrator approves it from the People screen, which is what actually changes their access.",
-      href: "/people",
-      hrefLabel: "Open people",
-    },
-  ];
+const HOW_TO: {
+  match: RegExp;
+  text: string;
+  href?: string;
+  hrefLabel?: string;
+}[] = [
+  {
+    match: /submit.*(review|approval)|send.*for review|how.*review my/,
+    text: "Open the shot in Reviews, upload your version with Insert Video, then press Submit for Lead Review in the header. It moves to your lead's queue; they either approve it up to the producer or send it back with notes on the timeline.",
+    href: "/review?queue=1",
+    hrefLabel: "Open reviews",
+  },
+  {
+    match: /annotat|draw|pen tool|markup/,
+    text: "In the review player, pick a tool from the floating toolbar (or press 2 for pen, 3 for arrow, 4 for rectangle, 5 for text; 1 returns to select). Marks are pinned to the frame you drew them on and saved for everyone on that version. Press Escape to deselect.",
+  },
+  {
+    match: /shortcut|hotkey|keyboard/,
+    text: "In the review player: Space plays/pauses, J/K/L shuttle (press J or L again to go faster — 1×, 2×, 4×, 8×), left/right arrows or , and . step one frame, Home and End jump to the ends. Across the app: Ctrl/Cmd+K opens the command palette and ? opens the full shortcut list.",
+  },
+  {
+    match: /clock|attendance|timesheet|hours|punch/,
+    text: "You are clocked in automatically when you sign in, and clocked out when you sign out — artists, leads, producers and production heads only. Each shift is written to its own attendance record with its date and length, so hours survive the sign-out rather than being overwritten.",
+  },
+  {
+    match: /import|excel|tracksheet|spreadsheet|csv/,
+    text: "The Global Tracking Grid takes your tracksheet in the format you already keep it: Import reads your column headings and your own status codes (TK_02_APP, WFF, Client_Tk02_Rtk and so on) and maps them onto pipeline stages, leaving the original code on the card as the source of truth.",
+    href: "/tracking",
+    hrefLabel: "Open tracking grid",
+  },
+  {
+    match: /role|permission|capabilit|rbac|access/,
+    text: "Forge checks a capability per request, not a role name: roles hold capabilities, and what you can see is scoped separately (studio-wide, your department, or your own work). Anyone registering gets artist; anything above that is granted deliberately by an administrator, which is why a requested role shows as pending until it is approved.",
+  },
+  {
+    match: /register|sign ?up|new user|add (a )?(user|person|artist)/,
+    text: "People register themselves at /register — name, work email, password, their department and the role they are asking for. The account is always created as an artist; if they asked for more, an administrator approves it from the People screen, which is what actually changes their access.",
+    href: "/people",
+    hrefLabel: "Open people",
+  },
+];
 
 export const SUGGESTED_QUESTIONS: Record<InsightAudience, string[]> = {
   studio: [
@@ -387,7 +407,8 @@ export function answerQuestion(
 
   // Product questions first: "how do I submit for review" mentions review but
   // is asking how the feature works, not for a list of what is queued.
-  const asksHowTo = /how (do|does|can|would)|what is|what are|explain|where do/.test(q);
+  const asksHowTo =
+    /how (do|does|can|would)|what is|what are|explain|where do/.test(q);
   if (asksHowTo) {
     const hit = HOW_TO.find((h) => h.match.test(q));
     if (hit)
@@ -396,7 +417,8 @@ export function answerQuestion(
 
   const tasks = normalize(ctx);
   for (const handler of HANDLERS) {
-    if (handler.match.some((re) => re.test(q))) return handler.answer(ctx, tasks);
+    if (handler.match.some((re) => re.test(q)))
+      return handler.answer(ctx, tasks);
   }
 
   // Second pass for product questions phrased without a how/what opener.

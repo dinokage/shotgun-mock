@@ -76,7 +76,9 @@ export function usePresentation(versionId: string | undefined) {
   return useQuery<PresentationDTO>({
     queryKey: ["review-presentation", versionId ?? "none"],
     queryFn: () =>
-      apiClient.get<PresentationDTO>(`/review-session/presentation/${versionId}`),
+      apiClient.get<PresentationDTO>(
+        `/review-session/presentation/${versionId}`,
+      ),
     enabled: !!versionId,
     staleTime: 0,
     refetchInterval: (query) =>

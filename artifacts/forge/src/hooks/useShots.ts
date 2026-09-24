@@ -38,8 +38,13 @@ export function useShots(projectId?: string) {
 export function useCreateShot() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: { projectId: string; name: string; episodeId?: string; sequenceId?: string; assigneeId?: string }) =>
-      apiClient.post<ShotDTO>("/shots", body),
+    mutationFn: (body: {
+      projectId: string;
+      name: string;
+      episodeId?: string;
+      sequenceId?: string;
+      assigneeId?: string;
+    }) => apiClient.post<ShotDTO>("/shots", body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["shots"] });
       // DashboardTab/EpisodesTab/AssetsTab/the Tracking Grid all read shots

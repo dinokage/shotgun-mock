@@ -87,9 +87,7 @@ function sampleRawValue(field: EntityField): string {
         ? field.options[hash % field.options.length]
         : "";
     case "multi_select": {
-      const picked = field.options.filter(
-        (_, i) => ((hash >>> i) & 1) === 1,
-      );
+      const picked = field.options.filter((_, i) => ((hash >>> i) & 1) === 1);
       return (picked.length > 0 ? picked : field.options.slice(0, 1)).join(",");
     }
     default:

@@ -63,21 +63,25 @@ episodesRouter.get("/", async (req, res) => {
 // create_tasks matches TracksheetImportDialog.tsx's own gate -- episodes
 // are created as part of the same tracksheet-import flow shots/sequences
 // are, which leads (no manage_pipeline) legitimately use.
-episodesRouter.post("/", requireCapability("create_tasks"), async (req, res) => {
-  try {
-    const tenantId = req.tenantId!;
-    const { projectId, name } = req.body;
-    if (!projectId || !name)
-      return res.status(400).json({ error: "Missing projectId or name" });
+episodesRouter.post(
+  "/",
+  requireCapability("create_tasks"),
+  async (req, res) => {
+    try {
+      const tenantId = req.tenantId!;
+      const { projectId, name } = req.body;
+      if (!projectId || !name)
+        return res.status(400).json({ error: "Missing projectId or name" });
 
-    if (!(await projectInTenant(projectId, tenantId)))
-      return res.status(400).json({ error: "Invalid projectId" });
+      if (!(await projectInTenant(projectId, tenantId)))
+        return res.status(400).json({ error: "Invalid projectId" });
 
-    const created = await prisma.episode.create({
-      data: { id: crypto.randomUUID(), tenantId, projectId, name },
-    });
-    return res.status(201).json(created);
-  } catch (err) {
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
+      const created = await prisma.episode.create({
+        data: { id: crypto.randomUUID(), tenantId, projectId, name },
+      });
+      return res.status(201).json(created);
+    } catch (err) {
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);

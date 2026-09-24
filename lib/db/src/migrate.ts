@@ -9,10 +9,13 @@ const dirname = import.meta.dirname;
 
 console.log("Running migrations...");
 try {
-  execSync("./node_modules/.bin/prisma migrate deploy --schema=./schema.prisma", {
-    cwd: path.join(dirname, ".."),
-    stdio: "inherit",
-  });
+  execSync(
+    "./node_modules/.bin/prisma migrate deploy --schema=./schema.prisma",
+    {
+      cwd: path.join(dirname, ".."),
+      stdio: "inherit",
+    },
+  );
   console.log("Migrations complete.");
   process.exit(0);
 } catch (err) {

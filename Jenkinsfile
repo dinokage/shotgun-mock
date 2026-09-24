@@ -1,5 +1,20 @@
 pipeline {
-    agent any
+    // No top-level agent: the Node/pnpm stages below each declare their own
+    // `docker { image 'node:22-slim' }` agent (this Jenkins agent has no
+    // Node.js/corepack on its PATH at all -- confirmed live, "Install
+    // Dependencies" failed with "corepack: not found", exit 127). node:22-
+    // slim (Debian, glibc), not -alpine (musl) -- alpine's musl libc breaks
+    // Vite/Rollup's native binary resolution (pnpm-lock.yaml only resolves
+    // the glibc @rollup/rollup-linux-x64-gnu build), the exact same reason
+    // artifacts/forge/Dockerfile already uses -slim instead of -alpine.
+    // `reuseNode true` keeps every stage on the SAME checked-out workspace
+    // instead of a fresh one per container, so node_modules installed in one
+    // stage is still there for the next. Checkout and Deploy stay on the
+    // bare agent itself: Checkout because there's nothing Node-specific
+    // about it, and Deploy because `docker compose` needs the agent's own
+    // Docker daemon,
+    // not a nested container.
+    agent none
 
     // No COMPOSE_PROJECT_NAME override here on purpose: docker-compose.yml
     // pins `name: shotgun-mock` itself, and Compose's env var takes
@@ -11,18 +26,21 @@ pipeline {
 
     stages {
         stage('Checkout') {
+            agent any
             steps {
                 checkout scm
             }
         }
 
         stage('Install Dependencies') {
+            agent { docker { image 'node:22-slim'; reuseNode true } }
             steps {
                 sh 'corepack enable && pnpm install --frozen-lockfile'
             }
         }
 
         stage('Generate Prisma Client') {
+            agent { docker { image 'node:22-slim'; reuseNode true } }
             steps {
                 // Both Typecheck below and `pnpm run build` (which re-runs
                 // typecheck internally) import lib/db's generated client --
@@ -33,6 +51,7 @@ pipeline {
         }
 
         stage('Global Checks (Lint & Typecheck)') {
+            agent { docker { image 'node:22-slim'; reuseNode true } }
             steps {
                 sh 'pnpm run lint'
                 sh 'pnpm run typecheck'
@@ -40,12 +59,14 @@ pipeline {
         }
 
         stage('Global Checks (Build)') {
+            agent { docker { image 'node:22-slim'; reuseNode true } }
             steps {
                 sh 'pnpm run build'
             }
         }
 
         stage('Test') {
+            agent { docker { image 'node:22-slim'; reuseNode true } }
             steps {
                 sh 'turbo run test'
             }
@@ -56,6 +77,7 @@ pipeline {
             when {
                 branch 'main'
             }
+            agent any
             steps {
                 // Compose loads .env automatically from the working directory,
                 // but .env is gitignored and never provisioned by `checkout

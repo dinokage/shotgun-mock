@@ -57,7 +57,8 @@ function parseLogs(value: unknown): RunLogEntry[] {
   for (const raw of value) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
     const entry = raw as Record<string, unknown>;
-    if (typeof entry.node !== "string" || typeof entry.message !== "string") continue;
+    if (typeof entry.node !== "string" || typeof entry.message !== "string")
+      continue;
     out.push({
       timestamp: typeof entry.timestamp === "string" ? entry.timestamp : "",
       node: entry.node,
@@ -209,124 +210,162 @@ workflowsRouter.get("/:id", async (req, res) => {
   }
 });
 
-workflowsRouter.post("/", requireCapability("manage_pipeline"), async (req, res) => {
-  try {
-    const { name, description, trigger, status, graph } = req.body ?? {};
+workflowsRouter.post(
+  "/",
+  requireCapability("manage_pipeline"),
+  async (req, res) => {
+    try {
+      const { name, description, trigger, status, graph } = req.body ?? {};
 
-    const cleanName = trimmedString(name, MAX_NAME);
-    if (!cleanName)
-      return res
-        .status(400)
-        .json({ error: `name is required and must be at most ${MAX_NAME} characters` });
-
-    const cleanDescription = description === undefined ? "" : trimmedString(description, MAX_DESCRIPTION);
-    if (cleanDescription === null)
-      return res.status(400).json({ error: `description must be at most ${MAX_DESCRIPTION} characters` });
-
-    const cleanTrigger = trigger === undefined ? "" : trimmedString(trigger, MAX_TRIGGER);
-    if (cleanTrigger === null)
-      return res.status(400).json({ error: `trigger must be at most ${MAX_TRIGGER} characters` });
-
-    if (status !== undefined && !WORKFLOW_STATUSES.includes(status))
-      return res.status(400).json({ error: `status must be one of: ${WORKFLOW_STATUSES.join(", ")}` });
-
-    let graphValue: Graph = { nodes: [], edges: [] };
-    if (graph !== undefined) {
-      const parsed = validateGraph(graph);
-      if ("error" in parsed) return res.status(400).json({ error: parsed.error });
-      graphValue = parsed.graph;
-    }
-
-    const created = await prisma.workflow.create({
-      data: {
-        id: crypto.randomUUID(),
-        tenantId: req.tenantId!,
-        name: cleanName,
-        description: cleanDescription,
-        trigger: cleanTrigger,
-        status: status ?? "draft",
-        graph: JSON.parse(JSON.stringify(graphValue)),
-        createdById: req.userId!,
-      },
-    });
-
-    return res.status(201).json(workflowDTO(created));
-  } catch (err) {
-    req.log.error(err, "Failed to create workflow");
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-workflowsRouter.patch("/:id", requireCapability("manage_pipeline"), async (req, res) => {
-  try {
-    const tenantId = req.tenantId!;
-    // Cast needed: combining requireCapability() (typed against the generic,
-    // path-agnostic Express Request) with this route's "/:id" path typing
-    // makes TS widen req.params.id to `string | string[]`.
-    const workflowId = req.params.id as string;
-
-    const existing = await workflowInTenant(workflowId, tenantId);
-    if (!existing) return res.status(404).json({ error: "Workflow not found" });
-
-    const body = req.body ?? {};
-    const updates: Record<string, unknown> = {};
-
-    if ("name" in body) {
-      const cleanName = trimmedString(body.name, MAX_NAME);
+      const cleanName = trimmedString(name, MAX_NAME);
       if (!cleanName)
+        return res.status(400).json({
+          error: `name is required and must be at most ${MAX_NAME} characters`,
+        });
+
+      const cleanDescription =
+        description === undefined
+          ? ""
+          : trimmedString(description, MAX_DESCRIPTION);
+      if (cleanDescription === null)
+        return res.status(400).json({
+          error: `description must be at most ${MAX_DESCRIPTION} characters`,
+        });
+
+      const cleanTrigger =
+        trigger === undefined ? "" : trimmedString(trigger, MAX_TRIGGER);
+      if (cleanTrigger === null)
         return res
           .status(400)
-          .json({ error: `name must be a non-empty string of at most ${MAX_NAME} characters` });
-      updates.name = cleanName;
-    }
-    if ("description" in body) {
-      const cleanDescription = trimmedString(body.description, MAX_DESCRIPTION);
-      if (cleanDescription === null)
-        return res.status(400).json({ error: `description must be at most ${MAX_DESCRIPTION} characters` });
-      updates.description = cleanDescription;
-    }
-    if ("trigger" in body) {
-      const cleanTrigger = trimmedString(body.trigger, MAX_TRIGGER);
-      if (cleanTrigger === null)
-        return res.status(400).json({ error: `trigger must be at most ${MAX_TRIGGER} characters` });
-      updates.trigger = cleanTrigger;
-    }
-    if ("status" in body) {
-      if (!WORKFLOW_STATUSES.includes(body.status))
-        return res.status(400).json({ error: `status must be one of: ${WORKFLOW_STATUSES.join(", ")}` });
-      updates.status = body.status;
-    }
-    if ("graph" in body) {
-      const parsed = validateGraph(body.graph);
-      if ("error" in parsed) return res.status(400).json({ error: parsed.error });
-      updates.graph = JSON.parse(JSON.stringify(parsed.graph));
-    }
+          .json({ error: `trigger must be at most ${MAX_TRIGGER} characters` });
 
-    if (Object.keys(updates).length === 0)
-      return res.status(400).json({ error: "No updatable fields supplied" });
+      if (status !== undefined && !WORKFLOW_STATUSES.includes(status))
+        return res.status(400).json({
+          error: `status must be one of: ${WORKFLOW_STATUSES.join(", ")}`,
+        });
 
-    const updated = await prisma.workflow.update({ where: { id: workflowId }, data: updates });
-    return res.json(workflowDTO(updated));
-  } catch (err) {
-    req.log.error(err, "Failed to update workflow");
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
+      let graphValue: Graph = { nodes: [], edges: [] };
+      if (graph !== undefined) {
+        const parsed = validateGraph(graph);
+        if ("error" in parsed)
+          return res.status(400).json({ error: parsed.error });
+        graphValue = parsed.graph;
+      }
 
-workflowsRouter.delete("/:id", requireCapability("manage_pipeline"), async (req, res) => {
-  try {
-    const workflowId = req.params.id as string;
-    const existing = await workflowInTenant(workflowId, req.tenantId!);
-    if (!existing) return res.status(404).json({ error: "Workflow not found" });
+      const created = await prisma.workflow.create({
+        data: {
+          id: crypto.randomUUID(),
+          tenantId: req.tenantId!,
+          name: cleanName,
+          description: cleanDescription,
+          trigger: cleanTrigger,
+          status: status ?? "draft",
+          graph: JSON.parse(JSON.stringify(graphValue)),
+          createdById: req.userId!,
+        },
+      });
 
-    // WorkflowRun cascades on workflow_id, so the run history goes with it.
-    await prisma.workflow.delete({ where: { id: workflowId } });
-    return res.status(204).send();
-  } catch (err) {
-    req.log.error(err, "Failed to delete workflow");
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
+      return res.status(201).json(workflowDTO(created));
+    } catch (err) {
+      req.log.error(err, "Failed to create workflow");
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
+
+workflowsRouter.patch(
+  "/:id",
+  requireCapability("manage_pipeline"),
+  async (req, res) => {
+    try {
+      const tenantId = req.tenantId!;
+      // Cast needed: combining requireCapability() (typed against the generic,
+      // path-agnostic Express Request) with this route's "/:id" path typing
+      // makes TS widen req.params.id to `string | string[]`.
+      const workflowId = req.params.id as string;
+
+      const existing = await workflowInTenant(workflowId, tenantId);
+      if (!existing)
+        return res.status(404).json({ error: "Workflow not found" });
+
+      const body = req.body ?? {};
+      const updates: Record<string, unknown> = {};
+
+      if ("name" in body) {
+        const cleanName = trimmedString(body.name, MAX_NAME);
+        if (!cleanName)
+          return res.status(400).json({
+            error: `name must be a non-empty string of at most ${MAX_NAME} characters`,
+          });
+        updates.name = cleanName;
+      }
+      if ("description" in body) {
+        const cleanDescription = trimmedString(
+          body.description,
+          MAX_DESCRIPTION,
+        );
+        if (cleanDescription === null)
+          return res.status(400).json({
+            error: `description must be at most ${MAX_DESCRIPTION} characters`,
+          });
+        updates.description = cleanDescription;
+      }
+      if ("trigger" in body) {
+        const cleanTrigger = trimmedString(body.trigger, MAX_TRIGGER);
+        if (cleanTrigger === null)
+          return res.status(400).json({
+            error: `trigger must be at most ${MAX_TRIGGER} characters`,
+          });
+        updates.trigger = cleanTrigger;
+      }
+      if ("status" in body) {
+        if (!WORKFLOW_STATUSES.includes(body.status))
+          return res.status(400).json({
+            error: `status must be one of: ${WORKFLOW_STATUSES.join(", ")}`,
+          });
+        updates.status = body.status;
+      }
+      if ("graph" in body) {
+        const parsed = validateGraph(body.graph);
+        if ("error" in parsed)
+          return res.status(400).json({ error: parsed.error });
+        updates.graph = JSON.parse(JSON.stringify(parsed.graph));
+      }
+
+      if (Object.keys(updates).length === 0)
+        return res.status(400).json({ error: "No updatable fields supplied" });
+
+      const updated = await prisma.workflow.update({
+        where: { id: workflowId },
+        data: updates,
+      });
+      return res.json(workflowDTO(updated));
+    } catch (err) {
+      req.log.error(err, "Failed to update workflow");
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
+
+workflowsRouter.delete(
+  "/:id",
+  requireCapability("manage_pipeline"),
+  async (req, res) => {
+    try {
+      const workflowId = req.params.id as string;
+      const existing = await workflowInTenant(workflowId, req.tenantId!);
+      if (!existing)
+        return res.status(404).json({ error: "Workflow not found" });
+
+      // WorkflowRun cascades on workflow_id, so the run history goes with it.
+      await prisma.workflow.delete({ where: { id: workflowId } });
+      return res.status(204).send();
+    } catch (err) {
+      req.log.error(err, "Failed to delete workflow");
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Execution
@@ -362,14 +401,20 @@ function outgoingEdges(edges: GraphEdge[], nodeId: string): GraphEdge[] {
 // `field != "value"` against a fixed allowlist of real Shot columns. Any
 // other shape (a typo, an unsupported field, unsupported syntax) fails
 // closed -- logged as a warning and treated as false, not thrown.
-const CONDITION_FIELDS = ["status", "internalReviewStatus", "clientReviewStatus", "complexity"] as const;
+const CONDITION_FIELDS = [
+  "status",
+  "internalReviewStatus",
+  "clientReviewStatus",
+  "complexity",
+] as const;
 const CONDITION_PATTERN = /^\s*([a-zA-Z]+)\s*(==|!=)\s*"([^"]*)"\s*$/;
 
 function evaluateCondition(
   expression: string | undefined,
   shot: Record<string, unknown>,
 ): { result: boolean; reason: string } {
-  if (!expression || !expression.trim()) return { result: true, reason: "No condition set -- treated as true." };
+  if (!expression || !expression.trim())
+    return { result: true, reason: "No condition set -- treated as true." };
   const match = CONDITION_PATTERN.exec(expression);
   if (!match) {
     return {
@@ -379,22 +424,46 @@ function evaluateCondition(
   }
   const [, field, op, value] = match;
   if (!(CONDITION_FIELDS as readonly string[]).includes(field)) {
-    return { result: false, reason: `"${field}" isn't a recognized field (${CONDITION_FIELDS.join(", ")}).` };
+    return {
+      result: false,
+      reason: `"${field}" isn't a recognized field (${CONDITION_FIELDS.join(", ")}).`,
+    };
   }
   const actual = String(shot[field] ?? "");
   const result = op === "==" ? actual === value : actual !== value;
-  return { result, reason: `${field} (${JSON.stringify(actual)}) ${op} ${JSON.stringify(value)} -> ${result}` };
+  return {
+    result,
+    reason: `${field} (${JSON.stringify(actual)}) ${op} ${JSON.stringify(value)} -> ${result}`,
+  };
 }
 
 interface ExecContext {
   tenantId: string;
   triggeredById: string;
-  shot: { id: string; name: string; projectId: string; status: string; internalReviewStatus: string; clientReviewStatus: string; complexity: string };
+  shot: {
+    id: string;
+    name: string;
+    projectId: string;
+    status: string;
+    internalReviewStatus: string;
+    clientReviewStatus: string;
+    complexity: string;
+  };
   logs: RunLogEntry[];
 }
 
-function logStep(ctx: ExecContext, node: string, message: string, status: RunLogStatus) {
-  ctx.logs.push({ timestamp: new Date().toISOString().slice(11, 19), node, message, status });
+function logStep(
+  ctx: ExecContext,
+  node: string,
+  message: string,
+  status: RunLogStatus,
+) {
+  ctx.logs.push({
+    timestamp: new Date().toISOString().slice(11, 19),
+    node,
+    message,
+    status,
+  });
 }
 
 /**
@@ -402,7 +471,10 @@ function logStep(ctx: ExecContext, node: string, message: string, status: RunLog
  * this node (a false condition, or a node kind that needs a human -- see
  * "Internal Review" below); true to continue to its outgoing edges.
  */
-async function executeNode(ctx: ExecContext, node: GraphNode): Promise<boolean> {
+async function executeNode(
+  ctx: ExecContext,
+  node: GraphNode,
+): Promise<boolean> {
   const label = node.data?.label ?? node.id;
   const kind = node.data?.kind ?? "";
 
@@ -420,10 +492,12 @@ async function executeNode(ctx: ExecContext, node: GraphNode): Promise<boolean> 
         entityId: ctx.shot.id,
         entityType: "shot",
         title: `${label} — ${ctx.shot.name}`,
-        description: typeof config.description === "string" ? config.description : "",
+        description:
+          typeof config.description === "string" ? config.description : "",
         status: "not-started",
         priority: "medium",
-        pipelinePhase: typeof config.actionType === "string" ? config.actionType : null,
+        pipelinePhase:
+          typeof config.actionType === "string" ? config.actionType : null,
       },
     });
     logStep(ctx, label, `Created a task on "${ctx.shot.name}".`, "success");
@@ -435,10 +509,16 @@ async function executeNode(ctx: ExecContext, node: GraphNode): Promise<boolean> 
     // version, same "don't mint a new code every run" reasoning as the
     // Review page's own "Share with Client" button (client-access.ts).
     const version = await prisma.version.findFirst({
-      where: { tenantId: ctx.tenantId, entityType: "shot", entityId: ctx.shot.id },
+      where: {
+        tenantId: ctx.tenantId,
+        entityType: "shot",
+        entityId: ctx.shot.id,
+      },
       orderBy: { createdAt: "desc" },
     });
-    const scopeWhere = version ? { versionId: version.id } : { projectId: ctx.shot.projectId };
+    const scopeWhere = version
+      ? { versionId: version.id }
+      : { projectId: ctx.shot.projectId };
     let link = await prisma.clientAccessLink.findFirst({
       where: {
         tenantId: ctx.tenantId,
@@ -510,7 +590,12 @@ async function executeNode(ctx: ExecContext, node: GraphNode): Promise<boolean> 
   if (label === "Internal Review") {
     logStep(ctx, label, `Awaiting manual approval at "${label}".`, "info");
   } else {
-    logStep(ctx, label, `"${label}" has no automated action -- skipped.`, "warning");
+    logStep(
+      ctx,
+      label,
+      `"${label}" has no automated action -- skipped.`,
+      "warning",
+    );
   }
   return false;
 }
@@ -529,7 +614,8 @@ async function runWorkflow(
   edges: GraphEdge[],
   startNodes?: GraphNode[],
 ): Promise<{ status: "completed" | "running"; currentNode: string }> {
-  const triggers = startNodes ?? nodes.filter((n) => n.data?.kind === "trigger");
+  const triggers =
+    startNodes ?? nodes.filter((n) => n.data?.kind === "trigger");
   if (triggers.length === 0) {
     logStep(
       ctx,
@@ -563,7 +649,10 @@ async function runWorkflow(
   }
 
   if (haltedAt && haltedAt.data?.label === "Internal Review") {
-    return { status: "running", currentNode: haltedAt.data?.label ?? haltedAt.id };
+    return {
+      status: "running",
+      currentNode: haltedAt.data?.label ?? haltedAt.id,
+    };
   }
 
   logStep(ctx, "Workflow", "WORKFLOW FINISHED.", "success");
@@ -586,11 +675,14 @@ workflowsRouter.post(
       const { shotId } = req.body ?? {};
 
       const workflow = await workflowInTenant(workflowId, tenantId);
-      if (!workflow) return res.status(404).json({ error: "Workflow not found" });
+      if (!workflow)
+        return res.status(404).json({ error: "Workflow not found" });
 
       if (typeof shotId !== "string" || !shotId)
         return res.status(400).json({ error: "shotId is required" });
-      const shot = await prisma.shot.findFirst({ where: { id: shotId, tenantId } });
+      const shot = await prisma.shot.findFirst({
+        where: { id: shotId, tenantId },
+      });
       if (!shot) return res.status(400).json({ error: "Invalid shotId" });
 
       const graph = parseGraph(workflow.graph);
@@ -609,7 +701,11 @@ workflowsRouter.post(
         logs: [],
       };
 
-      const outcome = await runWorkflow(ctx, graph.nodes as GraphNode[], graph.edges as GraphEdge[]);
+      const outcome = await runWorkflow(
+        ctx,
+        graph.nodes as GraphNode[],
+        graph.edges as GraphEdge[],
+      );
 
       const created = await prisma.workflowRun.create({
         data: {
@@ -688,16 +784,25 @@ workflowsRouter.post(
       const { decision, reason } = req.body ?? {};
 
       if (decision !== "approve" && decision !== "reject")
-        return res.status(400).json({ error: 'decision must be "approve" or "reject"' });
+        return res
+          .status(400)
+          .json({ error: 'decision must be "approve" or "reject"' });
 
-      const cleanReason = reason === undefined ? "" : trimmedString(reason, MAX_REJECT_REASON);
+      const cleanReason =
+        reason === undefined ? "" : trimmedString(reason, MAX_REJECT_REASON);
       if (cleanReason === null)
-        return res.status(400).json({ error: `reason must be at most ${MAX_REJECT_REASON} characters` });
+        return res.status(400).json({
+          error: `reason must be at most ${MAX_REJECT_REASON} characters`,
+        });
 
-      const run = await prisma.workflowRun.findFirst({ where: { id: runId, tenantId, workflowId } });
+      const run = await prisma.workflowRun.findFirst({
+        where: { id: runId, tenantId, workflowId },
+      });
       if (!run) return res.status(404).json({ error: "Run not found" });
       if (run.status !== "running")
-        return res.status(409).json({ error: `Run is ${run.status} and no longer awaiting a decision` });
+        return res.status(409).json({
+          error: `Run is ${run.status} and no longer awaiting a decision`,
+        });
 
       const actor = await prisma.user.findFirst({
         where: { id: req.userId!, tenantId },
@@ -714,8 +819,18 @@ workflowsRouter.post(
 
       if (decision === "approve") {
         logs.push(
-          { timestamp, node: gateNode, message: `Manual approval received from ${actorName}.`, status: "success" },
-          { timestamp, node: gateNode, message: `${gateNode} completed successfully.`, status: "success" },
+          {
+            timestamp,
+            node: gateNode,
+            message: `Manual approval received from ${actorName}.`,
+            status: "success",
+          },
+          {
+            timestamp,
+            node: gateNode,
+            message: `${gateNode} completed successfully.`,
+            status: "success",
+          },
         );
 
         // Approval isn't the end of the workflow -- anything wired after this
@@ -725,11 +840,19 @@ workflowsRouter.post(
         // which previously meant nothing placed after an Internal Review
         // node in the graph ever fired.
         const workflow = await workflowInTenant(workflowId, tenantId);
-        const graph = workflow ? parseGraph(workflow.graph) : { nodes: [], edges: [] };
+        const graph = workflow
+          ? parseGraph(workflow.graph)
+          : { nodes: [], edges: [] };
         const nodes = graph.nodes as GraphNode[];
         const edges = graph.edges as GraphEdge[];
-        const gateNodeObj = nodes.find((n) => (n.data?.label ?? n.id) === gateNode);
-        const shot = run.entityId ? await prisma.shot.findFirst({ where: { id: run.entityId, tenantId } }) : null;
+        const gateNodeObj = nodes.find(
+          (n) => (n.data?.label ?? n.id) === gateNode,
+        );
+        const shot = run.entityId
+          ? await prisma.shot.findFirst({
+              where: { id: run.entityId, tenantId },
+            })
+          : null;
 
         if (gateNodeObj && shot) {
           const resumeFrom = outgoingEdges(edges, gateNodeObj.id)
@@ -758,7 +881,12 @@ workflowsRouter.post(
           // No graph/shot to resume against (workflow or shot deleted since
           // the run started) -- can't continue, but the approval itself is
           // still real and recorded above.
-          logs.push({ timestamp, node: "Workflow", message: "WORKFLOW FINISHED.", status: "success" });
+          logs.push({
+            timestamp,
+            node: "Workflow",
+            message: "WORKFLOW FINISHED.",
+            status: "success",
+          });
           finalStatus = "completed";
           finalCurrentNode = "Done";
         }
@@ -790,7 +918,10 @@ workflowsRouter.post(
         data: {
           status: finalStatus,
           currentNode: finalCurrentNode,
-          completedAt: finalStatus === "completed" || finalStatus === "failed" ? now : null,
+          completedAt:
+            finalStatus === "completed" || finalStatus === "failed"
+              ? now
+              : null,
           logs: JSON.parse(JSON.stringify(logs)),
         },
         include: { triggeredBy: { select: { name: true } } },

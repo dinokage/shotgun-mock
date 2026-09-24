@@ -87,15 +87,21 @@ router.put(
       const { capabilityIds } = req.body;
 
       if (!Array.isArray(capabilityIds)) {
-        return res.status(400).json({ error: "capabilityIds must be an array" });
+        return res
+          .status(400)
+          .json({ error: "capabilityIds must be an array" });
       }
       const ids = [...new Set(capabilityIds)];
       const invalid = ids.filter((id) => !VALID_CAPABILITY_IDS.has(id));
       if (invalid.length > 0) {
-        return res.status(400).json({ error: `Unknown capability id(s): ${invalid.join(", ")}` });
+        return res
+          .status(400)
+          .json({ error: `Unknown capability id(s): ${invalid.join(", ")}` });
       }
 
-      const role = await prisma.tenantRole.findFirst({ where: { id: roleId, tenantId } });
+      const role = await prisma.tenantRole.findFirst({
+        where: { id: roleId, tenantId },
+      });
       if (!role) return res.status(404).json({ error: "Not found" });
 
       // The same lockout this app already refuses elsewhere (removing the

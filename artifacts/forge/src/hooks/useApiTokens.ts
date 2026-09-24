@@ -32,7 +32,8 @@ export function useCreateApiToken() {
   return useMutation({
     mutationFn: (body: { label: string }) =>
       apiClient.post<CreatedApiTokenDTO>("/api-tokens", body),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["api-tokens"] }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["api-tokens"] }),
   });
 }
 
@@ -40,6 +41,7 @@ export function useRevokeApiToken() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiClient.delete(`/api-tokens/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["api-tokens"] }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["api-tokens"] }),
   });
 }

@@ -20,12 +20,15 @@ export type VisibilityScope =
 // production_head roles into admin, which already had this unrestricted read.
 const STUDIO_WIDE_ROLES = ["admin"];
 
-export async function getVisibilityScope(req: Request): Promise<VisibilityScope> {
+export async function getVisibilityScope(
+  req: Request,
+): Promise<VisibilityScope> {
   const tenantId = req.tenantId!;
   const roleId = req.roleId;
   const userId = req.userId;
 
-  if (!roleId || !userId) return { kind: "own", userId: userId ?? "", departmentId: null };
+  if (!roleId || !userId)
+    return { kind: "own", userId: userId ?? "", departmentId: null };
 
   const role = await prisma.tenantRole.findFirst({
     where: { id: roleId, tenantId },
@@ -69,7 +72,12 @@ export function taskScopeWhere(scope: VisibilityScope) {
       // A lead also holds tasks of their own, which may sit outside the
       // department string (imported tracksheet rows often leave it null).
       return scope.departmentName
-        ? { OR: [{ department: scope.departmentName }, { assignedTo: scope.userId }] }
+        ? {
+            OR: [
+              { department: scope.departmentName },
+              { assignedTo: scope.userId },
+            ],
+          }
         : { assignedTo: scope.userId };
     case "own":
       return { assignedTo: scope.userId };
@@ -94,7 +102,11 @@ export async function dailyLogScopeWhere(
         where: { tenantId, departmentId: scope.departmentId },
         select: { id: true },
       });
-      return { userId: { in: [...new Set([...members.map((m) => m.id), scope.userId])] } };
+      return {
+        userId: {
+          in: [...new Set([...members.map((m) => m.id), scope.userId])],
+        },
+      };
     }
     case "own":
       return { userId: scope.userId };
@@ -145,14 +157,16 @@ export async function visibleSequenceIds(
       distinct: ["sequenceId"],
     }),
     prisma.asset.findMany({
-      where: { tenantId, id: { in: assetIds ?? [] }, sequenceId: { not: null } },
+      where: {
+        tenantId,
+        id: { in: assetIds ?? [] },
+        sequenceId: { not: null },
+      },
       select: { sequenceId: true },
       distinct: ["sequenceId"],
     }),
   ]);
-  return [
-    ...new Set([...shots, ...assets].map((r) => r.sequenceId as string)),
-  ];
+  return [...new Set([...shots, ...assets].map((r) => r.sequenceId as string))];
 }
 
 /**
@@ -191,7 +205,9 @@ export async function canSeeTask(
 export async function entityRefScopeWhere(
   tenantId: string,
   scope: VisibilityScope,
-): Promise<{ OR: { entityType: string; entityId: { in: string[] } }[] } | null> {
+): Promise<{
+  OR: { entityType: string; entityId: { in: string[] } }[];
+} | null> {
   if (scope.kind === "all") return null;
   const [shotIds, assetIds] = await Promise.all([
     visibleEntityIds(tenantId, scope, "shot"),
@@ -250,7 +266,9 @@ export async function visibleEpisodeIds(
 ): Promise<string[] | null> {
   if (scope.kind === "all") return null;
   const rows = await visibleEntityParents(tenantId, scope);
-  return [...new Set(rows.map((r) => r.episodeId).filter((id): id is string => !!id))];
+  return [
+    ...new Set(rows.map((r) => r.episodeId).filter((id): id is string => !!id)),
+  ];
 }
 
 /**

@@ -22,7 +22,10 @@ clientProjectAccessRouter.use(tenantAuthMiddleware);
 clientProjectAccessRouter.use(denyClientAccess);
 
 async function projectInTenant(id: string, tenantId: string) {
-  const row = await prisma.project.findFirst({ where: { id, tenantId }, select: { id: true } });
+  const row = await prisma.project.findFirst({
+    where: { id, tenantId },
+    select: { id: true },
+  });
   return !!row;
 }
 
@@ -35,7 +38,10 @@ async function projectInTenant(id: string, tenantId: string) {
 // includes artist -- see the explicit "production head and the leads...
 // not the artists" requirement this was built for. Every client with a
 // live ClientProjectAccess grant on this project is a member too.
-async function ensureClientProjectChannel(tenantId: string, projectId: string): Promise<string> {
+async function ensureClientProjectChannel(
+  tenantId: string,
+  projectId: string,
+): Promise<string> {
   const project = await prisma.project.findFirst({
     where: { id: projectId, tenantId },
     select: { name: true },
@@ -51,7 +57,8 @@ async function ensureClientProjectChannel(tenantId: string, projectId: string): 
         tenantId,
         kind: "client",
         name: `Client — ${project?.name ?? "Project"}`,
-        description: "Direct line to the Production Head and department Leads for this project.",
+        description:
+          "Direct line to the Production Head and department Leads for this project.",
         projectId,
       },
     });
@@ -63,7 +70,11 @@ async function ensureClientProjectChannel(tenantId: string, projectId: string): 
   });
   const staff = staffRoles.length
     ? await prisma.user.findMany({
-        where: { tenantId, roleId: { in: staffRoles.map((r) => r.id) }, status: { not: "inactive" } },
+        where: {
+          tenantId,
+          roleId: { in: staffRoles.map((r) => r.id) },
+          status: { not: "inactive" },
+        },
         select: { id: true },
       })
     : [];
@@ -72,7 +83,10 @@ async function ensureClientProjectChannel(tenantId: string, projectId: string): 
     select: { userId: true },
   });
 
-  const wantedIds = new Set([...staff.map((s) => s.id), ...clients.map((c) => c.userId)]);
+  const wantedIds = new Set([
+    ...staff.map((s) => s.id),
+    ...clients.map((c) => c.userId),
+  ]);
   const existing = await prisma.chatChannelMember.findMany({
     where: { tenantId, channelId: channel.id },
     select: { userId: true },
@@ -149,7 +163,9 @@ clientProjectAccessRouter.post(
       const tenantId = req.tenantId!;
       const { userId, projectId } = req.body;
       if (!userId || !projectId) {
-        return res.status(400).json({ error: "userId and projectId are required" });
+        return res
+          .status(400)
+          .json({ error: "userId and projectId are required" });
       }
 
       const user = await prisma.user.findFirst({
@@ -158,7 +174,9 @@ clientProjectAccessRouter.post(
       });
       if (!user) return res.status(400).json({ error: "Invalid userId" });
       if (user.role.name !== "client") {
-        return res.status(400).json({ error: "That account isn't a client account" });
+        return res
+          .status(400)
+          .json({ error: "That account isn't a client account" });
       }
       if (!(await projectInTenant(projectId, tenantId))) {
         return res.status(400).json({ error: "Invalid projectId" });

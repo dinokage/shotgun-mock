@@ -14,7 +14,9 @@ import { prisma } from "@workspace/db";
 const DRY_RUN = process.argv.includes("--dry");
 
 async function main() {
-  const tenants = await prisma.tenant.findMany({ select: { id: true, name: true } });
+  const tenants = await prisma.tenant.findMany({
+    select: { id: true, name: true },
+  });
 
   for (const tenant of tenants) {
     const departments = await prisma.department.findMany({
@@ -54,7 +56,12 @@ async function main() {
 
     const tasks = await prisma.task.findMany({
       where: { tenantId: tenant.id },
-      select: { id: true, department: true, entityId: true, pipelineStageId: true },
+      select: {
+        id: true,
+        department: true,
+        entityId: true,
+        pipelineStageId: true,
+      },
     });
 
     let mapped = 0;
@@ -63,7 +70,9 @@ async function main() {
 
     for (const task of tasks) {
       const projectId = projectByEntity.get(task.entityId);
-      const deptId = task.department ? deptIdByName.get(task.department) : undefined;
+      const deptId = task.department
+        ? deptIdByName.get(task.department)
+        : undefined;
       if (!projectId || !deptId) {
         const key = task.department ?? "(no department)";
         unmatched.set(key, (unmatched.get(key) ?? 0) + 1);
@@ -84,7 +93,9 @@ async function main() {
       }
     }
 
-    console.log(`\n${tenant.name}: ${mapped}/${tasks.length} tasks map to a stage`);
+    console.log(
+      `\n${tenant.name}: ${mapped}/${tasks.length} tasks map to a stage`,
+    );
     if (unmatched.size) {
       console.log("  unmatched:");
       for (const [dept, count] of [...unmatched].sort((a, b) => b[1] - a[1])) {

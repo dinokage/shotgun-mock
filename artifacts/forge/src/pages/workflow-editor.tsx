@@ -381,9 +381,8 @@ function WorkflowEditorInner() {
   // anyone who can reach this (already leadership-only) route.
   const canManagePipeline = useCapability("manage_pipeline");
 
-  const [nodes, setNodes, onNodesChangeBase] = useNodesState<StoredWorkflowNode>(
-    [],
-  );
+  const [nodes, setNodes, onNodesChangeBase] =
+    useNodesState<StoredWorkflowNode>([]);
   const [edges, setEdges, onEdgesChangeBase] = useEdgesState<Edge>([]);
   const [selectedNode, setSelectedNode] = useState<StoredWorkflowNode | null>(
     null,
@@ -499,7 +498,12 @@ function WorkflowEditorInner() {
             // markerEnd was missing outright, so even a visible edge gave no
             // way to tell which end was the source vs. target.
             style: { strokeWidth: 2.5, stroke: "hsl(var(--primary))" },
-            markerEnd: { type: MarkerType.ArrowClosed, color: "hsl(var(--primary))", width: 22, height: 22 },
+            markerEnd: {
+              type: MarkerType.ArrowClosed,
+              color: "hsl(var(--primary))",
+              width: 22,
+              height: 22,
+            },
           },
           eds,
         ),
@@ -713,7 +717,10 @@ function WorkflowEditorInner() {
         setRunProjectId("");
         setRunShotId("");
         toast({
-          title: run.status === "running" ? "Run started -- awaiting approval" : "Run completed",
+          title:
+            run.status === "running"
+              ? "Run started -- awaiting approval"
+              : "Run completed",
           description:
             run.status === "running"
               ? `Paused at "${run.currentNode}" for manual approval.`
@@ -897,7 +904,12 @@ function WorkflowEditorInner() {
               type: "default",
               animated: true,
               style: { strokeWidth: 2.5, stroke: "hsl(var(--primary))" },
-              markerEnd: { type: MarkerType.ArrowClosed, color: "hsl(var(--primary))", width: 22, height: 22 },
+              markerEnd: {
+                type: MarkerType.ArrowClosed,
+                color: "hsl(var(--primary))",
+                width: 22,
+                height: 22,
+              },
             }}
             nodesDraggable={canManagePipeline}
             nodesConnectable={canManagePipeline}
@@ -1181,9 +1193,9 @@ function WorkflowEditorInner() {
             </DialogTitle>
             <DialogDescription>
               Actually runs "{workflow?.name ?? NEW_WORKFLOW_NAME}" against a
-              real shot -- unlike Test Run, this creates real tasks, may
-              pause for a real approval, and can really share footage with a
-              client. Pick which shot it applies to.
+              real shot -- unlike Test Run, this creates real tasks, may pause
+              for a real approval, and can really share footage with a client.
+              Pick which shot it applies to.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
@@ -1210,9 +1222,17 @@ function WorkflowEditorInner() {
             </div>
             <div className="space-y-1.5">
               <label className="text-xs text-muted-foreground">Shot</label>
-              <Select value={runShotId} onValueChange={setRunShotId} disabled={!runProjectId}>
+              <Select
+                value={runShotId}
+                onValueChange={setRunShotId}
+                disabled={!runProjectId}
+              >
                 <SelectTrigger>
-                  <SelectValue placeholder={runProjectId ? "Select a shot" : "Pick a project first"} />
+                  <SelectValue
+                    placeholder={
+                      runProjectId ? "Select a shot" : "Pick a project first"
+                    }
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   {runShots.map((s) => (
@@ -1228,7 +1248,10 @@ function WorkflowEditorInner() {
             <Button variant="outline" onClick={() => setRunDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleStartRun} disabled={!runShotId || createRun.isPending}>
+            <Button
+              onClick={handleStartRun}
+              disabled={!runShotId || createRun.isPending}
+            >
               {createRun.isPending ? "Starting…" : "Run"}
             </Button>
           </DialogFooter>
@@ -1242,8 +1265,8 @@ function WorkflowEditorInner() {
               <Play className="w-4 h-4 text-primary" /> Test Run
             </DialogTitle>
             <DialogDescription>
-              Simulated dry run of "{workflow?.name ?? NEW_WORKFLOW_NAME}"
-              — no real actions were executed.
+              Simulated dry run of "{workflow?.name ?? NEW_WORKFLOW_NAME}" — no
+              real actions were executed.
             </DialogDescription>
           </DialogHeader>
 

@@ -1,5 +1,5 @@
-import { Client } from 'ldapts';
-import * as crypto from 'crypto';
+import { Client } from "ldapts";
+import * as crypto from "crypto";
 
 export interface LdapUser {
   email: string;
@@ -8,45 +8,53 @@ export interface LdapUser {
 }
 
 export function mapLdapGroupsToRole(groups: string[]): string {
-  const groupsLower = groups.map(g => g.toLowerCase());
-  
+  const groupsLower = groups.map((g) => g.toLowerCase());
+
   // Migration 0023 removed the separate production_head/producer roles --
   // admin is now the studio's sole top role, so every AD group that used to
   // map to either of those now maps straight to admin instead.
   if (
     groupsLower.some(
-      g =>
-        g.includes('domain admins') ||
-        g.includes('forge_admins') ||
-        g.includes('pipeline tds') ||
-        g.includes('production_head') ||
-        g.includes('producers'),
+      (g) =>
+        g.includes("domain admins") ||
+        g.includes("forge_admins") ||
+        g.includes("pipeline tds") ||
+        g.includes("production_head") ||
+        g.includes("producers"),
     )
   ) {
-    return 'admin';
+    return "admin";
   }
-  if (groupsLower.some(g => g.includes('leads') || g.includes('supervisors'))) {
-    return 'lead';
+  if (
+    groupsLower.some((g) => g.includes("leads") || g.includes("supervisors"))
+  ) {
+    return "lead";
   }
-  return 'artist'; // Default
+  return "artist"; // Default
 }
 
 function escapeLdapFilter(input: string): string {
-  return input.replace(/\\/g, '\\5c')
-              .replace(/\*/g, '\\2a')
-              .replace(/\(/g, '\\28')
-              .replace(/\)/g, '\\29')
-              .replace(/\0/g, '\\00');
+  return input
+    .replace(/\\/g, "\\5c")
+    .replace(/\*/g, "\\2a")
+    .replace(/\(/g, "\\28")
+    .replace(/\)/g, "\\29")
+    .replace(/\0/g, "\\00");
 }
 
-export async function ldapLogin(username: string, password: string): Promise<LdapUser | null> {
+export async function ldapLogin(
+  username: string,
+  password: string,
+): Promise<LdapUser | null> {
   const url = process.env.LDAP_URL;
   const bindDN = process.env.LDAP_BIND_DN;
   const bindPassword = process.env.LDAP_BIND_PASSWORD;
   const baseDN = process.env.LDAP_BASE_DN;
 
   if (!url || !bindDN || !bindPassword || !baseDN) {
-    throw new Error('LDAP configuration is missing required environment variables.');
+    throw new Error(
+      "LDAP configuration is missing required environment variables.",
+    );
   }
 
   const client = new Client({
@@ -61,14 +69,14 @@ export async function ldapLogin(username: string, password: string): Promise<Lda
 
     // 2. Search for the user
     const safeUsername = escapeLdapFilter(username);
-    const searchFilter = safeUsername.includes('@') 
-        ? `(mail=${safeUsername})` 
-        : `(sAMAccountName=${safeUsername})`;
+    const searchFilter = safeUsername.includes("@")
+      ? `(mail=${safeUsername})`
+      : `(sAMAccountName=${safeUsername})`;
 
     const { searchEntries } = await client.search(baseDN, {
       filter: searchFilter,
-      scope: 'sub',
-      attributes: ['dn', 'mail', 'displayName', 'cn', 'memberOf'],
+      scope: "sub",
+      attributes: ["dn", "mail", "displayName", "cn", "memberOf"],
     });
 
     if (searchEntries.length === 0) {
@@ -80,7 +88,7 @@ export async function ldapLogin(username: string, password: string): Promise<Lda
       // paths cost the same, mirroring the decoy-hash approach the regular
       // password-login route already uses for the same reason.
       try {
-        await client.bind(bindDN, crypto.randomBytes(16).toString('hex'));
+        await client.bind(bindDN, crypto.randomBytes(16).toString("hex"));
       } catch {
         // Expected to fail -- the point is the time spent, not the result.
       }
@@ -95,8 +103,9 @@ export async function ldapLogin(username: string, password: string): Promise<Lda
 
     // 4. Extract info
     const email = (userEntry.mail as string) || `${username}@entertainment.net`;
-    const name = (userEntry.displayName as string) || (userEntry.cn as string) || username;
-    
+    const name =
+      (userEntry.displayName as string) || (userEntry.cn as string) || username;
+
     let groups: string[] = [];
     if (userEntry.memberOf) {
       if (Array.isArray(userEntry.memberOf)) {
@@ -109,14 +118,17 @@ export async function ldapLogin(username: string, password: string): Promise<Lda
     return {
       email,
       name,
-      groups
+      groups,
     };
   } catch (error: any) {
-    if (error?.name === 'InvalidCredentialsError' || error?.message?.includes('InvalidCredentials')) {
-      console.warn('LDAP invalid credentials:', username);
+    if (
+      error?.name === "InvalidCredentialsError" ||
+      error?.message?.includes("InvalidCredentials")
+    ) {
+      console.warn("LDAP invalid credentials:", username);
       return null;
     }
-    console.error('LDAP infrastructure error:', error);
+    console.error("LDAP infrastructure error:", error);
     throw error;
   } finally {
     try {

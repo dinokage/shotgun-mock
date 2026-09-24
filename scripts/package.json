@@ -4,8 +4,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "hello": "tsx ./src/hello.ts",
-    "seed": "tsx ./src/seed.ts",
     "reset-and-bootstrap-admin": "tsx ./src/reset-and-bootstrap-admin.ts",
     "import-roster": "tsx ./src/import-roster.ts",
     "seed-pipelines": "tsx ./src/seed-pipelines.ts",

@@ -35,7 +35,9 @@ export function useClientAccessLinks(scope: ClientAccessScope) {
       if (projectId) params.set("projectId", projectId);
       if (episodeId) params.set("episodeId", episodeId);
       if (versionId) params.set("versionId", versionId);
-      return apiClient.get<ClientAccessLinkDTO[]>(`/client-access?${params.toString()}`);
+      return apiClient.get<ClientAccessLinkDTO[]>(
+        `/client-access?${params.toString()}`,
+      );
     },
     enabled: !!(projectId || episodeId || versionId),
     staleTime: 5000,
@@ -46,8 +48,9 @@ export function useClientAccessLinks(scope: ClientAccessScope) {
 export function useCreateClientAccessLink() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (scope: ClientAccessScope & { expiresAt?: string; clientEmail?: string }) =>
-      apiClient.post<ClientAccessLinkDTO>("/client-access", scope),
+    mutationFn: (
+      scope: ClientAccessScope & { expiresAt?: string; clientEmail?: string },
+    ) => apiClient.post<ClientAccessLinkDTO>("/client-access", scope),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ["client-access-links"] }),
   });

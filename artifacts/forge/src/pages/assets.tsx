@@ -30,14 +30,7 @@ import {
   EmptyContent,
 } from "@/components/ui/empty";
 import { useToast } from "@/hooks/use-toast";
-import {
-  Search,
-  Grid3X3,
-  List,
-  Package,
-  X,
-  ChevronDown,
-} from "lucide-react";
+import { Search, Grid3X3, List, Package, X, ChevronDown } from "lucide-react";
 import { Link, useSearchParams } from "wouter";
 import { useAuthStore } from "@/store/auth";
 import { useProjectStore } from "@/store/projects";

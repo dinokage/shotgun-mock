@@ -210,14 +210,7 @@ export default function ProductionDashboard() {
 
       {/* Department Wise Previews */}
       <div className="space-y-8">
-        {[
-          "LAY",
-          "ANIM",
-          "LIT",
-          "FX",
-          "RND",
-          "COMP",
-        ].map((deptAbbr) => {
+        {["LAY", "ANIM", "LIT", "FX", "RND", "COMP"].map((deptAbbr) => {
           const dept = departments.find(
             (d) => d.abbreviation.toLowerCase() === deptAbbr.toLowerCase(),
           ) || { id: deptAbbr, name: deptAbbr, color: "hsl(var(--primary))" };

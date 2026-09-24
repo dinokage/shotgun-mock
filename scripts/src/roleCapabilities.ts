@@ -76,4 +76,3 @@ export const ROLE_CAPABILITIES: Record<string, readonly string[]> = {
   // routes are correctly locked to internal sessions (denyClientAccess).
   client: ["approve_reviews", "submit_reviews"],
 };
-

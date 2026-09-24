@@ -39,7 +39,8 @@ export function useErrorEvents(filters: {
   const qs = params.toString();
   return useQuery<ErrorEventDTO[]>({
     queryKey: ["error-events", filters.source ?? "", filters.resolved ?? ""],
-    queryFn: () => apiClient.get<ErrorEventDTO[]>(`/errors${qs ? `?${qs}` : ""}`),
+    queryFn: () =>
+      apiClient.get<ErrorEventDTO[]>(`/errors${qs ? `?${qs}` : ""}`),
     // Short, because the reason to have this screen open is that something is
     // going wrong right now and you want to watch it.
     refetchInterval: 15000,

@@ -55,7 +55,10 @@ function guessRoleName(designation: string): string {
   return "artist";
 }
 
-function guessDepartment(sourceDept: string, departments: DepartmentDTO[]): DepartmentDTO | undefined {
+function guessDepartment(
+  sourceDept: string,
+  departments: DepartmentDTO[],
+): DepartmentDTO | undefined {
   const d = sourceDept.trim().toLowerCase();
   if (!d) return undefined;
   // Exact/substring match against real department names first ("Texturing"
@@ -65,7 +68,11 @@ function guessDepartment(sourceDept: string, departments: DepartmentDTO[]): Depa
   // Dept column is almost never just the bare abbreviation by itself.
   return (
     departments.find((dept) => dept.name.toLowerCase() === d) ||
-    departments.find((dept) => dept.name.toLowerCase().includes(d) || d.includes(dept.name.toLowerCase())) ||
+    departments.find(
+      (dept) =>
+        dept.name.toLowerCase().includes(d) ||
+        d.includes(dept.name.toLowerCase()),
+    ) ||
     departments.find((dept) => dept.abbr.toLowerCase() === d) ||
     departments.find((dept) => {
       const abbr = dept.abbr.toLowerCase();
@@ -109,10 +116,16 @@ export function EmployeeImportDialog({
           // Sheet3-shaped: first/last name in two separate columns, no header
           // row at all in the real file -- handled below by falling back to
           // raw column position when no recognizable header matches.
-          let name = getField(row, ["Name of the empolyee", "Name of the employee", "Name", "Employee Name"]);
+          let name = getField(row, [
+            "Name of the empolyee",
+            "Name of the employee",
+            "Name",
+            "Employee Name",
+          ]);
           const firstName = getField(row, ["FirstName", "First Name"]);
           const lastName = getField(row, ["LastName", "Last Name"]);
-          if (!name && (firstName || lastName)) name = `${firstName} ${lastName}`.trim();
+          if (!name && (firstName || lastName))
+            name = `${firstName} ${lastName}`.trim();
           if (!name) continue;
 
           const sourceDept = getField(row, ["Dept", "Department"]);
@@ -149,7 +162,9 @@ export function EmployeeImportDialog({
   };
 
   const updateRow = (i: number, patch: Partial<DraftRow>) => {
-    setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+    setRows((prev) =>
+      prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)),
+    );
   };
 
   const handleSendInvites = async () => {
@@ -199,9 +214,9 @@ export function EmployeeImportDialog({
           <DialogTitle>Import Employees</DialogTitle>
           <DialogDescription>
             Reads a roster spreadsheet (name, department, designation) and
-            matches each row to a real department and a suggested role.
-            These sheets have no email addresses, so add one per person you
-            want to actually invite — rows left blank are skipped.
+            matches each row to a real department and a suggested role. These
+            sheets have no email addresses, so add one per person you want to
+            actually invite — rows left blank are skipped.
           </DialogDescription>
         </DialogHeader>
 
@@ -224,7 +239,9 @@ export function EmployeeImportDialog({
             >
               <UploadCloud className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
               <p className="text-sm font-medium">Upload Roster (.xlsx)</p>
-              <p className="text-xs text-muted-foreground mt-1">Click to browse</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Click to browse
+              </p>
             </div>
           </>
         ) : (
@@ -237,7 +254,9 @@ export function EmployeeImportDialog({
                 value=""
                 onValueChange={(v) =>
                   setRows((prev) =>
-                    prev.map((r) => (r.departmentId ? r : { ...r, departmentId: v })),
+                    prev.map((r) =>
+                      r.departmentId ? r : { ...r, departmentId: v },
+                    ),
                   )
                 }
               >
@@ -253,7 +272,8 @@ export function EmployeeImportDialog({
                 </SelectContent>
               </Select>
               <span className="text-xs text-muted-foreground shrink-0">
-                {rows.filter((r) => !r.departmentId).length} of {rows.length} still unset
+                {rows.filter((r) => !r.departmentId).length} of {rows.length}{" "}
+                still unset
               </span>
             </div>
             <div className="max-h-96 overflow-y-auto space-y-2">
@@ -262,7 +282,10 @@ export function EmployeeImportDialog({
                   key={i}
                   className="grid grid-cols-[1.2fr_1.3fr_1fr_1fr_auto] gap-2 items-center text-sm border-b border-border/50 pb-2"
                 >
-                  <div className="truncate" title={`${row.sourceDept} / ${row.sourceDesignation}`}>
+                  <div
+                    className="truncate"
+                    title={`${row.sourceDept} / ${row.sourceDesignation}`}
+                  >
                     {row.name}
                   </div>
                   <Input
@@ -273,7 +296,9 @@ export function EmployeeImportDialog({
                   />
                   <Select
                     value={row.departmentId || "none"}
-                    onValueChange={(v) => updateRow(i, { departmentId: v === "none" ? "" : v })}
+                    onValueChange={(v) =>
+                      updateRow(i, { departmentId: v === "none" ? "" : v })
+                    }
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="None" />
@@ -287,7 +312,10 @@ export function EmployeeImportDialog({
                       ))}
                     </SelectContent>
                   </Select>
-                  <Select value={row.roleId} onValueChange={(v) => updateRow(i, { roleId: v })}>
+                  <Select
+                    value={row.roleId}
+                    onValueChange={(v) => updateRow(i, { roleId: v })}
+                  >
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -300,24 +328,38 @@ export function EmployeeImportDialog({
                     </SelectContent>
                   </Select>
                   <span className="text-xs w-14 text-right">
-                    {row.outcome === "sent" && <span className="text-emerald-500">Sent</span>}
-                    {row.outcome === "skipped" && <span className="text-muted-foreground">Skipped</span>}
+                    {row.outcome === "sent" && (
+                      <span className="text-emerald-500">Sent</span>
+                    )}
+                    {row.outcome === "skipped" && (
+                      <span className="text-muted-foreground">Skipped</span>
+                    )}
                     {row.outcome === "error" && (
-                      <span className="text-destructive" title={row.error}>Error</span>
+                      <span className="text-destructive" title={row.error}>
+                        Error
+                      </span>
                     )}
                   </span>
                 </div>
               ))}
             </div>
             <div className="flex justify-end gap-3 pt-2 border-t border-border/50">
-              <Button variant="outline" onClick={() => setRows([])} disabled={sending}>
+              <Button
+                variant="outline"
+                onClick={() => setRows([])}
+                disabled={sending}
+              >
                 Start Over
               </Button>
               <DialogClose asChild>
-                <Button variant="outline" disabled={sending}>Close</Button>
+                <Button variant="outline" disabled={sending}>
+                  Close
+                </Button>
               </DialogClose>
               <Button onClick={handleSendInvites} disabled={sending}>
-                {sending ? "Sending…" : `Send Invites (${rows.filter((r) => r.email.includes("@")).length})`}
+                {sending
+                  ? "Sending…"
+                  : `Send Invites (${rows.filter((r) => r.email.includes("@")).length})`}
               </Button>
             </div>
           </div>

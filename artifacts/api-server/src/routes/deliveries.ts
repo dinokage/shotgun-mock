@@ -11,7 +11,11 @@ import { rateLimitByIp } from "../lib/rateLimit";
 
 // Both delivery routes below are public (external recipients), so they carry
 // the same attempt ceiling as the client-access redeem.
-const DELIVERY_REDEEM_RULE = { name: "delivery-redeem:ip", limit: 15, windowSeconds: 600 };
+const DELIVERY_REDEEM_RULE = {
+  name: "delivery-redeem:ip",
+  limit: 15,
+  windowSeconds: 600,
+};
 
 export const deliveriesRouter = Router();
 
@@ -98,76 +102,85 @@ function publicDeliveryDTO(delivery: {
 // generic 401 whether the code is unknown, revoked, expired, or simply for a
 // different delivery -- nothing here reveals which tenant, project, or
 // delivery ids exist.
-deliveriesRouter.post("/redeem", rateLimitByIp(DELIVERY_REDEEM_RULE), async (req, res) => {
-  try {
-    const { id, code } = req.body;
-    if (!code || typeof code !== "string")
-      return res.status(400).json({ error: "Missing code" });
+deliveriesRouter.post(
+  "/redeem",
+  rateLimitByIp(DELIVERY_REDEEM_RULE),
+  async (req, res) => {
+    try {
+      const { id, code } = req.body;
+      if (!code || typeof code !== "string")
+        return res.status(400).json({ error: "Missing code" });
 
-    const delivery = await prisma.delivery.findFirst({
-      where: redeemableWhere(code),
-      include: {
-        items: true,
-        project: { select: { name: true, client: true } },
-        createdBy: { select: { name: true } },
-      },
-    });
-    if (!delivery || (typeof id === "string" && id && delivery.id !== id))
-      return res.status(401).json({ error: "Invalid or expired code" });
+      const delivery = await prisma.delivery.findFirst({
+        where: redeemableWhere(code),
+        include: {
+          items: true,
+          project: { select: { name: true, client: true } },
+          createdBy: { select: { name: true } },
+        },
+      });
+      if (!delivery || (typeof id === "string" && id && delivery.id !== id))
+        return res.status(401).json({ error: "Invalid or expired code" });
 
-    return res.json(publicDeliveryDTO(delivery));
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
+      return res.json(publicDeliveryDTO(delivery));
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
 
 // Records a real DeliveryDownload row so the internal download count reflects
 // what the recipient actually took, not a number a browser kept to itself.
 // Re-checks the code on every call -- a revoked delivery stops counting.
-deliveriesRouter.post("/redeem/download", rateLimitByIp(DELIVERY_REDEEM_RULE), async (req, res) => {
-  try {
-    const { code, itemId } = req.body;
-    if (!code || typeof code !== "string")
-      return res.status(400).json({ error: "Missing code" });
+deliveriesRouter.post(
+  "/redeem/download",
+  rateLimitByIp(DELIVERY_REDEEM_RULE),
+  async (req, res) => {
+    try {
+      const { code, itemId } = req.body;
+      if (!code || typeof code !== "string")
+        return res.status(400).json({ error: "Missing code" });
 
-    const delivery = await prisma.delivery.findFirst({
-      where: redeemableWhere(code),
-      select: { id: true, tenantId: true },
-    });
-    if (!delivery) return res.status(401).json({ error: "Invalid or expired code" });
-
-    // An item id off the request body proves nothing about which delivery it
-    // belongs to -- without this check a recipient could attribute (and, via
-    // the internal read below, expose) another delivery's item.
-    if (itemId !== undefined && itemId !== null) {
-      if (typeof itemId !== "string")
-        return res.status(400).json({ error: "Invalid itemId" });
-      const item = await prisma.deliveryItem.findFirst({
-        where: { id: itemId, deliveryId: delivery.id },
-        select: { id: true },
+      const delivery = await prisma.delivery.findFirst({
+        where: redeemableWhere(code),
+        select: { id: true, tenantId: true },
       });
-      if (!item) return res.status(400).json({ error: "Invalid itemId" });
+      if (!delivery)
+        return res.status(401).json({ error: "Invalid or expired code" });
+
+      // An item id off the request body proves nothing about which delivery it
+      // belongs to -- without this check a recipient could attribute (and, via
+      // the internal read below, expose) another delivery's item.
+      if (itemId !== undefined && itemId !== null) {
+        if (typeof itemId !== "string")
+          return res.status(400).json({ error: "Invalid itemId" });
+        const item = await prisma.deliveryItem.findFirst({
+          where: { id: itemId, deliveryId: delivery.id },
+          select: { id: true },
+        });
+        if (!item) return res.status(400).json({ error: "Invalid itemId" });
+      }
+
+      await prisma.deliveryDownload.create({
+        data: {
+          id: crypto.randomUUID(),
+          tenantId: delivery.tenantId,
+          deliveryId: delivery.id,
+          itemId: typeof itemId === "string" ? itemId : null,
+        },
+      });
+
+      const downloadCount = await prisma.deliveryDownload.count({
+        where: { deliveryId: delivery.id },
+      });
+      return res.json({ downloadCount });
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ error: "Internal server error" });
     }
-
-    await prisma.deliveryDownload.create({
-      data: {
-        id: crypto.randomUUID(),
-        tenantId: delivery.tenantId,
-        deliveryId: delivery.id,
-        itemId: typeof itemId === "string" ? itemId : null,
-      },
-    });
-
-    const downloadCount = await prisma.deliveryDownload.count({
-      where: { deliveryId: delivery.id },
-    });
-    return res.json({ downloadCount });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
+  },
+);
 
 // Everything below is studio-facing delivery management, not the recipient's
 // own redemption -- it needs a real employee session. tenantAuthMiddleware
@@ -213,19 +226,24 @@ async function resolveShotItems(
   const ids: string[] = Array.isArray(shotIds)
     ? shotIds.filter((v: unknown): v is string => typeof v === "string")
     : [];
-  if (ids.length === 0) return { items: [] as { entityId: string; fileName: string }[] };
+  if (ids.length === 0)
+    return { items: [] as { entityId: string; fileName: string }[] };
 
   const shots = await prisma.shot.findMany({
     where: { id: { in: ids }, tenantId, projectId, deletedAt: null },
     select: { id: true, name: true },
   });
-  if (shots.length !== new Set(ids).size) return { error: "Invalid shotIds" as const };
+  if (shots.length !== new Set(ids).size)
+    return { error: "Invalid shotIds" as const };
 
   return { items: shots.map((s) => ({ entityId: s.id, fileName: s.name })) };
 }
 
 async function createWithUniqueCode(
-  data: Omit<Parameters<typeof prisma.delivery.create>[0]["data"], "accessCode">,
+  data: Omit<
+    Parameters<typeof prisma.delivery.create>[0]["data"],
+    "accessCode"
+  >,
 ) {
   // accessCode carries a unique constraint; a collision is vanishingly
   // unlikely at 10 characters but retrying is cheaper than surfacing a 500.
@@ -302,47 +320,39 @@ const DELIVERY_INCLUDE = {
 // The internal reads carry the access code, so they're gated the same as the
 // writes -- an ordinary tenant member must not be able to enumerate every
 // client package's code straight off the API.
-deliveriesRouter.get(
-  "/",
-  READ_DELIVERIES,
-  async (req, res) => {
-    try {
-      const tenantId = req.tenantId!;
-      const { projectId } = req.query;
-      const rows = await prisma.delivery.findMany({
-        where: {
-          tenantId,
-          ...(typeof projectId === "string" ? { projectId } : {}),
-        },
-        include: DELIVERY_INCLUDE,
-        orderBy: { createdAt: "desc" },
-      });
-      return res.json(rows.map(internalDeliveryDTO));
-    } catch (err) {
-      req.log.error(err, "Failed to list deliveries");
-      return res.status(500).json({ error: "Internal server error" });
-    }
-  },
-);
+deliveriesRouter.get("/", READ_DELIVERIES, async (req, res) => {
+  try {
+    const tenantId = req.tenantId!;
+    const { projectId } = req.query;
+    const rows = await prisma.delivery.findMany({
+      where: {
+        tenantId,
+        ...(typeof projectId === "string" ? { projectId } : {}),
+      },
+      include: DELIVERY_INCLUDE,
+      orderBy: { createdAt: "desc" },
+    });
+    return res.json(rows.map(internalDeliveryDTO));
+  } catch (err) {
+    req.log.error(err, "Failed to list deliveries");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
 
-deliveriesRouter.get(
-  "/:id",
-  READ_DELIVERIES,
-  async (req, res) => {
-    try {
-      const tenantId = req.tenantId!;
-      const row = await prisma.delivery.findFirst({
-        where: { id: req.params.id as string, tenantId },
-        include: DELIVERY_INCLUDE,
-      });
-      if (!row) return res.status(404).json({ error: "Not found" });
-      return res.json(internalDeliveryDTO(row));
-    } catch (err) {
-      req.log.error(err, "Failed to fetch delivery");
-      return res.status(500).json({ error: "Internal server error" });
-    }
-  },
-);
+deliveriesRouter.get("/:id", READ_DELIVERIES, async (req, res) => {
+  try {
+    const tenantId = req.tenantId!;
+    const row = await prisma.delivery.findFirst({
+      where: { id: req.params.id as string, tenantId },
+      include: DELIVERY_INCLUDE,
+    });
+    if (!row) return res.status(404).json({ error: "Not found" });
+    return res.json(internalDeliveryDTO(row));
+  } catch (err) {
+    req.log.error(err, "Failed to fetch delivery");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 // Gated on approve_reviews for the same reason client-access link creation is:
 // packaging finished footage for a client is the step after sign-off, not a
@@ -364,7 +374,8 @@ deliveriesRouter.post(
         return res.status(400).json({ error: "Invalid projectId" });
 
       const resolved = await resolveShotItems(shotIds, tenantId, projectId);
-      if ("error" in resolved) return res.status(400).json({ error: resolved.error });
+      if ("error" in resolved)
+        return res.status(400).json({ error: resolved.error });
 
       const created = await createWithUniqueCode({
         id: crypto.randomUUID(),
@@ -442,7 +453,8 @@ deliveriesRouter.post(
         where: { id: deliveryId, tenantId },
         data: { status: "revoked", revokedAt: new Date() },
       });
-      if (updated.count === 0) return res.status(404).json({ error: "Not found" });
+      if (updated.count === 0)
+        return res.status(404).json({ error: "Not found" });
 
       const row = await prisma.delivery.findFirst({
         where: { id: deliveryId, tenantId },
@@ -467,7 +479,8 @@ deliveriesRouter.post(
         where: { id: deliveryId, tenantId },
         data: { status: "active", revokedAt: null },
       });
-      if (updated.count === 0) return res.status(404).json({ error: "Not found" });
+      if (updated.count === 0)
+        return res.status(404).json({ error: "Not found" });
 
       const row = await prisma.delivery.findFirst({
         where: { id: deliveryId, tenantId },
@@ -501,7 +514,8 @@ deliveriesRouter.post(
         tenantId,
         delivery.projectId,
       );
-      if ("error" in resolved) return res.status(400).json({ error: resolved.error });
+      if ("error" in resolved)
+        return res.status(400).json({ error: resolved.error });
 
       await prisma.deliveryItem.createMany({
         data: resolved.items.map((i) => ({
@@ -537,7 +551,8 @@ deliveriesRouter.delete(
       const deleted = await prisma.deliveryItem.deleteMany({
         where: { id: itemId, deliveryId, tenantId },
       });
-      if (deleted.count === 0) return res.status(404).json({ error: "Not found" });
+      if (deleted.count === 0)
+        return res.status(404).json({ error: "Not found" });
       return res.status(204).send();
     } catch (err) {
       req.log.error(err, "Failed to remove delivery item");

@@ -24,10 +24,14 @@ async function hashPassword(password: string): Promise<string> {
 // same heuristic, same "always default to least-privileged" contract.
 function guessRoleName(designation: string): string {
   const d = designation.toLowerCase();
-  if (d.includes("head")) return "production_head";
   if (d.includes("supervisor") || d.includes("lead")) return "lead";
-  if (d.includes("producer") || d.includes("coordinator") || d.includes("manager"))
-    return "producer";
+  if (
+    d.includes("head") ||
+    d.includes("producer") ||
+    d.includes("coordinator") ||
+    d.includes("manager")
+  )
+    return "admin";
   return "artist";
 }
 
@@ -120,7 +124,9 @@ async function main() {
     return (
       departments.find((dept) => dept.name.toLowerCase() === d) ||
       departments.find(
-        (dept) => dept.name.toLowerCase().includes(d) || d.includes(dept.name.toLowerCase()),
+        (dept) =>
+          dept.name.toLowerCase().includes(d) ||
+          d.includes(dept.name.toLowerCase()),
       ) ||
       departments.find((dept) => dept.abbr.toLowerCase() === d)
     );
@@ -138,7 +144,12 @@ async function main() {
 
   let created = 0;
   let skipped = 0;
-  const createdRows: { name: string; email: string; role: string; dept: string }[] = [];
+  const createdRows: {
+    name: string;
+    email: string;
+    role: string;
+    dept: string;
+  }[] = [];
 
   for (const row of rows) {
     if (existingNames.has(row.name.toLowerCase())) {
@@ -148,7 +159,9 @@ async function main() {
     const roleName = guessRoleName(row.sourceDesignation);
     const roleId = roleIdByName.get(roleName);
     if (!roleId) {
-      console.warn(`Skipping "${row.name}" -- no "${roleName}" role found for this tenant.`);
+      console.warn(
+        `Skipping "${row.name}" -- no "${roleName}" role found for this tenant.`,
+      );
       skipped++;
       continue;
     }
@@ -170,14 +183,23 @@ async function main() {
     });
     existingNames.add(row.name.toLowerCase());
     created++;
-    createdRows.push({ name: row.name, email, role: roleName, dept: dept?.name ?? "(none)" });
+    createdRows.push({
+      name: row.name,
+      email,
+      role: roleName,
+      dept: dept?.name ?? "(none)",
+    });
   }
 
-  console.log(`Created ${created} real accounts, skipped ${skipped} (already existed or unmapped).`);
+  console.log(
+    `Created ${created} real accounts, skipped ${skipped} (already existed or unmapped).`,
+  );
   console.log(`Shared temporary password: ${TEMP_PASSWORD}`);
   console.log("");
   for (const r of createdRows) {
-    console.log(`${r.name.padEnd(28)} ${r.email.padEnd(38)} ${r.role.padEnd(16)} ${r.dept}`);
+    console.log(
+      `${r.name.padEnd(28)} ${r.email.padEnd(38)} ${r.role.padEnd(16)} ${r.dept}`,
+    );
   }
   process.exit(0);
 }

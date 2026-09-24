@@ -19,19 +19,31 @@ import * as crypto from "crypto";
 // checks the row exists, not who owns it), silently cross-linking tenants'
 // data — the FK constraint alone is not a tenant-isolation boundary.
 async function projectInTenant(id: string, tenantId: string) {
-  const row = await prisma.project.findFirst({ where: { id, tenantId }, select: { id: true } });
+  const row = await prisma.project.findFirst({
+    where: { id, tenantId },
+    select: { id: true },
+  });
   return !!row;
 }
 async function episodeInTenant(id: string, tenantId: string) {
-  const row = await prisma.episode.findFirst({ where: { id, tenantId }, select: { id: true } });
+  const row = await prisma.episode.findFirst({
+    where: { id, tenantId },
+    select: { id: true },
+  });
   return !!row;
 }
 async function sequenceInTenant(id: string, tenantId: string) {
-  const row = await prisma.sequence.findFirst({ where: { id, tenantId }, select: { id: true } });
+  const row = await prisma.sequence.findFirst({
+    where: { id, tenantId },
+    select: { id: true },
+  });
   return !!row;
 }
 async function userInTenant(id: string, tenantId: string) {
-  const row = await prisma.user.findFirst({ where: { id, tenantId }, select: { id: true } });
+  const row = await prisma.user.findFirst({
+    where: { id, tenantId },
+    select: { id: true },
+  });
   return !!row;
 }
 
@@ -82,7 +94,9 @@ shotsRouter.get("/", async (req, res) => {
         ...(clientScope
           ? {
               projectId: clientScope.projectId,
-              ...(clientScope.episodeId ? { episodeId: clientScope.episodeId } : {}),
+              ...(clientScope.episodeId
+                ? { episodeId: clientScope.episodeId }
+                : {}),
               ...(clientScope.shotId ? { id: clientScope.shotId } : {}),
             }
           : {}),
@@ -186,7 +200,9 @@ shotsRouter.put("/:id", requireCapability("edit_tasks"), async (req, res) => {
     // single string at runtime.
     const shotId = req.params.id as string;
 
-    const existing = await prisma.shot.findFirst({ where: { tenantId, id: shotId } });
+    const existing = await prisma.shot.findFirst({
+      where: { tenantId, id: shotId },
+    });
     if (!existing) return res.status(404).json({ error: "Not found" });
 
     // edit_tasks says what you may change, not which shots. Without this an
@@ -194,7 +210,14 @@ shotsRouter.put("/:id", requireCapability("edit_tasks"), async (req, res) => {
     // rewriting a client's review sign-off on work in another department.
     // 404 rather than 403 so an out-of-scope shot is indistinguishable from
     // one that doesn't exist.
-    if (!(await canSeeEntity(tenantId, await getVisibilityScope(req), "shot", shotId)))
+    if (
+      !(await canSeeEntity(
+        tenantId,
+        await getVisibilityScope(req),
+        "shot",
+        shotId,
+      ))
+    )
       return res.status(404).json({ error: "Not found" });
 
     if (
@@ -214,8 +237,13 @@ shotsRouter.put("/:id", requireCapability("edit_tasks"), async (req, res) => {
     }
     updates.updatedAt = new Date();
 
-    await prisma.shot.updateMany({ where: { tenantId, id: shotId }, data: updates });
-    const updated = await prisma.shot.findFirstOrThrow({ where: { tenantId, id: shotId } });
+    await prisma.shot.updateMany({
+      where: { tenantId, id: shotId },
+      data: updates,
+    });
+    const updated = await prisma.shot.findFirstOrThrow({
+      where: { tenantId, id: shotId },
+    });
 
     // `updates` always carries `updatedAt`, but `before`/`after` should
     // reflect an actual field change -- skip logging an empty-`before` audit
@@ -259,7 +287,9 @@ shotsRouter.put("/:id/client-review", async (req, res) => {
         .json({ error: "status must be 'approved' or 'changes-requested'" });
     }
 
-    const existing = await prisma.shot.findFirst({ where: { tenantId, id: shotId } });
+    const existing = await prisma.shot.findFirst({
+      where: { tenantId, id: shotId },
+    });
     if (!existing) return res.status(404).json({ error: "Not found" });
 
     // Accepts a redeemed client-access link OR a real signed-in `client`
@@ -277,7 +307,8 @@ shotsRouter.put("/:id/client-review", async (req, res) => {
       // a project other than whichever one is currently "active" must still
       // be allowed to approve it.
       clientScope.projectIds.includes(existing.projectId) &&
-      (!clientScope.episodeId || existing.episodeId === clientScope.episodeId) &&
+      (!clientScope.episodeId ||
+        existing.episodeId === clientScope.episodeId) &&
       (!clientScope.shotId || existing.id === clientScope.shotId);
     if (!inScope) return res.status(403).json({ error: "Forbidden" });
 
@@ -289,7 +320,9 @@ shotsRouter.put("/:id/client-review", async (req, res) => {
         updatedAt: new Date(),
       },
     });
-    const updated = await prisma.shot.findFirstOrThrow({ where: { tenantId, id: shotId } });
+    const updated = await prisma.shot.findFirstOrThrow({
+      where: { tenantId, id: shotId },
+    });
 
     // Nothing told anyone internal a client had actually acted -- the shot's
     // status changed, but that's indistinguishable from any other status
@@ -304,12 +337,12 @@ shotsRouter.put("/:id/client-review", async (req, res) => {
         })
       : null;
     const departmentName = assignee?.departmentId
-      ? (
+      ? ((
           await prisma.department.findFirst({
             where: { id: assignee.departmentId, tenantId },
             select: { name: true },
           })
-        )?.name ?? null
+        )?.name ?? null)
       : null;
 
     const verb = status === "approved" ? "approved" : "requested changes on";
@@ -317,7 +350,11 @@ shotsRouter.put("/:id/client-review", async (req, res) => {
     if (assignee) notifyRecipients.add(assignee.id);
     if (departmentName) {
       const leads = await prisma.user.findMany({
-        where: { tenantId, department: { name: departmentName }, role: { name: "lead" } },
+        where: {
+          tenantId,
+          department: { name: departmentName },
+          role: { name: "lead" },
+        },
         select: { id: true },
       });
       leads.forEach((l) => notifyRecipients.add(l.id));

@@ -6,10 +6,30 @@
 import { execFileSync } from "child_process";
 
 const DOCS = [
-  ["marketing-analysis", "Forge-Marketing-Analysis", "Forge — Marketing Analysis", "Confidential · Commercial"],
-  ["requirements", "Forge-Requirements-Document", "Forge — Requirements Document", "Internal"],
-  ["srs", "Forge-SRS", "Forge — Software Requirements Specification", "Internal"],
-  ["user-guide", "Forge-User-Guide", "Forge — Product Usage & User Guide", "Internal"],
+  [
+    "marketing-analysis",
+    "Forge-Marketing-Analysis",
+    "Forge — Marketing Analysis",
+    "Confidential · Commercial",
+  ],
+  [
+    "requirements",
+    "Forge-Requirements-Document",
+    "Forge — Requirements Document",
+    "Internal",
+  ],
+  [
+    "srs",
+    "Forge-SRS",
+    "Forge — Software Requirements Specification",
+    "Internal",
+  ],
+  [
+    "user-guide",
+    "Forge-User-Guide",
+    "Forge — Product Usage & User Guide",
+    "Internal",
+  ],
 ];
 
 const failed = [];
@@ -37,8 +57,12 @@ if (failed.length === 0) {
   console.log("\nAll four documents rebuilt into docs-build/out/");
 } else {
   console.log(
-    "\nRebuilt " + (DOCS.length - failed.length) + " of " + DOCS.length +
-    ". Could not replace: " + failed.join(", ") +
-    "\nClose those files and run this again.",
+    "\nRebuilt " +
+      (DOCS.length - failed.length) +
+      " of " +
+      DOCS.length +
+      ". Could not replace: " +
+      failed.join(", ") +
+      "\nClose those files and run this again.",
   );
 }

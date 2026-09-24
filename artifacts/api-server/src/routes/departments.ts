@@ -37,18 +37,26 @@ router.put("/order", requireCapability("manage_pipeline"), async (req, res) => {
     const { departmentIds } = req.body ?? {};
 
     if (!Array.isArray(departmentIds) || departmentIds.length === 0)
-      return res.status(400).json({ error: "departmentIds must be a non-empty array" });
+      return res
+        .status(400)
+        .json({ error: "departmentIds must be a non-empty array" });
     if (departmentIds.some((id) => typeof id !== "string" || !id))
-      return res.status(400).json({ error: "departmentIds must contain only department ids" });
+      return res
+        .status(400)
+        .json({ error: "departmentIds must contain only department ids" });
     if (new Set(departmentIds).size !== departmentIds.length)
-      return res.status(400).json({ error: "departmentIds must not contain duplicates" });
+      return res
+        .status(400)
+        .json({ error: "departmentIds must not contain duplicates" });
 
     const owned = await prisma.department.findMany({
       where: { tenantId, id: { in: departmentIds as string[] } },
       select: { id: true },
     });
     if (owned.length !== departmentIds.length)
-      return res.status(400).json({ error: "One or more departments do not exist in this studio" });
+      return res
+        .status(400)
+        .json({ error: "One or more departments do not exist in this studio" });
 
     await prisma.$transaction(
       (departmentIds as string[]).map((id, index) =>
@@ -59,7 +67,9 @@ router.put("/order", requireCapability("manage_pipeline"), async (req, res) => {
       ),
     );
 
-    const departments = await prisma.department.findMany({ where: { tenantId } });
+    const departments = await prisma.department.findMany({
+      where: { tenantId },
+    });
     return res.json(departments);
   } catch (err) {
     req.log.error(err, "Failed to reorder departments");
@@ -75,7 +85,9 @@ router.post("/", requireCapability("manage_members"), async (req, res) => {
     const tenantId = req.tenantId!;
     const { name, abbr, pipeline, pipelineOrder, color, icon } = req.body;
     if (!name || !abbr || !pipeline)
-      return res.status(400).json({ error: "name, abbr, and pipeline are required" });
+      return res
+        .status(400)
+        .json({ error: "name, abbr, and pipeline are required" });
     if (!VALID_PIPELINES.includes(pipeline))
       return res.status(400).json({
         error: `pipeline must be one of: ${VALID_PIPELINES.join(", ")}`,
@@ -86,7 +98,9 @@ router.post("/", requireCapability("manage_members"), async (req, res) => {
       select: { id: true },
     });
     if (existing)
-      return res.status(409).json({ error: "A department with this abbreviation already exists" });
+      return res
+        .status(409)
+        .json({ error: "A department with this abbreviation already exists" });
 
     const created = await prisma.department.create({
       data: {
