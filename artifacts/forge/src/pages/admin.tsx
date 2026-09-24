@@ -76,6 +76,13 @@ export default function AdminPanel() {
   const { data: projects = [] } = useProjects();
   const { toast } = useToast();
   const [createOpen, setCreateOpen] = useState(false);
+  // Same reasoning as inviteRoleId/isClientInvite below: a client has no use
+  // for a department, and creating one without linking a project put them
+  // right back in the two-step "create, then separately remember to grant
+  // access" flow -- the client had no way to see anything until an admin
+  // did a second, easy-to-forget step in a totally different part of the UI.
+  const [createRoleId, setCreateRoleId] = useState("");
+  const [createProjectIds, setCreateProjectIds] = useState<string[]>([]);
   const [inviteOpen, setInviteOpen] = useState(false);
   // Controlled so the invite dialog can swap Department for Project the
   // moment "client" is picked -- a client has neither a department nor any
@@ -84,6 +91,8 @@ export default function AdminPanel() {
   const [inviteRoleId, setInviteRoleId] = useState("");
   const isClientInvite =
     roles.find((r) => r.id === inviteRoleId)?.name === "client";
+  const isCreateClient =
+    roles.find((r) => r.id === createRoleId)?.name === "client";
   const [deptOpen, setDeptOpen] = useState(false);
   const [employeeImportOpen, setEmployeeImportOpen] = useState(false);
   const sendInvite = useSendInvite();
@@ -117,20 +126,56 @@ export default function AdminPanel() {
     const roleId = String(formData.get("roleId") ?? "");
     let departmentId = formData.get("departmentId") || null;
     if (departmentId === "none") departmentId = null;
+    const isClient = roles.find((r) => r.id === roleId)?.name === "client";
 
     try {
-      await apiFetch("/users", {
+      const created = await apiFetch<{ id: string }>("/users", {
         method: "POST",
         body: JSON.stringify({
           email: formData.get("email"),
           name: formData.get("name"),
           password: formData.get("password"),
           roleId,
-          departmentId,
+          departmentId: isClient ? null : departmentId,
         }),
       });
-      toast({ title: "User created" });
+
+      // Granting project access here (not as a separate step later) is the
+      // whole point -- it's what makes the client's own portal actually show
+      // something the moment they log in: this is the same
+      // POST /client-project-access call the project page's own Client
+      // Access panel makes, which is also what auto-provisions their "Client
+      // — <project>" chat channel (client-project-access.ts's
+      // ensureClientProjectChannel), so linking a project here gets them
+      // both at once instead of needing a second admin action to remember.
+      let grantFailures = 0;
+      if (isClient && createProjectIds.length > 0) {
+        const results = await Promise.allSettled(
+          createProjectIds.map((projectId) =>
+            apiFetch("/client-project-access", {
+              method: "POST",
+              body: JSON.stringify({ userId: created.id, projectId }),
+            }),
+          ),
+        );
+        grantFailures = results.filter((r) => r.status === "rejected").length;
+      }
+
+      toast(
+        isClient && createProjectIds.length > 0
+          ? {
+              title: "Client created",
+              description:
+                grantFailures > 0
+                  ? `Linked ${createProjectIds.length - grantFailures} of ${createProjectIds.length} project(s) -- ${grantFailures} failed.`
+                  : `Linked to ${createProjectIds.length} project${createProjectIds.length === 1 ? "" : "s"}. They can sign in and see it now.`,
+              variant: grantFailures > 0 ? "destructive" : undefined,
+            }
+          : { title: "User created" },
+      );
       setCreateOpen(false);
+      setCreateRoleId("");
+      setCreateProjectIds([]);
       refetchUsers();
     } catch (err: any) {
       toast({
@@ -505,7 +550,16 @@ export default function AdminPanel() {
             </form>
           </DialogContent>
         </Dialog>
-        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <Dialog
+          open={createOpen}
+          onOpenChange={(next) => {
+            setCreateOpen(next);
+            if (!next) {
+              setCreateRoleId("");
+              setCreateProjectIds([]);
+            }
+          }}
+        >
           <DialogTrigger asChild>
             <Button>New User</Button>
           </DialogTrigger>
@@ -534,7 +588,15 @@ export default function AdminPanel() {
               </div>
               <div>
                 <Label htmlFor="roleId">Role</Label>
-                <Select name="roleId" required>
+                <Select
+                  name="roleId"
+                  required
+                  value={createRoleId}
+                  onValueChange={(v) => {
+                    setCreateRoleId(v);
+                    setCreateProjectIds([]);
+                  }}
+                >
                   <SelectTrigger id="roleId">
                     <SelectValue placeholder="Select a role" />
                   </SelectTrigger>
@@ -547,22 +609,59 @@ export default function AdminPanel() {
                   </SelectContent>
                 </Select>
               </div>
-              <div>
-                <Label htmlFor="departmentId">Department</Label>
-                <Select name="departmentId">
-                  <SelectTrigger id="departmentId">
-                    <SelectValue placeholder="None" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">None</SelectItem>
-                    {departments.map((d) => (
-                      <SelectItem key={d.id} value={d.id}>
-                        {d.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {isCreateClient ? (
+                <div>
+                  <Label>Projects</Label>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Their episodes, sequences, and shots appear in their
+                    portal for every project checked here.
+                  </p>
+                  <div className="border rounded-md p-2 max-h-40 overflow-y-auto space-y-1">
+                    {projects.length === 0 ? (
+                      <p className="text-xs text-muted-foreground px-1 py-1">
+                        No projects yet.
+                      </p>
+                    ) : (
+                      projects.map((p) => (
+                        <label
+                          key={p.id}
+                          className="flex items-center gap-2 px-1 py-1 text-sm cursor-pointer hover:bg-muted/50 rounded"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={createProjectIds.includes(p.id)}
+                            onChange={(e) =>
+                              setCreateProjectIds((prev) =>
+                                e.target.checked
+                                  ? [...prev, p.id]
+                                  : prev.filter((id) => id !== p.id),
+                              )
+                            }
+                          />
+                          {p.name}
+                        </label>
+                      ))
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <Label htmlFor="departmentId">Department</Label>
+                  <Select name="departmentId">
+                    <SelectTrigger id="departmentId">
+                      <SelectValue placeholder="None" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      {departments.map((d) => (
+                        <SelectItem key={d.id} value={d.id}>
+                          {d.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <Button type="submit" className="w-full">
                 Create
               </Button>
