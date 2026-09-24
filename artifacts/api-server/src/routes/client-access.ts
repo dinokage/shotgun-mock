@@ -77,8 +77,9 @@ clientAccessRouter.post("/redeem", rateLimitByIp(REDEEM_RULE), async (req, res) 
 });
 
 // Read-only calendar for a client session (either a real signed-in `client`
-// account or a redeemed ClientAccessLink) -- upcoming task due dates for the
-// shots it can see, plus any non-draft deliveries for its project(s). Placed
+// account or a redeemed ClientAccessLink) -- upcoming task due dates,
+// recently completed tasks, and any non-draft deliveries for its project(s).
+// Placed
 // here, before the denyClientAccess boundary below, specifically because
 // this route is FOR client sessions, unlike everything after that comment.
 // Only ever returns title/date/status -- never assignee, description,
@@ -112,6 +113,24 @@ clientAccessRouter.get("/calendar", tenantAuthMiddleware, async (req, res) => {
         })
       : [];
 
+    // Same "approved"/"complete" terminal-status pair TeamCalendar.tsx treats
+    // as done. There's no dedicated completedAt column on Task, so
+    // lastStatusUpdate is the closest real signal to "when this finished" --
+    // it's bumped on every status write and a task can't reach a terminal
+    // status without one, so it's accurate for terminal tasks even though it
+    // isn't a purpose-built completion timestamp.
+    const completedTasks = shotIds.length
+      ? await prisma.task.findMany({
+          where: {
+            tenantId: req.tenantId!,
+            entityType: "shot",
+            entityId: { in: shotIds },
+            status: { in: ["approved", "complete"] },
+          },
+          select: { id: true, entityId: true, title: true, lastStatusUpdate: true, status: true },
+        })
+      : [];
+
     const deliveries = await prisma.delivery.findMany({
       where: {
         tenantId: req.tenantId!,
@@ -127,6 +146,15 @@ clientAccessRouter.get("/calendar", tenantAuthMiddleware, async (req, res) => {
         id: t.id,
         title: t.title,
         dueDate: t.dueDate,
+        status: t.status,
+        shotId: t.entityId,
+        shotName: shotById.get(t.entityId)?.name ?? null,
+        projectId: shotById.get(t.entityId)?.projectId ?? null,
+      })),
+      completedTasks: completedTasks.map((t) => ({
+        id: t.id,
+        title: t.title,
+        completedAt: t.lastStatusUpdate,
         status: t.status,
         shotId: t.entityId,
         shotName: shotById.get(t.entityId)?.name ?? null,

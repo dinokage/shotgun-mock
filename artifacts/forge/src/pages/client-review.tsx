@@ -249,6 +249,7 @@ export default function ClientReview() {
   // should actually see.
   interface ClientCalendarData {
     tasks: { id: string; title: string; dueDate: string; status: string; shotId: string; shotName: string | null; projectId: string | null }[];
+    completedTasks: { id: string; title: string; completedAt: string; status: string; shotId: string; shotName: string | null; projectId: string | null }[];
     deliveries: { id: string; name: string; expiresAt: string | null; projectId: string | null }[];
   }
   const [clientView, setClientView] = useState<"reviews" | "calendar" | "chat">("reviews");
@@ -285,6 +286,84 @@ export default function ClientReview() {
       .filter((i) => i.date.getTime() >= now - 24 * 60 * 60 * 1000) // keep "today" even if slightly past
       .sort((a, b) => a.date.getTime() - b.date.getTime());
   }, [calendarData]);
+
+  // Month-grid calendar: every day in the viewed month gets a cell (not just
+  // days that happen to have something on them), with due tasks, completed
+  // tasks (see completedTasks' lastStatusUpdate-as-completedAt comment on the
+  // server) and delivery windows all plotted on their real dates. Keyed by
+  // local (not UTC) Y-M-D so a task due "today" always lands in today's cell
+  // regardless of the viewer's timezone offset from UTC.
+  type CalendarDayEvent = {
+    id: string;
+    kind: "due" | "completed" | "delivery";
+    label: string;
+    shotId?: string;
+  };
+  const dayKey = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const calendarEventsByDay = useMemo(() => {
+    const map = new Map<string, CalendarDayEvent[]>();
+    const push = (date: Date, ev: CalendarDayEvent) => {
+      const key = dayKey(date);
+      const list = map.get(key) ?? [];
+      list.push(ev);
+      map.set(key, list);
+    };
+    if (!calendarData) return map;
+    for (const t of calendarData.tasks) {
+      if (!t.dueDate) continue;
+      push(new Date(t.dueDate), {
+        id: `due-${t.id}`,
+        kind: "due",
+        label: `${t.shotName ?? "Shot"} — ${t.title || "Task"} due`,
+        shotId: t.shotId,
+      });
+    }
+    for (const t of calendarData.completedTasks) {
+      push(new Date(t.completedAt), {
+        id: `done-${t.id}`,
+        kind: "completed",
+        label: `${t.shotName ?? "Shot"} — ${t.title || "Task"} completed`,
+        shotId: t.shotId,
+      });
+    }
+    for (const d of calendarData.deliveries) {
+      if (!d.expiresAt) continue;
+      push(new Date(d.expiresAt), {
+        id: `delivery-${d.id}`,
+        kind: "delivery",
+        label: `Delivery "${d.name}" expires`,
+      });
+    }
+    return map;
+  }, [calendarData]);
+
+  const today = useMemo(() => new Date(), []);
+  const [calendarMonth, setCalendarMonth] = useState(
+    () => new Date(today.getFullYear(), today.getMonth(), 1),
+  );
+  const [selectedDay, setSelectedDay] = useState<Date>(today);
+  const calendarWeeks = useMemo(() => {
+    const year = calendarMonth.getFullYear();
+    const month = calendarMonth.getMonth();
+    const firstOfMonth = new Date(year, month, 1);
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    // Grid always starts on a Sunday so weekday columns line up, even when
+    // that pulls in a few trailing days from the previous month.
+    const gridStart = new Date(year, month, 1 - firstOfMonth.getDay());
+    const days: Date[] = [];
+    const cursor = new Date(gridStart);
+    // 6 rows x 7 days covers every month layout (a 31-day month starting on
+    // a Saturday needs all 6) without ever falling short.
+    while (days.length < 42) {
+      days.push(new Date(cursor));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    const weeks: Date[][] = [];
+    for (let i = 0; i < days.length; i += 7) weeks.push(days.slice(i, i + 7));
+    return { weeks, daysInMonth };
+  }, [calendarMonth]);
+  const selectedDayEvents = calendarEventsByDay.get(dayKey(selectedDay)) ?? [];
 
   // Chat: a client only ever sees the one "client" channel per project it
   // has access to (see GET /chat/client-channels) -- production_head and
@@ -808,57 +887,190 @@ export default function ClientReview() {
             <div className="max-w-5xl mx-auto px-8 py-8">
               <h1 className="text-2xl font-bold tracking-tight mb-1">Calendar</h1>
               <p className="text-zinc-400 text-sm mb-6">
-                Upcoming task due dates and delivery windows across every
-                project you have access to.
+                Task due dates, completed work, and delivery windows across
+                every project you have access to.
               </p>
-              {upcomingItems.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-64 border border-white/5 rounded-xl bg-zinc-900/20">
-                  <CalendarDays className="w-12 h-12 text-zinc-600 mb-3 opacity-50" />
-                  <p className="text-zinc-500 text-sm">
-                    Nothing scheduled right now.
-                  </p>
+
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 border-white/10 bg-zinc-900/40 hover:bg-zinc-800"
+                    onClick={() =>
+                      setCalendarMonth(
+                        (m) => new Date(m.getFullYear(), m.getMonth() - 1, 1),
+                      )
+                    }
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 border-white/10 bg-zinc-900/40 hover:bg-zinc-800"
+                    onClick={() =>
+                      setCalendarMonth(
+                        (m) => new Date(m.getFullYear(), m.getMonth() + 1, 1),
+                      )
+                    }
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                  <h2 className="text-sm font-semibold ml-2">
+                    {calendarMonth.toLocaleDateString(undefined, {
+                      month: "long",
+                      year: "numeric",
+                    })}
+                  </h2>
                 </div>
-              ) : (
-                <div className="space-y-2">
-                  {upcomingItems.map((item) => (
-                    <button
-                      key={item.id}
-                      onClick={() => {
-                        if (item.kind === "task" && item.shotId) {
-                          const shot =
-                            shots.find((s) => s.id === item.shotId) ??
-                            activeProjectShots.find((s) => s.id === item.shotId);
-                          if (shot) {
-                            setActiveReviewId(shot.id);
-                            setClientView("reviews");
-                          }
-                        }
-                      }}
-                      className={`w-full flex items-center gap-4 p-4 rounded-lg border border-white/10 bg-zinc-900/40 text-left transition-colors ${
-                        item.kind === "task"
-                          ? "hover:border-primary/50 cursor-pointer"
-                          : "cursor-default"
-                      }`}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs border-white/10 bg-zinc-900/40 hover:bg-zinc-800"
+                  onClick={() => {
+                    setCalendarMonth(
+                      new Date(today.getFullYear(), today.getMonth(), 1),
+                    );
+                    setSelectedDay(today);
+                  }}
+                >
+                  Today
+                </Button>
+              </div>
+
+              <div className="border border-white/10 rounded-xl overflow-hidden bg-zinc-900/20">
+                <div className="grid grid-cols-7 border-b border-white/10 bg-zinc-900/40">
+                  {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
+                    <div
+                      key={d}
+                      className="px-2 py-2 text-center text-[10px] uppercase tracking-wide text-zinc-500 font-semibold"
                     >
-                      {item.kind === "delivery" ? (
-                        <PackageCheck className="w-5 h-5 text-amber-400 shrink-0" />
-                      ) : (
-                        <CalendarDays className="w-5 h-5 text-primary shrink-0" />
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-medium">{item.label}</div>
-                      </div>
-                      <div className="text-xs text-zinc-500 shrink-0">
-                        {item.date.toLocaleDateString(undefined, {
-                          weekday: "short",
-                          month: "short",
-                          day: "numeric",
-                        })}
-                      </div>
-                    </button>
+                      {d}
+                    </div>
                   ))}
                 </div>
-              )}
+                {calendarWeeks.weeks.map((week, wi) => (
+                  <div
+                    key={wi}
+                    className="grid grid-cols-7 border-b border-white/5 last:border-b-0"
+                  >
+                    {week.map((day) => {
+                      const inMonth = day.getMonth() === calendarMonth.getMonth();
+                      const key = dayKey(day);
+                      const events = calendarEventsByDay.get(key) ?? [];
+                      const isToday = key === dayKey(today);
+                      const isSelected = key === dayKey(selectedDay);
+                      const dueCount = events.filter((e) => e.kind === "due").length;
+                      const doneCount = events.filter((e) => e.kind === "completed").length;
+                      const deliveryCount = events.filter((e) => e.kind === "delivery").length;
+                      return (
+                        <button
+                          key={key}
+                          onClick={() => setSelectedDay(day)}
+                          className={`min-h-[76px] p-1.5 text-left border-r border-white/5 last:border-r-0 transition-colors ${
+                            inMonth ? "bg-transparent" : "bg-zinc-950/40"
+                          } ${isSelected ? "ring-1 ring-inset ring-primary/60 bg-primary/5" : "hover:bg-white/5"}`}
+                        >
+                          <div
+                            className={`text-xs w-5 h-5 flex items-center justify-center rounded-full ${
+                              isToday
+                                ? "bg-primary text-primary-foreground font-semibold"
+                                : inMonth
+                                  ? "text-zinc-300"
+                                  : "text-zinc-600"
+                            }`}
+                          >
+                            {day.getDate()}
+                          </div>
+                          {events.length > 0 && (
+                            <div className="mt-1.5 flex flex-wrap gap-1">
+                              {dueCount > 0 && (
+                                <span
+                                  className="flex items-center gap-0.5 text-[9px] font-medium text-primary bg-primary/10 rounded px-1"
+                                  title={`${dueCount} due`}
+                                >
+                                  <CalendarDays className="w-2.5 h-2.5" /> {dueCount}
+                                </span>
+                              )}
+                              {doneCount > 0 && (
+                                <span
+                                  className="flex items-center gap-0.5 text-[9px] font-medium text-emerald-400 bg-emerald-400/10 rounded px-1"
+                                  title={`${doneCount} completed`}
+                                >
+                                  <CheckCircle2 className="w-2.5 h-2.5" /> {doneCount}
+                                </span>
+                              )}
+                              {deliveryCount > 0 && (
+                                <span
+                                  className="flex items-center gap-0.5 text-[9px] font-medium text-amber-400 bg-amber-400/10 rounded px-1"
+                                  title={`${deliveryCount} delivery`}
+                                >
+                                  <PackageCheck className="w-2.5 h-2.5" /> {deliveryCount}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-6">
+                <h3 className="text-sm font-semibold mb-3">
+                  {selectedDay.toLocaleDateString(undefined, {
+                    weekday: "long",
+                    month: "long",
+                    day: "numeric",
+                    year: "numeric",
+                  })}
+                </h3>
+                {selectedDayEvents.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-28 border border-white/5 rounded-xl bg-zinc-900/20">
+                    <p className="text-zinc-500 text-sm">
+                      Nothing on this day.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {selectedDayEvents.map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => {
+                          if (item.kind !== "delivery" && item.shotId) {
+                            const shot =
+                              shots.find((s) => s.id === item.shotId) ??
+                              activeProjectShots.find((s) => s.id === item.shotId);
+                            if (shot) {
+                              setActiveReviewId(shot.id);
+                              setClientView("reviews");
+                            }
+                          }
+                        }}
+                        className={`w-full flex items-center gap-4 p-4 rounded-lg border border-white/10 bg-zinc-900/40 text-left transition-colors ${
+                          item.kind !== "delivery"
+                            ? "hover:border-primary/50 cursor-pointer"
+                            : "cursor-default"
+                        }`}
+                      >
+                        {item.kind === "delivery" ? (
+                          <PackageCheck className="w-5 h-5 text-amber-400 shrink-0" />
+                        ) : item.kind === "completed" ? (
+                          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                        ) : (
+                          <CalendarDays className="w-5 h-5 text-primary shrink-0" />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-medium">{item.label}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <p className="text-xs text-zinc-600 mt-6">
                 Need an update on something? Open Chat to message the
                 production team directly, or open a task above to leave a
