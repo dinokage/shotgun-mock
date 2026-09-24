@@ -1,6 +1,7 @@
 import { isOverdue, formatDueDate } from "@/lib/taskDates";
 import { useTasksStore } from "@/store/tasks";
 import { useAuthStore } from "@/store/auth";
+import { useUIStore } from "@/store/ui";
 import { TaskStatus } from "@/data/mockData";
 import { useUpdateTask } from "@/hooks/useTasks";
 import { getAssigneeId, getProjectId, useEntityProjectMap } from "@/lib/taskShape";
@@ -89,6 +90,7 @@ function SortableTaskCard({
   };
 
   const overdue = isOverdue(task.dueDate);
+  const setActiveTaskDrawer = useUIStore((s) => s.setActiveTaskDrawer);
 
   return (
     <div
@@ -96,6 +98,12 @@ function SortableTaskCard({
       style={style}
       {...attributes}
       {...listeners}
+      // dnd-kit's PointerSensor only starts a drag past its activationConstraint
+      // distance (see the sensors setup below), so a plain click without
+      // movement still fires normally -- this was simply never wired up at
+      // all, unlike TeamCalendar.tsx's equivalent card, which is why a task
+      // card here (including a Review-stage one) never opened anything.
+      onClick={() => setActiveTaskDrawer(task.id)}
       className="mb-3 cursor-grab active:cursor-grabbing outline-none"
     >
       <Card className="p-3 shadow-sm border-border hover:border-primary/50 transition-colors flex flex-col gap-2 relative overflow-hidden group">
