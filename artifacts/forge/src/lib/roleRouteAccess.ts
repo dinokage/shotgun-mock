@@ -13,12 +13,12 @@ import type { Role } from "@/data/mockData";
 //    — these are scoped to "my own work" per-role at the data layer (query
 //    params + server-side enforcement, and — for Studio Roster — the page's
 //    own artist/lead-scoped visibility), not by page-reachability.
-//  - PRODUCER/LEAD: department- and studio-production-management pages
-//    (mirrors the existing LeadershipGuard-wrapped routes that aren't
-//    system-configuration pages).
-//  - ADMIN/PRODUCTION_HEAD: studio-wide system administration pages
-//    (Admin Panel, Workflows, Schema Builder, Time Travel Audit,
-//    Integrations Hub).
+//  - LEAD: department- and studio-production-management pages (mirrors the
+//    existing LeadershipGuard-wrapped routes that aren't system-configuration
+//    pages).
+//  - ADMIN: studio-wide system administration pages (Admin Panel, Workflows,
+//    Schema Builder, Time Travel Audit, Integrations Hub) -- migration 0023
+//    folded the former separate production_head/producer roles into it.
 //  - CLIENT: none — the client role never authenticates into the main app;
 //    it only reaches the public /client-review access-link flow, outside
 //    AuthGuard entirely.
@@ -59,27 +59,14 @@ const STUDIO_ADMIN_ROUTES = [
   "/integrations",
 ];
 
-// The plugin/tool marketplace. Shared with production_head and the main
-// producer because both are expected to switch extensions on for the studio.
+// The plugin/tool marketplace. Admin is expected to switch extensions on for
+// the studio (migration 0023 folded the former separate production_head/
+// producer roles, who shared this same access, into admin).
 const EXTENSION_ROUTES = ["/marketplace"];
 
 export const ROLE_ALLOWED_ROUTES: Record<Role, string[]> = {
   artist: [...BASE_ROUTES],
-  // The main producer outranks the admin: everything the admin reaches, plus
-  // production management.
-  producer: [
-    ...BASE_ROUTES,
-    ...PRODUCTION_MANAGEMENT_ROUTES,
-    ...STUDIO_ADMIN_ROUTES,
-    ...EXTENSION_ROUTES,
-  ],
   lead: [...BASE_ROUTES, ...PRODUCTION_MANAGEMENT_ROUTES],
-  production_head: [
-    ...BASE_ROUTES,
-    ...PRODUCTION_MANAGEMENT_ROUTES,
-    ...STUDIO_ADMIN_ROUTES,
-    ...EXTENSION_ROUTES,
-  ],
   admin: [
     ...BASE_ROUTES,
     ...PRODUCTION_MANAGEMENT_ROUTES,

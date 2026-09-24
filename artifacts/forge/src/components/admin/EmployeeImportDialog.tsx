@@ -34,18 +34,24 @@ interface DraftRow {
   error?: string;
 }
 
-// Real employee rosters don't put "artist"/"lead"/"producer" in a
-// designation column -- they use real job titles. This is a best-effort
-// guess from keywords, always defaulting to the LEAST-privileged role
-// (artist) when nothing matches, rather than risking an over-privileged
-// account from a misread title. The admin can still change any row's
-// role before sending.
+// Real employee rosters don't put "artist"/"lead"/"admin" in a designation
+// column -- they use real job titles. This is a best-effort guess from
+// keywords, always defaulting to the LEAST-privileged role (artist) when
+// nothing matches, rather than risking an over-privileged account from a
+// misread title. The admin can still change any row's role before sending.
+// Migration 0023 removed the separate production_head/producer roles --
+// admin is the studio's sole top role now, so every title that used to
+// guess one of those two now guesses admin instead.
 function guessRoleName(designation: string): string {
   const d = designation.toLowerCase();
-  if (d.includes("head")) return "production_head";
   if (d.includes("supervisor") || d.includes("lead")) return "lead";
-  if (d.includes("producer") || d.includes("coordinator") || d.includes("manager"))
-    return "producer";
+  if (
+    d.includes("head") ||
+    d.includes("producer") ||
+    d.includes("coordinator") ||
+    d.includes("manager")
+  )
+    return "admin";
   return "artist";
 }
 

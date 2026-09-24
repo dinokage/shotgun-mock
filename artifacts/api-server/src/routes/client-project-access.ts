@@ -27,11 +27,12 @@ async function projectInTenant(id: string, tenantId: string) {
 }
 
 // Finds or creates the one "client" channel for this project, and keeps its
-// staff side current: every production_head + lead in the tenant, added
-// (never removed here -- a role change shouldn't silently evict someone
-// mid-conversation) each time this runs, so a lead hired after the channel
-// first existed still ends up reachable. Deliberately never includes
-// artist or producer -- see the explicit "production head and the leads...
+// staff side current: every admin (the studio's sole top role since
+// migration 0023 folded production_head/producer into it) + lead in the
+// tenant, added (never removed here -- a role change shouldn't silently
+// evict someone mid-conversation) each time this runs, so a lead hired after
+// the channel first existed still ends up reachable. Deliberately never
+// includes artist -- see the explicit "production head and the leads...
 // not the artists" requirement this was built for. Every client with a
 // live ClientProjectAccess grant on this project is a member too.
 async function ensureClientProjectChannel(tenantId: string, projectId: string): Promise<string> {
@@ -57,7 +58,7 @@ async function ensureClientProjectChannel(tenantId: string, projectId: string): 
   }
 
   const staffRoles = await prisma.tenantRole.findMany({
-    where: { tenantId, name: { in: ["production_head", "lead"] } },
+    where: { tenantId, name: { in: ["admin", "lead"] } },
     select: { id: true },
   });
   const staff = staffRoles.length

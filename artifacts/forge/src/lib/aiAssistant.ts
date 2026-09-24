@@ -34,9 +34,9 @@ const OPEN_STATUSES = new Set([
   "bottleneck",
   "review",
   "lead-review",
-  "pm-review",
+  "producer-review",
 ]);
-const REVIEW_STATUSES = new Set(["review", "lead-review", "pm-review"]);
+const REVIEW_STATUSES = new Set(["review", "lead-review", "producer-review"]);
 
 const DAY_MS = 86_400_000;
 

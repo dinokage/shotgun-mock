@@ -13,7 +13,7 @@ chatRouter.use(tenantAuthMiddleware);
 // No blanket denyClientAccess here (there used to be one). A client can now
 // be a member of exactly one channel: the "client" kind auto-provisioned
 // per project by client-project-access.ts's ensureClientProjectChannel,
-// whose membership is locked to production_head + lead -- never artist, per
+// whose membership is locked to admin + lead -- never artist, per
 // explicit requirement. Once a client is a real member of that channel,
 // reading/posting/marking-read in it is exactly as safe as for any other
 // member: requireMembership below doesn't check role, only whether the
@@ -28,7 +28,7 @@ chatRouter.use(tenantAuthMiddleware);
 // Mirrors LEADERSHIP_ROLES in artifacts/forge/src/store/permissions.ts, which
 // is what chat.tsx already used to decide who sees every department channel
 // versus only their own.
-const LEADERSHIP_ROLES = ["admin", "production_head", "producer", "lead"];
+const LEADERSHIP_ROLES = ["admin", "lead"];
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 100;

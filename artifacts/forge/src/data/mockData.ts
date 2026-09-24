@@ -1,23 +1,15 @@
 // ============================================================================
 // FORGE — Mock Data v2.0
 // 18 Departments · 81 Artists · 10 Projects · 150 Assets · 100 Shots · 300 Tasks
-// Real VFX Studio Hierarchy: Producer → PM → Supervisor → Lead → Artist
+// Real VFX Studio Hierarchy: Admin → Lead → Artist
 // ============================================================================
 
 // --- Types -------------------------------------------------------------------
 
-export type Role =
-  | "admin"
-  | "production_head"
-  | "producer"
-  | "lead"
-  | "artist"
-  | "client";
+export type Role = "admin" | "lead" | "artist" | "client";
 
 export const ROLE_HIERARCHY: Record<Role, number> = {
   admin: 5,
-  production_head: 4,
-  producer: 3,
   lead: 2,
   artist: 1,
   client: 0,
@@ -25,8 +17,6 @@ export const ROLE_HIERARCHY: Record<Role, number> = {
 
 export const ROLE_LABELS: Record<Role, string> = {
   admin: "System Admin",
-  production_head: "Production Head",
-  producer: "Producer",
   lead: "Lead",
   artist: "Artist",
   client: "Client",
@@ -241,10 +231,8 @@ export type TaskStatus =
   | "bottleneck"
   | "review"
   | "lead-review"
-  | "pm-review"
-  // The main producer is the studio-wide final gate, sitting above the
-  // production manager: artist -> lead -> production head -> producer ->
-  // client.
+  // Admin is the studio's sole top role and the final gate before client
+  // review: artist -> lead -> admin -> client.
   | "producer-review"
   | "approved"
   | "complete"
@@ -779,21 +767,21 @@ const USER_DEFS: {
   // === Production Management (dept 0) ===
   {
     name: "Maya Chen",
-    role: "production_head",
+    role: "admin",
     deptIdx: 0,
     title: "VFX Producer",
     skills: ["Budgeting", "Client Relations", "Scheduling"],
   },
   {
     name: "Ethan Brooks",
-    role: "producer",
+    role: "lead",
     deptIdx: 0,
     title: "VFX Production Manager",
     skills: ["Show Management", "Resource Planning", "Shotgun"],
   },
   {
     name: "Sofia Reyes",
-    role: "producer",
+    role: "lead",
     deptIdx: 0,
     title: "VFX Production Manager",
     skills: ["Bidding", "Scheduling", "ftrack"],
@@ -816,7 +804,7 @@ const USER_DEFS: {
   // === Concept & Previs -> dept 17 '2D Animation / Motion Graphics' (closest current dept for concept/storyboard/2D previs work; there's no standalone Previs dept in the current DEPT_DEFINITIONS) ===
   {
     name: "Luca Moretti",
-    role: "producer",
+    role: "lead",
     deptIdx: 16,
     title: "Concept/Previs Supervisor",
     skills: ["Storyboarding", "Maya", "Unreal Engine"],
@@ -846,7 +834,7 @@ const USER_DEFS: {
   // === Tracking -> dept 9 'Matchmove / Camera Tracking' ===
   {
     name: "Rafi Solomonov",
-    role: "producer",
+    role: "lead",
     deptIdx: 8,
     title: "Tracking Supervisor",
     skills: ["3DEqualizer", "PFTrack", "SynthEyes"],
@@ -876,7 +864,7 @@ const USER_DEFS: {
   // === Layout -> dept 5 'Layout' ===
   {
     name: "Yuki Tanaka",
-    role: "producer",
+    role: "lead",
     deptIdx: 4,
     title: "Layout Supervisor",
     skills: ["Maya", "Cinematography", "Previz"],
@@ -906,7 +894,7 @@ const USER_DEFS: {
   // === Modelling -> dept 2 'Modeling' ===
   {
     name: "Priya Nair",
-    role: "producer",
+    role: "lead",
     deptIdx: 1,
     title: "Modelling Supervisor",
     skills: ["ZBrush", "Maya", "Hard Surface"],
@@ -943,7 +931,7 @@ const USER_DEFS: {
   // === Texture / Surfacing -> dept 3 'Texturing / LookDev' ===
   {
     name: "Aisha Diallo",
-    role: "producer",
+    role: "lead",
     deptIdx: 2,
     title: "Surfacing Supervisor",
     skills: ["Substance Painter", "Mari", "Look Dev"],
@@ -980,7 +968,7 @@ const USER_DEFS: {
   // === Rigging -> dept 4 'Rigging' ===
   {
     name: "Diego Vargas",
-    role: "producer",
+    role: "lead",
     deptIdx: 3,
     title: "Rigging Supervisor",
     skills: ["Maya", "Python", "mGear"],
@@ -1010,7 +998,7 @@ const USER_DEFS: {
   // === Animation -> dept 6 'Animation' ===
   {
     name: "Akira Suzuki",
-    role: "producer",
+    role: "lead",
     deptIdx: 5,
     title: "Animation Supervisor",
     skills: ["Maya", "Acting", "Motion Capture"],
@@ -1054,7 +1042,7 @@ const USER_DEFS: {
   // === Creature FX / Tech Anim -> dept 11 'Creature Effects (CFX)' ===
   {
     name: "Ryo Watanabe",
-    role: "producer",
+    role: "lead",
     deptIdx: 10,
     title: "Creature FX Supervisor",
     skills: ["Houdini", "Maya", "Cloth Sim"],
@@ -1084,7 +1072,7 @@ const USER_DEFS: {
   // === FX (Effects) -> dept 12 'FX Simulations' ===
   {
     name: "Amara Kone",
-    role: "producer",
+    role: "lead",
     deptIdx: 11,
     title: "FX Supervisor",
     skills: ["Houdini", "Maya", "Pyro"],
@@ -1121,7 +1109,7 @@ const USER_DEFS: {
   // === Lighting -> dept 7 'Lighting' ===
   {
     name: "Mikhail Petrov",
-    role: "producer",
+    role: "lead",
     deptIdx: 6,
     title: "Lighting/CG Supervisor",
     skills: ["Katana", "Arnold", "RenderMan"],
@@ -1151,7 +1139,7 @@ const USER_DEFS: {
   // === Compositing -> dept 18 'Compositing' ===
   {
     name: "Dante Rivera",
-    role: "producer",
+    role: "lead",
     deptIdx: 17,
     title: "Compositing Supervisor",
     skills: ["Nuke", "Flame", "Color Science"],
@@ -1195,7 +1183,7 @@ const USER_DEFS: {
   // === Rotopaint -> dept 14 'Rotoscoping (Roto)' ===
   {
     name: "Priscilla Mendes",
-    role: "producer",
+    role: "lead",
     deptIdx: 13,
     title: "Rotopaint Supervisor",
     skills: ["Nuke", "Silhouette", "Mocha"],
@@ -1225,7 +1213,7 @@ const USER_DEFS: {
   // === DMP -> dept 16 'Digital Matte Painting (DMP)' ===
   {
     name: "Gabriela Santos",
-    role: "producer",
+    role: "lead",
     deptIdx: 15,
     title: "DMP Supervisor",
     skills: ["Photoshop", "Nuke", "Maya"],
@@ -1277,7 +1265,7 @@ for (let i = 1; i < DEPT_DEFINITIONS.length; i++) {
   const deptName = DEPT_DEFINITIONS[i].name;
   USER_DEFS.push({
     name: getName(),
-    role: "producer",
+    role: "lead",
     deptIdx: i,
     title: `${deptName} Manager`,
     skills: [deptName],
@@ -1305,17 +1293,14 @@ for (let i = 1; i < DEPT_DEFINITIONS.length; i++) {
   });
 }
 
-// The Production Head is the top of the reporting chain (department
-// producers report directly to them). Derive their id from wherever they
-// actually land in USER_DEFS rather than hardcoding 'u1' / index 0 — that
-// literal was the 'External Client' placeholder at index 0, not the real
-// Production Head (Maya Chen), and would silently break again if USER_DEFS
-// is ever reordered.
-const productionHeadIdx = USER_DEFS.findIndex(
-  (u) => u.role === "production_head",
-);
-const productionHeadId =
-  productionHeadIdx >= 0 ? `u${productionHeadIdx + 1}` : "u1";
+// Admin is the top of the reporting chain (department leads report directly
+// to them -- migration 0023 removed the separate production_head/producer
+// roles this used to name). Derive their id from wherever they actually
+// land in USER_DEFS rather than hardcoding 'u1' / index 0 -- that literal
+// was the 'External Client' placeholder at index 0, not the real top (Maya
+// Chen), and would silently break again if USER_DEFS is ever reordered.
+const adminIdx = USER_DEFS.findIndex((u) => u.role === "admin");
+const adminId = adminIdx >= 0 ? `u${adminIdx + 1}` : "u1";
 
 export const USERS: User[] = USER_DEFS.map((def, i) => {
   const deptId = `dept${def.deptIdx + 1}`;
@@ -1324,10 +1309,7 @@ export const USERS: User[] = USER_DEFS.map((def, i) => {
     userLicenses.push(possibleLicenses[i % possibleLicenses.length]);
 
   // Determine reporting chain: artists report to their dept's lead, leads
-  // report to their dept's producer, and producers report to the studio's
-  // Production Head. Dept 0 (Production Management) has its own
-  // producer/lead pair too (ex Production Manager / Coordinator) and its
-  // producer(s) also report up to the Production Head.
+  // report straight to the studio's sole admin.
   let supervisorId: string | undefined;
   if (def.role === "artist") {
     const lead = USER_DEFS.findIndex(
@@ -1335,12 +1317,7 @@ export const USERS: User[] = USER_DEFS.map((def, i) => {
     );
     supervisorId = lead >= 0 ? `u${lead + 1}` : undefined;
   } else if (def.role === "lead") {
-    const prod = USER_DEFS.findIndex(
-      (u) => u.deptIdx === def.deptIdx && u.role === "producer",
-    );
-    supervisorId = prod >= 0 ? `u${prod + 1}` : productionHeadId;
-  } else if (def.role === "producer") {
-    supervisorId = productionHeadId; // Reports to Production Head
+    supervisorId = adminId;
   }
 
   return {
@@ -1370,26 +1347,21 @@ export const USERS: User[] = USER_DEFS.map((def, i) => {
 
 export const DEPARTMENTS: Department[] = DEPT_DEFINITIONS.map((d, i) => {
   const deptId = `dept${i + 1}`;
-  const producer = USERS.find(
-    (u) => u.departmentId === deptId && u.role === "producer",
-  );
   const lead = USERS.find(
     (u) => u.departmentId === deptId && u.role === "lead",
   );
 
-  // Every department (including dept 0, Production Management, whose
-  // producer/lead are the ex Production Manager / Coordinator) should have
-  // its own producer/lead, so both lookups above should always hit. Fall
-  // back to the Production Head — the real top of the reporting chain —
-  // instead of a hardcoded index, same as the USERS reporting-chain build
-  // above, in case a department somehow has neither.
+  // Migration 0023 removed the separate per-department producer tier --
+  // every department's supervisor is now the studio's sole admin directly.
+  // Fall back to admin for leadId too, same as the USERS reporting-chain
+  // build above, in case a department somehow has no lead.
   return {
     id: deptId,
     name: d.name,
     abbreviation: d.abbr,
     color: d.color,
-    supervisorId: producer?.id || productionHeadId,
-    leadId: lead?.id || producer?.id || productionHeadId,
+    supervisorId: adminId,
+    leadId: lead?.id || adminId,
     studioId: "studio1",
     description: d.desc,
     icon: d.icon,
@@ -1894,7 +1866,7 @@ const taskStatuses: Task["status"][] = [
   "bottleneck",
   "review",
   "lead-review",
-  "pm-review",
+  "producer-review",
   "approved",
   "complete",
 ];
@@ -1988,7 +1960,7 @@ function checklistDoneCount(
     return 0;
   if (status === "bottleneck") return 1;
   if (status === "in-progress") return 1 + (seed % 2); // 1-2 items: work is underway but not done
-  if (status === "review" || status === "lead-review" || status === "pm-review")
+  if (status === "review" || status === "lead-review" || status === "producer-review")
     return 3; // submitted, final polish still pending sign-off
   return 0;
 }
@@ -2068,26 +2040,16 @@ for (let i = 0; i < 300; i++) {
       ? deptArtists[i % deptArtists.length]
       : USERS[i % USERS.length];
 
-  // Producer or lead assigns the task
-  const deptProducer = USERS.find(
-    (u) => u.departmentId === dept.id && u.role === "producer",
-  );
+  // Lead assigns the task (migration 0023 removed the separate per-department
+  // producer tier that used to share this job).
   const deptLead = USERS.find(
     (u) => u.departmentId === dept.id && u.role === "lead",
   );
-  // Every department (including dept 0, Production Management, whose
-  // producer is the ex Production Manager) should have its own producer, so
-  // the lookup above should always hit. Fall back to the Production Head —
-  // the real top of the reporting chain — so admin tasks are always
-  // assigned by a real internal user rather than USERS[0] (the External
-  // Client).
-  const internalAssignerFallback = USERS.find(
-    (u) => u.id === productionHeadId,
-  )!;
-  const assigner =
-    i % 2 === 0
-      ? deptProducer || internalAssignerFallback
-      : deptLead || deptProducer || internalAssignerFallback;
+  // Fall back to admin -- the real top of the reporting chain -- so admin
+  // tasks are always assigned by a real internal user rather than USERS[0]
+  // (the External Client).
+  const internalAssignerFallback = USERS.find((u) => u.id === adminId)!;
+  const assigner = deptLead || internalAssignerFallback;
 
   // Generate daily logs. An unassigned task (self-serve pool, assigneeId '') can't have
   // logged hours yet — same reasoning as checklistDoneCount() zeroing out an unassigned

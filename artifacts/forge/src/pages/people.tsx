@@ -39,9 +39,10 @@ import {
 } from "@/store/permissions";
 
 // Roles the studio auto clock-in/out on login/logout (see routes/auth.ts's
-// AUTO_CLOCK_IN_ROLES) -- admin keeps no timesheet, so it never gets a live
-// presence claim below, only its account status.
-const PRESENCE_ROLES = ["artist", "lead", "production_head", "producer"];
+// AUTO_CLOCK_IN_ROLES) -- admin keeps no timesheet (that stayed true after
+// migration 0023 folded production_head/producer into it), so it never gets
+// a live presence claim below, only its account status.
+const PRESENCE_ROLES = ["artist", "lead"];
 
 // Mirrors PRESENCE_ONLINE_WINDOW_MS in the API's tenant middleware -- must
 // stay a few multiples of that middleware's write-throttle window so normal
@@ -55,7 +56,7 @@ const PRESENCE_ONLINE_WINDOW_MS = 90_000;
 // outside this, so without this check "no data" and "actually offline" are
 // indistinguishable and a viewer without visibility would see every
 // colleague as falsely Offline instead of an honest "no data" state.
-const STUDIO_WIDE_ATTENDANCE_ROLES = ["admin", "production_head", "producer"];
+const STUDIO_WIDE_ATTENDANCE_ROLES = ["admin"];
 function canSeePresence(
   viewer: { id: string; role: string; departmentId: string | null },
   target: { id: string; departmentId: string | null },

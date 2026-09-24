@@ -166,8 +166,8 @@ auditRollbacksRouter.get("/", async (req, res) => {
 
 // manage_pipeline: rolling a shot or asset back rewrites its live production
 // fields and discards everything done since, so it sits with the other
-// production-restructuring writes (producer / production_head) rather than
-// with the per-artist edit capabilities. Note admin and lead can open the
+// production-restructuring writes (admin) rather than with the per-artist
+// edit capabilities. Note admin and lead can open the
 // Time Travel page (LeadershipGuard) but hold no manage_pipeline grant, so
 // for them the page is read-only — the UI hides the write controls to match.
 auditRollbacksRouter.post("/", requireCapability("manage_pipeline"), async (req, res) => {

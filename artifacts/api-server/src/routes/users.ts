@@ -4,9 +4,10 @@ import { prisma } from "@workspace/db";
 // Mirrors STUDIO_LEADERSHIP_ROLES in artifacts/forge/src/store/permissions.ts
 // -- the only roster rows an external client has any legitimate reason to
 // see (their studio points of contact), matching what people.tsx/profile.tsx
-// already filter down to on the frontend. Includes the producer, who is the
-// studio-wide final reviewer and so a client's natural point of contact.
-const STUDIO_LEADERSHIP_ROLES = ["admin", "production_head", "producer"];
+// already filter down to on the frontend. Migration 0023 removed the
+// separate production_head/producer roles -- admin is the studio-wide final
+// reviewer now and so a client's natural point of contact.
+const STUDIO_LEADERSHIP_ROLES = ["admin"];
 import { tenantAuthMiddleware } from "../middleware/tenant";
 import { requireCapability } from "../middleware/rbac";
 import { hashPassword, verifyPassword } from "../lib/auth";

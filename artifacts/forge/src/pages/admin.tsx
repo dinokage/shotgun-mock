@@ -59,8 +59,8 @@ const roleLabel = (name: string | null | undefined) =>
 
 export default function AdminPanel() {
   // Admin Panel is reachable at /admin regardless of which guard wraps the
-  // route (LeadershipGuard also passes production_head/producer/lead) — the
-  // spec reserves user create/reassign for Admin only, so the page itself
+  // route (LeadershipGuard also passes lead) — the spec reserves user
+  // create/reassign for Admin only, so the page itself
   // must independently gate on manage_members and bounce anyone else, the
   // same pattern LeadershipGuard uses in App.tsx.
   const canManageUsers = useCapability("manage_members");

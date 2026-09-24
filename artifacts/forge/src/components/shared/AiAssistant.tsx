@@ -53,8 +53,7 @@ const SEVERITY_STYLE: Record<
 /** Which questions this role's insights should answer. */
 function audienceForRole(role: string | undefined): InsightAudience {
   if (!role) return "own";
-  if (role === "producer" || role === "production_head" || role === "admin")
-    return "studio";
+  if (role === "admin") return "studio";
   if (role === "lead") return "department";
   return "own";
 }

@@ -120,7 +120,7 @@ export default function DepartmentDetail() {
   // lastStatusUpdate), in days. Previously this tile was a hardcoded "1.2d"
   // that never reflected the department's actual data.
   const reviewCycleTasks = deptTasks.filter((t) =>
-    ["review", "lead-review", "pm-review", "approved", "complete"].includes(
+    ["review", "lead-review", "producer-review", "approved", "complete"].includes(
       t.status,
     ),
   );

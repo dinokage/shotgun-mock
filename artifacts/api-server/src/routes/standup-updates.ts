@@ -10,8 +10,9 @@ export const standupUpdatesRouter = Router();
 // artifacts/forge/src/store/permissions.ts -- daily-standup.tsx already
 // filters the feed by these exact groups, so scope the query the same way
 // rather than shipping the whole studio's updates to an artist's browser.
-// The producer is studio-wide, as in lib/visibilityScope.ts.
-const STUDIO_LEADERSHIP_ROLES = ["admin", "production_head", "producer"];
+// Migration 0023 removed the separate production_head/producer roles --
+// admin is studio-wide, as in lib/visibilityScope.ts.
+const STUDIO_LEADERSHIP_ROLES = ["admin"];
 const DEPARTMENT_LEADERSHIP_ROLES = ["lead"];
 
 // Both the daily-log `date` column and the frontend's own log-filing calls

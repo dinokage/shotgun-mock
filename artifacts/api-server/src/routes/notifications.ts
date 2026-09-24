@@ -109,34 +109,18 @@ export async function createNotification(params: {
   });
 }
 
-// Mirrors lib/taskShape.ts's getProductionManagerApprovers on the frontend:
-// a department's own production_head, falling back to the Production
-// Management department's production_head(s), falling back to any
-// production_head in the tenant. Kept as a separate server-side copy (not
-// shared code) since the two run in different packages/runtimes.
+// Mirrors lib/taskShape.ts's getProductionManagerApprovers on the frontend.
+// Migration 0023 removed the separate, department-scoped production_head
+// role -- admin is now the studio's sole top role and is studio-wide by
+// nature (not department-assigned), so every admin is notified rather than
+// resolving a department-specific subset. Kept as a separate server-side
+// copy (not shared code) since the two run in different packages/runtimes.
 export async function findProductionManagers(
   tenantId: string,
-  departmentName: string | null | undefined,
+  _departmentName: string | null | undefined,
 ): Promise<{ id: string }[]> {
-  const productionHeads = await prisma.user.findMany({
-    where: { tenantId, role: { name: "production_head" } },
-    select: { id: true, departmentId: true },
+  return prisma.user.findMany({
+    where: { tenantId, role: { name: "admin" } },
+    select: { id: true },
   });
-  if (productionHeads.length === 0) return [];
-
-  const depts = await prisma.department.findMany({ where: { tenantId } });
-
-  const dept = depts.find((d) => d.name === departmentName);
-  const ownDeptPMs = dept
-    ? productionHeads.filter((u) => u.departmentId === dept.id)
-    : [];
-  if (ownDeptPMs.length > 0) return ownDeptPMs;
-
-  const mainDept = depts.find((d) => d.name === "Production Management");
-  const mainPMs = mainDept
-    ? productionHeads.filter((u) => u.departmentId === mainDept.id)
-    : [];
-  if (mainPMs.length > 0) return mainPMs;
-
-  return productionHeads;
 }

@@ -95,7 +95,7 @@ projectsRouter.get("/:id", async (req, res) => {
 // client-access-link session (a real "client" tenant role whose only grant
 // is approve_reviews), could create or rewrite any project in the tenant.
 // manage_pipeline matches the capability the frontend's own "New Project"
-// affordance is gated on (producer/production_head).
+// affordance is gated on (admin).
 projectsRouter.post("/", requireCapability("manage_pipeline"), async (req, res) => {
   try {
     const tenantId = req.tenantId!;

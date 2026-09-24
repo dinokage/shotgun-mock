@@ -3,9 +3,9 @@ import { STUDIO_LEADERSHIP_ROLES } from "@/store/permissions";
 
 /**
  * Whether the current user's view of departments/tasks/etc. should be
- * limited to their own department (producer/lead/artist), or spans every
- * department (admin/production_head/producer). Client never reaches authenticated
- * pages, so it's not represented here.
+ * limited to their own department (lead/artist), or spans every department
+ * (admin). Client never reaches authenticated pages, so it's not
+ * represented here.
  */
 export function useDepartmentScope(): {
   scoped: boolean;

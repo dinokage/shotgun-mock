@@ -10,8 +10,6 @@ import { Lock } from "lucide-react";
 
 export const ROLE_LANDING_ROUTE: Record<string, string> = {
   admin: "/",
-  production_head: "/",
-  producer: "/production",
   lead: "/production",
   artist: "/tasks",
   // client-review.tsx is the one route a signed-in client account can reach

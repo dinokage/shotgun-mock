@@ -235,10 +235,12 @@ attendanceRouter.post("/clock-out", async (req, res) => {
 });
 
 /**
- * Who signs off a day's hours: the same two roles that see the Payroll tab.
- * The admin monitors and approves nothing; a client keeps no timesheet.
+ * Who signs off a day's hours. Migration 0023 removed the separate
+ * production_head/producer roles this used to name -- admin is now the
+ * studio's sole top role and inherits this authority along with everything
+ * else those two held.
  */
-const TIMESHEET_APPROVER_ROLES = ["production_head", "producer"];
+const TIMESHEET_APPROVER_ROLES = ["admin"];
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**

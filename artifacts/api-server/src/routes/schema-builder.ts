@@ -13,9 +13,8 @@ schemaBuilderRouter.use(denyClientAccess);
 
 // Designing entity types and task templates is studio-wide system
 // configuration, the same tier as API keys / webhooks / DCC paths — so it
-// rides the capability those already use. It is held by exactly the three
-// roles the frontend lets onto /schema-builder (admin, producer,
-// production_head) and by no lead or artist.
+// rides the capability those already use. It is held by exactly the one role
+// the frontend lets onto /schema-builder (admin) and by no lead or artist.
 const requireSchemaAdmin = requireCapability("manage_integrations");
 
 const FIELD_TYPES = [

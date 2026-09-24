@@ -2,7 +2,6 @@ import { useUIStore } from "@/store/ui";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { getNextDepartment, DEPENDENCY_TYPE_LABELS } from "@/data/mockData";
-import { canApproveAsProductionManager } from "@/lib/taskShape";
 import { normalizeTaskStatus } from "@/lib/trackingStatus";
 import { useUserStore } from "@/store/users";
 import { useProjectStore } from "@/store/projects";
@@ -78,7 +77,7 @@ const STATUS_COLORS: Record<string, string> = {
   bottleneck: "bg-red-500/10 text-red-500",
   review: "bg-purple-500/10 text-purple-500",
   "lead-review": "bg-purple-500/10 text-purple-500",
-  "pm-review": "bg-amber-500/10 text-amber-500",
+  "producer-review": "bg-amber-500/10 text-amber-500",
   approved: "bg-green-500/10 text-green-500",
   complete: "bg-green-500/10 text-green-500",
   cancelled: "bg-muted text-muted-foreground line-through",
@@ -577,8 +576,8 @@ export function TaskDrawer() {
                   const normalized = normalizeTaskStatus(task.status);
                   const isLeadsTurn = ["review", "lead-review"].includes(normalized);
                   const waitingLabel =
-                    normalized === "pm-review"
-                      ? "Already approved — now with the Production Manager."
+                    normalized === "producer-review"
+                      ? "Already approved — now with Admin."
                       : "Waiting on the artist to submit this for review.";
                   return (
                     <div className="flex w-full flex-col gap-1.5">
@@ -594,14 +593,14 @@ export function TaskDrawer() {
                           onClick={() => {
                             updateTaskMutation.mutate({
                               id: task.id,
-                              status: "pm-review",
+                              status: "producer-review",
                             });
                             addApprovalEventMutation.mutate({
                               action: "submitted-for-manager-review",
                             });
                             toast({
-                              title: "Sent to Production Manager",
-                              description: `${task.title} approved by Lead — awaiting final sign-off.`,
+                              title: "Sent for final sign-off",
+                              description: `${task.title} approved by Lead — awaiting Admin approval.`,
                             });
                           }}
                         >
@@ -633,30 +632,22 @@ export function TaskDrawer() {
                   );
                 })()}
 
-              {/* Stage 2 — Production Manager's final sign-off, the last gate
-                  before anything reaches the client. Gated to the
-                  department's own production_head, falling back to the
-                  studio's overall Production Management production_head(s),
-                  falling back to any production_head — see
-                  getProductionManagerApprovers in lib/taskShape.ts. Approving
-                  here is what actually forwards a linked shot into the
+              {/* Stage 2 — Admin's final sign-off, the last gate before
+                  anything reaches the client (migration 0023: admin is the
+                  studio's sole top role, replacing the former separate
+                  Production Manager + Producer stages). Approving here is
+                  what actually forwards a linked shot into the
                   client-facing review queue (client-review.tsx filters shots
                   on exactly that status), so it keeps the look-before-you-leap
                   confirm step the old single-gate flow used to have. Always
                   visible to anyone who holds this gate, not just while the
-                  task happens to already be at pm-review -- disabled with an
-                  explanation otherwise (same reasoning as Stage 1 above). */}
-              {(currentUser.role === "admin" ||
-                (currentUser.role === "production_head" &&
-                  canApproveAsProductionManager(
-                    currentUser.id,
-                    task.department,
-                    users,
-                    departments,
-                  ))) &&
+                  task happens to already be at producer-review -- disabled
+                  with an explanation otherwise (same reasoning as Stage 1
+                  above). */}
+              {currentUser.role === "admin" &&
                 normalizeTaskStatus(task.status) !== "approved" &&
                 (() => {
-                  const isPMsTurn = normalizeTaskStatus(task.status) === "pm-review";
+                  const isPMsTurn = normalizeTaskStatus(task.status) === "producer-review";
                   if (!isPMsTurn) {
                     return (
                       <div className="flex w-full flex-col gap-1.5">
@@ -1014,7 +1005,7 @@ export function TaskDrawer() {
                 exact task server-side, not a fixed demo route. Only shown
                 once the task has actually entered the review chain —
                 nothing to review before that. */}
-            {["review", "lead-review", "pm-review", "approved"].includes(
+            {["review", "lead-review", "producer-review", "approved"].includes(
               task.status,
             ) && (
               <div className="flex gap-2">

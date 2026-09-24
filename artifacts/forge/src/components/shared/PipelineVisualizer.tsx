@@ -30,7 +30,7 @@ export function PipelineVisualizer({
           const isInProgress =
             task.status === "in-progress" ||
             task.status === "lead-review" ||
-            task.status === "pm-review";
+            task.status === "producer-review";
           const isBottleneck = task.status === "bottleneck";
 
           return (

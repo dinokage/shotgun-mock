@@ -124,14 +124,7 @@ export const CAPABILITY_CATEGORIES = Array.from(
 
 // --- Role scheme --------------------------------------------------------------
 
-export const ROLES_ORDER: Role[] = [
-  "admin",
-  "production_head",
-  "producer",
-  "lead",
-  "artist",
-  "client",
-];
+export const ROLES_ORDER: Role[] = ["admin", "lead", "artist", "client"];
 
 // Single source of truth for "leadership" routes/UI (previously redeclared
 // independently in ~12 files, which let them drift out of sync with each
@@ -139,12 +132,7 @@ export const ROLES_ORDER: Role[] = [
 // src/hooks/use-capability.ts for gating a specific action; reach for
 // LEADERSHIP_ROLES / useIsLeadership() only for coarse "is this person
 // studio leadership" checks that aren't really about one capability.
-export const LEADERSHIP_ROLES: Role[] = [
-  "admin",
-  "production_head",
-  "producer",
-  "lead",
-];
+export const LEADERSHIP_ROLES: Role[] = ["admin", "lead"];
 
 // Finer-grained subsets of LEADERSHIP_ROLES for the handful of places that
 // need to distinguish "studio-wide" leadership (can act across every
@@ -152,15 +140,12 @@ export const LEADERSHIP_ROLES: Role[] = [
 // their own department only) — e.g. who a task can be assigned to, or which
 // dashboard variant renders.
 //
-// Must match STUDIO_WIDE_ROLES in api-server/src/lib/visibilityScope.ts. The
-// producer is the single studio-wide final reviewer: the API already sends
-// them every department's data, and review.tsx already keeps them out of the
-// department lead gate. Listing them as department leadership here narrowed
-// that studio-wide data back down to one department in the UI.
-export const STUDIO_LEADERSHIP_ROLES: Role[] = [
-  "admin",
-  "production_head",
-  "producer",
-];
+// Must match STUDIO_WIDE_ROLES in api-server/src/lib/visibilityScope.ts.
+// Admin is the single studio-wide final reviewer (migration 0023 folded the
+// former separate production_head/producer roles into it): the API already
+// sends them every department's data, and review.tsx already keeps them out
+// of the department lead gate. Listing them as department leadership here
+// narrowed that studio-wide data back down to one department in the UI.
+export const STUDIO_LEADERSHIP_ROLES: Role[] = ["admin"];
 export const DEPARTMENT_LEADERSHIP_ROLES: Role[] = ["lead"];
 

@@ -18,12 +18,7 @@ auditLogsRouter.use(denyClientAccess);
 // a direct API call. Mirror LeadershipGuard's exact rule server-side, the
 // same way routes/tasks.ts looks up a caller's real role name (never
 // trusted from the client) via req.roleId for its own server-enforced rules.
-const LEADERSHIP_ROLE_NAMES = new Set([
-  "admin",
-  "production_head",
-  "producer",
-  "lead",
-]);
+const LEADERSHIP_ROLE_NAMES = new Set(["admin", "lead"]);
 
 async function callerIsLeadership(roleId: string, tenantId: string) {
   const row = await prisma.tenantRole.findFirst({

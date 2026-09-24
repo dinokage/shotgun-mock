@@ -338,7 +338,7 @@ export default function DailyStandup() {
   const [sessionActive, setSessionActive] = useState(false);
   const viewerRole = useAuthStore((s) => s.currentUser?.role);
   const { data: timesheetApprovals } = useTimesheetApprovals(
-    viewerRole === "production_head" || viewerRole === "producer",
+    viewerRole === "admin",
   );
   const approveTimesheets = useApproveTimesheets();
   const approvedUsers = useMemo(
@@ -442,7 +442,7 @@ export default function DailyStandup() {
   const pendingReviewTasks = tasks.filter(
     (t) =>
       (isAllDepts || t.department === dept?.name) &&
-      ["review", "lead-review", "pm-review"].includes(t.status),
+      ["review", "lead-review", "producer-review"].includes(t.status),
   );
 
   // Updates come from GET /standup-updates (already RBAC-scoped server-side);
@@ -752,9 +752,7 @@ export default function DailyStandup() {
           <TabsTrigger value="broadcasts" className="flex items-center gap-2">
             <Radio className="w-4 h-4" /> Broadcasts
           </TabsTrigger>
-          {["production_head", "producer"].includes(
-            currentUser.role,
-          ) && (
+          {currentUser.role === "admin" && (
             <TabsTrigger
               value="payroll"
               className="flex items-center gap-2 text-amber-600 dark:text-amber-400"
@@ -1394,9 +1392,7 @@ export default function DailyStandup() {
         </TabsContent>
 
         {/* --- NEW TAB: PAYROLL & ATTENDANCE --- */}
-        {["production_head", "producer"].includes(
-          currentUser.role,
-        ) && (
+        {currentUser.role === "admin" && (
           <TabsContent value="payroll">
             <Card className="border-border/50 bg-card">
               <CardHeader className="flex flex-row items-center justify-between">

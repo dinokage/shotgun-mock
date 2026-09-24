@@ -10,14 +10,20 @@ export interface LdapUser {
 export function mapLdapGroupsToRole(groups: string[]): string {
   const groupsLower = groups.map(g => g.toLowerCase());
   
-  if (groupsLower.some(g => g.includes('domain admins') || g.includes('forge_admins'))) {
+  // Migration 0023 removed the separate production_head/producer roles --
+  // admin is now the studio's sole top role, so every AD group that used to
+  // map to either of those now maps straight to admin instead.
+  if (
+    groupsLower.some(
+      g =>
+        g.includes('domain admins') ||
+        g.includes('forge_admins') ||
+        g.includes('pipeline tds') ||
+        g.includes('production_head') ||
+        g.includes('producers'),
+    )
+  ) {
     return 'admin';
-  }
-  if (groupsLower.some(g => g.includes('pipeline tds') || g.includes('production_head'))) {
-    return 'production_head';
-  }
-  if (groupsLower.some(g => g.includes('producers'))) {
-    return 'producer';
   }
   if (groupsLower.some(g => g.includes('leads') || g.includes('supervisors'))) {
     return 'lead';

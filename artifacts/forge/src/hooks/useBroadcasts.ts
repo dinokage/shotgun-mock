@@ -15,14 +15,7 @@ export interface BroadcastDTO {
   createdAt: string;
 }
 
-const ROLES: Role[] = [
-  "admin",
-  "production_head",
-  "producer",
-  "lead",
-  "artist",
-  "client",
-];
+const ROLES: Role[] = ["admin", "lead", "artist", "client"];
 
 export function toBroadcast(dto: BroadcastDTO): Broadcast {
   return {

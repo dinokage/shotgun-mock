@@ -4,18 +4,12 @@ import { useUserStore } from "@/store/users";
 import { type ReviewCommentDTO } from "@/hooks/useReviewSession";
 import { cn } from "@/lib/utils";
 
-type WorkflowStatus =
-  | "wip"
-  | "lead-review"
-  | "pm-review"
-  | "producer-review"
-  | "approved";
+type WorkflowStatus = "wip" | "lead-review" | "producer-review" | "approved";
 
 const WORKFLOW_STATUS_LABEL: Record<WorkflowStatus, string> = {
   wip: "Work in progress",
   "lead-review": "Awaiting Lead review",
-  "pm-review": "Awaiting Production Manager review",
-  "producer-review": "Awaiting Main Producer review",
+  "producer-review": "Awaiting Admin review",
   approved: "Approved",
 };
 

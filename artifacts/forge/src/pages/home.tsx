@@ -284,8 +284,6 @@ function ProducerDashboard() {
     () =>
       generateInsights({
         audience:
-          currentUser?.role === "producer" ||
-          currentUser?.role === "production_head" ||
           currentUser?.role === "admin"
             ? "studio"
             : currentUser?.role === "lead"
@@ -1090,7 +1088,7 @@ function ArtistDashboard({ currentUser }: { currentUser: User }) {
       myTasks
         .filter(
           (t) =>
-            ["review", "lead-review", "pm-review", "producer-review"].includes(
+            ["review", "lead-review", "producer-review"].includes(
               normalizeTaskStatus(t.status),
             ),
         )

@@ -194,14 +194,12 @@ export function Sidebar() {
     0,
   );
   const reviewsBadge =
-    currentUser.role === "production_head"
-      ? // Production Manager's own queue: the final sign-off stage, not the
-        // Lead's — see TaskDrawer.tsx's two-stage approval gate.
-        tasks.filter((t) => t.status === "pm-review").length
-      : currentUser.role === "producer"
-        ? // The producer's own queue is the final gate after the
-          // Production Manager, not the Lead tier below.
-          tasks.filter((t) => t.status === "producer-review").length
+    currentUser.role === "admin"
+      ? // Admin's own queue: the final sign-off stage, not the Lead's --
+        // see TaskDrawer.tsx's two-stage approval gate (migration 0023
+        // merged the former separate Production Manager/Producer stages
+        // into this one).
+        tasks.filter((t) => t.status === "producer-review").length
       : isLeadership
         ? // Items awaiting a Lead sign-off across the studio (same status
           // SupervisorDashboard treats as its department review queue).

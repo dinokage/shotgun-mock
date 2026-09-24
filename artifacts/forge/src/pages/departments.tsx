@@ -195,7 +195,10 @@ export default function Departments() {
                   // Departments don't track a designated supervisor/lead as
                   // their own field (no such backend concept exists) --
                   // derive it from the department's real member list instead.
-                  const supervisor = members.find((u) => u.role === "producer");
+                  // Migration 0023 removed the separate producer role; admin
+                  // is the closest surviving equivalent when one happens to
+                  // be assigned to this department.
+                  const supervisor = members.find((u) => u.role === "admin");
                   const lead = members.find((u) => u.role === "lead");
                   const deptTasks = tasks.filter(
                     (t) => t.department === dept.name,

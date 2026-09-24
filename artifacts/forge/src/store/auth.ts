@@ -129,8 +129,10 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
         // members (this runs after USERS is hydrated above, so `.role` is
         // already populated).
         const normalizedDeps = (deps as any[]).map((d) => {
+          // Migration 0023 removed the separate producer role -- admin is
+          // the studio's sole top role now.
           const producer = USERS.find(
-            (u: any) => u.departmentId === d.id && u.role === "producer",
+            (u: any) => u.departmentId === d.id && u.role === "admin",
           );
           const lead = USERS.find(
             (u: any) => u.departmentId === d.id && u.role === "lead",

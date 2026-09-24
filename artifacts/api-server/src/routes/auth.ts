@@ -28,10 +28,13 @@ export const authRouter = Router();
 
 // Everyone who actually works a shift is clocked in by signing in -- the
 // studio treats logging into the portal as the start of the working day.
-// admin is an account-administration role that keeps no timesheet, and
+// admin is an account-administration role that keeps no timesheet (this
+// stayed true after migration 0023 folded production_head/producer into
+// it -- their timesheet-eligibility doesn't carry over, since admin's own
+// semantics here predate the merge and nothing asked to change them), and
 // `client` is an external reviewer, so neither is ever punched in.
 // Exported so the manual punch routes in users.ts apply the same rule.
-export const AUTO_CLOCK_IN_ROLES = ["artist", "lead", "production_head", "producer"];
+export const AUTO_CLOCK_IN_ROLES = ["artist", "lead"];
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -234,9 +237,9 @@ authRouter.post("/login", async (req, res) => {
     });
 
     // Fire-and-forget: never let a notification failure block login itself.
-    // Skip notifying a production_head that they logged in themselves --
-    // that's not a signal anyone (including them) needs to see.
-    if (role?.name !== "production_head") {
+    // Skip notifying admin that they logged in themselves -- that's not a
+    // signal anyone (including them) needs to see.
+    if (role?.name !== "admin") {
       (async () => {
         try {
           const dept = user.departmentId
@@ -413,8 +416,8 @@ authRouter.get("/me", async (req, res) => {
     return res.status(401).json({ error: "Session expired" });
 
   // App.tsx polls this endpoint every 10s for every logged-in session,
-  // regardless of role -- artist, lead, production_head, producer, admin
-  // all hit it identically, and the 4 DB queries below return the same
+  // regardless of role -- artist, lead, admin all hit it identically, and
+  // the 4 DB queries below return the same
   // result on almost every one of those polls. A short TTL cache turns most
   // of that polling traffic into a single Redis read; the write paths that
   // actually change this payload (profile edit, avatar upload, an admin
@@ -851,7 +854,7 @@ authRouter.post(
         maxAge: 7 * 24 * 60 * 60 * 1000,
       });
 
-      if (role?.name !== "production_head") {
+      if (role?.name !== "admin") {
         (async () => {
           try {
             const dept = user.departmentId

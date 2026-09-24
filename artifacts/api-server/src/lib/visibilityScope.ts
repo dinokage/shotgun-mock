@@ -16,10 +16,9 @@ export type VisibilityScope =
     }
   | { kind: "own"; userId: string; departmentId: string | null };
 
-// Studio-wide oversight. The producer is the single studio-wide reviewer and
-// the production head runs resourcing across departments, so both need the
-// same unrestricted read the admin has.
-const STUDIO_WIDE_ROLES = ["admin", "production_head", "producer"];
+// Studio-wide oversight. Migration 0023 folded the separate producer/
+// production_head roles into admin, which already had this unrestricted read.
+const STUDIO_WIDE_ROLES = ["admin"];
 
 export async function getVisibilityScope(req: Request): Promise<VisibilityScope> {
   const tenantId = req.tenantId!;

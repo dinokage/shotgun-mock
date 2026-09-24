@@ -85,12 +85,7 @@ import { useUserStore } from "@/store/users";
 import { useDepartmentStore } from "@/store/departments";
 import { useShotStore } from "@/store/shots";
 import { useAssetStore } from "@/store/assets";
-import {
-  getShotId,
-  getAssetId,
-  getAssigneeId,
-  canApproveAsProductionManager,
-} from "@/lib/taskShape";
+import { getShotId, getAssetId, getAssigneeId } from "@/lib/taskShape";
 import {
   useUpdateTask,
   useAddTaskApprovalEvent,
@@ -379,26 +374,27 @@ export default function Review() {
 
   const isLead =
     currentUser && DEPARTMENT_LEADERSHIP_ROLES.includes(currentUser.role);
-  const isProd =
-    currentUser &&
-    ["production_head", "producer"].includes(currentUser.role);
+  // Migration 0023 removed the separate production_head/producer roles --
+  // admin is the studio's sole top role now, so this is just isAdminUser.
+  const isAdminUser = currentUser?.role === "admin";
+  const isProd = isAdminUser;
   const canPresent = Boolean(isLead || isProd);
   // Submitting/approving a review is a specific, editable capability (Settings >
   // Roles & Permissions) rather than a hardcoded role list — isLead/isProd above
   // stay hardcoded only for the things that don't have a matching capability id
   // (presenting, sharing the client link).
-  // submit_reviews is held studio-wide, including by leadership roles that
-  // never hold work themselves (production_head and producer inherit it as
-  // part of the admin-superset capability grant). That's correct for
-  // hasSubmitCapability below -- reviewers legitimately draw notes on work
-  // that isn't theirs, and the server allows exactly that (POST .../
-  // annotations only checks the bare capability). It's wrong for the actual
-  // "Submit for Review" action: submitting is specifically "send MY work up
-  // the chain", so canSubmitReview additionally requires being the task's
-  // actual assignee -- tasks can only ever be assigned to an artist (enforced
-  // server-side), so in practice this now reads as "the artist holding this
-  // task". Mirrors the same ownership check the server now enforces on this
-  // exact transition.
+  // submit_reviews is held studio-wide, including by admin, which never
+  // holds work itself (it inherits the capability as part of its
+  // all-capabilities grant). That's correct for hasSubmitCapability below --
+  // reviewers legitimately draw notes on work that isn't theirs, and the
+  // server allows exactly that (POST .../annotations only checks the bare
+  // capability). It's wrong for the actual "Submit for Review" action:
+  // submitting is specifically "send MY work up the chain", so
+  // canSubmitReview additionally requires being the task's actual assignee
+  // -- tasks can only ever be assigned to an artist (enforced server-side),
+  // so in practice this now reads as "the artist holding this task". Mirrors
+  // the same ownership check the server now enforces on this exact
+  // transition.
   const hasSubmitCapability = useCapability("submit_reviews");
   const canSubmitReview =
     hasSubmitCapability &&
@@ -406,20 +402,14 @@ export default function Review() {
     getAssigneeId(reviewedTask) === currentUser.id;
   const canApproveReview = useCapability("approve_reviews");
   // The Lead-stage approval gate is department-scoped, mirroring
-  // TaskDrawer.tsx: approve_reviews alone would let a Lead/Producer approve
-  // another department's work. The Production Manager stage below is its
-  // own separate gate (see getProductionManagerApprovers in taskShape.ts) —
-  // production_head/admin deliberately don't get this first gate.
+  // TaskDrawer.tsx: approve_reviews alone would let a Lead approve another
+  // department's work. Admin bypasses every department scope here -- it now
+  // holds every capability (migration 0017) and is meant to be able to act
+  // as any role, studio-wide, not just hold the underlying capability while
+  // still being blocked by a role-name check.
   const reviewedDept = departments.find(
     (d) => d.name === reviewedTask?.department,
   );
-  // Only the department's own lead holds the first gate. The producer is a
-  // single studio-wide role with its own final gate below, so it no longer
-  // doubles as department leadership here. Admin bypasses every department
-  // scope here -- it now holds every capability (migration 0017) and is
-  // meant to be able to act as any role, studio-wide, not just hold the
-  // underlying capability while still being blocked by a role-name check.
-  const isAdminUser = currentUser?.role === "admin";
   const canApproveAsLead = Boolean(
     currentUser &&
       canApproveReview &&
@@ -427,24 +417,13 @@ export default function Review() {
         (currentUser.role === "lead" &&
           currentUser.departmentId === reviewedDept?.id)),
   );
-  const canApproveAsPM = Boolean(
-    currentUser &&
-      (isAdminUser ||
-        (currentUser.role === "production_head" &&
-          canApproveAsProductionManager(
-            currentUser.id,
-            reviewedTask?.department,
-            users,
-            departments,
-          ))),
-  );
-  // The main producer is studio-wide, so unlike the Lead and Production
-  // Manager gates above this one carries no department check — they are the
-  // single final sign-off before a shot reaches the client.
-  const canApproveAsProducer = Boolean(
+  // The single remaining top-tier sign-off (migration 0023 collapsed the
+  // former two-hop Production Manager -> Producer chain into one, since
+  // admin is now the only role either of those checks could ever match).
+  const canApproveAsAdmin = Boolean(
     currentUser &&
       canApproveReview &&
-      (isAdminUser || currentUser.role === "producer"),
+      isAdminUser,
   );
   // Presentation Mode: a Lead/Producer broadcasts their playhead to everyone
   // else viewing this version — the internal page and the client portal, on
@@ -791,20 +770,18 @@ export default function Review() {
   const reviewWorkflowStatus:
     | "wip"
     | "lead-review"
-    | "pm-review"
     | "producer-review"
     | "approved" =
     normalizedTaskStatus === "review" || normalizedTaskStatus === "lead-review"
       ? "lead-review"
-      : normalizedTaskStatus === "pm-review" ||
-          normalizedTaskStatus === "producer-review" ||
+      : normalizedTaskStatus === "producer-review" ||
           normalizedTaskStatus === "approved"
         ? normalizedTaskStatus
         : "wip";
-  // The Lead/PM approval controls used to disappear entirely outside their
-  // own stage, which read as "there's no way to do this" rather than "it's
-  // not your turn yet" -- someone with real approval authority had no way
-  // to tell those apart from here. Now the buttons always render (while
+  // The Lead/Admin approval controls used to disappear entirely outside
+  // their own stage, which read as "there's no way to do this" rather than
+  // "it's not your turn yet" -- someone with real approval authority had no
+  // way to tell those apart from here. Now the buttons always render (while
   // canApproveAsX is true and the task isn't fully approved yet); this
   // explains why they're disabled instead of just hiding them again.
   const stageWaitingLabel: Record<
@@ -813,22 +790,20 @@ export default function Review() {
   > = {
     wip: "Waiting on the artist to submit their work.",
     "lead-review": "Waiting on the department Lead to approve first.",
-    "pm-review": "Already sent to Production Manager for sign-off.",
-    "producer-review": "Already sent to the Producer for final sign-off.",
+    "producer-review": "Already sent to Admin for final sign-off.",
   };
   const submitApproval = (
     status:
       | "in-progress"
       | "lead-review"
-      | "pm-review"
       | "producer-review"
       | "approved",
     action: ApprovalEvent["action"],
     // Required by the server for "changes-requested"/"rejected" -- which of
     // the two distinct authorities this call is exercising (a Lead bouncing
-    // lead-review work, vs a PM sending pm-review work back to the Lead).
-    // Never inferred from current task state server-side, which can be
-    // stale by the time the request lands.
+    // lead-review work, vs Admin sending producer-review work back to the
+    // Lead). Never inferred from current task state server-side, which can
+    // be stale by the time the request lands.
     authority?: "lead" | "pm",
   ) => {
     if (!currentUser || !taskId) return;
@@ -860,19 +835,19 @@ export default function Review() {
   // delivered it and uploads it here themselves. A Lead uploading on someone
   // else's behalf has already implicitly reviewed what they chose to bring
   // in, so it skips the lead-review step entirely and goes straight to
-  // Production Manager sign-off, rather than waiting on the Lead to also
-  // "approve" the exact file they just personally selected. The artist path
-  // (assignee uploading their own work) is untouched, for whenever a real
-  // artist account does use this directly.
-  const autoSubmitOnUpload = (): "lead-review" | "pm-review" | null => {
+  // Admin sign-off, rather than waiting on the Lead to also "approve" the
+  // exact file they just personally selected. The artist path (assignee
+  // uploading their own work) is untouched, for whenever a real artist
+  // account does use this directly.
+  const autoSubmitOnUpload = (): "lead-review" | "producer-review" | null => {
     if (reviewWorkflowStatus !== "wip") return null;
     if (canSubmitReview) {
       submitApproval("lead-review", "submitted-for-lead-review");
       return "lead-review";
     }
     if (canApproveAsLead) {
-      submitApproval("pm-review", "submitted-for-manager-review");
-      return "pm-review";
+      submitApproval("producer-review", "submitted-for-manager-review");
+      return "producer-review";
     }
     return null;
   };
@@ -1857,12 +1832,12 @@ export default function Review() {
                       disabled={reviewWorkflowStatus !== "lead-review"}
                       onClick={() => {
                         submitApproval(
-                          "pm-review",
+                          "producer-review",
                           "submitted-for-manager-review",
                         );
                         toast({
-                          title: "Sent to Production Manager",
-                          description: "Awaiting final sign-off",
+                          title: "Sent for final sign-off",
+                          description: "Awaiting Admin approval",
                         });
                       }}
                     >
@@ -1881,12 +1856,12 @@ export default function Review() {
                     </Button>
                   </>
                 )}
-                {canApproveAsPM && (
+                {canApproveAsAdmin && (
                   <>
                     <Button
                       size="sm"
                       className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white disabled:opacity-40"
-                      disabled={reviewWorkflowStatus !== "pm-review"}
+                      disabled={reviewWorkflowStatus !== "producer-review"}
                       onClick={() => {
                         submitApproval("approved", "published");
                         toast({
@@ -1900,7 +1875,7 @@ export default function Review() {
                     <Button
                       size="sm"
                       className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white disabled:opacity-40"
-                      disabled={reviewWorkflowStatus !== "pm-review"}
+                      disabled={reviewWorkflowStatus !== "producer-review"}
                       onClick={() => {
                         submitApproval("lead-review", "changes-requested", "pm");
                         toast({ title: "Sent Back to Lead" });
@@ -1947,8 +1922,10 @@ export default function Review() {
                     Disabled outside lead-review, with stageWaitingLabel
                     explaining why, same pattern as the Artist's own
                     "insert footage" placeholder above. Approving hands off
-                    to the department's Production Manager for final
-                    sign-off -- see the pm-review block below. */}
+                    to Admin for final sign-off -- see the producer-review
+                    block below (migration 0023 collapsed the former
+                    Lead -> Production Manager -> Producer chain into a
+                    single Lead -> Admin handoff). */}
                 {canApproveAsLead && (
                   <>
                     {reviewWorkflowStatus !== "lead-review" && (
@@ -1962,13 +1939,13 @@ export default function Review() {
                       disabled={reviewWorkflowStatus !== "lead-review"}
                       onClick={() => {
                         submitApproval(
-                          "pm-review",
+                          "producer-review",
                           "submitted-for-manager-review",
                         );
                         toast({
-                          title: "Sent to Production Manager",
+                          title: "Sent for final sign-off",
                           description:
-                            "Approved by Lead — awaiting final sign-off",
+                            "Approved by Lead — awaiting Admin approval",
                         });
                       }}
                     >
@@ -2000,26 +1977,18 @@ export default function Review() {
                   </>
                 )}
 
-                {/* Production Manager's final sign-off — the last gate before
-                    a linked shot is forwarded into the client-facing review
-                    queue. Gated to the department's own production_head,
-                    falling back to the studio's overall Production
-                    Management production_head(s), falling back to any
-                    production_head — see canApproveAsPM above /
-                    getProductionManagerApprovers in lib/taskShape.ts.
-                    Production Head is this studio's terminal approver -- there
-                    is no separate Main Producer in practice, so approving
-                    here goes straight to "approved"/published (which forwards
-                    the shot into the client-facing review queue, same as the
-                    producer-review block below) rather than handing off to a
-                    role nobody holds. Always visible once canApproveAsPM is
-                    true (not just at pm-review) for the same reason as the
-                    Lead's controls above -- a PM with real authority should
-                    never see "no button" and have to guess whether that
-                    means "not your job" or "not ready yet". */}
-                {canApproveAsPM && (
+                {/* Admin's final sign-off — the last gate before a linked
+                    shot is forwarded into the client-facing review queue
+                    (migration 0023: admin is the studio's sole top role,
+                    replacing the former separate Production Manager +
+                    Producer stages). Always visible once canApproveAsAdmin
+                    is true (not just at producer-review), same reason as the
+                    Lead's controls above -- an approver with real authority
+                    should never see "no button" and have to guess whether
+                    that means "not your job" or "not ready yet". */}
+                {canApproveAsAdmin && (
                   <>
-                    {reviewWorkflowStatus !== "pm-review" && (
+                    {reviewWorkflowStatus !== "producer-review" && (
                       <span className="text-xs text-muted-foreground mr-1">
                         {stageWaitingLabel[reviewWorkflowStatus]}
                       </span>
@@ -2027,7 +1996,7 @@ export default function Review() {
                     <Button
                       size="sm"
                       className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white disabled:opacity-40"
-                      disabled={reviewWorkflowStatus !== "pm-review"}
+                      disabled={reviewWorkflowStatus !== "producer-review"}
                       onClick={() => {
                         submitApproval("approved", "published");
                         toast({
@@ -2042,7 +2011,7 @@ export default function Review() {
                     <Button
                       size="sm"
                       className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white disabled:opacity-40"
-                      disabled={reviewWorkflowStatus !== "pm-review"}
+                      disabled={reviewWorkflowStatus !== "producer-review"}
                       onClick={() => {
                         submitApproval("lead-review", "changes-requested", "pm");
                         toast({
@@ -2057,47 +2026,6 @@ export default function Review() {
                     </Button>
                   </>
                 )}
-
-                {/* The main producer's final gate, for tenants that actually
-                    staff one. Nothing in the current UI sends a task here
-                    any more (the wip-stage "Submit to Main Producer" skip
-                    was removed, and Leads only ever hand off to pm-review),
-                    but Production Head can still approve here too -- a
-                    tenant that stops staffing a producer shouldn't leave any
-                    already-in-flight or directly-API-created task in this
-                    status stuck with no one able to act on it. Publishing
-                    here forwards the shot into the client-facing review
-                    queue -- client-review.tsx filters shots on exactly that
-                    status. */}
-                {(canApproveAsProducer || canApproveAsPM) &&
-                  reviewWorkflowStatus === "producer-review" && (
-                    <>
-                      <Button
-                        size="sm"
-                        className="bg-[#1E7A34] hover:bg-[#1E7A34]/90 text-white"
-                        onClick={() => {
-                          submitApproval("approved", "published");
-                          toast({
-                            title: "Published",
-                            description: "Approved & sent to the client",
-                          });
-                        }}
-                      >
-                        <CheckCircle2 className="w-4 h-4 mr-2" /> Approve &
-                        Publish to Client
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="bg-[#B5651D] hover:bg-[#B5651D]/90 text-white"
-                        onClick={() => {
-                          submitApproval("pm-review", "changes-requested", "pm");
-                          toast({ title: "Sent Back to Production" });
-                        }}
-                      >
-                        <MessageSquare className="w-4 h-4 mr-2" /> Send Back
-                      </Button>
-                    </>
-                  )}
               </div>
             ))}
         </div>
@@ -2303,13 +2231,13 @@ export default function Review() {
                           // for. See autoSubmitOnUpload above: the artist's
                           // own upload still goes to lead-review as before;
                           // a Lead (or admin) uploading someone else's work
-                          // skips straight to pm-review, since bringing in
-                          // the file *is* their review of it.
+                          // skips straight to producer-review, since bringing
+                          // in the file *is* their review of it.
                           const nextStage = autoSubmitOnUpload();
                           toast({
                             title: `${nextNumber} Uploaded`,
                             description: nextStage
-                              ? `"${file.name}" is now the version under review and has been submitted for ${nextStage === "lead-review" ? "Lead" : "Production Manager"} review. ${existingVersion.versionNumber} and its notes stay available in Compare.`
+                              ? `"${file.name}" is now the version under review and has been submitted for ${nextStage === "lead-review" ? "Lead" : "Admin"} review. ${existingVersion.versionNumber} and its notes stay available in Compare.`
                               : `"${file.name}" is now the version under review. ${existingVersion.versionNumber} and its notes stay available in Compare.`,
                           });
                         } else {
@@ -2325,7 +2253,7 @@ export default function Review() {
                           toast({
                             title: "Media Inserted",
                             description: nextStage
-                              ? `Now reviewing "${file.name}" — submitted for ${nextStage === "lead-review" ? "Lead" : "Production Manager"} review.`
+                              ? `Now reviewing "${file.name}" — submitted for ${nextStage === "lead-review" ? "Lead" : "Admin"} review.`
                               : `Now reviewing "${file.name}". Visible to the whole team.`,
                           });
                         }
@@ -3317,25 +3245,6 @@ export default function Review() {
                           </span>
                         </div>
                         <div className="flex items-center gap-2 text-sm">
-                          {reviewWorkflowStatus === "pm-review" ? (
-                            <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/50 border-t-primary animate-spin" />
-                          ) : reviewWorkflowStatus === "producer-review" ||
-                            reviewWorkflowStatus === "approved" ? (
-                            <CheckCircle2 className="w-4 h-4 text-[#1E7A34]" />
-                          ) : (
-                            <Circle className="w-4 h-4 text-muted-foreground/40" />
-                          )}
-                          Production Head{" "}
-                          <span className="text-xs text-muted-foreground ml-auto">
-                            {reviewWorkflowStatus === "producer-review" ||
-                            reviewWorkflowStatus === "approved"
-                              ? "Approved"
-                              : reviewWorkflowStatus === "pm-review"
-                                ? "Pending"
-                                : "Waiting"}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm">
                           {reviewWorkflowStatus === "producer-review" ? (
                             <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/50 border-t-primary animate-spin" />
                           ) : reviewWorkflowStatus === "approved" ? (
@@ -3343,7 +3252,7 @@ export default function Review() {
                           ) : (
                             <Circle className="w-4 h-4 text-muted-foreground/40" />
                           )}
-                          Main Producer{" "}
+                          Admin{" "}
                           <span className="text-xs text-muted-foreground ml-auto">
                             {reviewWorkflowStatus === "approved"
                               ? "Approved"

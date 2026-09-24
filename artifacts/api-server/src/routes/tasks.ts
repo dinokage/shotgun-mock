@@ -17,10 +17,10 @@ async function userInTenant(id: string, tenantId: string) {
   return !!row;
 }
 
-// Leadership roles (admin/production_head/producer/lead) assign work,
-// they never hold it — enforced server-side per this phase's spec,
-// not just hidden in the UI, since a client that skips the frontend
-// could otherwise assign a task to a producer directly via the API.
+// Leadership roles (admin/lead) assign work, they never hold it — enforced
+// server-side per this phase's spec, not just hidden in the UI, since a
+// client that skips the frontend could otherwise assign a task to one of
+// them directly via the API.
 async function assignedToIsArtist(id: string, tenantId: string) {
   const row = await prisma.user.findFirst({
     where: { id, tenantId },
@@ -57,18 +57,19 @@ async function callerCanSeeTask(req: import("express").Request, taskId: string) 
   return canSeeTask(req.tenantId!, await getVisibilityScope(req), taskId);
 }
 
-// The review workflow's stage gates (submit -> lead-review -> pm-review ->
-// approved) were, until now, enforced only in review.tsx's UI (canApproveAsLead
-// /canApproveAsPM booleans that hide/show the action buttons) -- nothing
-// stopped a client that skipped the frontend from PUTting status directly to
-// "approved" via the API. These two helpers port review.tsx's/taskShape.ts's
-// exact same checks server-side so the two gated transitions (advancing to
-// "pm-review" and to "approved") can't be reached without holding the real
-// authority the UI implies. Ordinary status values (in-progress, done, the
-// free-text tracksheet-imported statuses, etc.) are untouched -- only these
-// two specific target statuses represent a genuine trust escalation.
-// Lead only. The producer holds the final, studio-wide gate ("approved" below)
-// and review.tsx already keeps them out of this department-level one; leaving
+// The review workflow's stage gates (submit -> lead-review -> producer-review
+// -> approved) were, until now, enforced only in review.tsx's UI
+// (canApproveAsLead/canApproveAsPM booleans that hide/show the action
+// buttons) -- nothing stopped a client that skipped the frontend from
+// PUTting status directly to "approved" via the API. These two helpers port
+// review.tsx's/taskShape.ts's exact same checks server-side so the two gated
+// transitions (advancing to "producer-review" and to "approved") can't be
+// reached without holding the real authority the UI implies. Ordinary status
+// values (in-progress, done, the free-text tracksheet-imported statuses,
+// etc.) are untouched -- only these two specific target statuses represent a
+// genuine trust escalation.
+// Lead only. Admin holds the final, studio-wide gate ("approved" below) and
+// review.tsx already keeps them out of this department-level one; leaving
 // them here let a direct API call skip the lead stage the UI enforces.
 const DEPARTMENT_LEADERSHIP_ROLE_NAMES = ["lead"];
 
@@ -102,34 +103,20 @@ async function canApproveAsDeptLead(
   return !!actor?.departmentId && !!dept?.id && actor.departmentId === dept.id;
 }
 
+// Migration 0023 removed the separate production_head/producer roles --
+// admin is now the studio's sole top-tier reviewer, and already held every
+// capability and bypass either of them did (see the seed.ts comment for the
+// full reasoning). taskDepartmentName is unused now but kept in the
+// signature since every call site already threads it through the same way
+// canApproveAsDeptLead does.
 async function canApproveAsProdManager(
   tenantId: string,
-  actorUserId: string,
+  _actorUserId: string,
   actorRoleId: string,
-  taskDepartmentName: string | null,
+  _taskDepartmentName: string | null,
 ): Promise<boolean> {
   const actorRole = await prisma.tenantRole.findFirst({ where: { id: actorRoleId, tenantId }, select: { name: true } });
-  if (actorRole?.name === "admin") return true;
-  if (!actorRole || actorRole.name !== "production_head") return false;
-
-  const productionHeads = await prisma.user.findMany({
-    where: { tenantId, role: { name: "production_head" } },
-    select: { id: true, departmentId: true },
-  });
-  if (productionHeads.length === 0) return false;
-
-  let dept: { id: string } | null = null;
-  if (taskDepartmentName) {
-    dept = await prisma.department.findFirst({ where: { tenantId, name: taskDepartmentName }, select: { id: true } });
-  }
-  const ownDeptPMs = dept ? productionHeads.filter((u) => u.departmentId === dept!.id) : [];
-  if (ownDeptPMs.length > 0) return ownDeptPMs.some((u) => u.id === actorUserId);
-
-  const mainDept = await prisma.department.findFirst({ where: { tenantId, name: "Production Management" }, select: { id: true } });
-  const mainPMs = mainDept ? productionHeads.filter((u) => u.departmentId === mainDept.id) : [];
-  if (mainPMs.length > 0) return mainPMs.some((u) => u.id === actorUserId);
-
-  return productionHeads.some((u) => u.id === actorUserId);
+  return actorRole?.name === "admin";
 }
 
 // The approval-events table is an append-only audit trail (see the schema
@@ -344,7 +331,7 @@ tasksRouter.put("/:id", async (req, res) => {
       // Admin is exempt from both branches, same as every other gate in
       // this chain -- admin acts as any role in the approval chain by
       // design.
-      const isSendBackFromLaterStage = ["pm-review", "producer-review", "approved"].includes(
+      const isSendBackFromLaterStage = ["producer-review", "approved"].includes(
         existing.status,
       );
       const actorRoleName = await roleNameForCaller(req.roleId!, tenantId);
@@ -354,7 +341,7 @@ tasksRouter.put("/:id", async (req, res) => {
           !(await canApproveAsProdManager(tenantId, req.userId!, req.roleId!, existing.department))
         ) {
           return res.status(403).json({
-            error: "Forbidden: only the Production Manager can send this back to the Lead",
+            error: "Forbidden: only Admin can send this back to the Lead",
           });
         }
       } else if (existing.assignedTo !== req.userId && actorRoleName !== "admin") {
@@ -362,44 +349,37 @@ tasksRouter.put("/:id", async (req, res) => {
           error: "Forbidden: only the artist this task is assigned to can submit it for review",
         });
       }
-    } else if (updates.status === "pm-review") {
-      if (!(await canApproveAsDeptLead(tenantId, req.userId!, req.roleId!, existing.department)))
-        return res.status(403).json({
-          error:
-            "Forbidden: only the assigned department's Lead can advance this task to Production Manager review",
-        });
     } else if (updates.status === "producer-review") {
-      // Reachable two ways: the Production Manager passing the task up the
-      // chain, or the artist sending it straight to the producer when the
-      // department has no lead available. Both are legitimate; anyone else
-      // moving a task into the final queue is not.
-      const isProdManager = await canApproveAsProdManager(
+      // The single remaining pre-approval stage (migration 0023 collapsed the
+      // former two-hop Lead -> Production Manager -> Producer chain into one,
+      // since Admin is now the sole top role and already covered both of the
+      // old middle stages). Reachable three ways: the department's Lead
+      // advancing it after their own review, Admin directly, or the artist
+      // sending it straight up when the department has no lead available.
+      const isDeptLead = await canApproveAsDeptLead(
+        tenantId,
+        req.userId!,
+        req.roleId!,
+        existing.department,
+      );
+      const isAdmin = await canApproveAsProdManager(
         tenantId,
         req.userId!,
         req.roleId!,
         existing.department,
       );
       const isOwnArtist = existing.assignedTo === req.userId;
-      if (!isProdManager && !isOwnArtist)
+      if (!isDeptLead && !isAdmin && !isOwnArtist)
         return res.status(403).json({
           error:
-            "Forbidden: only the Production Manager, or the artist who holds this task, can send it to the Main Producer",
+            "Forbidden: only the assigned department's Lead, Admin, or the artist who holds this task can send it for final review",
         });
     } else if (updates.status === "approved") {
-      // The main producer is the final gate. The production head keeps the
-      // ability to approve as cover, since a single studio-wide producer
-      // would otherwise block the whole studio whenever they're away.
-      const actorRole = await prisma.tenantRole.findFirst({
-        where: { id: req.roleId!, tenantId },
-        select: { name: true },
-      });
-      const isProducer = actorRole?.name === "producer";
-      if (
-        !isProducer &&
-        !(await canApproveAsProdManager(tenantId, req.userId!, req.roleId!, existing.department))
-      )
+      // Admin is the sole final gate now (migration 0023 removed the
+      // separate Producer role).
+      if (!(await canApproveAsProdManager(tenantId, req.userId!, req.roleId!, existing.department)))
         return res.status(403).json({
-          error: "Forbidden: only the Main Producer can give final approval",
+          error: "Forbidden: only Admin can give final approval",
         });
     }
 
@@ -765,11 +745,7 @@ tasksRouter.post("/:id/approval-events", async (req, res) => {
           error: "Forbidden: missing authority to send this to the Main Producer",
         });
     } else if (action === "approved" || action === "published") {
-      const actorRole = await roleNameForCaller(roleId, tenantId);
-      if (
-        actorRole !== "producer" &&
-        !(await canApproveAsProdManager(tenantId, userId, roleId, approvalTask.department))
-      )
+      if (!(await canApproveAsProdManager(tenantId, userId, roleId, approvalTask.department)))
         return res.status(403).json({ error: "Forbidden: missing final approval authority" });
     } else if (action === "changes-requested" || action === "rejected") {
       // Previously ungated entirely -- any authenticated tenant member could
@@ -797,14 +773,10 @@ tasksRouter.post("/:id/approval-events", async (req, res) => {
         actorRoleName === "admin" ||
         (authority === "lead"
           ? await canApproveAsDeptLead(tenantId, userId, roleId, approvalTask.department)
-          : // "pm" covers both the department's Production Manager and a
-            // real studio-wide producer -- the same pairing the
-            // approved/published gate above already uses, since the
-            // producer-review "Send Back to Production" button (the one
-            // caller that can assert "pm" from that stage) is meant for a
-            // producer account, not only a production_head.
-            actorRoleName === "producer" ||
-            (await canApproveAsProdManager(tenantId, userId, roleId, approvalTask.department)));
+          : // "pm" authority is Admin's now -- canApproveAsProdManager already
+            // covers it (migration 0023 removed the separate producer/
+            // production_head roles this used to also check by name).
+            await canApproveAsProdManager(tenantId, userId, roleId, approvalTask.department));
       if (!authorized) {
         return res.status(403).json({
           error: `Forbidden: missing ${authority === "lead" ? "Lead" : "Production Manager"} authority to send this back`,
@@ -879,7 +851,7 @@ tasksRouter.post("/:id/approval-events", async (req, res) => {
           }
         } else if (action === "submitted-for-producer-review") {
           const producers = await prisma.user.findMany({
-            where: { tenantId, role: { name: "producer" }, deletedAt: null },
+            where: { tenantId, role: { name: "admin" }, deletedAt: null },
             select: { id: true },
           });
           for (const p of producers) {

@@ -181,9 +181,9 @@ publishingRouter.get("/", async (req, res) => {
   }
 });
 
-// Artists, leads and producers all publish their own work, so this is gated on
-// edit_tasks (artist/lead/producer/production_head) rather than a leadership-only
-// capability like manage_pipeline.
+// Artists, leads and admin all publish their own work, so this is gated on
+// edit_tasks (artist/lead/admin) rather than a leadership-only capability
+// like manage_pipeline.
 publishingRouter.post("/", requireCapability("edit_tasks"), async (req, res) => {
   try {
     const tenantId = req.tenantId!;

@@ -42,41 +42,18 @@ const ALL_CAPABILITIES = [
 
 // Mirrors what this tenant's roles have actually held and been tested
 // against all session -- not a guess. admin is deliberately ALL of them
-// (migration 0017: this studio's admin absorbs production management, there
-// is no separate Main Producer). production_head/producer are the
-// "admin-superset" studio leadership pair everything else in this codebase
-// assumes. lead/artist include the migration-0018 grants (manage_pipeline,
-// create_tasks respectively) alongside their base set. client holds only
+// (migration 0017: this studio's admin absorbs production management --
+// migration 0023 went further and removed the separate production_head/
+// producer roles entirely, since admin already bypassed every
+// leadership-authority check in the approval chain (canApproveAsDeptLead,
+// canApproveAsProdManager) and already held every capability either of them
+// did -- there was nothing left for a separate top role to do). lead/artist
+// include the migration-0018 grants (manage_pipeline, create_tasks
+// respectively) alongside their base set. client holds only
 // approve_reviews, which a client session uses for annotation creation in
 // the review portal, not for anything else.
 const ROLE_CAPABILITIES: Record<string, readonly string[]> = {
   admin: ALL_CAPABILITIES,
-  production_head: [
-    "create_tasks",
-    "edit_tasks",
-    "assign_tasks",
-    "submit_reviews",
-    "approve_reviews",
-    "manage_members",
-    "view_financials",
-    "manage_pipeline",
-    "manage_licenses",
-    "manage_integrations",
-    "broadcast_updates",
-  ],
-  producer: [
-    "create_tasks",
-    "edit_tasks",
-    "assign_tasks",
-    "submit_reviews",
-    "approve_reviews",
-    "manage_members",
-    "view_financials",
-    "manage_pipeline",
-    "manage_licenses",
-    "manage_integrations",
-    "broadcast_updates",
-  ],
   lead: ["assign_tasks", "submit_reviews", "approve_reviews", "manage_pipeline"],
   artist: ["submit_reviews", "create_tasks"],
   client: ["approve_reviews"],

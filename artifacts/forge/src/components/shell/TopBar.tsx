@@ -72,9 +72,9 @@ export function TopBar() {
 
   if (!currentUser) return null;
 
-  // Global roles (admin/production_head/producer) see every department, so there is
-  // no per-role department to look up for them; everyone else always sees
-  // their own department's badge.
+  // Global roles (admin) see every department, so there is no per-role
+  // department to look up for them; everyone else always sees their own
+  // department's badge.
   const isGlobalRole = isUnscoped;
   const dept = departments.find((d) => d.id === currentUser.departmentId);
 
@@ -108,9 +108,9 @@ export function TopBar() {
 
         <div className="h-5 w-px bg-border hidden md:block" />
 
-        {/* Current User Role/Dept indicator. Global roles (admin/
-            production_head) see every department already, so there is
-            nothing to switch between here -- this used to be an
+        {/* Current User Role/Dept indicator. Global roles (admin) see
+            every department already, so there is nothing to switch
+            between here -- this used to be an
             interactive dropdown, but the department it "switched" to
             (activeDepartmentId in store/workspace.ts) was never actually
             read by any page's filtering logic, so it was decorative, not

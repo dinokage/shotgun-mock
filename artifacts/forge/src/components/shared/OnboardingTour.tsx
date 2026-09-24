@@ -190,9 +190,7 @@ const STEPS: Record<string, Step> = {
 const BY_ROLE: Record<string, string[]> = {
   artist: ["tasks", "reviews", "shots", "assets", "timesheets", "standup", "chat"],
   lead: ["production", "tasks", "reviews", "tracking", "scheduling", "timesheets", "standup", "chat"],
-  production_head: ["tracking", "reviews", "projects", "scheduling", "people", "analytics", "deliveries", "publishing"],
-  producer: ["tracking", "reviews", "projects", "scheduling", "people", "analytics", "deliveries", "publishing"],
-  admin: ["people", "roles", "departments", "audit", "settings", "analytics"],
+  admin: ["tracking", "reviews", "projects", "scheduling", "people", "roles", "departments", "audit", "settings", "analytics", "deliveries", "publishing"],
 };
 
 const ROLE_INTRO: Record<string, { hello: string; role: string; note: string }> = {
@@ -206,20 +204,13 @@ const ROLE_INTRO: Record<string, { hello: string; role: string; note: string }> 
     role: "Lead",
     note: "You run one department: you assign its work, review what your artists submit, and approve it up to production. You act within your own department only.",
   },
-  production_head: {
-    hello: "You are set up as production head.",
-    role: "Production Head",
-    note: "You see the whole studio, give final approval after lead review, and are the last check before anything reaches a client.",
-  },
-  producer: {
-    hello: "You are set up as producer.",
-    role: "Producer",
-    note: "You see the whole studio and hold the final gate before work goes to a client.",
-  },
+  // Migration 0023: admin is now the studio's sole top role, absorbing the
+  // former separate production_head/producer roles' capabilities (final
+  // review/approval) alongside account/role/configuration management.
   admin: {
     hello: "You are set up as an administrator.",
     role: "Administrator",
-    note: "You manage accounts, roles and configuration, and you can see everything. You deliberately hold no production capability — you cannot be assigned work, and you cannot approve reviews. That separation is intentional, so oversight stays independent of the work being overseen.",
+    note: "You manage accounts, roles and configuration, see the whole studio, and give final approval after lead review — the last check before anything reaches a client.",
   },
 };
 
