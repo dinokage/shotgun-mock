@@ -487,7 +487,11 @@ chatRouter.post("/channels/:id/join", denyClientAccess, async (req, res) => {
     const userId = req.userId;
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-    const channelId = req.params.id;
+    // Cast needed: denyClientAccess as a second route middleware widens
+    // req.params.id to `string | string[]` for overload resolution purposes,
+    // even though a plain ":id" segment is always a single string at
+    // runtime (same issue documented in routes/shots.ts / versions.ts).
+    const channelId = req.params.id as string;
     const channel = await prisma.chatChannel.findFirst({
       where: { id: channelId, tenantId, archivedAt: null },
       select: { id: true, kind: true, departmentId: true },
@@ -515,8 +519,9 @@ chatRouter.post("/channels/:id/leave", denyClientAccess, async (req, res) => {
     const userId = req.userId;
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
+    // Same req.params.id widening as /join above.
     await prisma.chatChannelMember.deleteMany({
-      where: { tenantId, channelId: req.params.id, userId },
+      where: { tenantId, channelId: req.params.id as string, userId },
     });
     return res.status(204).send();
   } catch (err) {
