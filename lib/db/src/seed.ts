@@ -49,13 +49,24 @@ const ALL_CAPABILITIES = [
 // canApproveAsProdManager) and already held every capability either of them
 // did -- there was nothing left for a separate top role to do). lead/artist
 // include the migration-0018 grants (manage_pipeline, create_tasks
-// respectively) alongside their base set. client holds only
+// respectively) alongside their base set. artist also holds edit_tasks
+// (migration 0024) -- PUT /shots/:id and POST /publish-logs both already
+// gated on it under the assumption artists could update their own shot's
+// status/notes and publish their own work (shots.ts's PUT gate comment says
+// so explicitly), but the capability was never actually granted, so every
+// DCC-plugin publish attempt (and the tracking grid's inline shot-status
+// edit) 403'd for every real artist account. client holds only
 // approve_reviews, which a client session uses for annotation creation in
 // the review portal, not for anything else.
 const ROLE_CAPABILITIES: Record<string, readonly string[]> = {
   admin: ALL_CAPABILITIES,
-  lead: ["assign_tasks", "submit_reviews", "approve_reviews", "manage_pipeline"],
-  artist: ["submit_reviews", "create_tasks"],
+  lead: [
+    "assign_tasks",
+    "submit_reviews",
+    "approve_reviews",
+    "manage_pipeline",
+  ],
+  artist: ["submit_reviews", "create_tasks", "edit_tasks"],
   client: ["approve_reviews"],
 };
 
@@ -67,7 +78,9 @@ function randomPassword(): string {
 }
 
 async function main() {
-  const existing = await prisma.tenant.findFirst({ where: { slug: TENANT_SLUG } });
+  const existing = await prisma.tenant.findFirst({
+    where: { slug: TENANT_SLUG },
+  });
   if (existing) {
     console.error(
       `A tenant with slug "${TENANT_SLUG}" already exists (id ${existing.id}). ` +
@@ -121,8 +134,12 @@ async function main() {
   console.log(`Tenant: ${TENANT_NAME} (${tenant.id})`);
   console.log(`Admin login: ${ADMIN_EMAIL}`);
   console.log(`Temporary password: ${tempPassword}`);
-  console.log("Change this immediately after first login (Settings > your profile).");
-  console.log("This password is shown exactly once and is not stored anywhere else.");
+  console.log(
+    "Change this immediately after first login (Settings > your profile).",
+  );
+  console.log(
+    "This password is shown exactly once and is not stored anywhere else.",
+  );
   console.log("");
 }
 
