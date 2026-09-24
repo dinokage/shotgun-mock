@@ -3,7 +3,6 @@ import { useLocation } from "wouter";
 import { format } from "date-fns";
 import {
   useUsers,
-  useSendInvite,
   useInvites,
   useRevokeInvite,
   type UserDTO,
@@ -76,21 +75,13 @@ export default function AdminPanel() {
   const { data: projects = [] } = useProjects();
   const { toast } = useToast();
   const [createOpen, setCreateOpen] = useState(false);
-  // Same reasoning as inviteRoleId/isClientInvite below: a client has no use
-  // for a department, and creating one without linking a project put them
-  // right back in the two-step "create, then separately remember to grant
-  // access" flow -- the client had no way to see anything until an admin
-  // did a second, easy-to-forget step in a totally different part of the UI.
+  // A client has no use for a department, and creating one without linking a
+  // project put them right back in the two-step "create, then separately
+  // remember to grant access" flow -- the client had no way to see anything
+  // until an admin did a second, easy-to-forget step in a totally different
+  // part of the UI.
   const [createRoleId, setCreateRoleId] = useState("");
   const [createProjectIds, setCreateProjectIds] = useState<string[]>([]);
-  const [inviteOpen, setInviteOpen] = useState(false);
-  // Controlled so the invite dialog can swap Department for Project the
-  // moment "client" is picked -- a client has neither a department nor any
-  // use for one, and inviting a client without a project puts them right
-  // back in the two-step flow this whole addition exists to avoid.
-  const [inviteRoleId, setInviteRoleId] = useState("");
-  const isClientInvite =
-    roles.find((r) => r.id === inviteRoleId)?.name === "client";
   const createRoleName = roles.find((r) => r.id === createRoleId)?.name;
   const isCreateClient = createRoleName === "client";
   // A "lead" or "artist" account with no department isn't tied to any real
@@ -104,7 +95,6 @@ export default function AdminPanel() {
     createRoleName === "lead" || createRoleName === "artist";
   const [deptOpen, setDeptOpen] = useState(false);
   const [employeeImportOpen, setEmployeeImportOpen] = useState(false);
-  const sendInvite = useSendInvite();
   const createDepartment = useCreateDepartment();
   const { data: invites = [], refetch: refetchInvites } = useInvites(canManageUsers);
   const revokeInvite = useRevokeInvite();
@@ -202,48 +192,6 @@ export default function AdminPanel() {
     } catch (err: any) {
       toast({
         title: "Failed to create user",
-        description: err.message,
-        variant: "destructive",
-      });
-    }
-  }
-
-  async function handleInvite(formData: FormData) {
-    const email = String(formData.get("email") ?? "");
-    const roleId = String(formData.get("roleId") ?? "");
-    let departmentId = String(formData.get("departmentId") ?? "") || undefined;
-    if (departmentId === "none") departmentId = undefined;
-    let projectId = String(formData.get("projectId") ?? "") || undefined;
-    if (projectId === "none") projectId = undefined;
-
-    try {
-      const result = await sendInvite.mutateAsync(
-        isClientInvite ? { email, roleId, projectId } : { email, roleId, departmentId },
-      );
-      if (result.emailSent) {
-        toast({ title: "Invite sent", description: `Sent to ${email}` });
-      } else {
-        // The invite itself is real and accept-able -- only the email
-        // failed (most often bad SMTP credentials). Copying the link
-        // straight to the clipboard means the admin still has it even
-        // after this toast disappears.
-        try {
-          await navigator.clipboard.writeText(result.inviteUrl ?? "");
-        } catch {
-          // Clipboard access can be denied by the browser -- the toast
-          // below still names the invite as created either way.
-        }
-        toast({
-          title: "Invite created, but the email failed to send",
-          description: `The invite for ${email} exists and works -- its link was copied to your clipboard so you can share it directly. Check the studio's SMTP settings to fix email delivery.`,
-        });
-      }
-      setInviteOpen(false);
-      setInviteRoleId("");
-      refetchInvites();
-    } catch (err: any) {
-      toast({
-        title: "Failed to send invite",
         description: err.message,
         variant: "destructive",
       });
@@ -484,90 +432,6 @@ export default function AdminPanel() {
                 disabled={createDepartment.isPending}
               >
                 {createDepartment.isPending ? "Creating..." : "Create"}
-              </Button>
-            </form>
-          </DialogContent>
-        </Dialog>
-        <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
-          <DialogTrigger asChild>
-            <Button variant="outline">Invite Member</Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Invite Member</DialogTitle>
-            </DialogHeader>
-            <form
-              className="space-y-3"
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleInvite(new FormData(e.currentTarget));
-              }}
-            >
-              <div>
-                <Label htmlFor="invite-email">Email</Label>
-                <Input id="invite-email" name="email" type="email" required />
-              </div>
-              <div>
-                <Label htmlFor="invite-roleId">Role</Label>
-                <Select
-                  name="roleId"
-                  required
-                  value={inviteRoleId}
-                  onValueChange={setInviteRoleId}
-                >
-                  <SelectTrigger id="invite-roleId">
-                    <SelectValue placeholder="Select a role" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {roles.map((r) => (
-                      <SelectItem key={r.id} value={r.id}>
-                        {roleLabel(r.name)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {isClientInvite ? (
-                <div>
-                  <Label htmlFor="invite-projectId">Project</Label>
-                  <Select name="projectId">
-                    <SelectTrigger id="invite-projectId">
-                      <SelectValue placeholder="None — grant access later" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None — grant access later</SelectItem>
-                      {projects.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              ) : (
-                <div>
-                  <Label htmlFor="invite-departmentId">Department</Label>
-                  <Select name="departmentId">
-                    <SelectTrigger id="invite-departmentId">
-                      <SelectValue placeholder="None — assign later" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None — assign later</SelectItem>
-                      {departments.map((d) => (
-                        <SelectItem key={d.id} value={d.id}>
-                          {d.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={sendInvite.isPending}
-              >
-                {sendInvite.isPending ? "Sending..." : "Send Invite"}
               </Button>
             </form>
           </DialogContent>

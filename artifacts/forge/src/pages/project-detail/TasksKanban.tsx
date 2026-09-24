@@ -313,6 +313,7 @@ export default function KanbanView({
   const storeTasks = useTasksStore((state) => state.tasks);
   const storeUpdateTaskStatus = useTasksStore((state) => state.updateTaskStatus);
   const storeUpdateTask = useTasksStore((state) => state.updateTask);
+  const storeClaimTask = useTasksStore((state) => state.claimTask);
   const updateTaskMutation = useUpdateTask();
   const { currentUser } = useAuthStore();
   const { toast } = useToast();
@@ -415,12 +416,18 @@ export default function KanbanView({
                   entityProjectMap={resolvedEntityProjectMap}
                   onClaim={() => {
                     if (!currentUser) return;
-                    updateTask(
-                      task.id,
-                      isRealData
-                        ? { assignedTo: currentUser.id }
-                        : { assigneeId: currentUser.id },
-                    );
+                    // The backend only ever recognizes `assignedTo` (see
+                    // routes/tasks.ts's TASK_PATCHABLE_FIELDS and its
+                    // self-claim carve-out, keyed on that exact field name) --
+                    // a body of `{ assigneeId }` is silently dropped, so the
+                    // claim looked like it succeeded but never persisted.
+                    // The store's own claimTask already sends the right
+                    // field (see its comment in store/tasks.ts).
+                    if (isRealData) {
+                      updateTask(task.id, { assignedTo: currentUser.id });
+                    } else {
+                      storeClaimTask(task.id, currentUser.id);
+                    }
                     toast({
                       title: "Task Claimed",
                       description: `"${task.title}" is now assigned to you.`,
