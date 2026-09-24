@@ -22,6 +22,7 @@ interface AuthState {
   isInitializing: boolean;
   fetchMe: () => Promise<void>;
   login: (email: string, password: string) => Promise<boolean>;
+  loginLdap: (username: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
   clearError: () => void;
   updateCurrentUser: (updates: Partial<UserDTO>) => void;
@@ -224,9 +225,10 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       // Drop the previous session's rows before the new one hydrates. The
       // digest is deliberately tenant-wide, so it reads the same for everyone
       // in the studio -- without this, signing in as an artist on a browser
-      // that had a producer signed in would match the cached token and render
-      // the producer's 1,066 tasks to someone entitled to see two. The rows
-      // are scoped per person even though the change signal is not.
+      // that had an admin signed in would match the cached token and render
+      // the admin's full tenant-wide task list to someone entitled to see
+      // two. The rows are scoped per person even though the change signal is
+      // not.
       resetSyncCache();
       await apiFetch("/auth/login", {
         method: "POST",
@@ -243,6 +245,31 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       return true;
     } catch (error: any) {
       set({ loginError: error.message || "Invalid email or password." });
+      return false;
+    }
+  },
+
+  // Same shape as login() above, just against the LDAP/AD route instead of
+  // the local email+password one -- POST /auth/login/ldap auto-provisions or
+  // syncs the Forge account from the directory (role from AD group
+  // membership) and issues the exact same session cookie, so everything
+  // downstream (fetchMe, store hydration) is identical.
+  loginLdap: async (username, password) => {
+    try {
+      set({ loginError: null });
+      resetSyncCache();
+      await apiFetch("/auth/login/ldap", {
+        method: "POST",
+        body: JSON.stringify({ username, password }),
+      });
+      await get().fetchMe();
+      if (!get().isAuthenticated) {
+        set({ loginError: "Invalid username or password." });
+        return false;
+      }
+      return true;
+    } catch (error: any) {
+      set({ loginError: error.message || "Invalid username or password." });
       return false;
     }
   },
