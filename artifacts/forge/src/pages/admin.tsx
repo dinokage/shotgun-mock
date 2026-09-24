@@ -91,8 +91,17 @@ export default function AdminPanel() {
   const [inviteRoleId, setInviteRoleId] = useState("");
   const isClientInvite =
     roles.find((r) => r.id === inviteRoleId)?.name === "client";
-  const isCreateClient =
-    roles.find((r) => r.id === createRoleId)?.name === "client";
+  const createRoleName = roles.find((r) => r.id === createRoleId)?.name;
+  const isCreateClient = createRoleName === "client";
+  // A "lead" or "artist" account with no department isn't tied to any real
+  // pipeline stage -- a Lead specifically has no send-back/review authority
+  // over anything without one (that authority is checked as role=="lead" AND
+  // departmentId match, see tasks.ts), so leaving it optional for these two
+  // roles silently creates an account that can't do its job. Producer/
+  // Production Head/Admin have studio-wide authority that isn't
+  // department-scoped, so a department stays optional for them.
+  const createDeptRequired =
+    createRoleName === "lead" || createRoleName === "artist";
   const [deptOpen, setDeptOpen] = useState(false);
   const [employeeImportOpen, setEmployeeImportOpen] = useState(false);
   const sendInvite = useSendInvite();
@@ -126,7 +135,20 @@ export default function AdminPanel() {
     const roleId = String(formData.get("roleId") ?? "");
     let departmentId = formData.get("departmentId") || null;
     if (departmentId === "none") departmentId = null;
-    const isClient = roles.find((r) => r.id === roleId)?.name === "client";
+    const roleName = roles.find((r) => r.id === roleId)?.name;
+    const isClient = roleName === "client";
+
+    // Backstop for the Select's own `required` -- a Lead with no department
+    // has no send-back/review authority anywhere (canApproveAsDeptLead
+    // requires a departmentId match), so let one through silently.
+    if ((roleName === "lead" || roleName === "artist") && !departmentId) {
+      toast({
+        title: "Department required",
+        description: `Pick which department this ${roleLabel(roleName)} belongs to.`,
+        variant: "destructive",
+      });
+      return;
+    }
 
     try {
       const created = await apiFetch<{ id: string }>("/users", {
@@ -499,7 +521,7 @@ export default function AdminPanel() {
                   <SelectContent>
                     {roles.map((r) => (
                       <SelectItem key={r.id} value={r.id}>
-                        {r.name}
+                        {roleLabel(r.name)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -603,7 +625,7 @@ export default function AdminPanel() {
                   <SelectContent>
                     {roles.map((r) => (
                       <SelectItem key={r.id} value={r.id}>
-                        {r.name}
+                        {roleLabel(r.name)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -646,13 +668,29 @@ export default function AdminPanel() {
                 </div>
               ) : (
                 <div>
-                  <Label htmlFor="departmentId">Department</Label>
-                  <Select name="departmentId">
+                  <Label htmlFor="departmentId">
+                    {createRoleName === "lead"
+                      ? "Department they'll lead"
+                      : "Department"}
+                  </Label>
+                  {createRoleName === "lead" && (
+                    <p className="text-xs text-muted-foreground mb-2">
+                      A Lead's review/send-back authority is scoped to this
+                      department -- pick which one they're leading.
+                    </p>
+                  )}
+                  <Select name="departmentId" required={createDeptRequired}>
                     <SelectTrigger id="departmentId">
-                      <SelectValue placeholder="None" />
+                      <SelectValue
+                        placeholder={
+                          createDeptRequired ? "Select a department" : "None"
+                        }
+                      />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
+                      {!createDeptRequired && (
+                        <SelectItem value="none">None</SelectItem>
+                      )}
                       {departments.map((d) => (
                         <SelectItem key={d.id} value={d.id}>
                           {d.name}
