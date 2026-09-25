@@ -38,7 +38,7 @@ pipeline {
 
         stage('Install Dependencies') {
             steps {
-                sh 'docker run --rm -v "$WORKSPACE:/work" -w /work "$NODE_IMAGE" sh -c "corepack enable && pnpm install --frozen-lockfile"'
+                sh 'docker run --rm -v "$WORKSPACE:/work" -w /work "$NODE_IMAGE" sh -c "corepack enable && corepack install && pnpm install --frozen-lockfile"'
             }
         }
 
@@ -48,25 +48,25 @@ pipeline {
                 // typecheck internally) import lib/db's generated client --
                 // without this they fail on every run with
                 // "Cannot find module '../generated/prisma-client'".
-                sh 'docker run --rm -v "$WORKSPACE:/work" -w /work "$NODE_IMAGE" sh -c "corepack enable && pnpm --filter \'@workspace/db\' run prisma:generate"'
+                sh 'docker run --rm -v "$WORKSPACE:/work" -w /work "$NODE_IMAGE" sh -c "corepack enable && corepack install && pnpm --filter \'@workspace/db\' run prisma:generate"'
             }
         }
 
         stage('Global Checks (Lint & Typecheck)') {
             steps {
-                sh 'docker run --rm -v "$WORKSPACE:/work" -w /work "$NODE_IMAGE" sh -c "corepack enable && pnpm run lint && pnpm run typecheck"'
+                sh 'docker run --rm -v "$WORKSPACE:/work" -w /work "$NODE_IMAGE" sh -c "corepack enable && corepack install && pnpm run lint && pnpm run typecheck"'
             }
         }
 
         stage('Global Checks (Build)') {
             steps {
-                sh 'docker run --rm -v "$WORKSPACE:/work" -w /work "$NODE_IMAGE" sh -c "corepack enable && pnpm run build"'
+                sh 'docker run --rm -v "$WORKSPACE:/work" -w /work "$NODE_IMAGE" sh -c "corepack enable && corepack install && pnpm run build"'
             }
         }
 
         stage('Test') {
             steps {
-                sh 'docker run --rm -v "$WORKSPACE:/work" -w /work "$NODE_IMAGE" sh -c "corepack enable && pnpm exec turbo run test"'
+                sh 'docker run --rm -v "$WORKSPACE:/work" -w /work "$NODE_IMAGE" sh -c "corepack enable && corepack install && pnpm exec turbo run test"'
             }
         }
 
