@@ -6,11 +6,21 @@ pipeline {
     // that may or may not get installed, the Node/pnpm stages below just
     // shell out to `docker run` directly -- needs nothing beyond the Docker
     // CLI itself, which this agent already has (the Deploy stage below has
-    // always used `docker compose`). Each `docker run --rm` is a fresh
-    // container, but bind-mounting $WORKSPACE (Jenkins' own env var for the
-    // checked-out job directory) as /work means node_modules installed in
-    // one stage is still on disk for the next -- the persistence lives in
-    // the bind-mounted directory, not the container.
+    // always used `docker compose`).
+    //
+    // --volumes-from "$HOSTNAME", not -v "$WORKSPACE:/work": this Jenkins
+    // controller itself runs as a container with the host's Docker socket
+    // mounted in (confirmed live: build #3 got ERR_PNPM_NO_LOCKFILE even
+    // though pnpm-lock.yaml is definitely committed and checked out). A
+    // `docker run -v $WORKSPACE:...` issued from inside that container asks
+    // the HOST daemon to bind-mount $WORKSPACE against the HOST's own
+    // filesystem -- but $WORKSPACE (e.g. /var/jenkins_home/workspace/...) is
+    // a path inside the Jenkins CONTAINER, not the host, so the host silently
+    // mounts an unrelated/empty directory instead. $HOSTNAME defaults to a
+    // container's own short id, so --volumes-from "$HOSTNAME" attaches this
+    // same Jenkins container's real volumes directly -- correct regardless
+    // of whatever the host-side path actually is, the standard fix for this
+    // exact Jenkins-in-Docker pitfall.
     agent any
 
     environment {
@@ -38,7 +48,7 @@ pipeline {
 
         stage('Install Dependencies') {
             steps {
-                sh 'docker run --rm -v "$WORKSPACE:/work" -w /work "$NODE_IMAGE" sh -c "corepack enable && corepack install && pnpm install --frozen-lockfile"'
+                sh 'docker run --rm --volumes-from "$HOSTNAME" -w "$WORKSPACE" "$NODE_IMAGE" sh -c "corepack enable && corepack prepare pnpm@11.20.0 --activate && pnpm install --frozen-lockfile"'
             }
         }
 
@@ -48,25 +58,25 @@ pipeline {
                 // typecheck internally) import lib/db's generated client --
                 // without this they fail on every run with
                 // "Cannot find module '../generated/prisma-client'".
-                sh 'docker run --rm -v "$WORKSPACE:/work" -w /work "$NODE_IMAGE" sh -c "corepack enable && corepack install && pnpm --filter \'@workspace/db\' run prisma:generate"'
+                sh 'docker run --rm --volumes-from "$HOSTNAME" -w "$WORKSPACE" "$NODE_IMAGE" sh -c "corepack enable && corepack prepare pnpm@11.20.0 --activate && pnpm --filter \'@workspace/db\' run prisma:generate"'
             }
         }
 
         stage('Global Checks (Lint & Typecheck)') {
             steps {
-                sh 'docker run --rm -v "$WORKSPACE:/work" -w /work "$NODE_IMAGE" sh -c "corepack enable && corepack install && pnpm run lint && pnpm run typecheck"'
+                sh 'docker run --rm --volumes-from "$HOSTNAME" -w "$WORKSPACE" "$NODE_IMAGE" sh -c "corepack enable && corepack prepare pnpm@11.20.0 --activate && pnpm run lint && pnpm run typecheck"'
             }
         }
 
         stage('Global Checks (Build)') {
             steps {
-                sh 'docker run --rm -v "$WORKSPACE:/work" -w /work "$NODE_IMAGE" sh -c "corepack enable && corepack install && pnpm run build"'
+                sh 'docker run --rm --volumes-from "$HOSTNAME" -w "$WORKSPACE" "$NODE_IMAGE" sh -c "corepack enable && corepack prepare pnpm@11.20.0 --activate && pnpm run build"'
             }
         }
 
         stage('Test') {
             steps {
-                sh 'docker run --rm -v "$WORKSPACE:/work" -w /work "$NODE_IMAGE" sh -c "corepack enable && corepack install && pnpm exec turbo run test"'
+                sh 'docker run --rm --volumes-from "$HOSTNAME" -w "$WORKSPACE" "$NODE_IMAGE" sh -c "corepack enable && corepack prepare pnpm@11.20.0 --activate && pnpm exec turbo run test"'
             }
         }
 
